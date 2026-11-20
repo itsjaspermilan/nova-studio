@@ -560,10 +560,10 @@ describe.skipIf(!built)("playing the game", () => {
     expect(r).toContain("warning: 'jump' is not an input action of this game");
     expect(r).toMatch(/ERROR in step 2 lua: .*nothing.*the run went on/);
     expect(r).toContain("f33 \"after\": nova.named('hero').x = 130"); // (what came after the failed step is still there)
-    expect(() => use("play", { route: [{ walk: "right" }] })).toThrow(/route step 1 has "walk".*A route is a list of steps/);
-    expect(() => use("play", { route: [{ wait: 1 }, { hold: ["right"], frames: 2, zoom: 3 }] })).toThrow(/route step 2 has "zoom".*"zoom" is an option of the whole play call/);
-    expect(() => use("play", { route: [{ repeat: 2, steps: [{ wait: 1 }, { jump: 1 }] }] })).toThrow(/route step 1\.2 has "jump"/);
-    expect(() => use("play", { route: [{ walk_to: "door" }] })).toThrow(/walk_to is a point, \[x, y\]/);
+    expect(() => use("play", { route: [{ walk: "right" }] })).toThrow(/route step 1: `walk` is not an option of a route step; did you mean `walk_to`\?.*A route is a list of steps/);
+    expect(() => use("play", { route: [{ wait: 1 }, { hold: ["right"], frames: 2, zoom: 3 }] })).toThrow(/route step 2: `zoom` is not an option of a route step; use `zoom` beside "route" \(it is an option of the whole play call/);
+    expect(() => use("play", { route: [{ repeat: 2, steps: [{ wait: 1 }, { jump: 1 }] }] })).toThrow(/route step 1\.2: `jump` is not an option of a route step/);
+    expect(() => use("play", { route: [{ walk_to: 7 }] })).toThrow(/walk_to is a point, \[x, y\]/);
     expect(() => use("play", { size: "big" })).toThrow(/WIDTHxHEIGHT/);
   });
 
@@ -583,7 +583,7 @@ describe.skipIf(!built)("playing the game", () => {
     }));
     expect(r.match(/f\d+ swing/g)!.length).toBe(6);
     expect(r).not.toContain("warning:");
-    expect(r).toMatch(/note: walk_to steers 'hero' in the x, y plane by driving move_x, move_y, left, right, up, down/);
+    expect(r).toMatch(/note: walk_to and fight steer 'hero' in the x, y plane by driving move_x, move_y, left, right, up, down/);
     const at = /"there": nova\.named\('hero'\) = <hero at ([\d.]+), ([\d.]+)>/.exec(r)!;
     expect(Math.hypot(Number(at[1]) - 300, Number(at[2]) - 260)).toBeLessThanOrEqual(12);
   });
@@ -641,7 +641,7 @@ describe.skipIf(!built)("playing the game", () => {
     expect(readFileSync(join(dir, "models/post.glb")).toString("latin1")).toContain('"extras":{"nova":{"events":[{"t":1,"name":"half"},{"t":2,"name":"top"}]}}');
     expect(() => use("model_write", { name: "late", model: { ...model, clips: [{ ...model.clips[0], events: [{ t: 3, name: "late" }] }] } })).toThrow(/clips\[0\]\.events\[0\] needs "t" \(seconds, from 0 to the clip's duration 2\) and a "name"/);
     const rest = use("model_preview", { name: "post" });
-    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nclips: lift 2\.00s \(events: half at 1\.00; top at 2\.00\)/);
+    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nsize at rest: 0\.75 wide \(x\), 1\.50 high \(y\), 0\.25 deep \(z\).*\nclips: lift 2\.00s \(events: half at 1\.00; top at 2\.00\)/);
     const one = decodePng(Buffer.from((rest.content[1] as { data: string }).data, "base64"));
     expect([one.w, one.h]).toEqual([640, 480]);
     const strip = use("model_preview", { name: "post", clip: "lift", strip: 3, size: 1.6 });

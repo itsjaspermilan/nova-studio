@@ -196,6 +196,24 @@ pub fn parse(message: &str, severity: &'static str) -> Diagnostic {
         } else {
             text
         };
+        // An engine call given the wrong kind of value says "bad argument #1: ..." without its name; the traceback's
+        // first line has it ("[C]: in field 'stop'").
+        let text = match (text.strip_prefix("bad argument #"), detail.lines().nth(2)) {
+            (Some(rest), Some(top))
+                if !rest.contains(" to '") && top.trim().starts_with("[C]: in ") =>
+            {
+                let digits = rest.chars().take_while(char::is_ascii_digit).count();
+                match top.split('\'').nth(1) {
+                    Some(name) => format!(
+                        "bad argument #{} to '{name}'{}",
+                        &rest[..digits],
+                        &rest[digits..]
+                    ),
+                    None => text,
+                }
+            }
+            _ => text,
+        };
         return Diagnostic {
             severity,
             file: Some(file),

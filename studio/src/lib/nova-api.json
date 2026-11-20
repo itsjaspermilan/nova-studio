@@ -357,6 +357,13 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.testing",
+  "kind": "namespace",
+  "signature": "nova.testing.invincible",
+  "doc": "What a scripted run (the play tool, `nova run --play`) asks of the game. `nova.testing.invincible` is true in a run with \"invincible\": true and false otherwise: `if nova.testing.invincible then return end` at the top of a hurt function makes the hero safe in such runs when its life is not a plain `hp` or `health` field (those the run puts back itself).",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.ui",
   "kind": "namespace",
   "signature": "nova.ui",
@@ -381,7 +388,7 @@
   "name": "nova.ui.sprite",
   "kind": "function",
   "signature": "nova.ui.sprite(id, x, y [, opts])",
-  "doc": "Like nova.sprite, in the UI layer. `src = { x, y, w, h }` draws only that part of the picture (pixels from its top left).",
+  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the UI layer (screen coordinates, over the world, at the screen's own resolution). Options: scale, sx, sy, w, h, rotation (radians, positive clockwise), color = { r, g, b [, a] } (multiplies the picture's colours; 255 leaves them, a fades it), anchor, frame (of a sprite sheet), and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left). The same options as nova.sprite, without the custom shader.",
   "group": "Drawing"
  },
  {
@@ -744,8 +751,8 @@
  {
   "name": "nova.music.stop",
   "kind": "function",
-  "signature": "nova.music.stop([fade])",
-  "doc": "Stop the music, optionally fading out.",
+  "signature": "nova.music.stop([fade_seconds])",
+  "doc": "Stop the music. `fade_seconds` is a number, not a table: nova.music.stop(0.5) fades out over half a second.",
   "group": "Sound"
  },
  {
@@ -906,7 +913,7 @@
   "name": "nova.current_scene",
   "kind": "function",
   "signature": "nova.current_scene() -> name",
-  "doc": "The name of the running scene.",
+  "doc": "The name of the running scene. It is already the new scene's name inside an entity's create() and the scene's enter() while that scene is being built, so an entity can key what it remembers by scene.",
   "group": "Scenes and entities"
  },
  {
@@ -1010,8 +1017,8 @@
  {
   "name": "nova.cam3.follow",
   "kind": "function",
-  "signature": "nova.cam3.follow(target [, { distance, height, look_height, smooth, fov, dt, collide, margin }])",
-  "doc": "A camera behind and above `target` (an entity or { x, y, z }), looking at it and easing after it as it moves. distance 9, height 8, look_height 1, smooth 6 (0 stays rigidly behind), fov 60. Turn it with cam3.yaw or cam3.look. `collide = true` keeps solid things from coming between the camera and what it looks at: when a triangle added with nova.solid.add (a wall, a hill, the level's mesh) is on the line of sight, the camera moves in along that line to `margin` (0.3) in front of it, never nearer than 0.5, and eases back out when the way is clear. It costs one nova.solid.raycast a frame. The camera eases in from where it was: pass smooth = 0 for the first frames of a scene to start behind the target.",
+  "signature": "nova.cam3.follow(target [, { distance, height, look_height, smooth, fov, dt, collide, margin, min_distance, hide }])",
+  "doc": "A camera behind and above `target` (an entity or { x, y, z }), looking at it and easing after it as it moves. distance 9, height 8, look_height 1, smooth 6 (0 stays rigidly behind), fov 60. Turn it with cam3.yaw or cam3.look. `collide = true` keeps solid things from coming between the camera and what it looks at: when a triangle added with nova.solid.add (a wall, a hill, the level's mesh) is on the line of sight, the camera moves in along that line to `margin` (0.3) in front of it, never nearer than 0.5, and eases back out when the way is clear. It costs one nova.solid.raycast a frame. The camera eases in from where it was: pass smooth = 0 for the first frames of a scene to start behind the target. Squeezed (under an arch, against a wall) the camera comes in as near as 0.5, and the picture is the back of a head: `min_distance = 1.7` says how near is too near, and `hide = true` then stops drawing the target (its `visible`) for as long as the camera is nearer than that, so the player sees the scene instead; it is drawn again when the camera is back out. `nova.cam3.distance` is how far the camera is from what it looks at and `nova.cam3.squeezed` whether that is under `min_distance`, for a game that would rather fade the target itself (a model drawn with its own alpha) or lift the camera.",
   "group": "3D"
  },
  {
@@ -1346,8 +1353,8 @@
  {
   "name": "play",
   "kind": "method",
-  "signature": "self:play(tag [, opts])",
-  "doc": "Play an animation tag of the sprite sheet.",
+  "signature": "self:play(tag [, { restart = true }])",
+  "doc": "Play an animation tag of the entity's sprite sheet (sprites/<name>.sprite.json). Calling it again with the same tag keeps going, so it can be called every frame; the one option is `restart = true`, which starts the tag over. on_animation_end(tag) runs when a tag that does not loop finishes.",
   "group": "Entity methods"
  },
  {

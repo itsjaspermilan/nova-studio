@@ -37,8 +37,10 @@ const HERO: &str = r#"
 local Hero = nova.entity { tags = { "hero" }, hitbox = { -4, -4, 8, 8 }, hp = 3, speed = 60 }
 function Hero:create() nova.log("hero is called " .. tostring(self.name)) end
 function Hero:update(dt)
-  self.x = self.x + nova.input.axis("move_x") * self.speed * dt
-  if nova.input.down("right") then self.x = self.x + self.speed * dt end
+  -- (the stick or the button, as a real machine sets both when an arrow key is down)
+  local dx = nova.input.axis("move_x")
+  if nova.input.down("right") then dx = 1 end
+  self.x = self.x + dx * self.speed * dt
   if nova.input.pressed("a") then nova.log("swing at " .. math.floor(self.x + 0.5)) end
 end
 function Hero:on_collide_coin(coin) coin:destroy(); nova.log("coin") end
@@ -187,7 +189,8 @@ fn a_route_drives_the_game_and_the_report_says_what_happened() {
     assert_eq!(log[2], "32 swing at 130"); // pressed on the frame after the walk
     assert!(log.iter().any(|l| l.ends_with(" coin")));
     assert!(log.last().unwrap().ends_with(" done"));
-    assert_eq!(report["frames"].as_u64().unwrap() as u32, pictures[2].0 + 1);
+    // (the picture of an `until` is of the frame after it held, which here is the last frame of the run)
+    assert_eq!(report["frames"].as_u64().unwrap() as u32, pictures[2].0);
 }
 
 #[test]
@@ -427,7 +430,7 @@ fn walk_to_steers_to_a_point_whatever_way_the_stick_points() {
         if count == 1 {
             assert!(
                 w[0].starts_with("step 1: walk_to stopped getting nearer")
-                    && w[0].contains("'rover' is at 20"),
+                    && w[0].contains("'rover' is at x 20"),
                 "{w:?}"
             );
         }

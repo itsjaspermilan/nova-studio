@@ -192,6 +192,9 @@ struct Shared {
     log: Vec<String>,
     /// The sounds and music started, by name, for scripted runs to report (`game/playtest.rs`); kept short.
     sound_log: Vec<String>,
+    /// The input actions scripts have asked about (`nova.input.down`, `axis`, ...) since a scripted run last looked: it
+    /// warns when a route holds an action that nothing reads.
+    input_reads: RefCell<std::collections::BTreeSet<String>>,
     /// Custom shaders: the project's, and this frame's draws that use them.
     shading: shader_api::ShaderState,
 }
@@ -959,8 +962,57 @@ fn lua_err(message: impl Into<String>) -> mlua::Error {
     mlua::Error::runtime(message.into())
 }
 
+/// The one line an error is shown by. An error raised by a script already starts with its place
+/// (`entities/hero.lua:8: ...`); one raised inside an engine call (a wrong kind of argument) does not, so the place is
+/// taken from the traceback (the first line of the project's own code) and the call is named:
+/// `entities/bell.lua:6: bad argument #1 to 'stop': error converting Lua table to f64`.
 fn first_line(text: &str) -> String {
-    text.lines().next().unwrap_or("script error").to_string()
+    let first = text.lines().next().unwrap_or("script error");
+    let has_place = |s: &str| {
+        s.find(".lua:").is_some_and(|at| {
+            s[at + 5..].starts_with(|c: char| c.is_ascii_digit())
+                && !s[..at].contains(' ')
+                && !s.starts_with("nova.")
+        })
+    };
+    let bare = first.strip_prefix("runtime error: ").unwrap_or(first);
+    if has_place(bare) {
+        return first.to_string();
+    }
+    let mut called = None;
+    let mut place = None;
+    for line in text.lines().skip(1).map(str::trim) {
+        if let Some(rest) = line.strip_prefix("[C]: in ") {
+            if called.is_none() && place.is_none() {
+                // "field 'stop'", "function 'nova.music.stop'"
+                called = rest.split('\'').nth(1).map(str::to_string);
+            }
+        } else if place.is_none() && has_place(line) {
+            let end = line.find(".lua:").map_or(0, |at| {
+                at + 5
+                    + line[at + 5..]
+                        .chars()
+                        .take_while(char::is_ascii_digit)
+                        .count()
+            });
+            place = Some(line[..end].to_string());
+        }
+    }
+    let Some(place) = place else {
+        return first.to_string();
+    };
+    let message = match (&called, bare.strip_prefix("bad argument #")) {
+        (Some(name), Some(rest)) if !rest.contains(" to '") => {
+            let digits = rest.chars().take_while(char::is_ascii_digit).count();
+            format!(
+                "bad argument #{} to '{name}'{}",
+                &rest[..digits],
+                &rest[digits..]
+            )
+        }
+        _ => bare.to_string(),
+    };
+    format!("{place}: {message}")
 }
 
 fn srgb_to_linear(c: [f64; 4]) -> [f64; 4] {
@@ -2566,6 +2618,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             }
         ))
     }
+    fn note_read(sh: &Shared, name: &str) {
+        if !sh.input_reads.borrow().contains(name) {
+            sh.input_reads.borrow_mut().insert(name.to_string());
+        }
+    }
     let s = shared.clone();
     input.set(
         "axis",
@@ -2575,6 +2632,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
+            note_read(&sh, &name);
             Ok(sh.states.player(player).value(&name) as f64)
         })?,
     )?;
@@ -2587,6 +2645,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
+            note_read(&sh, &name);
             Ok(sh.states.player(player).is_down(&name))
         })?,
     )?;
@@ -2599,6 +2658,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
+            note_read(&sh, &name);
             Ok(sh.states.player(player).was_pressed(&name))
         })?,
     )?;
@@ -2611,6 +2671,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.bindings
                 .get(&name)
                 .ok_or_else(|| unknown_action(&sh, &name))?;
+            note_read(&sh, &name);
             Ok(sh.states.player(player).was_released(&name))
         })?,
     )?;
@@ -4134,6 +4195,7 @@ impl Game {
             clear: srgb_to_linear([0.36, 0.55, 0.78, 1.0]),
             log: Vec::new(),
             sound_log: Vec::new(),
+            input_reads: RefCell::new(std::collections::BTreeSet::new()),
             shading: shading_state,
         }));
         let lua = new_lua();

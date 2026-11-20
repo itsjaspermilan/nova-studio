@@ -29,11 +29,22 @@
 //! - `{ "repeat": 5, "steps": [ ... ] }` plays a group of steps several times; with `"until"` the group stops (in the
 //!   middle of a step too) as soon as the condition holds. `repeat` on a plain step plays that step several times.
 //! - `{ "walk_to": [x, y], "who": "hero", "radius": 12, "max": 600 }` steers an entity to a point (`[x, z]` on the ground
-//!   of a 3D game): see `Walk`.
-//! - `"may_time_out": true` on an `until` (or a `walk_to`, or a group) says that running out of time is expected: no warning.
+//!   of a 3D game) round what is solid: see `Walk`. `{ "walk_to": "chest" }` walks to an entity (by name or tag) until
+//!   the two hitboxes touch (`reach` apart at most) or it stands against it.
+//! - `{ "fight": "enemy", "attack": "a", "max": 600 }` goes to the nearest entity with that tag, taps `attack` when its
+//!   hitbox is within `range`, and goes on to the next until none is left.
+//! - `"may_time_out": true` on an `until` (or a `walk_to`, a `fight`, or a group) says that running out of time is
+//!   expected: no warning.
+//!
+//! For the whole plan: `"invincible": true` puts the hero's `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) back
+//! after every frame and sets `nova.testing.invincible`; `"stop_on_fail": true` ends the route at the first step that
+//! fails; `"overlay": ["hitboxes", "solids", "names"]` draws those over the game; `"lua_each_frame"` runs Lua before
+//! every frame.
 //!
 //! A step whose Lua fails (`lua`, `until`) is written down with its step number in the report's `step_errors` and the run
-//! goes on, so the pictures and values after it are still there. Only an error of the game itself stops a run.
+//! goes on, so the pictures and values after it are still there. Only an error of the game itself stops a run. The
+//! picture of a step that ends because something came true (`until`, `walk_to`, `fight`) is taken one frame later, when
+//! the game has drawn what changed.
 
 use std::path::{Path, PathBuf};
 
@@ -92,8 +103,25 @@ pub struct Step {
     pub repeat: Option<u32>,
     /// A group of steps, played in order `repeat` times (once when left out; up to 100 times with an `until`).
     pub steps: Option<Vec<Step>>,
-    /// Steer an entity to this point: `[x, y]` in a 2D game, `[x, z]` on the ground of a 3D one.
-    pub walk_to: Option<[f64; 2]>,
+    /// Steer an entity to this point (`[x, y]` in a 2D game, `[x, z]` on the ground of a 3D one), or to an entity by
+    /// its name or tag, until it touches it.
+    pub walk_to: Option<Target>,
+    /// For a `walk_to` an entity: how far apart the two hitboxes may be to count as there (left out: they must overlap
+    /// in 2D, which is when `on_collide` runs; 0.3 in 3D). The step also ends when the walker stands against the thing.
+    pub reach: Option<f64>,
+    /// Walk straight at the place, without looking for a way round what is solid.
+    #[serde(default)]
+    pub straight: bool,
+    /// The tags of the entities a 2D path goes round (`["solid"]` when left out).
+    pub avoid: Option<Vec<String>>,
+    /// Go to the nearest entity with this tag and attack it, then the next, until none is left.
+    pub fight: Option<String>,
+    /// The action a `fight` taps (`a` when left out).
+    pub attack: Option<OneOrMany>,
+    /// Frames from one attack to the next (20).
+    pub attack_every: Option<u32>,
+    /// How far apart the hitboxes may be for an attack (the walker's own size in 2D, at least 16; 1.5 in 3D).
+    pub range: Option<f64>,
     /// Who walks: a scene object's name or a tag (left out: the one named or tagged `hero` or `player`, or what the 2D
     /// camera follows).
     pub who: Option<String>,
@@ -106,6 +134,27 @@ pub struct Step {
     /// The four button actions `walk_to` drives instead of `left`, `right`, `up`, `down`.
     pub dirs: Option<[String; 4]>,
 }
+
+impl Step {
+    fn verb(&self) -> &'static str {
+        if self.fight.is_some() {
+            "fight"
+        } else {
+            "walk_to"
+        }
+    }
+}
+
+/// Where a `walk_to` goes: a point, or an entity by its name or tag.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum Target {
+    Point([f64; 2]),
+    Entity(String),
+}
+
+/// What `overlay` can draw over the pictures.
+pub const OVERLAYS: [&str; 3] = ["hitboxes", "solids", "names"];
 
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -129,6 +178,21 @@ pub struct Plan {
     /// Lua run once, after the first frame (the scene is up by then).
     pub lua: Option<String>,
     pub seed: Option<u64>,
+    /// The hero cannot die: its `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) is put back to the most it has had
+    /// after every frame, and `nova.testing.invincible` is true for the game to read.
+    #[serde(default, alias = "god")]
+    pub invincible: bool,
+    /// Who `invincible` protects (left out: the one named or tagged `hero` or `player`).
+    pub who: Option<String>,
+    /// End the route at the first step that fails (an `until` or `walk_to` that ran out without `may_time_out`, Lua that
+    /// failed), so later steps do not play from the wrong place. Everything gathered so far is kept.
+    #[serde(default)]
+    pub stop_on_fail: bool,
+    /// Draw these over the game on every frame: `hitboxes`, `solids`, `names`.
+    #[serde(default)]
+    pub overlay: Vec<String>,
+    /// Lua run before every frame after the first (a setting the scene's own code would otherwise set back).
+    pub lua_each_frame: Option<String>,
 }
 
 impl Plan {
@@ -218,6 +282,7 @@ fn flatten(
                 || s.wait.is_some()
                 || s.lua.is_some()
                 || s.walk_to.is_some()
+                || s.fight.is_some()
             {
                 return Err(format!(
                     "{label} is a group (it has \"steps\"), which takes only \"repeat\", \"until\", \"may_time_out\" and \"capture\": put the rest in its steps"
@@ -265,9 +330,22 @@ fn flatten(
                 && s.frames.or(s.wait).is_none()
                 && s.until.is_none()
                 && s.walk_to.is_none()
+                && s.fight.is_none()
             {
                 return Err(format!(
                     "{label} has \"tap_every\" but no length: give \"frames\" or \"until\""
+                ));
+            }
+            if s.fight.is_some() && s.walk_to.is_some() {
+                return Err(format!(
+                    "{label} has both \"fight\" and \"walk_to\": a step does one of them"
+                ));
+            }
+            if let Some(n) = s.attack_every
+                && n < 3
+            {
+                return Err(format!(
+                    "{label}: \"attack_every\" is {n}; a tap takes two frames, so it must be 3 or more"
                 ));
             }
             if let Some(p) = &s.plane
@@ -306,12 +384,17 @@ fn flatten(
     Ok(())
 }
 
-/// A `walk_to` step under way. Each frame it points the movement actions at the target and afterwards looks at how the
-/// walker really moved. It does not assume that "stick right" is +x: it keeps an estimate of the turn between the stick
-/// and the ground (`theta`), which starts at none (right is +x, down on the stick is +y in 2D or +z in 3D) and is put
-/// right from the measured movement whenever that disagrees by more than 20 degrees for three frames running. That is
-/// what makes it work with a stick that is relative to a turned camera. If correcting the turn keeps failing, it tries
-/// the mirror image. It walks in a straight line (no path finding) and gives up when it stops getting nearer.
+/// A `walk_to` or `fight` step under way. Each frame it points the movement actions at where it is going and afterwards
+/// looks at how the walker really moved. It does not assume that "stick right" is +x: it keeps an estimate of the turn
+/// between the stick and the ground (`theta`), which starts at none (right is +x, down on the stick is +y in 2D or +z in
+/// 3D) and is put right from the measured movement whenever that disagrees by more than 20 degrees for three frames
+/// running. That is what makes it work with a stick that is relative to a turned camera. If correcting the turn keeps
+/// failing, it tries the mirror image.
+///
+/// Where it is going is the next corner of a path round what is solid (`Game::path`: the scene's solid tiles and the
+/// entities tagged `solid` in a flat game; `nova.solid`, `nova.walls` and the scenery in a 3D one), found when the step
+/// starts and again when it stops getting nearer. Without a path (nothing solid is known, or `"straight": true`) it
+/// walks straight at the place and gives up when it stops getting nearer.
 ///
 /// It drives the axes `move_x`, `move_y` and the buttons `left`, `right`, `up`, `down` together (those the game has; a
 /// step's `axes` and `dirs` name others), because it cannot know which of them the game's code reads.
@@ -329,9 +412,31 @@ struct Walk {
     started: bool,
     /// The step is over (arrived, stuck, or it could not start).
     over: bool,
+    /// The corners still to walk through, and which is next.
+    path: Vec<(f64, f64)>,
+    leg: usize,
+    planned: bool,
+    plans: u32,
+    planned_at: u32,
+    planned_for: i64,
+    /// Whether the path reaches the place (or only the nearest place that can be reached).
+    reaches: bool,
+    /// Where it is heading this frame.
+    aim: (f64, f64),
+    /// What is left of the minor direction for a game that reads buttons (so that a shallow angle is walked, not rounded).
+    dither: (f64, f64),
+    frames: u32,
+    // a fight
+    foes: Option<u32>,
+    attacks: u32,
+    cooldown: u32,
+    swing: u32,
+    life_at_start: Option<String>,
+    life: Option<String>,
 }
 
 const WALK_STUCK_FRAMES: u32 = 120;
+const WALK_REPLAN_FRAMES: u32 = 45;
 const WALK_DEADBAND: f64 = 0.35;
 
 fn wrap(a: f64) -> f64 {
@@ -350,11 +455,63 @@ fn short(v: f64) -> String {
     if s == "-0" { "0".into() } else { s.into() }
 }
 
+fn far(a: (f64, f64), b: (f64, f64)) -> f64 {
+    ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
+}
+
+/// Whether two hitboxes `gap` apart count as touching: within `reach`, or overlapping when no reach is given (an
+/// overlap is what `on_collide_<tag>` and `touching` see).
+fn touches(gap: f64, reach: f64) -> bool {
+    if reach > 0.0 { gap <= reach } else { gap < 0.0 }
+}
+
+/// A gap between two hitboxes in words.
+fn apart(gap: f64, unit: &str) -> String {
+    if gap < 0.0 {
+        format!("overlap by {} {unit}", short(-gap))
+    } else if gap == 0.0 {
+        "touch".to_string()
+    } else {
+        format!("are {} {unit} apart", short(gap))
+    }
+}
+
 struct Running {
     index: usize,
     /// Frames of the step already played.
     played: u32,
     walk: Walk,
+    /// The input actions the game asked about while the step played.
+    reads: std::collections::BTreeSet<String>,
+}
+
+impl Running {
+    fn at(index: usize) -> Self {
+        Self {
+            index,
+            played: 0,
+            walk: Walk::default(),
+            reads: Default::default(),
+        }
+    }
+}
+
+/// What a moving step is after.
+enum Aim {
+    Point(f64, f64),
+    Entity(String),
+    Fight(String),
+}
+
+fn aim_of(step: &Step) -> Option<Aim> {
+    if let Some(tag) = &step.fight {
+        return Some(Aim::Fight(tag.clone()));
+    }
+    match &step.walk_to {
+        Some(Target::Point(p)) => Some(Aim::Point(p[0], p[1])),
+        Some(Target::Entity(name)) => Some(Aim::Entity(name.clone())),
+        None => None,
+    }
 }
 
 /// The state of a run: which step is playing and everything noted so far.
@@ -372,11 +529,22 @@ pub struct Playtest {
     sounds: Vec<Value>,
     warnings: Vec<String>,
     notes: Vec<String>,
+    /// How each walk and fight went, in words.
+    results: Vec<String>,
     /// Steps whose own Lua failed (the run went on).
     pub step_errors: Vec<String>,
     /// What stopped the run: an error of the game itself.
     pub error: Option<String>,
     actions: Vec<String>,
+    /// Buttons and the axes they share keys with: (button, axis, the side of the axis).
+    links: Vec<(String, String, f32)>,
+    /// A step failed on this frame (for `stop_on_fail`).
+    failed: Option<String>,
+    /// The route was stopped at this step.
+    stopped: Option<String>,
+    god: Option<Value>,
+    all_reads: std::collections::BTreeSet<String>,
+    render: Value,
 }
 
 impl Playtest {
@@ -385,6 +553,14 @@ impl Playtest {
         std::fs::create_dir_all(&out)
             .map_err(|e| format!("cannot make the folder {}: {e}", out.display()))?;
         let (flat, groups) = unroll(&plan.steps)?;
+        for o in &plan.overlay {
+            if !OVERLAYS.contains(&o.as_str()) {
+                return Err(format!(
+                    "\"overlay\" has \"{o}\"; it takes {}",
+                    OVERLAYS.join(", ")
+                ));
+            }
+        }
         Ok(Self {
             plan,
             flat,
@@ -399,9 +575,16 @@ impl Playtest {
             sounds: Vec::new(),
             warnings: Vec::new(),
             notes: Vec::new(),
+            results: Vec::new(),
             step_errors: Vec::new(),
             error: None,
             actions: Vec::new(),
+            links: Vec::new(),
+            failed: None,
+            stopped: None,
+            god: None,
+            all_reads: Default::default(),
+            render: Value::Null,
         })
     }
 
@@ -418,13 +601,14 @@ impl Playtest {
         self.error.is_some()
             || done >= MAX_FRAMES
             || (self.steps_done
+                && self.pictures_due.is_empty()
                 && done >= self.plan.frames.unwrap_or(0)
                 && self.plan.capture_at.iter().all(|f| *f <= done)
                 && done >= 1)
     }
 
     fn step_length(step: &Step) -> u32 {
-        if step.until.is_some() || step.walk_to.is_some() {
+        if step.until.is_some() || step.walk_to.is_some() || step.fight.is_some() {
             return step.max.unwrap_or(600).max(1);
         }
         if let Some(n) = step.frames.or(step.wait) {
@@ -453,6 +637,27 @@ impl Playtest {
         self.flat
             .get(index)
             .map_or(0, |f| Self::step_length(&f.step))
+    }
+
+    fn note(&mut self, text: String) {
+        if !self.notes.contains(&text) {
+            self.notes.push(text);
+        }
+    }
+
+    /// A step did not do what it was for: said as a warning, and with `stop_on_fail` the route ends here.
+    fn fail(&mut self, label: &str, text: String) {
+        self.warnings.push(text);
+        if self.failed.is_none() {
+            self.failed = Some(label.to_string());
+        }
+    }
+
+    fn step_error(&mut self, label: &str, text: String) {
+        self.step_errors.push(text);
+        if self.failed.is_none() {
+            self.failed = Some(label.to_string());
+        }
     }
 
     fn check_names(&mut self, names: &[String]) {
@@ -496,38 +701,87 @@ impl Playtest {
                     self.groups[g].done = true;
                     self.groups[g].quiet = true;
                     ended = true;
-                    self.step_errors.push(format!(
-                        "{}: the group's until `{cond}`: {e}",
-                        self.flat[index].label
-                    ));
+                    let label = self.flat[index].label.clone();
+                    self.step_error(&label, format!("{label}: the group's until `{cond}`: {e}"));
                 }
             }
         }
         ended
     }
 
-    /// Points the movement actions of a `walk_to` step at its target.
-    fn steer(&mut self, index: usize, game: &Game, input: &mut InputFrame) {
+    /// The buttons that go with the axes a step sets, and the axes that go with its buttons, as the keys and the stick
+    /// press both on a real machine: a route that holds `up` moves a hero that reads `move_y`, and the other way round.
+    fn link_inputs(&mut self, input: &mut InputFrame, given: &[(String, f32)]) {
+        let mut add: Vec<(String, f32)> = Vec::new();
+        let mut pairs: Vec<String> = Vec::new();
+        for (name, value) in given {
+            for (button, axis, side) in &self.links {
+                let (other, v) = if button == name && *value >= 0.5 {
+                    (axis, *side)
+                } else if axis == name && value.abs() >= 0.5 && value.signum() == *side {
+                    (button, 1.0)
+                } else {
+                    continue;
+                };
+                if given.iter().any(|(n, _)| n == other) {
+                    continue; // (the step says what that one is itself)
+                }
+                if input.overrides.iter().any(|(n, _)| n == other) {
+                    continue; // (held for the whole run)
+                }
+                pairs.push(format!("`{name}` also sets `{other}`"));
+                match add.iter_mut().find(|(n, _)| n == other) {
+                    Some((_, sum)) => *sum = (*sum + v).clamp(-1.0, 1.0),
+                    None => add.push((other.clone(), v)),
+                }
+            }
+        }
+        if add.is_empty() {
+            return;
+        }
+        input.overrides.extend(add);
+        for pair in pairs {
+            self.note(format!(
+                "a hold of {pair} (they share keys and the stick, so a real machine sets both; a step that names both is left as written)"
+            ));
+        }
+    }
+
+    /// Points the movement actions of a `walk_to` or `fight` step at where it is going.
+    fn steer(&mut self, index: usize, frame: u32, game: &Game, input: &mut InputFrame) {
         let Some(flat) = self.flat.get(index) else {
             return;
         };
         let (step, label) = (flat.step.clone(), flat.label.clone());
-        let Some(target) = step.walk_to else {
+        let Some(aim) = aim_of(&step) else {
             return;
         };
-        let Some(at) = self.at.as_mut() else {
-            return;
-        };
-        let walk = &mut at.walk;
-        if walk.over {
+        if self.at.as_ref().is_none_or(|a| a.walk.over) {
             return;
         }
-        let (x, y, plane, who) = match game.walker(step.who.as_deref(), step.plane.as_deref()) {
+        let (who_arg, plane_arg) = (step.who.as_deref(), step.plane.as_deref());
+        let (x, y, plane, who) = match game.walker(who_arg, plane_arg) {
             Ok(w) => w,
             Err(e) => {
-                walk.over = true;
-                self.step_errors.push(format!("{label} walk_to: {e}"));
+                self.at.as_mut().expect("a step is playing").walk.over = true;
+                self.step_error(&label, format!("{label} {}: {e}", step.verb()));
                 return;
+            }
+        };
+        let three = plane == "xz";
+        // where to, and what is there
+        let (goal, thing) = match &aim {
+            Aim::Point(px, py) => ((*px, *py), None),
+            Aim::Entity(name) | Aim::Fight(name) => {
+                match game.goal(who_arg, plane_arg, name, matches!(aim, Aim::Fight(_))) {
+                    Ok(Some(g)) => ((g.x, g.y), Some(g)),
+                    Ok(None) => return, // (nobody left to fight: the step ends after this frame)
+                    Err(e) => {
+                        self.at.as_mut().expect("a step is playing").walk.over = true;
+                        self.step_error(&label, format!("{label} {}: {e}", step.verb()));
+                        return;
+                    }
+                }
             }
         };
         let axes: Vec<String> = match &step.axes {
@@ -541,16 +795,24 @@ impl Playtest {
         let has = |n: &String| self.actions.contains(n);
         let use_axes = axes.iter().all(has);
         let use_dirs = dirs.iter().all(has);
-        if !walk.started {
+        let started = self.at.as_ref().is_some_and(|a| a.walk.started);
+        if !started {
+            let walk = &mut self.at.as_mut().expect("a step is playing").walk;
             walk.started = true;
+            if let Some(g) = &thing {
+                walk.foes = Some(g.count);
+                walk.life_at_start = g.hp.clone();
+            }
             if !use_axes && !use_dirs {
                 walk.over = true;
-                self.step_errors.push(format!(
-                    "{label} walk_to: this game has neither the axes {} nor the buttons {} (its actions: {}); name the ones that move '{who}' with \"axes\": [x, y] or \"dirs\": [left, right, up, down]",
+                let text = format!(
+                    "{label} {}: this game has neither the axes {} nor the buttons {} (its actions: {}); name the ones that move '{who}' with \"axes\": [x, y] or \"dirs\": [left, right, up, down]",
+                    step.verb(),
                     axes.join(", "),
                     dirs.join(", "),
                     self.actions.join(", ")
-                ));
+                );
+                self.step_error(&label, text);
                 return;
             }
             let mut driven = Vec::new();
@@ -560,23 +822,146 @@ impl Playtest {
             if use_dirs {
                 driven.extend(dirs.iter().cloned());
             }
-            let note = format!(
-                "walk_to steers '{who}' in the {} plane by driving {} each frame and measuring how it really moved (so a camera-relative stick works); it walks straight, without path finding",
-                if plane == "xz" { "x, z" } else { "x, y" },
+            self.note(format!(
+                "walk_to and fight steer '{who}' in the {} plane by driving {} each frame and measuring how it really moved (so a camera-relative stick works)",
+                if three { "x, z" } else { "x, y" },
                 driven.join(", ")
+            ));
+        }
+        let radius = step.radius.unwrap_or(if three { 0.5 } else { 12.0 });
+        let reach = step.reach.unwrap_or(if three { 0.3 } else { 0.0 });
+        let range = step.range.unwrap_or_else(|| {
+            if three {
+                1.5
+            } else {
+                thing.as_ref().map_or(16.0, |g| g.size.max(16.0))
+            }
+        });
+        // there already?
+        let fighting = matches!(aim, Aim::Fight(_));
+        let in_range = match (&aim, &thing) {
+            (Aim::Point(..), _) => far((x, y), goal) <= radius,
+            (Aim::Entity(_), Some(g)) => touches(g.gap, reach),
+            (Aim::Fight(_), Some(g)) => g.gap <= range,
+            _ => false,
+        };
+        if in_range && !fighting {
+            self.at.as_mut().expect("a step is playing").walk.before = None;
+            return; // (there: the step ends after this frame)
+        }
+        // the way there
+        let (planned, plans, planned_at, planned_for) = {
+            let w = &self.at.as_ref().expect("a step is playing").walk;
+            (w.planned, w.plans, w.planned_at, w.planned_for)
+        };
+        let id = thing.as_ref().map_or(0, |g| g.id);
+        let again =
+            fighting && !in_range && (frame.saturating_sub(planned_at) >= 30 || id != planned_for);
+        if !step.straight && (!planned || again) {
+            let name = match &aim {
+                Aim::Point(..) => None,
+                Aim::Entity(n) | Aim::Fight(n) => Some(n.as_str()),
+            };
+            let found = game.path(
+                who_arg,
+                plane_arg,
+                goal,
+                name,
+                step.avoid.as_deref(),
+                if fighting { range } else { reach },
             );
-            if !self.notes.contains(&note) {
-                self.notes.push(note);
+            let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+            walk.planned = true;
+            walk.plans = plans + 1;
+            walk.planned_at = frame;
+            walk.planned_for = id;
+            walk.leg = 0;
+            walk.best = 0.0;
+            walk.since_best = 0;
+            match found {
+                Ok(p) => {
+                    walk.path = p.points;
+                    walk.reaches = p.found;
+                    let corners = walk.path.len();
+                    if let Some(why) = p.why {
+                        walk.reaches = true;
+                        self.note(format!("{} walks straight: {why}", step.verb()));
+                    } else if !p.found && !fighting {
+                        self.note(format!(
+                            "{label}: no way to the place was found round what is solid ({} places looked at): '{who}' walks to the nearest place it can reach",
+                            p.looked
+                        ));
+                    } else if plans == 0 && corners > 1 {
+                        self.note(format!(
+                            "{label}: {} found a way round what is solid through {} corners{}",
+                            step.verb(),
+                            corners,
+                            if three {
+                                " (nova.solid, nova.walls and the scenery, tried on a grid of half metres)"
+                            } else {
+                                " (solid tiles and entities tagged solid, with the walker's own hitbox)"
+                            }
+                        ));
+                    }
+                }
+                Err(e) => {
+                    walk.path.clear();
+                    walk.reaches = true;
+                    self.note(format!(
+                        "{} walks straight: no path could be worked out ({e})",
+                        step.verb()
+                    ));
+                }
             }
         }
-        let (dx, dy) = (target[0] - x, target[1] - y);
+        let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+        let tolerance = f64::max(if three { 0.2 } else { 3.0 }, walk.top_speed * 1.1);
+        while walk.leg < walk.path.len() && far((x, y), walk.path[walk.leg]) <= tolerance {
+            walk.leg += 1;
+        }
+        walk.aim = walk.path.get(walk.leg).copied().unwrap_or(goal);
+        let set = |name: &String, value: f64, input: &mut InputFrame| {
+            input.overrides.retain(|(n, _)| n != name);
+            input.overrides.push((name.clone(), value as f32));
+        };
+        if walk.cooldown > 0 {
+            walk.cooldown -= 1;
+        }
+        if !in_range {
+            walk.swing = 0; // (what it swung at is gone: the tap is not finished on the next one)
+        }
+        if fighting && in_range {
+            // stand, face it, swing
+            if walk.swing == 0 && walk.cooldown == 0 {
+                walk.swing = 2;
+                walk.cooldown = step.attack_every.unwrap_or(20).max(3);
+                walk.attacks += 1;
+            }
+            let facing = walk.cooldown <= 1 || walk.swing > 0;
+            if walk.swing > 0 {
+                walk.swing -= 1;
+                let attack = match &step.attack {
+                    Some(a) => a.list(),
+                    None => vec!["a".to_string()],
+                };
+                for name in &attack {
+                    if name.contains(':') {
+                        input.sources.insert(name.clone(), 1.0);
+                    } else {
+                        set(name, 1.0, input);
+                    }
+                }
+            }
+            if !facing {
+                walk.before = None;
+                return;
+            }
+        }
+        let (dx, dy) = (walk.aim.0 - x, walk.aim.1 - y);
         let dist = (dx * dx + dy * dy).sqrt();
-        let radius = step
-            .radius
-            .unwrap_or(if plane == "xz" { 0.5 } else { 12.0 });
-        if dist <= radius {
+        if dist < 1e-6 {
             walk.before = None;
-            return; // (there: the step ends after this frame)
+            return;
         }
         let (ux, uy) = (dx / dist, dy / dist);
         let (c, s) = (walk.theta.cos(), walk.theta.sin());
@@ -587,25 +972,40 @@ impl Playtest {
         } else {
             stick
         };
-        let mut set = |name: &String, value: f64| {
-            input.overrides.retain(|(n, _)| n != name);
-            input.overrides.push((name.clone(), value as f32));
-        };
         if use_axes {
-            set(&axes[0], sx);
-            set(&axes[1], sy);
+            set(&axes[0], sx, input);
+            set(&axes[1], sy, input);
         }
         if use_dirs {
-            // (eight directions: a button is down when the stick leans more than 22.5 degrees its way)
-            const LEAN: f64 = 0.383;
+            // The bigger direction's button is down; the smaller one's is down for its share of the frames, so that a
+            // shallow angle is walked as a shallow angle (a path's corners are met, a narrow gap is entered).
+            let big = sx.abs().max(sy.abs()).max(1e-9);
+            let share = |part: f64, left: &mut f64| -> bool {
+                let ratio = part.abs() / big;
+                if ratio >= 0.999 {
+                    return true;
+                }
+                if ratio < 0.02 {
+                    return false;
+                }
+                *left += ratio;
+                if *left >= 1.0 {
+                    *left -= 1.0;
+                    true
+                } else {
+                    false
+                }
+            };
+            let on_x = share(sx, &mut walk.dither.0);
+            let on_y = share(sy, &mut walk.dither.1);
             for (name, on) in [
-                (&dirs[0], sx < -LEAN),
-                (&dirs[1], sx > LEAN),
-                (&dirs[2], sy < -LEAN),
-                (&dirs[3], sy > LEAN),
+                (&dirs[0], on_x && sx < 0.0),
+                (&dirs[1], on_x && sx > 0.0),
+                (&dirs[2], on_y && sy < 0.0),
+                (&dirs[3], on_y && sy > 0.0),
             ] {
                 if on {
-                    set(name, 1.0);
+                    set(name, 1.0, input);
                 }
             }
         }
@@ -617,30 +1017,146 @@ impl Playtest {
             return true;
         };
         let (step, label) = (flat.step.clone(), flat.label.clone());
-        let Some(target) = step.walk_to else {
+        let Some(aim) = aim_of(&step) else {
             return false;
         };
-        let Some(at) = self.at.as_mut() else {
-            return true;
-        };
-        let walk = &mut at.walk;
-        if walk.over {
+        if self.at.as_ref().is_none_or(|a| a.walk.over) {
             return true;
         }
-        let Ok((x, y, plane, who)) = game.walker(step.who.as_deref(), step.plane.as_deref()) else {
+        let verb = step.verb();
+        let (who_arg, plane_arg) = (step.who.as_deref(), step.plane.as_deref());
+        let Ok((x, y, plane, who)) = game.walker(who_arg, plane_arg) else {
+            let walk = &mut self.at.as_mut().expect("a step is playing").walk;
             walk.over = true;
-            self.step_errors.push(format!(
-                "{label} walk_to: the walker is gone (destroyed, or the scene changed)"
-            ));
+            let (foes, attacks, frames) = (walk.foes, walk.attacks, walk.frames);
+            let text = match &aim {
+                Aim::Fight(tag) => format!(
+                    "{label} fight: the walker is gone after {frames} frames and {attacks} attacks ({} '{tag}' at the start): it was destroyed, or the scene changed. \"invincible\": true keeps it alive",
+                    foes.unwrap_or(0)
+                ),
+                _ => {
+                    format!("{label} {verb}: the walker is gone (destroyed, or the scene changed)")
+                }
+            };
+            self.step_error(&label, text);
             return true;
         };
-        let radius = step
-            .radius
-            .unwrap_or(if plane == "xz" { 0.5 } else { 12.0 });
-        let dist = ((target[0] - x).powi(2) + (target[1] - y).powi(2)).sqrt();
-        if dist <= radius {
-            walk.over = true;
-            return true;
+        let three = plane == "xz";
+        let (unit, names) = if three {
+            ("m", ("x", "z"))
+        } else {
+            ("units", ("x", "y"))
+        };
+        let (goal, thing) = match &aim {
+            Aim::Point(px, py) => ((*px, *py), None),
+            Aim::Entity(name) | Aim::Fight(name) => {
+                let fighting = matches!(aim, Aim::Fight(_));
+                match game.goal(who_arg, plane_arg, name, fighting) {
+                    Ok(Some(g)) => ((g.x, g.y), Some(g)),
+                    Ok(None) => {
+                        let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+                        walk.over = true;
+                        let life = match (&walk.life_at_start, &walk.life) {
+                            (Some(a), Some(b)) if a != b => {
+                                format!("; '{who}' went from {a} to {b}")
+                            }
+                            (Some(a), _) => format!("; '{who}' still has {a}"),
+                            _ => String::new(),
+                        };
+                        let text = match walk.foes {
+                            Some(n) => format!(
+                                "{label}: fight '{name}': all {n} beaten in {} frames with {} attacks{life}",
+                                walk.frames + 1,
+                                walk.attacks
+                            ),
+                            None => format!("{label}: fight '{name}': there was none to fight"),
+                        };
+                        self.results.push(text);
+                        return true;
+                    }
+                    Err(e) => {
+                        let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+                        walk.over = true;
+                        if walk.foes.is_some() {
+                            // it was there when the step began: walking into it took it (a pickup) or went through it (a door)
+                            let text = format!(
+                                "{label}: walk_to '{name}': reached after {} frames, and it is gone now (taken, or the scene changed: a door); '{who}' is at {} {}, {} {}",
+                                walk.frames + 1,
+                                names.0,
+                                short(x),
+                                names.1,
+                                short(y)
+                            );
+                            self.results.push(text);
+                        } else {
+                            self.step_error(&label, format!("{label} {verb}: {e}"));
+                        }
+                        return true;
+                    }
+                }
+            }
+        };
+        let radius = step.radius.unwrap_or(if three { 0.5 } else { 12.0 });
+        let reach = step.reach.unwrap_or(if three { 0.3 } else { 0.0 });
+        let walk = &mut self.at.as_mut().expect("a step is playing").walk;
+        walk.frames += 1;
+        if let Some(g) = &thing
+            && g.hp.is_some()
+        {
+            walk.life = g.hp.clone();
+        }
+        let dist = far((x, y), goal);
+        let place = |walk: &Walk| match &thing {
+            Some(g) => format!(
+                "'{who}' is at {} {}, {} {}; its hitbox and that of '{}' {}",
+                names.0,
+                short(x),
+                names.1,
+                short(y),
+                g.label,
+                apart(g.gap, unit)
+            ),
+            None => format!(
+                "'{who}' is at {} {}, {} {}, {} {unit} from [{}, {}]{}",
+                names.0,
+                short(x),
+                names.1,
+                short(y),
+                short(dist),
+                short(goal.0),
+                short(goal.1),
+                if walk.plans > 0 && !walk.reaches {
+                    " (no way round what is solid reaches that point)"
+                } else {
+                    ""
+                }
+            ),
+        };
+        match (&aim, &thing) {
+            (Aim::Point(..), _) if dist <= radius => {
+                walk.over = true;
+                let text = format!(
+                    "{label}: walk_to [{}, {}]: there after {} frames ({})",
+                    short(goal.0),
+                    short(goal.1),
+                    walk.frames,
+                    place(walk)
+                );
+                self.results.push(text);
+                return true;
+            }
+            (Aim::Entity(_), Some(g)) if touches(g.gap, reach) => {
+                walk.over = true;
+                let text = format!(
+                    "{label}: walk_to '{}': touching it after {} frames ({})",
+                    g.label,
+                    walk.frames,
+                    place(walk)
+                );
+                self.results.push(text);
+                return true;
+            }
+            _ => {}
         }
         if let Some(((px, py), (sx, sy))) = walk.before {
             let (vx, vy) = (x - px, y - py);
@@ -667,36 +1183,109 @@ impl Playtest {
                 }
             }
         }
+        if let Aim::Fight(tag) = &aim {
+            // a fight is over when nobody is left (above) or its time is up
+            if last_frame {
+                walk.over = true;
+                let left = thing.as_ref().map_or(0, |g| g.count);
+                let text = format!(
+                    "{label}: fight '{tag}': {left} of {} still alive after {} frames and {} attacks ({})",
+                    walk.foes.unwrap_or(left),
+                    walk.frames,
+                    walk.attacks,
+                    place(walk)
+                );
+                if step.may_time_out {
+                    self.results.push(text);
+                } else {
+                    self.fail(&label, format!("{text} (give it a bigger \"max\", another \"attack\" action or a \"range\" that suits the weapon; \"may_time_out\": true if that is expected)"));
+                }
+                return true;
+            }
+            return false;
+        }
+        // how far is left along the way
+        let mut left = far((x, y), walk.aim);
+        let mut from = walk.aim;
+        for p in walk.path.iter().skip(walk.leg + 1) {
+            left += far(from, *p);
+            from = *p;
+        }
         let gain = (radius * 0.25).max(1e-3);
-        if walk.best == 0.0 || dist < walk.best - gain {
-            walk.best = dist;
+        if walk.best == 0.0 || left < walk.best - gain {
+            walk.best = left;
             walk.since_best = 0;
             walk.corrections = 0;
         } else {
             walk.since_best += 1;
         }
-        let place = format!(
-            "'{who}' is at {}, {}, {} from [{}, {}]",
-            short(x),
-            short(y),
-            short(dist),
-            short(target[0]),
-            short(target[1])
-        );
-        if walk.since_best >= WALK_STUCK_FRAMES {
+        // (on the last stretch: the last corner of a way to a thing is beside it, and may be a place it cannot quite stand)
+        let at_the_end = walk.leg + usize::from(thing.is_some()) >= walk.path.len();
+        if let Some(g) = &thing
+            && at_the_end
+            && walk.since_best >= 20
+        {
+            // walked into it as far as it goes: next to it when the hitboxes are near
+            let near = if three { 4.0 } else { g.size.max(24.0) };
             walk.over = true;
-            if !step.may_time_out {
-                self.warnings.push(format!(
-                    "{label}: walk_to stopped getting nearer for {WALK_STUCK_FRAMES} frames and gave up: {place} (something solid is in the way, since it walks straight: go round with two walk_to steps; or the actions it drives do not move '{who}')"
-                ));
+            let text = format!(
+                "{label}: walk_to '{}': stopped against it after {} frames ({})",
+                g.label,
+                walk.frames,
+                place(walk)
+            );
+            if g.gap <= near || step.may_time_out {
+                self.results.push(text);
+            } else {
+                self.fail(
+                    &label,
+                    format!("{text}: that is not next to it, so something solid is between them"),
+                );
             }
             return true;
         }
-        if last_frame && !step.may_time_out {
-            self.warnings.push(format!(
-                "{label}: walk_to did not arrive in {} frames: {place} (give it a bigger \"max\")",
-                Self::step_length(&step)
-            ));
+        if !step.straight
+            && walk.since_best >= WALK_REPLAN_FRAMES
+            && walk.plans < 4
+            && walk.plans > 0
+            && !at_the_end
+        {
+            walk.planned = false; // (pushed off the way, or something moved: look for the way again)
+            return false;
+        }
+        if walk.since_best >= WALK_STUCK_FRAMES {
+            walk.over = true;
+            let text = format!(
+                "{label}: walk_to stopped getting nearer for {WALK_STUCK_FRAMES} frames and gave up: {} ({})",
+                place(walk),
+                if walk.path.is_empty() {
+                    format!(
+                        "it walked straight, and something solid is in the way or the actions it drives do not move '{who}': go round with two walk_to steps"
+                    )
+                } else {
+                    format!(
+                        "something the path finder does not know of is in the way (it knows solid tiles and entities tagged solid in 2D; nova.solid, nova.walls and the scenery in 3D), or the actions it drives do not move '{who}'"
+                    )
+                }
+            );
+            if step.may_time_out {
+                self.results.push(text);
+            } else {
+                self.fail(&label, text);
+            }
+            return true;
+        }
+        if last_frame {
+            let text = format!(
+                "{label}: walk_to did not arrive in {} frames: {} (give it a bigger \"max\")",
+                Self::step_length(&step),
+                place(walk)
+            );
+            if step.may_time_out {
+                self.results.push(text);
+            } else {
+                self.fail(&label, text);
+            }
         }
         false
     }
@@ -706,17 +1295,26 @@ impl Playtest {
     pub fn before_frame(&mut self, frame: u32, game: &Game, input: &mut InputFrame) {
         if self.actions.is_empty() {
             self.actions = game.action_names();
+            self.links = game.input_links();
+            if self.plan.invincible {
+                game.set_testing("invincible", true);
+            }
+        }
+        if frame > 0
+            && let Some(lua) = self.plan.lua_each_frame.clone()
+            && let Err(e) = game.run_lua(&lua, "lua_each_frame")
+        {
+            let text = format!("the plan's lua_each_frame: {e}");
+            if !self.step_errors.contains(&text) {
+                self.step_errors.push(text);
+            }
         }
         if frame == 0 || self.steps_done || self.error.is_some() {
             return; // frame 1 is the scene coming up
         }
         loop {
             if self.at.is_none() {
-                self.at = Some(Running {
-                    index: 0,
-                    played: 0,
-                    walk: Walk::default(),
-                });
+                self.at = Some(Running::at(0));
                 if !self.enter_step(0, game) {
                     return;
                 }
@@ -736,13 +1334,15 @@ impl Playtest {
                 continue;
             }
             let label = self.flat[index].label.clone();
+            let mut given: Vec<(String, f32)> = Vec::new();
             let mut apply = |entry: &str, errors: &mut Vec<String>| match held(entry) {
                 Ok((true, name, value)) => {
                     input.sources.insert(name, value);
                 }
                 Ok((false, name, value)) => {
                     input.overrides.retain(|(n, _)| *n != name);
-                    input.overrides.push((name, value));
+                    input.overrides.push((name.clone(), value));
+                    given.push((name, value));
                 }
                 Err(e) => {
                     let e = format!("{label}: {e}");
@@ -765,8 +1365,9 @@ impl Playtest {
                     apply(&entry, &mut self.step_errors);
                 }
             }
-            if step.walk_to.is_some() {
-                self.steer(index, game, input);
+            self.link_inputs(input, &given);
+            if step.walk_to.is_some() || step.fight.is_some() {
+                self.steer(index, frame, game, input);
             }
             return;
         }
@@ -788,33 +1389,76 @@ impl Playtest {
                 && !group.done
                 && !group.quiet
             {
-                self.warnings.push(format!(
+                let text = format!(
                     "{label}: `{cond}` never held in {} rounds of the group, so the run went on without it",
                     group.rounds
-                ));
+                );
+                self.fail(&label, text);
             }
             return true;
         }
         let mut names = step.hold.as_ref().map(OneOrMany::list).unwrap_or_default();
         names.extend(step.press.as_ref().map(OneOrMany::list).unwrap_or_default());
         names.extend(step.tap.as_ref().map(OneOrMany::list).unwrap_or_default());
+        names.extend(
+            step.attack
+                .as_ref()
+                .map(OneOrMany::list)
+                .unwrap_or_default(),
+        );
         self.check_names(&names);
         if let Some(lua) = &step.lua
             && let Err(e) = game.run_lua(lua, &label)
         {
-            self.step_errors.push(format!("{label} lua: {e}"));
+            self.step_error(&label, format!("{label} lua: {e}"));
         }
         true
     }
 
     fn next_step(&mut self, game: &Game) -> bool {
         let index = self.at.as_ref().map(|a| a.index + 1).unwrap_or(0);
-        self.at = Some(Running {
-            index,
-            played: 0,
-            walk: Walk::default(),
-        });
+        self.at = Some(Running::at(index));
         self.enter_step(index, game)
+    }
+
+    /// Says so when a step held actions that nothing in the game asked about while it played.
+    fn check_reads(&mut self, step: &Step, label: &str, played: u32) {
+        if played < 5 || self.all_reads.is_empty() {
+            return; // (too short to tell; or the game reads its input another way, per player)
+        }
+        let Some(reads) = self.at.as_ref().map(|a| a.reads.clone()) else {
+            return;
+        };
+        let mut unread = Vec::new();
+        for entry in step.hold.as_ref().map(OneOrMany::list).unwrap_or_default() {
+            let Ok((false, name, _)) = held(&entry) else {
+                continue;
+            };
+            if !self.actions.contains(&name) || reads.contains(&name) {
+                continue;
+            }
+            // (its partner being read is as good: the step set both)
+            let partner = self.links.iter().any(|(b, a, _)| {
+                (b == &name && reads.contains(a)) || (a == &name && reads.contains(b))
+            });
+            if !partner {
+                unread.push(name);
+            }
+        }
+        if unread.is_empty() {
+            return;
+        }
+        let read: Vec<&str> = reads.iter().map(String::as_str).collect();
+        self.warnings.push(format!(
+            "{label} held {} for {played} frames, but nothing in the game asked about {} in that time, so the hold did nothing ({}). Hold an action the code reads, or use walk_to",
+            unread.join(", "),
+            if unread.len() > 1 { "them" } else { "it" },
+            if read.is_empty() {
+                "the game read no input at all during the step: a menu, a pause or a cutscene may be up".to_string()
+            } else {
+                format!("it read: {}", read.join(", "))
+            }
+        ));
     }
 
     /// Notes what the frame did (log lines, sounds), ends an `until` step whose condition holds, and returns the captions
@@ -831,6 +1475,11 @@ impl Playtest {
                 self.sounds.push(json!({ "frame": number, "text": line }));
             }
         }
+        let reads = game.take_input_reads();
+        if let Some(at) = self.at.as_mut() {
+            at.reads.extend(reads.iter().cloned());
+        }
+        self.all_reads.extend(reads);
         if !self.setup_done {
             self.setup_done = true;
             if let Some(lua) = self.plan.lua.clone()
@@ -838,6 +1487,14 @@ impl Playtest {
             {
                 self.step_errors.push(format!("the plan's lua: {e}"));
             }
+            if !self.plan.overlay.is_empty()
+                && let Err(e) = game.overlay(&self.plan.overlay)
+            {
+                self.warnings.push(format!("overlay: {e}"));
+            }
+        }
+        if self.plan.invincible {
+            self.god = game.god(self.plan.who.as_deref()).or(self.god.take());
         }
         let mut due = std::mem::take(&mut self.pictures_due);
         let playing = self.at.as_ref().map(|a| a.index);
@@ -855,24 +1512,29 @@ impl Playtest {
             };
             let mut ended = played >= length;
             let mut by_group = false;
-            if step.walk_to.is_some() {
+            // a step that ends when something comes true: its picture is of the frame after, when the game has drawn it
+            let mut on_condition = false;
+            if step.walk_to.is_some() || step.fight.is_some() {
                 if self.walked(index, game, ended) {
+                    on_condition = !ended;
                     ended = true;
                 }
             } else if let Some(cond) = &step.until {
                 match game.lua_truth(cond) {
-                    Ok(true) => ended = true,
+                    Ok(true) => {
+                        ended = true;
+                        on_condition = true;
+                    }
                     Ok(false) => {
                         if ended && !step.may_time_out {
-                            self.warnings.push(format!(
+                            self.fail(&label, format!(
                                 "{label}: `{cond}` never held in {length} frames, so the run went on without it (if that is expected, add \"may_time_out\": true)"
                             ));
                         }
                     }
                     Err(e) => {
                         // (a condition that cannot be worked out ends its step; the run goes on)
-                        self.step_errors
-                            .push(format!("{label} until `{cond}`: {e}"));
+                        self.step_error(&label, format!("{label} until `{cond}`: {e}"));
                         ended = true;
                     }
                 }
@@ -882,13 +1544,18 @@ impl Playtest {
                 by_group = true;
             }
             if ended {
+                self.check_reads(&step, &label, played);
                 if let Some(at) = self.at.as_mut() {
                     at.played = u32::MAX; // (ends the step)
                 }
                 if let Some(caption) = &step.capture
                     && !by_group
                 {
-                    due.push(caption.clone());
+                    if on_condition {
+                        self.pictures_due.push(caption.clone());
+                    } else {
+                        due.push(caption.clone());
+                    }
                 }
                 if index + 1 >= self.flat.len() {
                     self.steps_done = true;
@@ -897,6 +1564,23 @@ impl Playtest {
         }
         if self.flat.is_empty() {
             self.steps_done = true;
+        }
+        if let Some(label) = self.failed.take()
+            && self.plan.stop_on_fail
+            && self.stopped.is_none()
+        {
+            // the rest of the route would play from the wrong place: stop here, with a picture of where that is
+            let left = self
+                .at
+                .as_ref()
+                .map_or(0, |a| self.flat.len().saturating_sub(a.index + 1));
+            self.stopped = Some(format!(
+                "the route stopped at {label}, which failed (stop_on_fail): {left} later step{} not played",
+                if left == 1 { " was" } else { "s were" }
+            ));
+            self.steps_done = true;
+            self.pictures_due.clear();
+            due.push(format!("stopped: {label} failed"));
         }
         if self.plan.capture_at.contains(&number)
             || (self.plan.every > 0 && number.is_multiple_of(self.plan.every))
@@ -908,6 +1592,7 @@ impl Playtest {
         {
             self.error = Some(e.to_string());
         }
+        self.render = game.render_facts();
         due
     }
 
@@ -936,6 +1621,7 @@ impl Playtest {
             "file": file,
             "prints": self.prints(game),
             "state": game.snapshot(),
+            "render": self.render,
         }));
         file
     }
@@ -947,17 +1633,44 @@ impl Playtest {
                 "the run was stopped at {MAX_FRAMES} frames, the longest a run may be"
             ));
         }
+        if self.plan.invincible {
+            let hook = "a game can also read nova.testing.invincible (true in such a run) where it takes damage";
+            match &self.god {
+                Some(g) if g["pinned"].as_str().is_some_and(|p| !p.is_empty()) => self.notes.push(format!(
+                    "invincible: '{}' had {} put back to the most it has had after every frame ({} times it was lower); a hit that takes all of it in one frame still counts. {hook}",
+                    g["who"].as_str().unwrap_or("the walker"),
+                    g["pinned"].as_str().unwrap_or(""),
+                    g["restored"].as_u64().unwrap_or(0)
+                )),
+                Some(g) => self.warnings.push(format!(
+                    "invincible did nothing to '{}': it has none of the fields hp, health, hearts, lives, life, energy as a number. Say who with \"who\", or read nova.testing.invincible in the game's own damage code (it is true in this run)",
+                    g["who"].as_str().unwrap_or("the walker")
+                )),
+                None => self.warnings.push(format!(
+                    "invincible found nobody to protect (\"who\" names the entity; left out, the one named or tagged hero or player). {hook}"
+                )),
+            }
+        }
+        if !self.plan.overlay.is_empty() {
+            self.notes.push(format!(
+                "overlay: drawn over every picture of this run: {} (hitboxes green, solid things and tiles red, names white); 2D entities only",
+                self.plan.overlay.join(", ")
+            ));
+        }
         let report = json!({
             "frames": frames,
             "error": self.error,
             "step_errors": self.step_errors,
             "warnings": self.warnings,
             "notes": self.notes,
+            "route": self.results,
+            "stopped": self.stopped,
             "actions": self.actions,
+            "read": self.all_reads,
             "captures": self.captures,
             "log": self.log,
             "sounds": self.sounds,
-            "end": { "prints": self.prints(game), "state": game.snapshot() },
+            "end": { "prints": self.prints(game), "state": game.snapshot(), "render": game.render_facts() },
         });
         let path = self.out.join("report.json");
         std::fs::write(

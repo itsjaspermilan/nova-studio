@@ -319,3 +319,71 @@ return Gem
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_wrong_kind_of_argument_is_read_off_a_line_that_never_ran_and_carries_its_place_when_it_runs() {
+    let dir = scratch("kinds");
+    write(&dir, "nova.json", r#"{"format":1,"name":"K"}"#);
+    write(&dir, "main.lua", "nova.start(\"title\")");
+    write(
+        &dir,
+        "scenes/title.lua",
+        "local S = nova.scene {}\nfunction S:later()\n  nova.music.stop({ fade = 1 })\n  nova.music.stop(0.5)\n  nova.music.stop(self.fade)\n  nova.sound.play { name = \"hit\" }\n  nova.shadows(0.5)\n  nova.shadows(nil)\n  nova.fog{ near = 1, far = 2 }\n  nova.goto_scene(\"cave\" .. 1)\nend\nreturn S\n",
+    );
+    let (ok, report, _) = check(&dir);
+    assert!(ok, "warnings only: {report}");
+    let found: Vec<(u64, String)> = report["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            (
+                d["line"].as_u64().unwrap_or(0),
+                d["message"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(found.len(), 3, "{found:?}");
+    assert_eq!(found[0].0, 3);
+    assert!(
+        found[0].1.starts_with("nova.music.stop is given a table and takes a number there (nova.music.stop(0.5): the seconds to fade over), so this line will fail when it runs"),
+        "{found:?}"
+    );
+    assert!(
+        found[1].0 == 6
+            && found[1]
+                .1
+                .starts_with("nova.sound.play is given a table and takes a text there"),
+        "{found:?}"
+    );
+    assert!(
+        found[2].0 == 7
+            && found[2]
+                .1
+                .starts_with("nova.shadows is given a number and takes a table there"),
+        "{found:?}"
+    );
+
+    // when the line does run, the error says where it is and which call it was
+    write(
+        &dir,
+        "scenes/title.lua",
+        "local S = nova.scene {}\nfunction S:update(dt)\n  local opts = { fade = 1 }\n  nova.music.stop(opts)\nend\nreturn S\n",
+    );
+    let (ok, report, _) = check(&dir);
+    assert!(!ok);
+    let d = first(&report);
+    assert_eq!(
+        (d["file"].as_str(), d["line"].as_u64()),
+        (Some("scenes/title.lua"), Some(4)),
+        "{d}"
+    );
+    assert!(
+        d["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("bad argument #1 to 'stop': error converting Lua table to f64"),
+        "{d}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -38,9 +38,10 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | make a sound effect | `sfx_write` | its `sound_report` |
 | make music | `song_write` | check it with `sound_report` |
 | "hear" a sound, a song, a mix, a run | `sound_report` | level, pitch, where the energy sits, warnings that say which setting to change, a spectrogram |
-| make a 3D model | `model_write` | check it with `model_preview` |
-| look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`) | the model, or a film strip of the clip on a ground line |
-| find mistakes | `check` | every problem with file and line; "no errors" means it loaded and ran. Also, as warnings: a `nova.<name>` that does not exist on a line that never ran, an entity moved twice, a room smaller than the screen |
+| make a 3D model | `model_write` (`"shape": "tube"` and `"lathe"` for round limbs and turned shapes; a clip's `walk` or `ik` places the feet and says the speed at which they do not slide) | check it with `model_preview` |
+| look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`; `names: [...]` for several at one scale) | the model whole (never cropped) with its size, a film strip of the clip on a ground line, or a contact sheet |
+| plan a 3D level | `scene_preview` on a scene with a `camera` | the scene from above: every object's footprint and name, what blocks in red, a grid in metres |
+| find mistakes | `check` | every problem with file and line; "no errors" means it loaded and ran. Also, as warnings: a `nova.<name>` that does not exist or a common call given the wrong kind of argument (`nova.music.stop({ fade = 1 })`) on a line that never ran, an entity moved twice, a room smaller than the screen |
 | play the game | `play` (a `route`) | a film strip, where everything is, the log, the sounds started; with `out`, each picture as a file |
 
 ## The shortest path to a checked 2D game
@@ -101,12 +102,24 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 
    | Step | Does |
    | --- | --- |
-   | `{ "walk_to": [300, 200], "who": "hero" }` | steers to a point (`[x, z]` in 3D), whichever way the stick points; straight, no path finding; a warning says where it got stuck |
+   | `{ "hold": ["right"], "frames": 6 }` | holds for a fixed time. A direction button also sets the axis that shares its keys and the other way round (`up` and `move_y` = -1), so it moves a hero whichever the code reads; a hold nothing read is reported |
+   | `{ "walk_to": [300, 200], "who": "hero" }` | walks to a point (`[x, z]` in 3D) round what is solid: solid tiles and entities tagged `solid` in 2D; `nova.solid`, `nova.walls` and the scenery in 3D. The answer says whether it found a way or walked straight |
+   | `{ "walk_to": "chest" }` | walks into a thing (a name, a tag or a kind) until the hitboxes overlap (a door, a pickup) or it stands against it (a solid chest), and says how far apart they ended: do this before a press that needs the hero beside something |
+   | `{ "fight": "enemy", "attack": "a", "max": 600 }` | goes to the nearest one with that tag, taps `attack` in `range`, then the next, until none is left; says how many were beaten and what it cost |
    | `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and swings at once |
    | `{ "repeat": 5, "until": "...", "steps": [ ... ] }` | a group of steps again and again, until something holds |
-   | `"may_time_out": true` | on an `until` that is allowed to run out: no warning |
+   | `"may_time_out": true` | on an `until`, `walk_to` or `fight` that is allowed to run out: no warning |
 
-   A `lua` or `until` that fails is reported as `ERROR in step 3 ...` and the run goes on. `"out": "build/run1"` also saves
+   For the whole call: `"invincible": true` (the hero's `hp`, `health`, `hearts` or `lives` is put back after every frame,
+   so a clumsy route still reaches the end; `nova.testing.invincible` is true for damage code that is not a plain field),
+   `"stop_on_fail": true` (the route ends at the first step that fails, with a picture, instead of playing the rest from
+   the wrong place), `"overlay": ["hitboxes", "solids", "names"]` (drawn on the pictures: why a press beside a chest did
+   nothing), `"compare": "nova.shadows(nil)"` (the run again with that one difference: the share of pixels that changed
+   in each picture, and where: is an effect drawn at all?), `"image_out": "build/look.png"` (the picture also saved there;
+   every picture tool takes it).
+
+   A `lua` or `until` that fails is reported as `ERROR in step 3 ...` and the run goes on. The picture of a step that ends
+   on a condition is of the frame after, when the game has drawn the change. `"out": "build/run1"` also saves
    every picture full size in the project (a folder the game ignores: `build/`, or one in `nova.json`'s `"ignore"`), with the
    strip, `report.json` and, with `audio: true`, `run.wav`. A run never reloads the game when files change.
 7. **Read the answer.** The film strip shows the moments in order with the frame under each: look for the thing moving, the
@@ -129,7 +142,8 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 | a sprite | the preview shows what you meant in every frame, and each animation's strip reads as the motion |
 | a level | `scene_preview`: tiles where you meant, every object on a sensible tile, no "NO entities/x.lua", solid tiles outlined |
 | movement, collisions | a `play` route with `until` reaches the place; a position you `print` stops where the wall is |
-| a fight, a pickup, a door | the `nova.log` line appears at a frame, and a count or a scene name you `print` changes |
+| a fight, a pickup, a door | the `nova.log` line appears at a frame, and a count or a scene name you `print` changes; `walk_to` the thing and `fight` the tag get there without waypoints |
+| a walk clip | made with `walk`: move the entity at the speed the answer gives; the strip's standing foot reads 0.000 |
 | an animation | `every: 5` over the action gives a strip in which the frames differ |
 | a sound effect | `sound_report`: no warnings, a level within about 10 dB of the others it plays beside |
 | music | `sound_report`: "loop seam: matches", and 6 to 10 dB under the effects in the mix table |
@@ -159,7 +173,13 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 - **A room smaller than the screen** (960 x 540 units) sits in the middle with the background colour around it:
   `scene_preview` and `check` say when one is.
 - **Camera:** `nova.cam.set` stops `nova.cam.follow`. After a door call `nova.cam.follow(hero, 0.15, true)` so it snaps.
-- **Names:** a scene object's `name` is `scene.<name>`, `nova.named(name)` and the entity's `self.name`.
+- **Names:** a scene object's `name` is `scene.<name>`, `nova.named(name)` and the entity's `self.name`. Inside an entity's
+  `create()` its `name` and props are set and `nova.current_scene()` is already the scene being built.
+- **Nothing is ignored in silence.** A tool refuses a key it does not have and names the nearest one it has; a key in the
+  wrong place inside a scene, a frame or a song (`scale` beside `tileset` instead of in it) is a warning at the top of the
+  answer. Read the first lines of every answer.
+- **The UI layer** (`nova.ui.*`, `draw_ui`) is always over the world, whatever the depths. Open the full-size picture
+  (`out`, `image_out`) before judging draw order from a small strip tile.
 - **Every PNG in the project is a sprite** and goes into the atlas. Keep screenshots and scratch files in `build/`, a
   dot-folder, or list them in `nova.json`: `"ignore": ["shots", "tools"]` (also kept out of `nova pack`).
 - **Text** is always drawn over UI rectangles; fade the text itself. `line_spacing = 1.5` for the pixel fonts.
@@ -167,8 +187,13 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 - **Sound effects:** one effect has one envelope; `arpNotes` gives it a short tune. For the `noise` wave `freq` is the
   colour, and under about 200 it is a rumble a handheld cannot play.
 - **Sizes of pictures:** the tools' pictures are 960x540 unless you pass `size`; the CLI's `--capture` is 1280x720.
+- **3D: are the shadows drawn?** A 3D `play` answer has a `render:` line: shadows on or off, how many models cast one,
+  which way the sun travels against the camera, the ambient light, fog, the camera's eye and target. Shadows from a sun
+  behind the camera hide behind what casts them, and a bright ambient with a strength under 0.8 makes them faint: put the
+  sun in front of or beside the first view. `"compare": "nova.shadows(nil)"` measures what they change.
 - **3D, the things that cost a retry:** `nova.cam3.follow(target, { collide = true })` keeps walls and hills (what
-  `nova.solid.add` made solid) from coming between the camera and the hero. A model clip can carry `"events": [{ "t": 0,
+  `nova.solid.add` made solid) from coming between the camera and the hero; add `min_distance = 1.7, hide = true` so that
+  a camera squeezed under an arch shows the scene and not the back of a head. A model clip can carry `"events": [{ "t": 0,
   "name": "step" }]`: the entity gets `on_clip_event(event, clip)` (the animator `on_event`), which is how footsteps keep time.
   `nova.scene_now()` is the running scene, for an entity that must tell it something. A clip's position keys are absolute (the
   part's origin in its parent), and a track's `part` is the chain of names from the top (`model_write`'s description has an

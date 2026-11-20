@@ -331,6 +331,7 @@ There are still no floors, ramps or ledges: scenery is circles on the ground.
 nova.cam3.look(-stick_x * dt, -stick_y * dt)                       -- yaw and pitch in radians (a mouse: pointer.dx * 0.0025)
 nova.cam3.follow(player, { distance = 9, height = 8, smooth = 6, dt = dt })      -- behind and above, easing after it
 nova.cam3.follow(player, { distance = 9, height = 8, dt = dt, collide = true })   -- and never behind a wall or inside a hill
+nova.cam3.follow(player, { collide = true, min_distance = 1.7, hide = true })      -- squeezed nearer than 1.7 (under an arch): the player is not drawn; nova.cam3.squeezed and .distance say so
 nova.cam3.first_person(player, { height = 1.6 })                    -- at its head, looking where cam3.yaw / pitch say
 local fx, fz = nova.cam3.forward()                                  -- "forward" on a stick, relative to the camera
 local gx, gz = nova.cam3.ground_point(pointer.x, pointer.y, 1)      -- the ground under the mouse or a finger
@@ -1400,7 +1401,27 @@ More steps:
 | `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and acts at once: `tap` (the same as `press`) is tapped again every `tap_every` frames (3 or more) for as long as the step lasts |
 | `{ "repeat": 5, "steps": [ ... ] }` | plays a group of steps five times. With `"until"` the group stops as soon as the expression holds, in the middle of a step too (up to 100 rounds when `repeat` is left out); a `capture` is taken when the group ends. `repeat` on a plain step plays that step again. Messages name such steps `step 3.2 (round 4 of 5)` |
 | `{ "walk_to": [x, y], "who": "hero", "radius": 12, "max": 600 }` | steers an entity to a point and ends within `radius` of it (12 units; `[x, z]` on the ground and 0.5 in a 3D game) |
-| `"may_time_out": true` | on an `until`, a `walk_to` or a group: running out of time is expected, so no warning |
+| `{ "walk_to": "chest" }` | walks into an entity (a scene object's name, a tag or a kind; the nearest): until the two hitboxes overlap (when `on_collide_<tag>` runs; a thing gone afterwards was reached) or the walker stands against it and can get no nearer. `"reach": 8` ends it that many units apart instead (0.3 in 3D). The report says how far apart the hitboxes ended |
+| `{ "fight": "enemy", "attack": "a", "max": 600 }` | goes to the nearest entity with that tag and taps `attack` (`a`; every `attack_every` frames, 20) while its hitbox is within `range` (the walker's own size, at least 16; 1.5 in 3D), then the next, until none is left or `max` frames have passed |
+| `"may_time_out": true` | on an `until`, a `walk_to`, a `fight` or a group: running out of time is expected, so no warning |
+
+For the whole plan (beside `steps`): `"invincible": true` (alias `god`) puts the hero's `hp`, `health`, `hearts`, `lives`,
+`life` or `energy` (those it has as numbers) back to the most it has had after every frame, and sets
+`nova.testing.invincible` (false in every other run) for a game whose damage code wants to ask; `"who"` names the entity.
+`"stop_on_fail": true` ends the route at the first step that fails (an `until`, `walk_to` or `fight` that ran out without
+`may_time_out`, Lua that failed), with a picture captioned `stopped: step N failed`; the report's `stopped` says so.
+`"overlay": ["hitboxes", "solids", "names"]` draws those over the game on every frame (2D entities; solid tiles shaded red).
+`"lua_each_frame"` is Lua run before every frame. The report also has `route` (how each walk and fight went, in words), `read`
+(the input actions the game asked about) and, in each capture and at the end, `render` (for a 3D frame: the camera, the sun,
+whether shadows and fog are on and how many models cast a shadow).
+
+**Holds.** A held button also sets the axis it shares most of its keys with, and a held axis the button on that side (`up`
+and `move_y` = -1, `left` and `move_x` = -1), as the arrow keys and the stick do on a real machine; a step that names both
+is left as written. When nothing in the game asked about a held action while the step played (`nova.input.down`, `axis`,
+`pressed`), a warning says so and lists what the game did read.
+
+**Pictures.** A `capture` on a step that ends because something came true (`until`, `walk_to`, `fight`) is taken one frame
+later, when the game has drawn what changed; on a step of fixed length it is of the step's last frame.
 
 **`walk_to`.** `who` is a scene object's name or a tag; left out, it is the entity named or tagged `hero` or `player`, or what
 the 2D camera follows. The point is in x and y, or in x and z when the walker has a model (`"plane": "xy"` or `"xz"` says so
@@ -1408,8 +1429,12 @@ outright). Each frame the step drives the axes `move_x`, `move_y` and the button
 (whichever the game has; `"axes": [x, y]` and `"dirs": [left, right, up, down]` name other actions), because it cannot know
 which of them the game's code reads. It does not assume that the stick's right is +x: after every frame it measures which way
 the walker really went and corrects the turn between stick and ground when that is off by more than 20 degrees (and tries the
-mirror image if turning keeps failing), so it works with a stick that is relative to a turned camera. It walks straight,
-without path finding: going round a wall takes two steps. When it has not come nearer for 120 frames, or after `max` frames
+mirror image if turning keeps failing), so it works with a stick that is relative to a turned camera. It finds a way round what is solid when the step starts (and
+again when it stops getting nearer): in a flat game, A* over a grid of half tiles with the walker's own hitbox, against the
+solid tiles of every tile layer and the hitboxes of entities tagged `solid` (`"avoid": ["solid", "water"]` names other tags);
+in a 3D game, a grid of half metres round the walker, each step of it tried with `nova.solid.move`, `nova.walls.move` and
+the scenery's circles. When nothing solid is known, or with `"straight": true`, it walks straight; the report's `notes` say
+which. When it has not come nearer for 120 frames, or after `max` frames
 (600), it ends with a warning that says where the walker is. The report's `notes` say once who it steered and with which
 actions.
 
