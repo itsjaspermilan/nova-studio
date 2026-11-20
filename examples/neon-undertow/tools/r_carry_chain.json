@@ -1,0 +1,124 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local R = require('lib.run'); R.begin_chain(1234); R.chain[3] = { index = 3, slot = 3, kind = 'stranger', scene = 'gutter.stranger', who = 'patch', layout = 1 }\nnova.goto_scene(R.chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.hp = 7; r.charge = 1.5; require('lib.juice').scrap = 44; require('lib.run').add_card('long_reach', r); require('lib.run').add_card('capacitor', r)\nlocal S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil"
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 300
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "local c = nova.all('card')[1]; nova.named('runner').x, nova.named('runner').y = c.x, c.y + 24"
+  },
+  {
+   "wait": 5
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 10
+  },
+  {
+   "lua": "A_HP = nova.named('runner').hp; A_CHARGE = string.format('%.2f', nova.named('runner').charge); A_SCRAP = require('lib.juice').scrap; A_CARDS = #require('lib.run').cards; A_MAXHP = nova.named('runner').max_hp; A_MAXCH = nova.named('runner').max_charge"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1200
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "B_SCENE = nova.current_scene(); B_IS_2 = tostring(B_SCENE == require('lib.run').chain[2].scene); B_HP = nova.named('runner').hp; B_CHARGE = string.format('%.2f', nova.named('runner').charge); B_SCRAP = require('lib.juice').scrap; B_CARDS = #require('lib.run').cards; B_MAXHP = nova.named('runner').max_hp; B_MAXCH = nova.named('runner').max_charge\nlocal S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil"
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 300
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "local c = nova.all('card')[1]; nova.named('runner').x, nova.named('runner').y = c.x, c.y + 24"
+  },
+  {
+   "wait": 5
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 10
+  },
+  {
+   "lua": "B2_CARDS = #require('lib.run').cards; B2_SCRAP = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1200
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "C_SCENE = nova.current_scene(); C_HP = nova.named('runner').hp; C_CHARGE = string.format('%.2f', nova.named('runner').charge); C_SCRAP = require('lib.juice').scrap; C_CARDS = #require('lib.run').cards; C_MAXHP = nova.named('runner').max_hp; C_STATE = nova.scene_now().state"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1200
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "D_SCENE = nova.current_scene(); D_IS_ELITE = tostring(D_SCENE == require('lib.run').chain[4].scene); D_HP = nova.named('runner').hp; D_CHARGE = string.format('%.2f', nova.named('runner').charge); D_SCRAP = require('lib.juice').scrap; D_CARDS = #require('lib.run').cards; D_MAXHP = nova.named('runner').max_hp; D_ROOM = require('lib.run').room"
+  }
+ ],
+ "print": [
+  "A_HP",
+  "A_CHARGE",
+  "A_SCRAP",
+  "A_CARDS",
+  "A_MAXHP",
+  "A_MAXCH",
+  "B_IS_2",
+  "B_HP",
+  "B_CHARGE",
+  "B_SCRAP",
+  "B_CARDS",
+  "B_MAXHP",
+  "B_MAXCH",
+  "B2_CARDS",
+  "B2_SCRAP",
+  "C_SCENE",
+  "C_HP",
+  "C_CHARGE",
+  "C_SCRAP",
+  "C_CARDS",
+  "C_MAXHP",
+  "C_STATE",
+  "D_IS_ELITE",
+  "D_HP",
+  "D_CHARGE",
+  "D_SCRAP",
+  "D_CARDS",
+  "D_MAXHP",
+  "D_ROOM"
+ ]
+}

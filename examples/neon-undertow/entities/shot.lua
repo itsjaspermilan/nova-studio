@@ -37,7 +37,10 @@ function Shot:update(dt)
   end
   for _, e in ipairs(nova.all("hurtable")) do
     if self:overlaps(e) then
-      if e:take_hit(self.damage, self.dx, self.dy, 0) then
+      Hits.from = "shot"
+      local took = e:take_hit(self.damage, self.dx, self.dy, 0)
+      Hits.from = nil
+      if took then
         nova.log("shot hit: " .. self.damage .. " damage")
         Hits.after_shot(e)
       end

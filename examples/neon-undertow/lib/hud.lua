@@ -113,6 +113,14 @@ function H.draw(scene)
   if scene.state == "fight" and scene.def and scene.wave_i > 0 then
     centered(14, string.format("WAVE %d / %d", scene.wave_i, #scene.def.waves), 16, { 255, 43, 214, 255 })
   end
+  if scene.entry then
+    local e = scene.entry
+    nova.ui.text(0, 34, string.format("ROOM %d / 8", math.min(e.index, 8)), { font = "pixel", size = 13, color = { 190, 200, 230, 255 }, align = "center", width = W, shadow = true })
+    if e.kind == "elite" and e.mark and scene.state == "fight" then
+      local m = require("data.elites").marks[e.mark]
+      centered(52, "ELITE: " .. m.name .. ". " .. m.text, 13, { 255, 228, 94, 255 })
+    end
+  end
   if scene.banner_t and scene.banner_t > 0 then
     local a = math.min(1, scene.banner_t / 0.5) * 255
     centered(64, "ROOM CLEARED", 32, { 6, 240, 255, a })

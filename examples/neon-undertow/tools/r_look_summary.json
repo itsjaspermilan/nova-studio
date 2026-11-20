@@ -1,0 +1,12 @@
+{
+ "start_scene": "summary",
+ "lua": "require('lib.run').begin_chain(3); require('lib.run').cleared = 8; require('lib.run').banked = 67; require('lib.run').add_card('plating'); require('lib.run').add_card('live_wire'); require('lib.run').time = 311; require('lib.run').won = true; require('lib.run').finish('win'); nova.goto_scene('summary')",
+ "route": [
+  {
+   "wait": 50,
+   "capture": "the summary at the win"
+  }
+ ],
+ "out": "build/look_summary",
+ "columns": 3
+}

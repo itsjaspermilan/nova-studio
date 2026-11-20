@@ -34,6 +34,7 @@ function Runner:create()
   self.blink_t, self.hurt_t, self.shot_cd, self.dead_t = 0, 0, 0, 0
   self.aiming, self.aim_dx, self.aim_dy = false, 0, 1
   self.moved = 0                 -- how far the last step moved (units), for tests
+  self.truce = Run.perks.truce == true   -- Old Sal: the first hit in each room is ignored (set again in every room, used once)
   self.stats = { baton_hits = 0, shots = 0, clicks = 0, hurt = 0, blocked_by_roll = 0, blocked_by_blink = 0, rolls = 0, zaps = 0 }
   nova.spawn("sight", self.x, self.y, { owner = self })
   self.depth = -self.y
@@ -133,6 +134,12 @@ function Runner:take_damage(n)
   if self.untouchable then
     self.stats.blocked_by_roll = self.stats.blocked_by_roll + 1
     nova.log(string.format("hit missed: rolling (t %.3f)", self.roll_t))
+    return false
+  end
+  if self.truce then
+    self.truce = false
+    self.blink_t = P.blink
+    nova.log("hit ignored: Old Sal's truce")
     return false
   end
   if self.blink_t > 0 then

@@ -1,0 +1,38 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 590, 420, 'right'\nEN = nova.spawn('scrapper', 790, 420); EN.hp = 30; require('lib.status').stun(EN, 99); EF = nova.spawn('scrapper', 700, 530); EF.hp = 30; require('lib.status').stun(EF, 99)\nSB = nova.spawn('stall', 700, 340, { tiles = 1, dir = 'h' })\nB2 = nova.spawn('barrel', 760, 360)\nB1 = nova.spawn('barrel', 700, 420)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "B1:take_hit(1, 1, 0, 0)"
+  },
+  {
+   "wait": 20,
+   "capture": "the fuse"
+  },
+  {
+   "until": "not B1:is_alive()",
+   "max": 100,
+   "capture": "the blast"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "HP = nova.named('runner').hp; EN_HP = EN.hp; EF_HP = EF.hp; STALL_HP = SB.hp; B2_STATE = B2.state"
+  },
+  {
+   "until": "not B2:is_alive()",
+   "max": 100
+  }
+ ],
+ "print": [
+  "HP",
+  "EN_HP",
+  "EF_HP",
+  "STALL_HP",
+  "B2_STATE"
+ ]
+}

@@ -1,0 +1,68 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 540, 300, 'right'\nSG = nova.spawn('sign', 600, 300)\nP1 = nova.spawn('puddle', 700, 340)\nP2 = nova.spawn('puddle', 1150, 340)\nES1 = nova.spawn('scrapper', 700, 340); ES1.hp = 30; require('lib.status').stun(ES1, 99); ES2 = nova.spawn('scrapper', 1150, 340); ES2.hp = 30; require('lib.status').stun(ES2, 99)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 24
+  },
+  {
+   "lua": "BATON_STATE = SG.state; BATON_LIVE = P1.live_t"
+  },
+  {
+   "lua": "nova.named('runner').x = 400; nova.named('runner').facing = 'right'"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 26,
+   "capture": "the sign is down"
+  },
+  {
+   "lua": "SHOT_STATE = SG.state; P1_LIVE = P1:is_live(); P2_LIVE = P2:is_live(); RUNNER_HP0 = nova.named('runner').hp; nova.named('runner').x, nova.named('runner').y = 700, 340"
+  },
+  {
+   "wait": 40,
+   "capture": "standing in a live puddle"
+  },
+  {
+   "wait": 230,
+   "capture": "dry again"
+  },
+  {
+   "lua": "P1_DRY = tostring(not P1:is_live()); RUNNER_HP = nova.named('runner').hp; ES1_HP = ES1.hp; ES2_HP = ES2.hp; P2_AFTER = tostring(P2:is_live())"
+  },
+  {
+   "wait": 90
+  },
+  {
+   "lua": "RUNNER_HP_LATER = nova.named('runner').hp"
+  }
+ ],
+ "print": [
+  "BATON_STATE",
+  "BATON_LIVE",
+  "SHOT_STATE",
+  "tostring(P1_LIVE)",
+  "tostring(P2_LIVE)",
+  "RUNNER_HP0",
+  "RUNNER_HP",
+  "ES1_HP",
+  "ES2_HP",
+  "P1_DRY",
+  "P2_AFTER",
+  "RUNNER_HP_LATER"
+ ]
+}

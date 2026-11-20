@@ -1,0 +1,21 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local R, S, J, M = require('lib.run'), require('lib.shop'), require('lib.juice'), require('lib.meta')\nR.begin_chain(5); local r = nova.named('runner'); r.hp = 6; J.scrap = 100\nlocal ok1, t1 = S.buy('heal', r); HEAL1 = tostring(ok1) .. ' ' .. J.scrap .. ' ' .. r.hp\nlocal ok2 = S.buy('heal', r); r.hp = 12; local ok2b, t2b = S.buy('heal', r); HEAL_FULL = tostring(ok2b) .. ' ' .. J.scrap .. ' ' .. r.hp\nr.hp = 11; S.buy('heal', r); HEAL_PART = J.scrap .. ' ' .. r.hp          -- 4 points for 20 even when only 1 fits\nlocal ok3 = S.buy('reroll', r); REROLL1 = tostring(ok3) .. ' ' .. J.scrap .. ' ' .. tostring(R.reroll_next)\nlocal ok4 = S.buy('reroll', r); REROLL2 = tostring(ok4) .. ' ' .. J.scrap\nlocal ok5, t5 = S.buy('jinx', r); JINX = tostring(ok5) .. ' ' .. J.scrap .. ' ' .. t5\nJ.scrap = 10; local ok6 = S.buy('heal', r); r.hp = 3; local ok6b = S.buy('heal', r); POOR = tostring(ok6b) .. ' ' .. J.scrap\nJ.scrap = 83; M.keys = 0; local ok7, t7 = S.buy('bank', r); BANK1 = tostring(ok7) .. ' ' .. J.scrap .. ' ' .. M.keys .. ' ' .. R.banked .. ' ' .. t7\nJ.scrap = 3; local ok8, t8 = S.buy('bank', r); BANK2 = tostring(ok8) .. ' ' .. J.scrap .. ' ' .. M.keys .. ' ' .. t8\nJ.scrap = 100; local ok9 = S.buy('bank', r); BANK3 = J.scrap .. ' ' .. M.keys\nR.begin(1)",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "HEAL1",
+  "HEAL_FULL",
+  "HEAL_PART",
+  "REROLL1",
+  "REROLL2",
+  "JINX",
+  "POOR",
+  "BANK1",
+  "BANK2",
+  "BANK3"
+ ]
+}

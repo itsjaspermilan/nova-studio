@@ -1,0 +1,462 @@
+{
+ "start_scene": "run_start",
+ "seed": 3,
+ "invincible": true,
+ "route": [
+  {
+   "until": "nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "CHAIN = ''; for i = 1, #require('lib.run').chain do CHAIN = CHAIN .. require('lib.run').chain[i].scene .. (i < #require('lib.run').chain and ' ' or '') end; RUN_SEED = require('lib.run').seed; MARK = require('lib.run').chain[4].mark; WHO = require('lib.run').chain[6].who"
+  },
+  {
+   "lua": "ROOM1 = nova.current_scene(); KIND1 = require('lib.run').chain[1].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 1: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID1 = nova.scene_now().paid; CARDS1 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS1_AFTER = #require('lib.run').cards; SCRAP1 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM2 = nova.current_scene(); KIND2 = require('lib.run').chain[2].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 2: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID2 = nova.scene_now().paid; CARDS2 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS2_AFTER = #require('lib.run').cards; SCRAP2 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM3 = nova.current_scene(); KIND3 = require('lib.run').chain[3].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 3: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID3 = nova.scene_now().paid; CARDS3 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS3_AFTER = #require('lib.run').cards; SCRAP3 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM4 = nova.current_scene(); KIND4 = require('lib.run').chain[4].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 4: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID4 = nova.scene_now().paid; CARDS4 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS4_AFTER = #require('lib.run').cards; SCRAP4 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM5 = nova.current_scene(); KIND5 = require('lib.run').chain[5].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 5: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID5 = nova.scene_now().paid; CARDS5 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS5_AFTER = #require('lib.run').cards; SCRAP5 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM6 = nova.current_scene(); KIND6 = require('lib.run').chain[6].kind; MET0 = require('lib.meta').met[require('lib.run').chain[6].who]"
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3,
+   "capture": "a stranger's talk"
+  },
+  {
+   "repeat": 10,
+   "until": "require('lib.talk').stage == 'done'",
+   "steps": [
+    {
+     "press": "interact"
+    },
+    {
+     "wait": 3
+    }
+   ]
+  },
+  {
+   "wait": 5,
+   "capture": "the choice made"
+  },
+  {
+   "lua": "TALKED = require('lib.talk').chosen.label; MET1 = require('lib.meta').met[require('lib.run').chain[6].who]"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM7 = nova.current_scene(); KIND7 = require('lib.run').chain[7].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 7: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID7 = nova.scene_now().paid; CARDS7 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS7_AFTER = #require('lib.run').cards; SCRAP7 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM8 = nova.current_scene(); KIND8 = require('lib.run').chain[8].kind; WON0 = tostring(require('lib.run').won)"
+  },
+  {
+   "wait": 20,
+   "capture": "the boss comes in the next slice"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM9 = nova.current_scene(); WON9 = tostring(require('lib.run').won); SCRAP_BEFORE_BANK = require('lib.juice').scrap; KEYS0 = require('lib.meta').keys"
+  },
+  {
+   "walk_to": "bank",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 6,
+   "capture": "the bank"
+  },
+  {
+   "lua": "KEYS1 = require('lib.meta').keys; SCRAP_AFTER_BANK = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": [
+    2010,
+    424
+   ],
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.current_scene() == 'summary'",
+   "max": 160
+  },
+  {
+   "wait": 40,
+   "capture": "the summary"
+  },
+  {
+   "lua": "local s = require('lib.run').summary; END_SCENE = nova.current_scene(); SUM = s.result .. ' ' .. s.cleared .. ' ' .. s.keys .. ' ' .. s.cards; SUM_TIME = string.format('%.0f', s.time)"
+  }
+ ],
+ "print": [
+  "RUN_SEED",
+  "CHAIN",
+  "MARK",
+  "WHO",
+  "ROOM1",
+  "ROOM2",
+  "ROOM3",
+  "ROOM4",
+  "ROOM5",
+  "ROOM6",
+  "ROOM7",
+  "ROOM8",
+  "ROOM9",
+  "KIND4",
+  "KIND7",
+  "PAID1",
+  "PAID4",
+  "PAID7",
+  "CARDS1_AFTER",
+  "CARDS4_AFTER",
+  "CARDS5_AFTER",
+  "CARDS7_AFTER",
+  "MET0",
+  "MET1",
+  "TALKED",
+  "WON0",
+  "WON9",
+  "SCRAP_BEFORE_BANK",
+  "KEYS0",
+  "KEYS1",
+  "SCRAP_AFTER_BANK",
+  "END_SCENE",
+  "SUM",
+  "SUM_TIME"
+ ]
+}

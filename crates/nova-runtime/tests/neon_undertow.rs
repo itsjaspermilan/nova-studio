@@ -68,9 +68,14 @@ fn scratch(name: &str) -> PathBuf {
 
 /// Plays a route headless (as `play` does, without a GPU) and returns the report.
 fn run(name: &str) -> Value {
+    play(name, plan_text(name))
+}
+
+/// Plays a plan given as text (a route file's, or one made here) and returns the report.
+fn play(name: &str, plan: String) -> Value {
     let mut g = game();
     let dir = scratch(name);
-    std::fs::write(dir.join("plan.json"), plan_text(name)).unwrap();
+    std::fs::write(dir.join("plan.json"), plan).unwrap();
     let plan = Plan::from_file(&dir.join("plan.json")).unwrap_or_else(|e| panic!("{name}: {e}"));
     let mut run = Playtest::new(plan, &dir.join("out")).unwrap();
     g.reseed(run.seed().unwrap_or(1));
@@ -1387,4 +1392,832 @@ fn dying_in_a_fight_room_ends_the_run_and_starts_again_in_room_a_with_nothing_he
         3,
         "(the route's own, then the new run)"
     );
+}
+
+// =====================================================================================================================
+// Slice 3a: one run of the Gutter Market, room 1 to the boss door and the summary.
+// The routes are `tools/r_*.json` (written by tools/routes.mjs); the numbers asserted here are the design's and the task's.
+// =====================================================================================================================
+
+/// The frames between two log lines (the first line containing `a`, the first containing `b` after it).
+fn frames_between(lines: &[(u64, String)], a: &str, b: &str) -> u64 {
+    let fa = frame_of(lines, a);
+    let fb = lines
+        .iter()
+        .find(|(f, t)| *f >= fa && t.contains(b))
+        .unwrap_or_else(|| panic!("no {b:?} after {a:?}: {lines:?}"))
+        .0;
+    fb - fa
+}
+
+fn count_lines(lines: &[(u64, String)], needle: &str) -> usize {
+    lines.iter().filter(|(_, t)| t.contains(needle)).count()
+}
+
+const GUTTER_ROOMS: [&str; 19] = [
+    "s1_square",
+    "s1_street",
+    "s1_cross",
+    "s2_maze",
+    "s2_stalls",
+    "s2_ring",
+    "s3_tram",
+    "s3_flood",
+    "s3_underpass",
+    "elite",
+    "s5_courts",
+    "s5_market",
+    "s5_depot",
+    "stranger",
+    "s7_yard",
+    "s7_junction",
+    "s7_hall",
+    "boss",
+    "walk",
+];
+
+#[test]
+fn the_same_seed_builds_the_same_chain_another_seed_another_and_every_layout_is_used() {
+    let r = run("chain_seeds");
+    assert_eq!(
+        printed(&r, "CH_A1"),
+        printed(&r, "CH_A2"),
+        "the same seed, the same chain"
+    );
+    assert_ne!(
+        printed(&r, "CH_A1"),
+        printed(&r, "CH_B"),
+        "another seed, another chain"
+    );
+    assert_ne!(printed(&r, "CH_A1"), printed(&r, "CH_C"));
+    assert_ne!(printed(&r, "CH_B"), printed(&r, "CH_C"));
+    // eight rooms in the design's order, then the walk-through room
+    assert_eq!(
+        printed(&r, "KINDS8"),
+        "fight,fight,fight,elite,fight,stranger,gauntlet,boss,walk"
+    );
+    assert_eq!(printed(&r, "CH_A1").split(' ').count(), 9);
+    // over 300 seeds every one of the 18 layouts (15 fight rooms, the elite arena, the stranger's room, the boss arena) is picked,
+    // every elite mark, both strangers, both elite kinds, and every wave table of every slot
+    assert_eq!(printed(&r, "LAYOUTS_USED"), printed(&r, "LAYOUTS_TOTAL"));
+    assert_eq!(printed(&r, "LAYOUTS_TOTAL"), "18");
+    assert_eq!(printed(&r, "MARKS_N"), "5");
+    assert_eq!(printed(&r, "WHO_N"), "2");
+    assert_eq!(printed(&r, "EK_N"), "2");
+    // 5 fight slots x 3 tables + the elite's 1 table, and the two rooms (6, 8) that have none, counted as one each
+    assert_eq!(printed(&r, "TABLES_N"), "18");
+    assert_eq!(
+        printed(&r, "MISSING"),
+        "0",
+        "every spawn point a wave table names is in every layout of its slot"
+    );
+}
+
+#[test]
+fn a_barrel_lights_a_1_s_fuse_then_hurts_everyone_within_2_tiles_and_lights_its_neighbour() {
+    let inside = run("barrel_inside");
+    let l = log(&inside);
+    let fuse = frames_between(&l, "barrel fuse lit", "blast at 700,420");
+    assert!((58..=62).contains(&fuse), "the fuse ran {fuse} frames");
+    assert_eq!(
+        printed(&inside, "HP"),
+        "9",
+        "the runner 90 units off (inside 96) takes 3"
+    );
+    assert_eq!(printed(&inside, "EN_HP"), "24", "an enemy 90 off takes 6");
+    assert_eq!(
+        printed(&inside, "EF_HP"),
+        "30",
+        "an enemy 110 off (outside) takes nothing"
+    );
+    assert_eq!(
+        printed(&inside, "STALL_HP"),
+        "2",
+        "a stall 80 off takes 6 of 8"
+    );
+    assert_eq!(
+        printed(&inside, "B2_STATE"),
+        "fuse",
+        "a barrel 85 off lights its own fuse"
+    );
+    let outside = run("barrel_outside");
+    assert_eq!(
+        printed(&outside, "HP"),
+        "12",
+        "the runner 110 units off is not hurt"
+    );
+    assert_eq!(printed(&outside, "EN_HP"), "24");
+    assert_eq!(printed(&outside, "EF_HP"), "30");
+}
+
+#[test]
+fn a_shot_drops_a_sign_and_every_touching_puddle_is_live_for_4_s_but_a_far_one_is_not() {
+    let r = run("sign_puddle");
+    let l = log(&r);
+    assert_eq!(
+        printed(&r, "BATON_STATE"),
+        "up",
+        "the baton cannot reach a sign"
+    );
+    assert_eq!(printed(&r, "BATON_LIVE"), "0");
+    assert_eq!(printed(&r, "SHOT_STATE"), "down");
+    assert_eq!(
+        printed(&r, "tostring(P1_LIVE)"),
+        "true",
+        "the puddle touching the sign is live"
+    );
+    assert_eq!(
+        printed(&r, "tostring(P2_LIVE)"),
+        "false",
+        "the puddle 450 units off is not"
+    );
+    assert_eq!(printed(&r, "P2_AFTER"), "false");
+    assert_eq!(count_lines(&l, "sign drops: 1 puddles live"), 1);
+    let live = frames_between(&l, "puddle at 700,340 is live", "puddle at 700,340 is dry");
+    assert!(
+        (238..=244).contains(&live),
+        "live for {live} frames (4 s is 240)"
+    );
+    // standing in it: 1 a second, 4 times, for the runner and the enemy; the far one's enemy and everyone after the 4 s are untouched
+    assert_eq!(printed(&r, "RUNNER_HP"), "8");
+    assert_eq!(printed(&r, "ES1_HP"), "26");
+    assert_eq!(printed(&r, "ES2_HP"), "30");
+    assert_eq!(printed(&r, "RUNNER_HP_LATER"), "8", "dry again: no more");
+    assert_eq!(count_lines(&l, "live puddle hurts runner"), 4);
+    let first = nth_frame(&l, "live puddle hurts runner", 0);
+    let second = nth_frame(&l, "live puddle hurts runner", 1);
+    assert!(
+        (59..=62).contains(&(second - first)),
+        "once a second: {}",
+        second - first
+    );
+}
+
+#[test]
+fn the_tram_warns_1_5_s_ahead_then_flattens_runner_and_enemies_on_the_rail_for_6() {
+    let r = run("tram");
+    let l = log(&r);
+    let warn = frames_between(&l, "tram warns", "tram crosses");
+    assert!(
+        (89..=91).contains(&warn),
+        "warned {warn} frames ahead (1.5 s is 90)"
+    );
+    assert!(count_sound(&r, "tram_bell") >= 2, "a bell");
+    assert_eq!(printed(&r, "E1_HP"), "24", "a scrapper on the rail takes 6");
+    assert_eq!(
+        printed(&r, "E2_HP"),
+        "30",
+        "one 160 units off the rail is untouched"
+    );
+    assert_eq!(
+        printed(&r, "RUNNER_HP_A"),
+        "12",
+        "the runner off the rail is untouched"
+    );
+    assert_eq!(printed(&r, "RUNNER_HP_B"), "6", "on the rail: 6");
+    assert_eq!(
+        printed(&r, "E1_HP_B"),
+        "18",
+        "the second crossing flattens it again"
+    );
+    assert_eq!(printed(&r, "CROSSINGS"), "2");
+    // every 12 s: the second warning starts 12 s (720 frames) after the first would have, counted from the crossing's start
+    assert!(count_lines(&l, "tram flattens runner") == 1);
+}
+
+#[test]
+fn a_shielded_elite_is_double_size_and_health_and_shots_from_the_front_do_nothing() {
+    let r = run("elite_shielded");
+    assert_eq!(printed(&r, "HP0"), "16", "double the scrapper's 8");
+    assert_eq!(printed(&r, "SIZE"), "2");
+    assert_eq!(printed(&r, "MARK"), "shielded");
+    assert_eq!(
+        printed(&r, "string.format('%.1f', BIG_SX"),
+        "2.0",
+        "double size"
+    );
+    assert_eq!(
+        printed(&r, "HP_FRONT"),
+        "16",
+        "a shot at its front does nothing"
+    );
+    assert_eq!(printed(&r, "BLOCKED"), "1");
+    assert_eq!(printed(&r, "HP_BACK"), "13", "a shot at its back hurts: 3");
+    assert_eq!(
+        printed(&r, "HP_BATON"),
+        "11",
+        "the baton works from the front: 2"
+    );
+}
+
+#[test]
+fn a_splitting_elite_leaves_two_small_ones_that_do_not_split_again() {
+    let r = run("elite_splitting");
+    assert_eq!(printed(&r, "HP0"), "16");
+    assert_eq!(printed(&r, "COUNT"), "2");
+    assert_eq!(
+        printed(&r, "SMALL"),
+        "4/0.7 4/0.7",
+        "half the health, 0.7 the size"
+    );
+    assert_eq!(printed(&r, "COUNT2"), "0", "killing them splits nothing");
+}
+
+#[test]
+fn a_magnetic_elite_pulls_the_runners_shots_into_it_and_the_runner_gently() {
+    let r = run("elite_magnetic");
+    assert_eq!(
+        printed(&r, "CONTROL_HP"),
+        "30",
+        "without the mark the same shot passes by"
+    );
+    assert_eq!(
+        num(&r, "string.format('%.1f', CONTROL_MOVED)"),
+        0.0,
+        "and nothing pulls the runner"
+    );
+    assert_eq!(
+        printed(&r, "E_HP"),
+        "13",
+        "with it the shot bends into the elite: 3"
+    );
+    // 45 units a second, for 60 frames
+    assert_between(
+        "the runner's pull in 1 s",
+        num(&r, "string.format('%.1f', PULL_MOVED)"),
+        38.0,
+        50.0,
+    );
+}
+
+#[test]
+fn a_volatile_elite_explodes_1_s_after_it_dies_and_hurts_within_2_tiles() {
+    let r = run("elite_volatile");
+    let l = log(&r);
+    let fuse = frames_between(&l, "volatile: the fuse is lit", "blast at 700,540");
+    assert!(
+        (58..=62).contains(&fuse),
+        "exploded {fuse} frames after death"
+    );
+    assert_eq!(printed(&r, "RUNNER_HP"), "9", "80 units off: 3");
+    assert_eq!(printed(&r, "BY1_HP"), "26", "80 units off: 4");
+    assert_eq!(
+        printed(&r, "BY2_HP"),
+        "30",
+        "110 units off (outside 96): nothing"
+    );
+}
+
+#[test]
+fn a_linked_elite_heals_2_a_second_while_its_partner_lives_and_a_line_joins_them() {
+    let r = run("elite_linked");
+    let l = log(&r);
+    assert_eq!(printed(&r, "tostring(HAS_PARTNER)"), "true");
+    assert_eq!(
+        printed(&r, "H1"),
+        "6",
+        "no healing before it has found its partner"
+    );
+    // 2 seconds later: +4 (2 a second); once the partner is dead nothing more
+    assert_eq!(printed(&r, "H2"), "10");
+    assert_eq!(printed(&r, "H3"), "10");
+    assert_eq!(printed(&r, "H4"), "10", "the link is broken");
+    assert_eq!(count_lines(&l, "linked to a scrapper"), 1);
+    assert_eq!(count_lines(&l, "the link is broken"), 1);
+}
+
+#[test]
+fn an_offer_never_holds_two_cards_of_one_family_unless_the_pool_cannot_fill_it() {
+    let r = run("offers_rule");
+    assert_eq!(printed(&r, "OFFERS"), "800");
+    assert_eq!(
+        printed(&r, "SAME_FAMILY"),
+        "0",
+        "800 offers, none with two of one family"
+    );
+    let body: std::collections::BTreeSet<&str> = ["capacitor", "deep_pockets", "plating"].into();
+    let only = printed(&r, "ONLY_BODY");
+    let got: std::collections::BTreeSet<&str> = only.split(',').collect();
+    assert_eq!(
+        got, body,
+        "only body cards left: the offer repeats the family rather than offer fewer"
+    );
+    assert_eq!(printed(&r, "BATON_BODY_N"), "3");
+    assert_eq!(
+        printed(&r, "BATON_BODY_FAMILIES"),
+        "2",
+        "two families left: both are used"
+    );
+    // the elite's guarantee: one uncommon card in every one of 200 offers (still never two of a family)
+    assert_eq!(printed(&r, "G_BAD"), "0");
+    assert_eq!(printed(&r, "G_SAME"), "0");
+    assert_eq!(
+        printed(&r, "UNCOMMON"),
+        "live_wire,riot_stock,hot_solder,ricochet,tracer,shock_wake,deep_pockets",
+        "seven cards are marked uncommon"
+    );
+    assert_ne!(
+        printed(&r, "PLAIN"),
+        printed(&r, "REROLLED"),
+        "a rerolled offer is another draw"
+    );
+    assert_eq!(
+        printed(&r, "FLAG_AFTER"),
+        "false",
+        "and the reroll is used up"
+    );
+}
+
+#[test]
+fn patch_gives_three_sets_of_lines_over_three_meetings_and_a_choice_that_works() {
+    let r = run("stranger_patch");
+    assert_eq!(printed(&r, "V1_WHO"), "patch");
+    assert_eq!(printed(&r, "V1_SET"), "1");
+    assert_eq!(printed(&r, "V1_MET"), "1");
+    assert_eq!(printed(&r, "V2_SET"), "2");
+    assert_eq!(printed(&r, "V2_MET"), "2");
+    assert_eq!(printed(&r, "V3_SET"), "3");
+    assert_eq!(printed(&r, "V3_MET"), "3");
+    let (a, b, c) = (
+        printed(&r, "V1_LINE"),
+        printed(&r, "V2_LINE"),
+        printed(&r, "V3_LINE"),
+    );
+    assert!(
+        a != b && b != c && a != c,
+        "the lines advance: {a} / {b} / {c}"
+    );
+    // meeting 1: +2 health (12 to 14, healed); meeting 2: heal to full from 5; meeting 3: +2 again (16)
+    assert_eq!(printed(&r, "V1_CHOSEN"), "+2 health");
+    assert_eq!(printed(&r, "V1_MAXHP"), "14");
+    assert_eq!(printed(&r, "V1_HP"), "14");
+    assert_eq!(printed(&r, "V1_STAGE"), "done");
+    assert_eq!(printed(&r, "V2_CHOSEN"), "Heal to full");
+    assert_eq!(printed(&r, "V2_MAXHP"), "14");
+    assert_eq!(printed(&r, "V2_HP"), "14");
+    assert_eq!(printed(&r, "V3_CHOSEN"), "+2 health");
+    assert_eq!(printed(&r, "V3_MAXHP"), "16");
+    // a word after the choice is not a new meeting
+    assert_eq!(printed(&r, "MET_AFTER_BYE"), "1");
+    assert_eq!(printed(&r, "BYE_ACTIVE"), "false");
+    assert_eq!(printed(&r, "MET_END"), "3");
+}
+
+#[test]
+fn old_sal_advances_her_lines_and_the_first_hit_in_each_room_is_ignored_for_the_rest_of_the_run() {
+    let r = run("stranger_sal");
+    assert_eq!(printed(&r, "V1_SET"), "1");
+    assert_eq!(printed(&r, "V2_SET"), "2");
+    assert_eq!(printed(&r, "V3_SET"), "3");
+    assert_eq!(printed(&r, "V3_MET"), "3");
+    let (a, b, c) = (
+        printed(&r, "V1_LINE"),
+        printed(&r, "V2_LINE"),
+        printed(&r, "V3_LINE"),
+    );
+    assert!(a != b && b != c && a != c);
+    assert_eq!(printed(&r, "V1_CHOSEN"), "Take a bowl");
+    assert_eq!(
+        printed(&r, "V2_CHOSEN"),
+        "Not hungry",
+        "(the later choices change nothing: the perk stays)"
+    );
+    assert_eq!(printed(&r, "TRUCE"), "true");
+    // room A (the lab): the first hit is ignored, the second lands; room B (a new scene): the same again
+    assert_eq!(
+        (printed(&r, "A0"), printed(&r, "A1"), printed(&r, "A2")),
+        ("12".into(), "12".into(), "10".into())
+    );
+    assert_eq!(
+        (printed(&r, "B0"), printed(&r, "B1"), printed(&r, "B2")),
+        ("12".into(), "12".into(), "10".into())
+    );
+}
+
+#[test]
+fn the_shop_heals_4_for_20_rerolls_for_15_has_a_shut_jinx_stall_and_the_bank_gives_a_key_for_4_scrap()
+ {
+    let r = run("shop_sums");
+    assert_eq!(
+        printed(&r, "HEAL1"),
+        "true 80 10",
+        "100 scrap, 6 health: 20 buys 4 points"
+    );
+    assert_eq!(
+        printed(&r, "HEAL_FULL"),
+        "false 60 12",
+        "at full health nothing is sold (the 60 is after the first heal's 20 more)"
+    );
+    assert_eq!(
+        printed(&r, "HEAL_PART"),
+        "40 12",
+        "4 points cost 20 even when only 1 fits"
+    );
+    assert_eq!(
+        printed(&r, "REROLL1"),
+        "true 25 true",
+        "15 scrap, the next offer is rerolled"
+    );
+    assert_eq!(printed(&r, "REROLL2"), "false 25", "once");
+    assert_eq!(
+        printed(&r, "JINX"),
+        "false 25 Shut: no jinxes yet.",
+        "no jinxes exist: the stall is shut and costs nothing"
+    );
+    assert_eq!(
+        printed(&r, "POOR"),
+        "false 10",
+        "20 for a heal when there are 10"
+    );
+    assert_eq!(
+        printed(&r, "BANK1"),
+        "true 3 20 20 80 scrap into 20 keys",
+        "83 scrap: 20 keys, 3 left"
+    );
+    assert_eq!(printed(&r, "BANK2"), "false 3 20 4 scrap makes a key.");
+    assert_eq!(printed(&r, "BANK3"), "0 45", "100 scrap: 25 more keys");
+    // and in the room, by walking up and pressing interact
+    let room = run("shop_room");
+    assert_eq!(printed(&room, "BANK_SCRAP"), "3");
+    assert_eq!(printed(&room, "BANK_KEYS"), "20");
+    assert_eq!(printed(&room, "BANKED"), "20");
+    assert_eq!(printed(&room, "HEAL_SCRAP"), "30");
+    assert_eq!(printed(&room, "HEAL_HP"), "10");
+    assert_eq!(printed(&room, "JINX_SCRAP"), "30");
+    assert_eq!(printed(&room, "JINX_TOAST"), "Shut: no jinxes yet.");
+}
+
+#[test]
+fn health_charge_scrap_and_cards_carry_through_real_doors_and_a_stranger_s_room() {
+    let r = run("carry_chain");
+    // room 1: hp 7, charge 1.5 + the Capacitor's pip, 44 scrap, three cards after the take
+    assert_eq!(printed(&r, "A_HP"), "7");
+    assert_eq!(printed(&r, "A_CHARGE"), "2.50");
+    assert_eq!(printed(&r, "A_SCRAP"), "60", "44 + the room's 16");
+    assert_eq!(printed(&r, "A_CARDS"), "3");
+    assert_eq!(printed(&r, "A_MAXHP"), "12");
+    assert_eq!(printed(&r, "A_MAXCH"), "4");
+    // room 2 (the chain's second): all of it came along
+    assert_eq!(printed(&r, "B_IS_2"), "true");
+    for (k, v) in [
+        ("B_HP", "7"),
+        ("B_CHARGE", "2.50"),
+        ("B_SCRAP", "60"),
+        ("B_CARDS", "3"),
+        ("B_MAXHP", "12"),
+        ("B_MAXCH", "4"),
+        ("B2_CARDS", "4"),
+        ("B2_SCRAP", "84"),
+    ] {
+        assert_eq!(printed(&r, k), v, "{k}");
+    }
+    // the stranger's room, then the elite's: still all of it
+    assert_eq!(printed(&r, "C_SCENE"), "gutter.stranger");
+    assert_eq!(printed(&r, "C_STATE"), "quiet");
+    for (k, v) in [
+        ("C_HP", "7"),
+        ("C_CHARGE", "2.50"),
+        ("C_SCRAP", "84"),
+        ("C_CARDS", "4"),
+        ("C_MAXHP", "12"),
+        ("D_HP", "7"),
+        ("D_CHARGE", "2.50"),
+        ("D_SCRAP", "84"),
+        ("D_CARDS", "4"),
+        ("D_MAXHP", "12"),
+        ("D_ROOM", "3"),
+    ] {
+        assert_eq!(printed(&r, k), v, "{k}");
+    }
+    assert_eq!(printed(&r, "D_IS_ELITE"), "true");
+}
+
+#[test]
+fn dying_in_the_elite_room_ends_the_run_at_the_summary_and_interact_starts_room_1_with_a_new_seed()
+{
+    let r = run("death_summary");
+    assert_eq!(printed(&r, "DEAD_STATE"), "dead");
+    let sum = printed(&r, "SUM");
+    let p: Vec<&str> = sum.split(' ').collect();
+    assert_eq!(p[0], "dead");
+    assert_eq!(p[1], "3", "rooms cleared");
+    assert!(p[2].parse::<u32>().unwrap() >= 1, "time {}", p[2]);
+    assert_eq!(p[3], "5", "keys banked");
+    assert_eq!(p[4], "2", "cards held");
+    assert_eq!(printed(&r, "SUM_ACTIVE"), "false");
+    assert_eq!(printed(&r, "SEED_CHANGED"), "true");
+    assert_eq!(printed(&r, "ROOM_AFTER"), "0");
+    assert_eq!(printed(&r, "CARDS_AFTER"), "0", "nothing held");
+    assert_eq!(printed(&r, "HP_AFTER"), "12");
+    assert_eq!(
+        printed(&r, "MAX_AFTER"),
+        "12",
+        "Plating is gone with the run"
+    );
+    assert_eq!(printed(&r, "SCRAP_AFTER"), "0");
+    assert_eq!(printed(&r, "FIRST"), "true", "room 1 of the new chain");
+    let l = log(&r);
+    assert!(
+        l.iter()
+            .any(|(_, t)| t.starts_with("run ends: dead, 3 rooms"))
+    );
+}
+
+fn scene_files(name: &str) -> Value {
+    scene_json(&format!("gutter/{name}"))
+}
+
+#[test]
+fn the_nineteen_rooms_are_painted_scene_files_30x18_to_44x26_tiles_none_a_plain_rectangle() {
+    let mut fills = vec![];
+    for name in GUTTER_ROOMS {
+        let s = scene_files(name);
+        let (w, h) = (
+            s["width"].as_f64().unwrap() / 48.0,
+            s["height"].as_f64().unwrap() / 48.0,
+        );
+        assert!(
+            (30.0..=44.0).contains(&w) && (18.0..=26.0).contains(&h),
+            "{name} is {w}x{h} tiles"
+        );
+        assert!(
+            s["width"].as_f64().unwrap() > 960.0 && s["height"].as_f64().unwrap() > 540.0,
+            "{name} fits on a screen"
+        );
+        let objects = s["objects"].as_array().unwrap();
+        let kinds = |k: &str| objects.iter().filter(|o| o["kind"] == k).count();
+        let named = |n: &str| objects.iter().any(|o| o["name"] == n);
+        assert_eq!(kinds("door"), 2, "{name}: an entry and an exit door");
+        assert!(
+            named("door_in") && named("door_out") && kinds("runner") == 1,
+            "{name}"
+        );
+        let exit = objects.iter().find(|o| o["name"] == "door_out").unwrap();
+        assert_eq!(exit["props"]["exit"], true, "{name}: door_out is the exit");
+        assert!(
+            exit["props"].get("leads_to").is_none(),
+            "{name}: the chain says where the door leads"
+        );
+        let (f, n) = fill(&s);
+        assert!(n > 300, "{name} has only {n} open cells");
+        assert!(f < 0.97, "{name} is a rectangle: it fills {f} of its box");
+        fills.push((name, f));
+        let fight = !["stranger", "walk", "boss"].contains(&name);
+        if fight {
+            for sp in ["sp_1", "sp_2", "sp_3", "sp_4", "cards"] {
+                assert!(named(sp), "{name} has no {sp}");
+            }
+        }
+        // each scene has its script
+        assert!(
+            folder()
+                .join("scenes/gutter")
+                .join(format!("{name}.lua"))
+                .exists(),
+            "{name}.lua"
+        );
+    }
+    // the three layouts of a slot differ in shape (their painted rows and the open fill)
+    let data = std::fs::read_to_string(folder().join("data/layouts.lua")).unwrap();
+    for slot in data.split("layouts = { ").skip(1) {
+        let names: Vec<&str> = slot
+            .split(" }")
+            .next()
+            .unwrap()
+            .split(", ")
+            .map(|s| s.trim_matches('"').trim_start_matches("gutter."))
+            .collect();
+        for i in 0..names.len() {
+            for j in i + 1..names.len() {
+                let (a, b) = (scene_files(names[i]), scene_files(names[j]));
+                assert_ne!(
+                    a["tilemaps"][0]["tiles"], b["tilemaps"][0]["tiles"],
+                    "{} and {} are the same map",
+                    names[i], names[j]
+                );
+                let (fa, fb) = (fill(&a).0, fill(&b).0);
+                let sizes = (a["width"] != b["width"]) || (a["height"] != b["height"]);
+                assert!(
+                    (fa - fb).abs() > 0.02 || sizes,
+                    "{} and {} have the same shape: {fa} {fb}",
+                    names[i],
+                    names[j]
+                );
+            }
+        }
+    }
+    eprintln!("fill of each room's box: {fills:?}");
+}
+
+#[test]
+fn the_hazard_is_in_every_room_from_slot_3_on_and_not_before_and_the_pieces_are_in_the_rooms() {
+    let counts = |name: &str, kind: &str| {
+        scene_files(name)["objects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|o| o["kind"] == kind)
+            .count()
+    };
+    let slot = |names: &[&str]| names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for name in slot(&[
+        "s1_square",
+        "s1_street",
+        "s1_cross",
+        "s2_maze",
+        "s2_stalls",
+        "s2_ring",
+    ]) {
+        assert_eq!(counts(&name, "sign"), 0, "{name}: no hazard before room 3");
+        assert_eq!(counts(&name, "tram"), 0, "{name}");
+        assert!(
+            counts(&name, "stall") >= 2
+                && counts(&name, "barrel") >= 3
+                && counts(&name, "puddle") >= 3,
+            "{name}'s pieces"
+        );
+    }
+    for name in slot(&[
+        "s3_tram",
+        "s3_flood",
+        "s3_underpass",
+        "elite",
+        "s5_courts",
+        "s5_market",
+        "s5_depot",
+        "s7_yard",
+        "s7_junction",
+        "s7_hall",
+    ]) {
+        assert!(
+            counts(&name, "sign") >= 3,
+            "{name} has {} signs",
+            counts(&name, "sign")
+        );
+        assert!(
+            counts(&name, "puddle") >= 6,
+            "{name} has {} puddles",
+            counts(&name, "puddle")
+        );
+        assert!(
+            counts(&name, "stall") >= 2 && counts(&name, "barrel") >= 4,
+            "{name}'s pieces"
+        );
+    }
+    // a tram in some rooms, a rail for each tram, at least one room with one in slots 3, 5 and 7
+    let with_tram: Vec<&str> = GUTTER_ROOMS
+        .iter()
+        .copied()
+        .filter(|n| counts(n, "tram") > 0)
+        .collect();
+    assert_eq!(
+        with_tram,
+        [
+            "s3_tram",
+            "s3_underpass",
+            "s5_depot",
+            "s7_yard",
+            "s7_junction"
+        ]
+    );
+    for n in &with_tram {
+        assert_eq!(
+            counts(n, "rail"),
+            counts(n, "tram"),
+            "{n}: a rail under each tram"
+        );
+    }
+    assert_eq!(counts("s7_junction", "tram"), 2, "a crossing of two rails");
+    // the elite arena and the stranger's room, the walk-through room's four counters
+    assert_eq!(counts("walk", "counter"), 4);
+    assert_eq!(counts("stranger", "marker"), 1);
+}
+
+#[test]
+fn every_room_of_the_district_starts_and_a_fight_room_spawns_its_first_wave_with_no_warning() {
+    for name in GUTTER_ROOMS {
+        let plan = serde_json::json!({
+            "start_scene": format!("gutter.{name}"),
+            "invincible": true,
+            "steps": [{ "wait": 220 }],
+            "print": ["nova.count('enemy') + nova.count('warn')", "nova.current_scene()"],
+        })
+        .to_string();
+        let r = play(&format!("room-{name}"), plan);
+        let n: i64 = printed(&r, "nova.count('enemy') + nova.count('warn')")
+            .parse()
+            .unwrap();
+        let fight = !["stranger", "walk", "boss"].contains(&name);
+        assert_eq!(
+            n > 0,
+            fight,
+            "{name}: {n} enemies or warnings after 220 frames"
+        );
+        assert_eq!(
+            printed(&r, "nova.current_scene()"),
+            format!("gutter.{name}")
+        );
+    }
+}
+
+fn whole_run(name: &str) -> (Value, Vec<String>) {
+    let r = run(name);
+    let chain: Vec<String> = printed(&r, "CHAIN").split(' ').map(String::from).collect();
+    assert_eq!(chain.len(), 9);
+    for (i, scene) in chain.iter().enumerate() {
+        assert_eq!(
+            &printed(&r, &format!("ROOM{}", i + 1)),
+            scene,
+            "room {} is the chain's",
+            i + 1
+        );
+    }
+    assert_eq!(printed(&r, "KIND4"), "elite");
+    assert_eq!(printed(&r, "KIND7"), "gauntlet");
+    assert_eq!(printed(&r, "MET0"), "0");
+    assert_eq!(
+        printed(&r, "MET1"),
+        "1",
+        "the stranger's counter went up by one"
+    );
+    assert_eq!(printed(&r, "WON0"), "false");
+    assert_eq!(
+        printed(&r, "WON9"),
+        "true",
+        "the boss door ended the run as a win"
+    );
+    // the fights paid and each took a card (rooms 1 2 3 4 5 7: six)
+    assert_eq!(printed(&r, "CARDS1_AFTER"), "1");
+    assert_eq!(printed(&r, "CARDS4_AFTER"), "4");
+    assert_eq!(printed(&r, "CARDS5_AFTER"), "5");
+    assert_eq!(printed(&r, "CARDS7_AFTER"), "6");
+    assert_eq!(printed(&r, "PAID4"), "40", "the elite pays 40");
+    // the bank: 4 scrap to a key
+    let scrap = num(&r, "SCRAP_BEFORE_BANK") as i64;
+    assert!(scrap > 150, "scrap {scrap}");
+    assert_eq!(num(&r, "KEYS1") as i64, scrap / 4);
+    assert_eq!(num(&r, "SCRAP_AFTER_BANK") as i64, scrap % 4);
+    // the summary: a win, 8 rooms, the keys, 6 cards
+    assert_eq!(printed(&r, "END_SCENE"), "summary");
+    assert_eq!(printed(&r, "SUM"), format!("win 8 {} 6", scrap / 4));
+    assert!(num(&r, "SUM_TIME") > 100.0);
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "room cleared"), 6, "six fights");
+    assert_eq!(count_lines(&l, "doors shut"), 6);
+    assert_eq!(count_lines(&l, "the boss door: the run is won"), 1);
+    assert_eq!(count_lines(&l, "run ends: win, 8 rooms"), 1);
+    // the elite: its mark came from the seed and was applied
+    assert_eq!(count_lines(&l, "elite: "), 1);
+    (r, chain)
+}
+
+#[test]
+fn a_whole_run_from_room_1_to_the_summary_with_the_test_player_seed_3() {
+    // (the test player is invincible for this route and the next: they prove the chain, the rooms, the doors, the waves, the elite, the talk, the
+    // bank and the summary, not the fighting, which the routes above and the slice-2 tests prove)
+    let (r, _) = whole_run("run_a");
+    assert_eq!(printed(&r, "MARK"), "magnetic");
+    assert_eq!(printed(&r, "WHO"), "patch");
+    assert_eq!(printed(&r, "TALKED"), "+2 health");
+}
+
+#[test]
+fn a_whole_run_with_another_seed_plays_other_rooms_another_elite_and_the_other_stranger() {
+    let (r, chain_b) = whole_run("run_b");
+    assert_eq!(printed(&r, "MARK"), "shielded");
+    assert_eq!(printed(&r, "WHO"), "old_sal");
+    assert_eq!(printed(&r, "TALKED"), "Take a bowl");
+    let a = run("run_a");
+    let chain_a: Vec<String> = printed(&a, "CHAIN").split(' ').map(String::from).collect();
+    for i in [0, 1, 2, 4, 6] {
+        assert_ne!(chain_a[i], chain_b[i], "room {} is another layout", i + 1);
+    }
+}
+
+#[test]
+fn the_new_sounds_exist() {
+    for s in ["blast", "tram_bell", "tram_pass", "sign_drop", "buy"] {
+        assert!(
+            folder().join("sounds").join(format!("{s}.wav")).exists(),
+            "no sounds/{s}.wav"
+        );
+        assert!(
+            folder()
+                .join("sounds")
+                .join(format!("{s}.sfx.json"))
+                .exists()
+        );
+    }
+    // each is played by some route
+    let mut played = std::collections::BTreeSet::new();
+    for name in ["barrel_inside", "sign_puddle", "tram", "shop_room"] {
+        for line in report_sounds(&run(name)) {
+            if let Some(rest) = line.split("sound ").nth(1) {
+                played.insert(rest.split(' ').next().unwrap().to_string());
+            }
+        }
+    }
+    for s in ["blast", "tram_bell", "tram_pass", "sign_drop", "buy"] {
+        assert!(played.contains(s), "no route plays {s}: {played:?}");
+    }
 }

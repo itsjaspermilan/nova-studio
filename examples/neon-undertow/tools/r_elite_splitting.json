@@ -1,0 +1,31 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 540, 'right'\nE = nova.spawn('scrapper', 900, 540); E.hp = 8; require('lib.status').stun(E, 99); require('lib.elite').make(E, 'splitting')",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "HP0 = E.hp; E:take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 4,
+   "capture": "two small ones"
+  },
+  {
+   "lua": "COUNT = nova.count('enemy'); local a = {}; for _, e in ipairs(nova.all('enemy')) do a[#a+1] = e.hp .. '/' .. string.format('%.1f', e.sx / 3) end; SMALL = table.concat(a, ' ')\nfor _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "COUNT2 = nova.count('enemy')"
+  }
+ ],
+ "print": [
+  "HP0",
+  "COUNT",
+  "SMALL",
+  "COUNT2"
+ ]
+}

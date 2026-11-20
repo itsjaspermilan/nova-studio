@@ -1,0 +1,53 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 600, 'right'\nC = nova.spawn('scrapper', 900, 540); C.hp = 30; require('lib.status').stun(C, 99)",
+ "route": [
+  {
+   "wait": 60
+  },
+  {
+   "lua": "CX = nova.named('runner').x"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "CONTROL_HP = C.hp; CONTROL_MOVED = nova.named('runner').x - 500; C:destroy(); nova.named('runner').x, nova.named('runner').y = 500, 600; nova.named('runner').charge = 3\nE = nova.spawn('scrapper', 900, 540); E.hp = 8; require('lib.status').stun(E, 99); require('lib.elite').make(E, 'magnetic')"
+  },
+  {
+   "wait": 60,
+   "capture": "pulled"
+  },
+  {
+   "lua": "PULL_MOVED = nova.named('runner').x - 500; nova.named('runner').x, nova.named('runner').y = 500, 600"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 6,
+   "capture": "the shot bends"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "lua": "E_HP = E.hp"
+  }
+ ],
+ "print": [
+  "CONTROL_HP",
+  "string.format('%.1f', CONTROL_MOVED)",
+  "string.format('%.1f', PULL_MOVED)",
+  "E_HP"
+ ]
+}

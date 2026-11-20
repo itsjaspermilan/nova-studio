@@ -1,3 +1,4 @@
--- Neon Undertow, slice 2: the first room of the Gutter Market. (test_room, the slice-1 test room, is still there: start it with
--- `--start-scene test_room`.) See docs/games/neon-undertow.md in the Nova repository.
-nova.start("market_a")
+-- Neon Undertow, slice 3a: a run of the Gutter Market (eight rooms from a seed, then the shop and bank), and a summary. The slice-2
+-- rooms (market_a, market_b) and the slice-1 test rooms are still there: start one with `--start-scene market_a` / `test_room`.
+-- See docs/games/neon-undertow.md in the Nova repository.
+nova.start("run_start")

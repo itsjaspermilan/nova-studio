@@ -33,15 +33,21 @@ function Door:open(quiet)
   if not quiet then nova.sound.play("door_open", { volume = P.sfx.door_open }) end
 end
 
+-- (a door of a district run has no `leads_to`: the run's chain says which room comes next, lib/run.lua)
 function Door:update(dt)
-  if self.exit and self.state == "open" and self.leads_to ~= "" then
+  if self.exit and self.state == "open" and not self.gone and (self.leads_to ~= "" or Run.chain) then
     local p = nova.first("player")
     if p and p.state ~= "dead" and math.abs(p.x - self.x) < 40 and math.abs(p.y - self.y) < 44 then
       Run.take_from(p)
-      Run.room = Run.room + 1
-      nova.log("through the door to " .. self.leads_to)
-      nova.goto_scene(self.leads_to)
-      self.leads_to = ""
+      local dest = self.leads_to
+      if dest == "" then
+        dest = Run.exit_room()
+      else
+        Run.room = Run.room + 1
+      end
+      nova.log("through the door to " .. dest)
+      nova.goto_scene(dest)
+      self.gone = true
     end
   end
 end

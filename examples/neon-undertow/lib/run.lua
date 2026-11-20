@@ -1,8 +1,13 @@
--- The run: its seed, the cards held, the modifiers they change, scrap and the health and charge carried from room to room.
--- A module (it lives as long as the game does); a fight room's first scene begins a run, the others carry it on.
+-- The run: its seed, the chain of rooms, the cards held, the modifiers they change, scrap and the health and charge carried from room
+-- to room, the perks strangers gave, the clock. A module (it lives as long as the game does); a run begins with `Run.begin` (the
+-- slice-2 rooms) or `Run.begin_chain` (the Gutter Market's eight rooms from a seed).
 -- Entities read `Run.mods`; cards (data/cards.lua) change them with `apply(Run)`. Nothing here knows a card by name.
 local P = require("data.player")
 local Cards = require("data.cards")
+local Layouts = require("data.layouts")
+local Waves = require("data.gutter_waves")
+local Elites = require("data.elites")
+local Meta = require("lib.meta")
 local J = require("lib.juice")
 
 local Run = { active = false }
@@ -14,13 +19,14 @@ local function fresh_mods()
   }
 end
 
--- A repeatable integer hash (splitmix-like) of two numbers: the offer's draws depend on the seed and the offer's number only.
+-- A repeatable integer hash (splitmix-like) of two numbers: the draws depend on the seed and a number only.
 local function mix(a, b)
   local z = (a * 0x9E3779B97F4A7C15 + b * 0xBF58476D1CE4E5B9 + 0x94D049BB133111EB) & 0x7FFFFFFFFFFFFFFF
   z = ((z ~ (z >> 30)) * 0xBF58476D1CE4E5B9) & 0x7FFFFFFFFFFFFFFF
   z = ((z ~ (z >> 27)) * 0x94D049BB133111EB) & 0x7FFFFFFFFFFFFFFF
   return z ~ (z >> 31)
 end
+Run.mix = mix
 
 local function start(seed)
   Run.active = true
@@ -30,12 +36,115 @@ local function start(seed)
   Run.scrap, Run.frac = 0, 0
   Run.hp, Run.charge = nil, nil
   Run.offers = 0
-  Run.room = 0
+  Run.room = 0            -- doors gone through so far
+  Run.chain = nil         -- the rooms of a district run (Run.begin_chain)
+  Run.perks = {}          -- what strangers gave (truce: the first hit in each room is ignored)
+  Run.reroll_next = false -- the shop sold a reroll of the next offer
+  Run.time = 0            -- seconds played in rooms
+  Run.cleared = 0         -- rooms of the chain left by their door
+  Run.banked = 0          -- keys banked this run
+  Run.won = false
+  Run.summary = nil
 end
 
 function Run.begin(seed)
   start(seed)
   nova.log("run begins, seed " .. Run.seed)
+end
+
+-- ---------------------------------------------------------------- the chain
+-- The eight rooms of the district from the run's seed: for each slot one of its layouts and one of its wave tables; the stranger
+-- of room 6, the elite's mark and kind. The same seed always builds the same chain.
+function Run.build_chain(seed)
+  local chain = {}
+  for i, slot in ipairs(Layouts.slots) do
+    local k = mix(seed, i * 11 + 1) % #slot.layouts + 1
+    local tables = Waves[i]
+    local entry = { index = i, slot = i, kind = slot.kind, hazard = slot.hazard, layout = k, scene = slot.layouts[k] }
+    if tables then
+      entry.table = mix(seed, i * 11 + 2) % #tables + 1
+      entry.def = tables[entry.table]
+    end
+    if slot.kind == "elite" then
+      entry.mark = Elites.order[mix(seed, 401) % #Elites.order + 1]
+      entry.elite_kind = Elites.kinds[mix(seed, 402) % #Elites.kinds + 1]
+    elseif slot.kind == "stranger" then
+      entry.who = Layouts.strangers[mix(seed, 403) % #Layouts.strangers + 1]
+    end
+    chain[i] = entry
+  end
+  chain[#chain + 1] = { index = #chain + 1, slot = #chain + 1, kind = "walk", scene = Layouts.walk, layout = 1 }
+  return chain
+end
+
+-- Begins a district run: a new run with its chain.
+function Run.begin_chain(seed)
+  start(seed)
+  Run.chain = Run.build_chain(Run.seed)
+  Meta.runs = Meta.runs + 1
+  local names = {}
+  for i, e in ipairs(Run.chain) do names[i] = e.scene end
+  nova.log("run begins, seed " .. Run.seed .. ": " .. table.concat(names, " "))
+end
+
+-- Where a scene sits: slot and kind, found by its name (a layout scene started directly, for tests and the editor).
+local function find_layout(scene)
+  for i, slot in ipairs(Layouts.slots) do
+    for k, name in ipairs(slot.layouts) do
+      if name == scene then return i, k, slot end
+    end
+  end
+  if scene == Layouts.walk then return #Layouts.slots + 1, 1, { kind = "walk" } end
+end
+Run.find_layout = find_layout
+
+-- The chain's entry for the room the runner is in now: the next of the chain if it is this scene, else one made from the scene's
+-- name (the first wave table of its slot, the seed's stranger, mark and kind).
+function Run.entry_for(scene)
+  if not Run.chain then return nil end
+  local e = Run.chain[Run.room + 1]
+  if e and e.scene == scene then return e end
+  local i, k, slot = find_layout(scene)
+  if not i then return nil end
+  local entry = { index = i, slot = i, kind = slot.kind, hazard = slot.hazard, layout = k, scene = scene, table = 1, def = Waves[i] and Waves[i][1] }
+  for _, c in ipairs(Run.chain) do
+    if c.kind == "elite" then entry.mark, entry.elite_kind = c.mark, c.elite_kind end
+    if c.kind == "stranger" then entry.who = c.who end
+  end
+  return entry
+end
+
+-- The scene after the room the runner is in (the summary after the last room).
+function Run.next_scene()
+  local e = Run.chain and Run.chain[Run.room + 2]
+  return e and e.scene or "summary"
+end
+
+-- The runner went through a room's exit door.
+function Run.exit_room()
+  local here = Run.chain and Run.chain[Run.room + 1]
+  local dest = Run.next_scene()
+  Run.room = Run.room + 1
+  if here and here.kind ~= "walk" then Run.cleared = Run.cleared + 1 end
+  if here and here.kind == "boss" then
+    Run.won = true
+    Meta.wins = Meta.wins + 1
+    nova.log("the boss door: the run is won")
+  end
+  if dest == "summary" then Run.finish(Run.won and "win" or "dead") end
+  return dest
+end
+
+-- The run ends (a win at the last door, or the runner died): the summary's numbers.
+function Run.finish(result)
+  local names = {}
+  for _, id in ipairs(Run.cards) do names[#names + 1] = Cards.by_id[id].name end
+  Run.summary = {
+    result = result, seed = Run.seed, cleared = Run.cleared, time = Run.time, keys = Run.banked, scrap_left = J.scrap,
+    cards = #Run.cards, card_names = names, rooms = Run.chain and 8 or nil,
+  }
+  Run.active = false
+  nova.log(string.format("run ends: %s, %d rooms, %.1f s, %d keys banked, %d cards", result, Run.cleared, Run.time, Run.banked, #Run.cards))
 end
 
 start(1) -- (a run exists before any room begins one: the test rooms and routes use it as is)
@@ -62,6 +171,26 @@ function Run.add_scrap(n)
   Run.frac = total - whole
   J.scrap = J.scrap + whole
   return whole
+end
+
+-- Spend scrap (the shop): false, and nothing taken, when there is not enough.
+function Run.spend(n)
+  if J.scrap < n then return false end
+  J.scrap = J.scrap - n
+  Run.scrap = J.scrap
+  return true
+end
+
+-- The bank: scrap into keys at `rate` to 1 (whole keys; the rest stays scrap). Returns the keys made and the scrap taken.
+function Run.bank(rate)
+  local keys = J.scrap // rate
+  local taken = keys * rate
+  J.scrap = J.scrap - taken
+  Run.scrap = J.scrap
+  Meta.keys = Meta.keys + keys
+  Run.banked = Run.banked + keys
+  if keys > 0 then nova.log(string.format("bank: %d scrap into %d keys (keys held %d)", taken, keys, Meta.keys)) end
+  return keys, taken
 end
 
 -- The runner's numbers and the scene's scrap go into the run (before a card changes them, and at a door)...
@@ -97,18 +226,44 @@ function Run.add_card(id, runner)
 end
 
 -- The cards a room offers: `n` different ones from the pool the run's seed picks, never past a card's maximum.
--- The same seed and the same offer number always give the same cards. Returns a list of ids.
-function Run.offer(n)
+-- THE FAMILY RULE: an offer never holds two cards of the same family, unless the pool cannot fill it otherwise (the design's "never
+-- two from the same family twice running" is read as this: within an offer, not across offers).
+-- `opts.guarantee` is a rarity: one card of the offer has it (the elite's uncommon). The same seed and the same offer number always
+-- give the same cards; a reroll (bought in the shop) draws the next offer again with another salt. Returns a list of ids.
+function Run.offer(n, opts)
   n = n or 3
+  opts = opts or {}
   Run.offers = Run.offers + 1
+  local salt = Run.offers
+  if Run.reroll_next then
+    salt = salt + 1000
+    Run.reroll_next = false
+    nova.log("the offer is rerolled")
+  end
   local pool = {}
-  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max then pool[#pool + 1] = c.id end end
-  local out = {}
-  local state = mix(Run.seed, Run.offers)
-  for i = 1, math.min(n, #pool) do
+  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max then pool[#pool + 1] = c end end
+  local out, families = {}, {}
+  local state = mix(Run.seed, salt)
+  local function take(list, i)
+    local c = list[i]
+    for k, p in ipairs(pool) do if p == c then table.remove(pool, k); break end end
+    out[#out + 1] = c.id
+    families[c.family] = true
+  end
+  if opts.guarantee then
+    local list = {}
+    for _, c in ipairs(pool) do if c.rarity == opts.guarantee then list[#list + 1] = c end end
+    if #list > 0 then
+      state = mix(state, 777)
+      take(list, state % #list + 1)
+    end
+  end
+  for i = #out + 1, math.min(n, #out + #pool) do
     state = mix(state, i)
-    local k = state % #pool + 1
-    out[i] = table.remove(pool, k)
+    local fresh = {}
+    for _, c in ipairs(pool) do if not families[c.family] then fresh[#fresh + 1] = c end end
+    local list = #fresh > 0 and fresh or pool          -- (the pool cannot fill the offer from new families: repeat one)
+    take(list, state % #list + 1)
   end
   nova.log("offer " .. Run.offers .. ": " .. table.concat(out, ","))
   return out

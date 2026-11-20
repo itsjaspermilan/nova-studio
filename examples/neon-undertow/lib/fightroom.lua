@@ -8,6 +8,7 @@ local Run = require("lib.run")
 local R = require("data.rooms")
 local Waves = require("data.waves")
 local HUD = require("lib.hud")
+local Elite = require("lib.elite")
 
 local Room = nova.scene { room = "market_a", first = false }
 
@@ -15,7 +16,14 @@ local VIEW_W, VIEW_H = 960, 540
 
 function Room:enter()
   J.reset()
-  if self.first or not Run.active then Run.begin() end
+  -- a room of the Gutter Market belongs to a district run (a chain); the slice-2 rooms (market_a, market_b) to a plain run
+  local gutter = Run.find_layout(self.room) ~= nil
+  if self.first or not Run.active then
+    if gutter then Run.begin_chain() else Run.begin() end
+  elseif gutter and not Run.chain then
+    Run.begin_chain(Run.seed)
+  end
+  self.entry = Run.entry_for(self.room)
   J.scrap = Run.scrap
   local data = nova.scene_data(self.room)
   self.w, self.h = data.width, data.height
@@ -27,12 +35,14 @@ function Room:enter()
   self.doors = nova.all("door")
   self.points = {}
   for _, m in ipairs(nova.all("marker")) do if m.name then self.points[m.name] = m end end
-  self.def = Waves[self.room]
+  self.def = self.entry and self.entry.def or Waves[self.room]
   self.state, self.t, self.wave_i = "intro", 0, 0
+  self.fight_t = 0
   self.paused, self.banner_t, self.paid = false, 0, 0
   nova.pause(false)
   nova.music.play(P.music.track, { volume = P.music.volume })
   nova.log("entered " .. self.room)
+  if self.entry then nova.log(string.format("room %d of 8: %s (%s)", math.min(self.entry.index, 8), self.entry.kind, self.room)) end
 end
 
 function Room:camera(dt)
@@ -72,15 +82,17 @@ function Room:spawn_wave(i)
   for _, row in ipairs(w.rows) do
     local pt = self.points[row.at]
     if not pt then error("data/waves.lua: room " .. self.room .. " has no spawn point named " .. row.at) end
+    local kind, mark = row.kind, nil
+    if row.elite then kind, mark = self.entry.elite_kind, self.entry.mark end
     for k = 1, row.count do
       local ox, oy = 0, 0
       if row.count > 1 then
         local a = (k - 1) / row.count * math.pi * 2 + 0.6
         ox, oy = math.cos(a) * R.spawn_ring, math.sin(a) * R.spawn_ring * 0.8
       end
-      nova.spawn("warn", pt.x + ox, pt.y + oy, { kind = row.kind, time = R.warn })
+      nova.spawn("warn", pt.x + ox, pt.y + oy, { kind = kind, time = R.warn, elite = (k == 1) and mark or nil })
     end
-    nova.log(string.format("wave %d: %s x%d at %s", i, row.kind, row.count, row.at))
+    nova.log(string.format("wave %d: %s x%d at %s", i, kind, row.count, row.at))
   end
 end
 
@@ -93,13 +105,19 @@ function Room:clear()
   nova.sound.play("door_unlock", { volume = P.sfx.door_unlock })
   nova.log("doors unlocked")
   self.paid = Run.add_scrap(self.def.scrap)
+  local bonus = self.def.bonus
+  if bonus and self.fight_t <= bonus.within then
+    self.bonus = Run.add_scrap(bonus.scrap)
+    self.paid = self.paid + self.bonus
+    nova.log(string.format("time bonus: %d scrap (cleared in %.1f s, within %d)", self.bonus, self.fight_t, bonus.within))
+  end
   self.banner_t = R.banner
   nova.log("room pays " .. self.paid .. " scrap")
 end
 
 function Room:rise_cards()
   self.state = "cards"
-  local ids = Run.offer(R.cards)
+  local ids = Run.offer(R.cards, { guarantee = self.def.guarantee })
   local at = self.points.cards
   local n = #ids
   for i, id in ipairs(ids) do
@@ -140,6 +158,8 @@ function Room:update(dt)
   if self.paused then return end
   J.tick()
   self.t = self.t + dt
+  Run.time = Run.time + dt
+  if self.state == "fight" then self.fight_t = self.fight_t + dt end
   self.banner_t = math.max(0, self.banner_t - dt)
   self:camera(dt)
   local s = self.state
@@ -153,7 +173,7 @@ function Room:update(dt)
     if self.countdown then
       self.countdown = self.countdown - dt
       if self.countdown <= 0 then self.countdown = nil; self:spawn_wave(self.wave_i) end
-    elseif nova.count("warn") == 0 and nova.count("enemy") == 0 then
+    elseif nova.count("warn") == 0 and nova.count("enemy") == 0 and nova.count("fuse") == 0 then
       if self.wave_i >= #self.def.waves then self.state, self.t = "won", 0 else self:next_wave() end
     end
   elseif s == "won" then
@@ -165,10 +185,16 @@ function Room:update(dt)
   end
 end
 
--- Dying ends the run: the first room again, a new run (the Den comes in a later slice).
+-- Dying ends the run. A district run goes to its summary (which starts the next run at room 1 with a new seed; the Den comes in a later
+-- slice); the slice-2 rooms start again at market_a.
 function Room:on_runner_dead()
-  Run.active = false
-  nova.goto_scene("market_a")
+  if Run.chain then
+    Run.finish("dead")
+    nova.goto_scene("summary")
+  else
+    Run.active = false
+    nova.goto_scene("market_a")
+  end
 end
 
 function Room:draw_ui() HUD.draw(self) end

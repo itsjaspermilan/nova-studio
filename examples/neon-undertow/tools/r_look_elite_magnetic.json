@@ -1,0 +1,41 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 600, 'right'\nC = nova.spawn('scrapper', 900, 540); C.hp = 30; require('lib.status').stun(C, 99)",
+ "route": [
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 500, 600; nova.named('runner').charge = 3; E = nova.spawn('scrapper', 900, 540); E.hp = 8; require('lib.status').stun(E, 99); require('lib.elite').make(E, 'magnetic')"
+  },
+  {
+   "wait": 15,
+   "capture": "its pull rings"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 5,
+   "capture": "the shot leaves"
+  },
+  {
+   "wait": 6,
+   "capture": "it bends"
+  },
+  {
+   "wait": 8,
+   "capture": "it hits"
+  }
+ ],
+ "print": [
+  "CONTROL_HP",
+  "string.format('%.1f', CONTROL_MOVED)",
+  "string.format('%.1f', PULL_MOVED)",
+  "E_HP"
+ ],
+ "out": "build/look_elite_magnetic",
+ "columns": 3,
+ "crop_to": "elite_fx",
+ "crop_margin": 420
+}

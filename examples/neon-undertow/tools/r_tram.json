@@ -1,0 +1,52 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 300, 'right'\nTR = nova.spawn('tram', 48, 540, { dir = 'h', span = 1344, phase = 10 })\nE1 = nova.spawn('scrapper', 700, 540); E1.hp = 30; require('lib.status').stun(E1, 99); E2 = nova.spawn('scrapper', 700, 700); E2.hp = 30; require('lib.status').stun(E2, 99)",
+ "route": [
+  {
+   "until": "TR.state == 'warn'",
+   "max": 100
+  },
+  {
+   "wait": 40,
+   "capture": "the rail flashes"
+  },
+  {
+   "until": "TR.state == 'cross'",
+   "max": 100
+  },
+  {
+   "wait": 14,
+   "capture": "the tram crosses"
+  },
+  {
+   "until": "TR.state == 'idle'",
+   "max": 200,
+   "capture": "across"
+  },
+  {
+   "lua": "E1_HP = E1.hp; E2_HP = E2.hp; RUNNER_HP_A = nova.named('runner').hp; nova.named('runner').x, nova.named('runner').y = 900, 540; TR.c = 11.0"
+  },
+  {
+   "until": "TR.state == 'cross'",
+   "max": 120
+  },
+  {
+   "wait": 10
+  },
+  {
+   "until": "TR.state == 'idle'",
+   "max": 200
+  },
+  {
+   "lua": "RUNNER_HP_B = nova.named('runner').hp; E1_HP_B = E1.hp; CROSSINGS = TR.crossings"
+  }
+ ],
+ "print": [
+  "E1_HP",
+  "E2_HP",
+  "RUNNER_HP_A",
+  "RUNNER_HP_B",
+  "E1_HP_B",
+  "CROSSINGS"
+ ]
+}

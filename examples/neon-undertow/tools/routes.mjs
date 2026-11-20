@@ -794,3 +794,449 @@ out("die_in_room", {
   ],
   print: ["HP_BEFORE", "MAX_BEFORE", "STATE", "SCENE", "HP_AFTER", "MAX_AFTER", "CARDS_AFTER"],
 });
+
+// =====================================================================================================================
+// SLICE 3a: a run of the Gutter Market (lib/run.lua chain, lib/elite.lua, entities/barrel, sign, puddle, tram, stranger, counter...)
+// =====================================================================================================================
+const STATUS = "require('lib.status')";
+const ELITE = "require('lib.elite')";
+const META = "require('lib.meta')";
+const SHOP = "require('lib.shop')";
+const TALK = "require('lib.talk')";
+const hold1 = (s) => `local ST = ${STATUS}; ${s}`;
+// a stunned scrapper with lots of health: a target that stands still
+const stillScrapper = (v, x, y, hp = 30) => `${v} = nova.spawn('scrapper', ${x}, ${y}); ${v}.hp = ${hp}; ${STATUS}.stun(${v}, 99)`;
+
+// ---- the chain: the same seed builds the same eight rooms, another seed other rooms, and over many seeds every layout is used
+out("chain_seeds", {
+  start_scene: "test_lab",
+  lua: `local R = ${RUN}
+local function ch(seed) local c = R.build_chain(seed); local a = {}; for i, e in ipairs(c) do a[i] = e.scene .. '/' .. (e.table or 0) end; return table.concat(a, ' ') end
+CH_A1 = ch(1234); CH_A2 = ch(1234); CH_B = ch(99); CH_C = ch(4321)
+local c = R.build_chain(1234)
+KINDS8 = ''; for i = 1, 9 do KINDS8 = KINDS8 .. c[i].kind .. (i < 9 and ',' or '') end
+local L = require('data.layouts')
+USED = {}; MARKS = {}; WHO = {}; TABLES = {}; ELITE_KINDS = {}
+for s = 1, 300 do
+  local cc = R.build_chain(s)
+  for i = 1, 8 do USED[cc[i].scene] = true; TABLES[i .. ':' .. (cc[i].table or 0)] = true end
+  MARKS[cc[4].mark] = true; WHO[cc[6].who] = true; ELITE_KINDS[cc[4].elite_kind] = true
+end
+local n, total = 0, 0
+for i, slot in ipairs(L.slots) do for _, name in ipairs(slot.layouts) do total = total + 1; if USED[name] then n = n + 1 end end end
+LAYOUTS_USED, LAYOUTS_TOTAL = n, total
+local function count(t) local k = 0; for _ in pairs(t) do k = k + 1 end; return k end
+MARKS_N, WHO_N, TABLES_N, EK_N = count(MARKS), count(WHO), count(TABLES), count(ELITE_KINDS)
+-- every wave table's spawn points exist in every layout of its slot
+local W = require('data.gutter_waves')
+MISSING = 0
+for i, tables in pairs(W) do
+  for _, t in ipairs(tables) do
+    for _, w in ipairs(t.waves) do for _, row in ipairs(w.rows) do
+      for _, name in ipairs(L.slots[i].layouts) do
+        local found = false
+        for _, o in ipairs(nova.scene_data(name).objects) do if o.name == row.at then found = true end end
+        if not found then MISSING = MISSING + 1; nova.log('missing ' .. row.at .. ' in ' .. name) end
+      end
+    end end
+  end
+end
+R.begin(1)`,
+  route: [{ wait: 2 }],
+  print: ["CH_A1", "CH_A2", "CH_B", "CH_C", "KINDS8", "LAYOUTS_USED", "LAYOUTS_TOTAL", "MARKS_N", "WHO_N", "TABLES_N", "EK_N", "MISSING"],
+});
+
+// ---- the barrel: a hit lights a 1 s fuse, then a blast hurts everyone within 2 tiles (96): the runner 3, an enemy 6, a stall 6, a barrel lights its own fuse
+const barrelPlan = (gap) => ({
+  start_scene: "test_lab",
+  lua: `${labPlace(700 - gap, 420)}
+${stillScrapper("EN", 790, 420)}; ${stillScrapper("EF", 700, 530)}
+SB = nova.spawn('stall', 700, 340, { tiles = 1, dir = 'h' })
+B2 = nova.spawn('barrel', 760, 360)
+B1 = nova.spawn('barrel', 700, 420)`,
+  route: [
+    { wait: 3 }, { lua: "B1:take_hit(1, 1, 0, 0)" }, { wait: 20, capture: "the fuse" },
+    { until: "not B1:is_alive()", max: 100, capture: "the blast" }, { wait: 2 },
+    { lua: `HP = ${R0}.hp; EN_HP = EN.hp; EF_HP = EF.hp; STALL_HP = SB.hp; B2_STATE = B2.state` },
+    { until: "not B2:is_alive()", max: 100 },
+  ],
+  print: ["HP", "EN_HP", "EF_HP", "STALL_HP", "B2_STATE"],
+});
+out("barrel_inside", barrelPlan(90));
+out("barrel_outside", barrelPlan(110));
+
+// ---- the sign: a baton cannot drop it, a shot does; it makes every puddle touching it live for 4 s; standing in a live puddle costs 1 each second
+out("sign_puddle", {
+  start_scene: "test_lab",
+  lua: `${labPlace(540, 300)}
+SG = nova.spawn('sign', 600, 300)
+P1 = nova.spawn('puddle', 700, 340)
+P2 = nova.spawn('puddle', 1150, 340)
+${stillScrapper("ES1", 700, 340)}; ${stillScrapper("ES2", 1150, 340)}`,
+  route: [
+    { wait: 3 }, { press: "attack" }, { wait: 24 },
+    { lua: "BATON_STATE = SG.state; BATON_LIVE = P1.live_t" },
+    { lua: `${R0}.x = 400; ${R0}.facing = 'right'` }, { wait: 4 },
+    { hold: ["ranged"], frames: 6 }, { wait: 26, capture: "the sign is down" },
+    { lua: `SHOT_STATE = SG.state; P1_LIVE = P1:is_live(); P2_LIVE = P2:is_live(); RUNNER_HP0 = ${R0}.hp; ${R0}.x, ${R0}.y = 700, 340` },
+    { wait: 40, capture: "standing in a live puddle" },
+    { wait: 230, capture: "dry again" },
+    { lua: `P1_DRY = tostring(not P1:is_live()); RUNNER_HP = ${R0}.hp; ES1_HP = ES1.hp; ES2_HP = ES2.hp; P2_AFTER = tostring(P2:is_live())` },
+    { wait: 90 }, { lua: `RUNNER_HP_LATER = ${R0}.hp` },
+  ],
+  print: ["BATON_STATE", "BATON_LIVE", "SHOT_STATE", "tostring(P1_LIVE)", "tostring(P2_LIVE)", "RUNNER_HP0", "RUNNER_HP", "ES1_HP", "ES2_HP", "P1_DRY", "P2_AFTER", "RUNNER_HP_LATER"],
+});
+
+// ---- the tram: a bell and a flashing rail 1.5 s ahead, then it flattens what is on the rail for 6, enemies too
+out("tram", {
+  start_scene: "test_lab",
+  lua: `${labPlace(300, 300)}
+TR = nova.spawn('tram', 48, 540, { dir = 'h', span = 1344, phase = 10 })
+${stillScrapper("E1", 700, 540)}; ${stillScrapper("E2", 700, 700)}`,
+  route: [
+    { until: "TR.state == 'warn'", max: 100 }, { wait: 40, capture: "the rail flashes" },
+    { until: "TR.state == 'cross'", max: 100 }, { wait: 14, capture: "the tram crosses" },
+    { until: "TR.state == 'idle'", max: 200, capture: "across" },
+    { lua: `E1_HP = E1.hp; E2_HP = E2.hp; RUNNER_HP_A = ${R0}.hp; ${R0}.x, ${R0}.y = 900, 540; TR.c = 11.0` },
+    { until: "TR.state == 'cross'", max: 120 }, { wait: 10 },
+    { until: "TR.state == 'idle'", max: 200 },
+    { lua: `RUNNER_HP_B = ${R0}.hp; E1_HP_B = E1.hp; CROSSINGS = TR.crossings` },
+  ],
+  print: ["E1_HP", "E2_HP", "RUNNER_HP_A", "RUNNER_HP_B", "E1_HP_B", "CROSSINGS"],
+});
+
+// ---- the elite marks
+out("elite_shielded", {
+  start_scene: "test_lab",
+  lua: `${labPlace(500, 540)}
+${stillScrapper("E", 800, 540, 8)}; E.facing = 'left'; ${ELITE}.make(E, 'shielded'); BIG_SX = E.sx; BASE_SX = nova.spawn('scrapper', 100, 100).sx`,
+  route: [
+    { wait: 3 }, { lua: "HP0 = E.hp; SIZE = E.size_mult; MARK = E.elite" },
+    { hold: ["ranged"], frames: 6 }, { wait: 40, capture: "a shot at its front" },
+    { lua: "HP_FRONT = E.hp; BLOCKED = E.blocked or 0; E.facing = 'right'" },
+    { hold: ["ranged"], frames: 6 }, { wait: 40, capture: "a shot at its back" },
+    { lua: `HP_BACK = E.hp; E.facing = 'left'; ${R0}.x = 744` },
+    { press: "attack" }, { wait: 30, capture: "the baton at its front" },
+    { lua: "HP_BATON = E.hp" },
+  ],
+  print: ["HP0", "SIZE", "MARK", "string.format('%.1f', BIG_SX / BASE_SX)", "HP_FRONT", "BLOCKED", "HP_BACK", "HP_BATON"],
+});
+out("elite_splitting", {
+  start_scene: "test_lab",
+  lua: `${labPlace(500, 540)}
+${stillScrapper("E", 900, 540, 8)}; ${ELITE}.make(E, 'splitting')`,
+  route: [
+    { wait: 3 }, { lua: "HP0 = E.hp; E:take_hit(99, 0, 0, 0)" }, { wait: 4, capture: "two small ones" },
+    { lua: `COUNT = nova.count('enemy'); local a = {}; for _, e in ipairs(nova.all('enemy')) do a[#a+1] = e.hp .. '/' .. string.format('%.1f', e.sx / 3) end; SMALL = table.concat(a, ' ')
+for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end` },
+    { wait: 4 }, { lua: "COUNT2 = nova.count('enemy')" },
+  ],
+  print: ["HP0", "COUNT", "SMALL", "COUNT2"],
+});
+out("elite_magnetic", {
+  start_scene: "test_lab",
+  lua: `${labPlace(500, 600)}
+${stillScrapper("C", 900, 540)}`,
+  route: [
+    { wait: 60 }, { lua: "CX = nova.named('runner').x" },
+    { hold: ["ranged"], frames: 6 }, { wait: 60 },
+    { lua: `CONTROL_HP = C.hp; CONTROL_MOVED = ${R0}.x - 500; C:destroy(); ${R0}.x, ${R0}.y = 500, 600; ${R0}.charge = 3
+${stillScrapper("E", 900, 540, 8)}; ${ELITE}.make(E, 'magnetic')` },
+    { wait: 60, capture: "pulled" }, { lua: `PULL_MOVED = ${R0}.x - 500; ${R0}.x, ${R0}.y = 500, 600` },
+    { hold: ["ranged"], frames: 6 }, { wait: 6, capture: "the shot bends" }, { wait: 50 },
+    { lua: "E_HP = E.hp" },
+  ],
+  print: ["CONTROL_HP", "string.format('%.1f', CONTROL_MOVED)", "string.format('%.1f', PULL_MOVED)", "E_HP"],
+});
+out("elite_volatile", {
+  start_scene: "test_lab",
+  lua: `${labPlace(620, 540)}
+${stillScrapper("E", 700, 540, 8)}; ${ELITE}.make(E, 'volatile')
+${stillScrapper("BY1", 780, 540)}; ${stillScrapper("BY2", 700, 650)}`,
+  route: [
+    { wait: 3 }, { lua: "E:take_hit(99, 0, 0, 0)" }, { wait: 30, capture: "the fuse" },
+    { until: "nova.count('fuse') == 0", max: 100, capture: "the blast" }, { wait: 2 },
+    { lua: `RUNNER_HP = ${R0}.hp; BY1_HP = BY1.hp; BY2_HP = BY2.hp` },
+  ],
+  print: ["RUNNER_HP", "BY1_HP", "BY2_HP"],
+});
+out("elite_linked", {
+  start_scene: "test_lab",
+  lua: `${labPlace(300, 300)}
+${stillScrapper("E", 800, 540, 8)}; ${ELITE}.make(E, 'linked'); E.hp = 6
+${stillScrapper("PA", 900, 540)}`,
+  route: [
+    { wait: 30 }, { lua: "H1 = E.hp; HAS_PARTNER = tostring(nova.first('elite_fx').partner ~= nil)" },
+    { wait: 120, capture: "the link" }, { lua: "H2 = E.hp; PA:take_hit(99, 0, 0, 0)" },
+    { wait: 4 }, { lua: "H3 = E.hp" }, { wait: 120 }, { lua: "H4 = E.hp" },
+  ],
+  print: ["H1", "tostring(HAS_PARTNER)", "H2", "H3", "H4"],
+});
+
+// ---- the offers: never two cards of one family in an offer unless the pool cannot fill it; a guaranteed rarity; a reroll
+out("offers_rule", {
+  start_scene: "test_lab",
+  lua: `local R = ${RUN}; local C = require('data.cards')
+local function fam(o) local f = {}; local n = 0; for _, id in ipairs(o) do if not f[C.by_id[id].family] then f[C.by_id[id].family] = true; n = n + 1 end end; return n end
+SAME_FAMILY = 0; OFFERS = 0
+for s = 1, 200 do
+  R.begin(s)
+  for k = 1, 4 do
+    local o = R.offer(3); OFFERS = OFFERS + 1
+    if fam(o) < #o then SAME_FAMILY = SAME_FAMILY + 1 end
+    R.add_card(o[1])
+  end
+end
+-- a pool that cannot fill it: only body cards left, then baton and body only
+R.begin(5)
+for _, c in ipairs(C.list) do if c.family ~= 'body' then R.counts[c.id] = c.max end end
+ONLY_BODY = table.concat(R.offer(3), ',')
+R.begin(5)
+for _, c in ipairs(C.list) do if c.family ~= 'body' and c.family ~= 'baton' then R.counts[c.id] = c.max end end
+BATON_BODY = R.offer(3); BATON_BODY_FAMILIES = fam(BATON_BODY); BATON_BODY_N = #BATON_BODY
+-- the guarantee
+R.begin(9); G_BAD = 0; G_SAME = 0
+for s = 1, 200 do
+  R.begin(s)
+  local o = R.offer(3, { guarantee = 'uncommon' })
+  local u = false
+  for _, id in ipairs(o) do if C.by_id[id].rarity == 'uncommon' then u = true end end
+  if not u then G_BAD = G_BAD + 1 end
+  if fam(o) < #o then G_SAME = G_SAME + 1 end
+end
+UNCOMMON = {}; for _, c in ipairs(C.list) do if c.rarity == 'uncommon' then UNCOMMON[#UNCOMMON + 1] = c.id end end
+UNCOMMON = table.concat(UNCOMMON, ',')
+-- a reroll draws the same offer number again with another salt
+R.begin(77); R.offers = 4; PLAIN = table.concat(R.offer(3), ',')
+R.begin(77); R.offers = 4; R.reroll_next = true; REROLLED = table.concat(R.offer(3), ','); FLAG_AFTER = tostring(R.reroll_next)
+R.begin(1)`,
+  route: [{ wait: 2 }],
+  print: ["SAME_FAMILY", "OFFERS", "ONLY_BODY", "BATON_BODY_FAMILIES", "BATON_BODY_N", "G_BAD", "G_SAME", "UNCOMMON", "PLAIN", "REROLLED", "FLAG_AFTER"],
+});
+
+// ---- the strangers: Patch's three meetings (the lines advance, the choice works), Old Sal's truce
+const seedFor = (who) => `for s = 1, 400 do if ${RUN}.build_chain(s)[6].who == '${who}' then SEED_${who.toUpperCase()} = s; break end end`;
+const enterStranger = (seed, first) => ({ lua: `${first ? `${RUN}.begin_chain(${seed});` : ""} nova.goto_scene('gutter.stranger')` });
+const toTalk = [
+  { until: "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil", max: 30 }, { wait: 3 },
+  { walk_to: "stranger", who: "runner", max: 900 }, { press: "interact" }, { wait: 3 },
+];
+const talkOn = (choice) => [
+  { repeat: 8, until: `${TALK}.stage == 'choice'`, steps: [{ press: "interact" }, { wait: 3 }] },
+  ...(choice === 2 ? [{ hold: ["right"], frames: 4 }, { wait: 2 }] : [{ wait: 6 }]),
+  { press: "interact" }, { wait: 4 },
+];
+const visit = (n, seedVar, first, choice, set) => [
+  enterStranger(seedVar, first), ...toTalk,
+  { lua: `V${n}_SET = ${TALK}.set; V${n}_LINE = ${TALK}.lines[1]; V${n}_MET = ${META}.met[${TALK}.who]; V${n}_WHO = ${TALK}.who; V${n}_STAGE0 = ${TALK}.stage` },
+  { wait: 2, capture: `meeting ${n}: the first line` },
+  ...talkOn(choice), { until: `not ${TALK}.active`, max: 60 }, { wait: 6, capture: `meeting ${n}: the choice made` },
+  { lua: `V${n}_CHOSEN = ${TALK}.chosen.label; V${n}_MAXHP = ${R0}.max_hp; V${n}_HP = ${R0}.hp; V${n}_STAGE = ${TALK}.stage` },
+];
+out("stranger_patch", {
+  start_scene: "test_lab",
+  lua: `${META}.met.patch = 0; ${seedFor("patch")}`,
+  route: [
+    { lua: `SP = SEED_PATCH` },
+    ...visit(1, "SP", true, 1),
+    // saying goodbye after the choice is a line, not a new meeting
+    { press: "interact" }, { wait: 3 }, { lua: `MET_AFTER_BYE = ${META}.met.patch; BYE_ACTIVE = tostring(${TALK}.active)` },
+    // meeting 2 (the run goes on: health 5 of 14): heal to full
+    { lua: `${R0}.hp = 5; ${RUN}.take_from(${R0})` },
+    ...visit(2, "SP", false, 2),
+    ...visit(3, "SP", false, 1),
+    { lua: `MET_END = ${META}.met.patch` },
+  ],
+  print: ["SP", "V1_SET", "V1_LINE", "V1_MET", "V1_WHO", "V1_CHOSEN", "V1_MAXHP", "V1_HP", "V1_STAGE", "MET_AFTER_BYE", "BYE_ACTIVE",
+    "V2_SET", "V2_LINE", "V2_MET", "V2_CHOSEN", "V2_MAXHP", "V2_HP", "V3_SET", "V3_LINE", "V3_MET", "V3_CHOSEN", "V3_MAXHP", "MET_END"],
+});
+out("stranger_sal", {
+  start_scene: "test_lab",
+  lua: `${META}.met.old_sal = 0; ${seedFor("old_sal")}`,
+  route: [
+    { lua: `SS = SEED_OLD_SAL` },
+    ...visit(1, "SS", true, 1),
+    ...visit(2, "SS", false, 2),
+    ...visit(3, "SS", false, 2),
+    { lua: `TRUCE = tostring(${RUN}.perks.truce); MET_END = ${META}.met.old_sal; nova.goto_scene('test_lab')` },
+    { until: "nova.current_scene() == 'test_lab' and nova.named('runner') ~= nil", max: 30 }, { wait: 2 },
+    { lua: `A0 = ${R0}.hp; ${R0}:take_damage(2); A1 = ${R0}.hp` }, { wait: 60 },
+    { lua: `${R0}:take_damage(2); A2 = ${R0}.hp; nova.goto_scene('test_room')` },
+    { until: "nova.current_scene() == 'test_room' and nova.named('runner') ~= nil", max: 30 }, { wait: 2 },
+    { lua: `B0 = ${R0}.hp; ${R0}:take_damage(2); B1 = ${R0}.hp` }, { wait: 60 },
+    { lua: `${R0}:take_damage(2); B2 = ${R0}.hp` },
+  ],
+  print: ["SS", "V1_SET", "V1_LINE", "V1_CHOSEN", "V2_SET", "V2_LINE", "V2_CHOSEN", "V3_SET", "V3_LINE", "V3_MET", "TRUCE", "MET_END", "A0", "A1", "A2", "B0", "B1", "B2"],
+});
+
+// ---- the shop and the bank: the sums
+out("shop_sums", {
+  start_scene: "test_lab",
+  lua: `local R, S, J, M = ${RUN}, ${SHOP}, ${J}, ${META}
+R.begin_chain(5); local r = nova.named('runner'); r.hp = 6; J.scrap = 100
+local ok1, t1 = S.buy('heal', r); HEAL1 = tostring(ok1) .. ' ' .. J.scrap .. ' ' .. r.hp
+local ok2 = S.buy('heal', r); r.hp = 12; local ok2b, t2b = S.buy('heal', r); HEAL_FULL = tostring(ok2b) .. ' ' .. J.scrap .. ' ' .. r.hp
+r.hp = 11; S.buy('heal', r); HEAL_PART = J.scrap .. ' ' .. r.hp          -- 4 points for 20 even when only 1 fits
+local ok3 = S.buy('reroll', r); REROLL1 = tostring(ok3) .. ' ' .. J.scrap .. ' ' .. tostring(R.reroll_next)
+local ok4 = S.buy('reroll', r); REROLL2 = tostring(ok4) .. ' ' .. J.scrap
+local ok5, t5 = S.buy('jinx', r); JINX = tostring(ok5) .. ' ' .. J.scrap .. ' ' .. t5
+J.scrap = 10; local ok6 = S.buy('heal', r); r.hp = 3; local ok6b = S.buy('heal', r); POOR = tostring(ok6b) .. ' ' .. J.scrap
+J.scrap = 83; M.keys = 0; local ok7, t7 = S.buy('bank', r); BANK1 = tostring(ok7) .. ' ' .. J.scrap .. ' ' .. M.keys .. ' ' .. R.banked .. ' ' .. t7
+J.scrap = 3; local ok8, t8 = S.buy('bank', r); BANK2 = tostring(ok8) .. ' ' .. J.scrap .. ' ' .. M.keys .. ' ' .. t8
+J.scrap = 100; local ok9 = S.buy('bank', r); BANK3 = J.scrap .. ' ' .. M.keys
+R.begin(1)`,
+  route: [{ wait: 2 }],
+  print: ["HEAL1", "HEAL_FULL", "HEAL_PART", "REROLL1", "REROLL2", "JINX", "POOR", "BANK1", "BANK2", "BANK3"],
+});
+// ... and in the room: walk to the bank, the heal stall and the shut jinx stall, press interact
+out("shop_room", {
+  start_scene: "gutter.walk",
+  route: [
+    { wait: 5 }, { lua: `${J}.scrap = 83; ${META}.keys = 0` },
+    { walk_to: "bank", who: "runner", max: 900 }, { wait: 2, capture: "at the bank" }, { press: "interact" }, { wait: 6, capture: "banked" },
+    { lua: `BANK_SCRAP = ${J}.scrap; BANK_KEYS = ${META}.keys; BANKED = ${RUN}.banked; ${J}.scrap = 50; ${R0}.hp = 6` },
+    { walk_to: "shop_heal", who: "runner", max: 900 }, { wait: 2, capture: "at the shop" }, { press: "interact" }, { wait: 6, capture: "healed" },
+    { lua: `HEAL_SCRAP = ${J}.scrap; HEAL_HP = ${R0}.hp` },
+    { walk_to: "shop_jinx", who: "runner", max: 900 }, { wait: 2 }, { press: "interact" }, { wait: 6, capture: "the shut stall" },
+    { lua: `JINX_SCRAP = ${J}.scrap; JINX_TOAST = nova.scene_now().toast` },
+  ],
+  print: ["BANK_SCRAP", "BANK_KEYS", "BANKED", "HEAL_SCRAP", "HEAL_HP", "JINX_SCRAP", "JINX_TOAST"],
+});
+
+// ---- carry: health, charge, scrap and cards through real doors, rooms 1 to 4 (the third made a stranger's room): nothing is invincible here
+out("carry_chain", {
+  start_scene: "test_lab",
+  lua: `local R = ${RUN}; R.begin_chain(1234); R.chain[3] = { index = 3, slot = 3, kind = 'stranger', scene = 'gutter.stranger', who = 'patch', layout = 1 }
+nova.goto_scene(R.chain[1].scene)`,
+  route: [
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 30 }, { wait: 3 },
+    { lua: `local r = ${R0}; r.hp = 7; r.charge = 1.5; ${J}.scrap = 44; ${RUN}.add_card('long_reach', r); ${RUN}.add_card('capacitor', r)
+local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil` },
+    { until: "nova.scene_now().state == 'cards'", max: 300 }, { wait: 40 },
+    { lua: `local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 }, { press: "interact" }, { wait: 10 },
+    { lua: `A_HP = ${R0}.hp; A_CHARGE = string.format('%.2f', ${R0}.charge); A_SCRAP = ${J}.scrap; A_CARDS = #${RUN}.cards; A_MAXHP = ${R0}.max_hp; A_MAXCH = ${R0}.max_charge` },
+    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    { lua: `B_SCENE = nova.current_scene(); B_IS_2 = tostring(B_SCENE == ${RUN}.chain[2].scene); B_HP = ${R0}.hp; B_CHARGE = string.format('%.2f', ${R0}.charge); B_SCRAP = ${J}.scrap; B_CARDS = #${RUN}.cards; B_MAXHP = ${R0}.max_hp; B_MAXCH = ${R0}.max_charge
+local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil` },
+    { until: "nova.scene_now().state == 'cards'", max: 300 }, { wait: 40 },
+    { lua: `local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 }, { press: "interact" }, { wait: 10 },
+    { lua: `B2_CARDS = #${RUN}.cards; B2_SCRAP = ${J}.scrap` },
+    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    { lua: `C_SCENE = nova.current_scene(); C_HP = ${R0}.hp; C_CHARGE = string.format('%.2f', ${R0}.charge); C_SCRAP = ${J}.scrap; C_CARDS = #${RUN}.cards; C_MAXHP = ${R0}.max_hp; C_STATE = nova.scene_now().state` },
+    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    { lua: `D_SCENE = nova.current_scene(); D_IS_ELITE = tostring(D_SCENE == ${RUN}.chain[4].scene); D_HP = ${R0}.hp; D_CHARGE = string.format('%.2f', ${R0}.charge); D_SCRAP = ${J}.scrap; D_CARDS = #${RUN}.cards; D_MAXHP = ${R0}.max_hp; D_ROOM = ${RUN}.room` },
+  ],
+  print: ["A_HP", "A_CHARGE", "A_SCRAP", "A_CARDS", "A_MAXHP", "A_MAXCH", "B_IS_2", "B_HP", "B_CHARGE", "B_SCRAP", "B_CARDS", "B_MAXHP", "B_MAXCH", "B2_CARDS", "B2_SCRAP",
+    "C_SCENE", "C_HP", "C_CHARGE", "C_SCRAP", "C_CARDS", "C_MAXHP", "C_STATE", "D_IS_ELITE", "D_HP", "D_CHARGE", "D_SCRAP", "D_CARDS", "D_MAXHP", "D_ROOM"],
+});
+
+// ---- death anywhere ends the run at the summary; interact starts again at room 1 with a new seed and nothing held
+out("death_summary", {
+  start_scene: "test_lab",
+  lua: `local R = ${RUN}; R.begin_chain(77); OLD_SEED = R.seed; R.room = 3; R.cleared = 3; nova.goto_scene(R.chain[4].scene)`,
+  route: [
+    { until: `nova.current_scene() == ${RUN}.chain[4].scene and nova.named('runner') ~= nil`, max: 30 }, { wait: 3 },
+    { lua: `${RUN}.add_card('plating', ${R0}); ${RUN}.add_card('long_reach', ${R0}); ${RUN}.banked = 5; ${R0}.hp = 1` },
+    { wait: 30 }, { lua: `${R0}:take_damage(2); DEAD_STATE = ${R0}.state` },
+    { until: "nova.current_scene() == 'summary'", max: 200, capture: "the summary" },
+    { lua: `local s = ${RUN}.summary; SUM = s.result .. ' ' .. s.cleared .. ' ' .. string.format('%.0f', s.time) .. ' ' .. s.keys .. ' ' .. s.cards; SUM_ACTIVE = tostring(${RUN}.active)` },
+    { wait: 60 }, { press: "interact" },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5, capture: "room 1 again" },
+    { lua: `NEW_SEED = ${RUN}.seed; SEED_CHANGED = tostring(NEW_SEED ~= OLD_SEED); ROOM_AFTER = ${RUN}.room; CARDS_AFTER = #${RUN}.cards; HP_AFTER = ${R0}.hp; MAX_AFTER = ${R0}.max_hp; SCRAP_AFTER = ${J}.scrap; FIRST = tostring(nova.current_scene() == ${RUN}.chain[1].scene)` },
+  ],
+  print: ["DEAD_STATE", "SUM", "SUM_ACTIVE", "SEED_CHANGED", "ROOM_AFTER", "CARDS_AFTER", "HP_AFTER", "MAX_AFTER", "SCRAP_AFTER", "FIRST"],
+});
+
+// ---- every layout starts, warns its first wave and spawns it (no missing spawn point, no warning): a quick look at each, with the invincible player
+
+// ---- the whole run, room 1 to the summary, with the test player (invincible: this proves the rooms, the chain, the doors, the talk, the
+// shop and the summary, not the fighting)
+const clearRoom3a = { repeat: 200, until: "nova.scene_now().state == 'cards'", steps: [
+  { until: "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'", max: 80, may_time_out: true },
+  { fight: "enemy", attack: "attack", max: 1500, may_time_out: true },
+  { wait: 4 },
+] };
+const fightRoomSteps = (i) => [
+  { lua: `ROOM${i} = nova.current_scene(); KIND${i} = ${RUN}.chain[${i}].kind` },
+  clearRoom3a, { wait: 48, capture: `room ${i}: cleared, the cards risen` },
+  { lua: `PAID${i} = nova.scene_now().paid; CARDS${i} = #${RUN}.cards` },
+  { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 },
+  { lua: `CARDS${i}_AFTER = #${RUN}.cards; SCRAP${i} = ${J}.scrap` },
+  { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+];
+const wholeRun = (seed) => ({
+  start_scene: "run_start",
+  seed,
+  invincible: true,
+  route: [
+    { until: "nova.named('runner') ~= nil", max: 30 }, { wait: 2 },
+    { lua: `CHAIN = ''; for i = 1, #${RUN}.chain do CHAIN = CHAIN .. ${RUN}.chain[i].scene .. (i < #${RUN}.chain and ' ' or '') end; RUN_SEED = ${RUN}.seed; MARK = ${RUN}.chain[4].mark; WHO = ${RUN}.chain[6].who` },
+    ...[1, 2, 3, 4, 5].flatMap((i) => fightRoomSteps(i)),
+    // 6: the stranger
+    { lua: `ROOM6 = nova.current_scene(); KIND6 = ${RUN}.chain[6].kind; MET0 = ${META}.met[${RUN}.chain[6].who]` },
+    { walk_to: "stranger", who: "runner", max: 900 }, { press: "interact" }, { wait: 3, capture: "a stranger's talk" },
+    { repeat: 10, until: `${TALK}.stage == 'done'`, steps: [{ press: "interact" }, { wait: 3 }] }, { wait: 5, capture: "the choice made" },
+    { lua: `TALKED = ${TALK}.chosen.label; MET1 = ${META}.met[${RUN}.chain[6].who]` },
+    { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+    ...fightRoomSteps(7),
+    // 8: the boss placeholder
+    { lua: `ROOM8 = nova.current_scene(); KIND8 = ${RUN}.chain[8].kind; WON0 = tostring(${RUN}.won)` }, { wait: 20, capture: "the boss comes in the next slice" },
+    { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+    // 9: the walk-through room: the bank
+    { lua: `ROOM9 = nova.current_scene(); WON9 = tostring(${RUN}.won); SCRAP_BEFORE_BANK = ${J}.scrap; KEYS0 = ${META}.keys` },
+    { walk_to: "bank", who: "runner", max: 900 }, { press: "interact" }, { wait: 6, capture: "the bank" },
+    { lua: `KEYS1 = ${META}.keys; SCRAP_AFTER_BANK = ${J}.scrap` },
+    // (the last door leads to a scene with no walker: walk beside it and push, as the slice-2 route did)
+    { walk_to: [2010, 424], who: "runner", max: 1500 }, { hold: ["right"], until: "nova.current_scene() == 'summary'", max: 160 }, { wait: 40, capture: "the summary" },
+    { lua: `local s = ${RUN}.summary; END_SCENE = nova.current_scene(); SUM = s.result .. ' ' .. s.cleared .. ' ' .. s.keys .. ' ' .. s.cards; SUM_TIME = string.format('%.0f', s.time)` },
+  ],
+  print: ["RUN_SEED", "CHAIN", "MARK", "WHO", "ROOM1", "ROOM2", "ROOM3", "ROOM4", "ROOM5", "ROOM6", "ROOM7", "ROOM8", "ROOM9", "KIND4", "KIND7", "PAID1", "PAID4", "PAID7", "CARDS1_AFTER", "CARDS4_AFTER", "CARDS5_AFTER", "CARDS7_AFTER",
+    "MET0", "MET1", "TALKED", "WON0", "WON9", "SCRAP_BEFORE_BANK", "KEYS0", "KEYS1", "SCRAP_AFTER_BANK", "END_SCENE", "SUM", "SUM_TIME"],
+});
+out("run_a", wholeRun(3));
+out("run_b", wholeRun(20));
+
+// =====================================================================================================================
+// Pictures to look at (slice 3a): each hazard, each elite mark, a stranger's talk, the shop (saved under build/look_*)
+// =====================================================================================================================
+{
+  const base = (n) => JSON.parse(fs.readFileSync(`${dir}/r_${n}.json`, "utf8"));
+  withLook("look_barrel", { ...base("barrel_inside"), route: [
+    { wait: 3, capture: "a barrel, a stall, another barrel" }, { lua: "B1:take_hit(1, 1, 0, 0)" }, { wait: 6, capture: "the fuse is lit: the blast ring" }, { wait: 40, capture: "the fuse runs" },
+    { until: "not B1:is_alive()", max: 100, capture: "the blast" }, { wait: 8, capture: "hurt" }, { wait: 50, capture: "the second barrel" },
+  ] }, { ...look("barrel"), crop_to: "stall", crop_margin: 190 });
+  withLook("look_sign", { ...base("sign_puddle"), route: [
+    { wait: 3, capture: "a sign over a puddle, another puddle far off" },
+    { lua: `${R0}.x = 400; ${R0}.facing = 'right'` }, { wait: 4 }, { hold: ["ranged", "right"], frames: 6 }, { wait: 6, capture: "the shot flies" }, { wait: 12, capture: "the sign is down" },
+    { lua: `${R0}.x, ${R0}.y = 700, 340` }, { wait: 30, capture: "standing in the live puddle" }, { wait: 120, capture: "live" }, { wait: 140, capture: "dry again" },
+  ] }, { ...look("sign"), crop_to: "sign", crop_margin: 330 });
+  withLook("look_tram", { ...base("tram"), lua: base("tram").lua + `; ${R0}.x, ${R0}.y = 500, 400; nova.spawn('rail', 48, 540, { dir = 'h', span = 1344 })`, route: [
+    { wait: 20, capture: "the rail" }, { until: "TR.state == 'warn'", max: 100 }, { wait: 6, capture: "the bell: the rail flashes" }, { wait: 50, capture: "still flashing" },
+    { until: "TR.state == 'cross'", max: 100 }, { wait: 12, capture: "the tram comes in" }, { wait: 14, capture: "it flattens a scrapper on the rail" }, { wait: 30, capture: "it passes" },
+  ] }, look("tram"));
+  const pic = (n, caps) => ({ ...base(n), route: caps });
+  withLook("look_elite_shielded", pic("elite_shielded", [{ wait: 3, capture: "the shield on its front" }, { hold: ["ranged"], frames: 6 }, { wait: 22, capture: "the shot is blocked" }, { lua: "E.facing = 'right'" }, { wait: 8, capture: "the shield turns away" }]),
+    { ...look("elite_shielded"), crop_to: "elite_fx", crop_margin: 300 });
+  withLook("look_elite_splitting", pic("elite_splitting", [{ wait: 3, capture: "a double-size scrapper" }, { lua: "E:take_hit(99, 0, 0, 0)" }, { wait: 4, capture: "two small ones" }, { wait: 20, capture: "they come" }]),
+    { ...look("elite_splitting"), crop_to: "elite_fx", crop_margin: 250 });
+  withLook("look_elite_magnetic", pic("elite_magnetic", [{ lua: `${R0}.x, ${R0}.y = 500, 600; ${R0}.charge = 3; ${stillScrapper("E", 900, 540, 8)}; ${ELITE}.make(E, 'magnetic')` }, { wait: 15, capture: "its pull rings" }, { hold: ["ranged"], frames: 6 }, { wait: 5, capture: "the shot leaves" }, { wait: 6, capture: "it bends" }, { wait: 8, capture: "it hits" }]),
+    { ...look("elite_magnetic"), crop_to: "elite_fx", crop_margin: 420 });
+  withLook("look_elite_volatile", pic("elite_volatile", [{ wait: 3, capture: "a double-size scrapper" }, { lua: "E:take_hit(99, 0, 0, 0)" }, { wait: 6, capture: "dead: the fuse is lit" }, { wait: 30, capture: "the ring flashes" }, { until: "nova.count('fuse') == 0", max: 100, capture: "the blast" }, { wait: 6, capture: "after" }]),
+    { ...look("elite_volatile"), crop_to: "fuse", crop_margin: 220 });
+  withLook("look_elite_linked", pic("elite_linked", [{ wait: 10, capture: "linking" }, { wait: 40, capture: "the line, healing" }, { wait: 60, capture: "healed" }, { lua: "PA:take_hit(99, 0, 0, 0)" }, { wait: 6, capture: "partner dead: the line is gone" }]),
+    { ...look("elite_linked"), crop_to: "elite_fx", crop_margin: 280 });
+  withLook("look_stranger", { start_scene: "test_lab", lua: `${META}.met.patch = 1; ${seedFor("patch")}`, route: [
+    { lua: `${RUN}.begin_chain(SEED_PATCH); nova.goto_scene('gutter.stranger')` }, ...toTalk.slice(0, 2), { wait: 20, capture: "the stranger's room" },
+    { walk_to: "stranger", who: "runner", max: 900 }, { wait: 3, capture: "by her: the prompt" }, { press: "interact" }, { wait: 3, capture: "a line" },
+    { press: "interact" }, { wait: 3, capture: "the next" }, { press: "interact" }, { wait: 3 }, { press: "interact" }, { wait: 3, capture: "the choice" },
+    { hold: ["right"], frames: 4 }, { wait: 3, capture: "the other choice" },
+  ] }, look("stranger"));
+  withLook("look_shop", { start_scene: "gutter.walk", route: [
+    { wait: 10, capture: "the walk-through room" }, { lua: `${J}.scrap = 83; ${R0}.hp = 6` },
+    { walk_to: "shop_heal", who: "runner", max: 900 }, { wait: 3, capture: "the heal stall" }, { press: "interact" }, { wait: 8, capture: "bought: +4 health" },
+    { walk_to: "shop_jinx", who: "runner", max: 900 }, { wait: 3, capture: "the shut stall" }, { press: "interact" }, { wait: 6, capture: "shut" },
+    { walk_to: "bank", who: "runner", max: 900 }, { wait: 3, capture: "the bank" }, { press: "interact" }, { wait: 8, capture: "banked" },
+  ] }, look("shop"));
+  withLook("look_summary", { start_scene: "summary", lua: `${RUN}.begin_chain(3); ${RUN}.cleared = 8; ${RUN}.banked = 67; ${RUN}.add_card('plating'); ${RUN}.add_card('live_wire'); ${RUN}.time = 311; ${RUN}.won = true; ${RUN}.finish('win'); nova.goto_scene('summary')`,
+    route: [{ wait: 50, capture: "the summary at the win" }] }, look("summary"));
+}

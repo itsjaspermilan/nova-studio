@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "barrel.png",
+  "frame_width": 16,
+  "frame_height": 16,
+  "columns": 1,
+  "frames": 1,
+  "frame_duration_ms": 100
+}

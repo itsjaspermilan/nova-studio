@@ -11,7 +11,8 @@ function Warn:update(dt)
   if J.frozen() then return end
   self.t = self.t + dt
   if self.t >= self.time then
-    nova.spawn(self.kind, self.x, self.y, self.props)
+    local e = nova.spawn(self.kind, self.x, self.y, self.props)
+    if self.elite then require("lib.elite").make(e, self.elite) end   -- (the room's elite: its mark)
     require("lib.fx").burst(self.x, self.y - 20, 3)
     nova.log("spawned " .. self.kind)
     self:destroy()

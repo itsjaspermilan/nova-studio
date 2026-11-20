@@ -68,6 +68,8 @@ return {
     tell_thrower = 0.7, throw = 0.6, bottle_smash = 0.7, fire_start = 0.6,
     rev_up = 0.7, wall_thud = 0.8, tell_mimic = 0.7, can_spit = 0.6, tell_tout = 0.6, tout_off = 0.7,
     card_rise = 0.6, card_take = 0.55, zap = 0.6, ricochet = 0.5, stun = 0.6,
+    -- slice 3a
+    blast = 0.8, tram_bell = 0.7, tram_pass = 0.6, sign_drop = 0.7, buy = 0.6,
   },
   music = { track = "undertow", volume = 0.3 },
 }

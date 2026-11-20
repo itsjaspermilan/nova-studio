@@ -1,0 +1,36 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 300, 'right'\nE = nova.spawn('scrapper', 800, 540); E.hp = 8; require('lib.status').stun(E, 99); require('lib.elite').make(E, 'linked'); E.hp = 6\nPA = nova.spawn('scrapper', 900, 540); PA.hp = 30; require('lib.status').stun(PA, 99)",
+ "route": [
+  {
+   "wait": 10,
+   "capture": "linking"
+  },
+  {
+   "wait": 40,
+   "capture": "the line, healing"
+  },
+  {
+   "wait": 60,
+   "capture": "healed"
+  },
+  {
+   "lua": "PA:take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 6,
+   "capture": "partner dead: the line is gone"
+  }
+ ],
+ "print": [
+  "H1",
+  "tostring(HAS_PARTNER)",
+  "H2",
+  "H3",
+  "H4"
+ ],
+ "out": "build/look_elite_linked",
+ "columns": 3,
+ "crop_to": "elite_fx",
+ "crop_margin": 280
+}

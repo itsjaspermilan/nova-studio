@@ -5,6 +5,10 @@ local P = require("data.player")
 
 local H = {}
 
+-- Where the damage being dealt now comes from ("shot" while a shot hits; nil for the baton, fire and the rest): a Shielded elite and a
+-- neon sign only mind shots.
+H.from = nil
+
 local CHAIN_RANGE = 144 -- Live Wire jumps to enemies within 3 tiles of the one hit
 
 -- The damage a baton hit does to `e`: more when a shot marked it (Tracer).
@@ -19,7 +23,7 @@ function H.live_wire(runner, target)
   if m <= 0 then return end
   local others = {}
   for _, e in ipairs(nova.all("hurtable")) do
-    if e ~= target then
+    if e ~= target and not e.prop then
       local d = target:distance_to(e)
       if d <= CHAIN_RANGE then others[#others + 1] = { e = e, d = d } end
     end

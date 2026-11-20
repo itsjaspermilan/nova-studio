@@ -1,0 +1,58 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 540, 'right'\nE = nova.spawn('scrapper', 800, 540); E.hp = 8; require('lib.status').stun(E, 99); E.facing = 'left'; require('lib.elite').make(E, 'shielded'); BIG_SX = E.sx; BASE_SX = nova.spawn('scrapper', 100, 100).sx",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "HP0 = E.hp; SIZE = E.size_mult; MARK = E.elite"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 40,
+   "capture": "a shot at its front"
+  },
+  {
+   "lua": "HP_FRONT = E.hp; BLOCKED = E.blocked or 0; E.facing = 'right'"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 40,
+   "capture": "a shot at its back"
+  },
+  {
+   "lua": "HP_BACK = E.hp; E.facing = 'left'; nova.named('runner').x = 744"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 30,
+   "capture": "the baton at its front"
+  },
+  {
+   "lua": "HP_BATON = E.hp"
+  }
+ ],
+ "print": [
+  "HP0",
+  "SIZE",
+  "MARK",
+  "string.format('%.1f', BIG_SX / BASE_SX)",
+  "HP_FRONT",
+  "BLOCKED",
+  "HP_BACK",
+  "HP_BATON"
+ ]
+}

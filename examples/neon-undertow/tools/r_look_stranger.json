@@ -1,0 +1,68 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').met.patch = 1; for s = 1, 400 do if require('lib.run').build_chain(s)[6].who == 'patch' then SEED_PATCH = s; break end end",
+ "route": [
+  {
+   "lua": "require('lib.run').begin_chain(SEED_PATCH); nova.goto_scene('gutter.stranger')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 3
+  },
+  {
+   "wait": 20,
+   "capture": "the stranger's room"
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 3,
+   "capture": "by her: the prompt"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3,
+   "capture": "a line"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3,
+   "capture": "the next"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3,
+   "capture": "the choice"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 3,
+   "capture": "the other choice"
+  }
+ ],
+ "out": "build/look_stranger",
+ "columns": 3
+}

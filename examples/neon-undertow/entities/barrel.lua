@@ -1,0 +1,50 @@
+-- An explosive barrel: solid cover. Any hit (baton, shot, fire, a blast) lights a fuse; `fuse` seconds later it blasts everyone within
+-- `radius` (the runner, enemies, stalls, other barrels, which then light their own). Numbers: data/hazards.lua.
+local H = require("data.hazards").barrel
+local J = require("lib.juice")
+local D = require("lib.draw")
+local P = require("data.player")
+local Blast = require("lib.blast")
+
+local Barrel = nova.entity { tags = { "hurtable", "solid", "prop", "barrel" }, velocity = false, sx = 1, sy = 1, t = 0, state = "idle" }
+
+function Barrel:create()
+  self.hitbox = { -H.w / 2, -H.h, H.w, H.h }      -- (units: sx is 1; the picture is stretched to this box in draw)
+  self.depth = -self.y
+  self.prop = true
+end
+
+function Barrel:take_hit(damage, dx, dy, knock)
+  if self.state ~= "idle" or damage <= 0 then return false end
+  self.state, self.t = "fuse", 0
+  nova.sound.play("fire_start", { volume = P.sfx.fire_start })
+  nova.log("barrel fuse lit")
+  return true
+end
+
+function Barrel:update(dt)
+  self.depth = -self.y
+  if J.frozen() then return end
+  if self.state == "fuse" then
+    self.t = self.t + dt
+    if self.t >= H.fuse then
+      self.state = "dead"
+      local x, y = self.x, self.y
+      self:destroy()
+      Blast.at(x, y, H, self)
+    end
+  end
+end
+
+function Barrel:draw()
+  if self.state == "fuse" then
+    local on = math.floor(self.t * 12) % 2 == 0
+    D.disc(self.x, self.y, H.radius, { 255, 138, 43, on and 55 or 25 })
+    D.ring(self.x, self.y, H.radius, { 255, 138, 43, on and 255 or 150 }, 5, 40)
+  end
+  local x, y = nova.cam.to_screen(self.x, self.y)
+  local lit = self.state == "fuse" and math.floor(self.t * 12) % 2 == 0
+  nova.sprite("barrel", x, y - H.h / 2 - 4, { w = H.w + 10, h = H.h + 26, color = lit and { 255, 200, 160 } or { 255, 255, 255 } })
+end
+
+return Barrel

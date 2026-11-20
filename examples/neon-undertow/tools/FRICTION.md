@@ -112,3 +112,52 @@ Same form. Most costly first.
     directory) and one deleted the other's report. Fixed with a counter in `scratch()`; worth copying into any later test file.
 
 Top five by cost: 2, 1, 5, 3, 4 (then 6, 9).
+
+# Friction log, slice 3a (one run of the Gutter Market, room 1 to the boss door)
+
+Same form. Most costly first.
+
+1. **`scene_write` cannot write a scene into a folder.** The design (and `nova.scene_data("levels.3")`, and the guide) keep levels in
+   `scenes/<district>/<name>.scene.json`, but `scene_write` answers "Scene names use letters, numbers, - and _" to `gutter/s1_square`
+   and to `gutter.s1_square`; `scene_preview` takes both. 2 attempts. Worked round in `tools/gutter.mjs`: write each room under a
+   temporary name (`tmp_gutter_s1_square`), then rename the file into `scenes/gutter/` (19 times, in the script). One step:
+   `scene_write { "name": "gutter/s1_square" }` (and the scene's Lua file beside it).
+
+2. **`scene_preview` draws an entity with no sprite in its class as a 1-tile orange box, wherever its real size is set in `create`.**
+   The district's stalls (3 to 5 tiles long), rails and trams (a whole room wide) were all boxes the size of one tile, so a map of
+   a room could not show where the cover or the tram's lane runs; I judged them from the painted tiles and the plan in the script, and
+   from `play` pictures after. (I give them their size in `create` from data/hazards.lua on purpose: the art is about to change.)
+   One step: a class-level `size = { w, h }` in world units (the sprite is stretched to it, the hitbox and the preview follow), which is
+   also how an entity says "this big, whatever the picture is" without `sx = 1`, a hitbox worked out in `create` and a hand-written
+   `draw()`.
+
+3. **A `play` plan has no way to start a scene with arguments or after setting a seed in Lua.** `lua` runs after the start scene was
+   built; `seed` only seeds `math.random`. A whole run that must be repeatable needs the chain's seed before room 1 builds, so the route
+   starts in a `run_start` scene that draws the seed with `math.random` (the plan's seed 3 gives run seed 578954) and the Rust test
+   asserts the chain it printed, not a seed it chose. 2 attempts (the first built the chain after room 1, which was another room). One
+   step: `"start_lua": "<lua>"` run before the start scene is built, or `"args": [...]` for `goto_scene`.
+
+4. **Same as slice 2 #4, still there: `walk_to` a door whose next scene has no walker is reported as an ERROR step** ("the walker is gone"),
+   here at the summary. Worked round as then (walk beside the door, `hold right until` the scene changes). It was 1 attempt this time
+   because the log already said so; the fix is still one step: a scene change during `walk_to` is always the success the note describes.
+
+5. **`print` expressions are evaluated at every picture, so a strip's caption lines are full of errors and `nil`s until the value exists**
+   (`string.format ... number expected, got nil` at the first captions of every route that prints a measurement). Harmless but it
+   buries the one real error in a long answer; I filtered with `grep` every time. One step: print only at the end unless a step says
+   `"print": true`, or say "nil" quietly.
+
+6. **A painted `paint` prop is always solid or always scenery for the whole layer (`solid_props`).** Rails want to be painted tiles that can be
+   walked over beside crates that cannot; there is no way to say it in one layer, so the rail is an entity drawn from a one-tile
+   picture (`entities/rail.lua`), not part of the painted map. One step: a `walkable` flag on a prop (the same wish as slice 1 #10 for
+   puddles).
+
+7. **A `repeat ... until` followed at once by `press` lost the press** (the talk's last line advanced to the choice on the frame the loop
+   ended, and the next press, 1 frame later, was read as the same press: the choice was not made, and the route went on with nothing
+   chosen, 3 attempts, found by printing the stage each step). Worked round with a `wait: 6` before the press that chooses. The guide could
+   say how many frames a tap needs after another.
+
+8. A hit does not say what hit it. `take_hit(damage, dx, dy, knock)` is the game's own, so this is not Nova's, but a Shielded elite
+   and a sign both need "was it a shot?"; I added `Hits.from = "shot"` set round the shot's call. Worth copying into the next slice's
+   enemies (Shieldbearer, Mirror Drone) rather than reading `knock == 0`.
+
+Top five by cost: 1, 3, 7, 2, 5 (then 4, 6).
