@@ -10,34 +10,46 @@ scripts/env.sh cargo build --release -p nova-studio --bin nova-ogg      # for so
 NOVA_PROJECT=/path/to/game scripts/nova-mcp.sh                          # serves MCP on stdin/stdout
 ```
 
-`.mcp.json` at the repo root registers it for Claude Code. `scripts/nova-mcp-call.mjs <tool> '<json>'` calls one tool over
-the real protocol (`--list` shows them), which is how this repository's own games were made.
+`.mcp.json` at the repo root registers it for Claude Code. From a shell, `scripts/nova-tool <tool> '<json>'` calls one tool
+over the real protocol, which is how this repository's own games were made:
+
+```sh
+scripts/nova-tool --list                       # every tool: its whole description and its parameters (* required)
+scripts/nova-tool --help play                  # one tool: each parameter with its type and meaning, and an example call
+scripts/nova-tool --project /path/to/game check
+scripts/nova-tool play @/path/to/args.json     # arguments from a file; NOVA_PROJECT names the game too
+```
+
+`scripts/nova-tool` is `scripts/env.sh node scripts/nova-mcp-call.mjs "$@"`, so it runs from any folder (plain `node` is not
+set up on this machine: always go through `scripts/env.sh`, and give paths whole). A tool's name may be written with or
+without its `nova_` prefix. Every tool gives one working call as the example of its schema (`inputSchema.examples`).
 
 **Making a game with these tools, step by step, and how to check each step: `docs/agent-guide.md`.**
 
 | Tool | Makes or shows |
 | --- | --- |
-| `api` | the Lua API looked up by word: signatures, options and descriptions (from `studio/src/lib/nova-api.json`) |
+| `api` | the Lua API looked up by word: signatures, options and descriptions (from `studio/src/lib/nova-api.json`); `group` lists a whole group with each entry's signature and what it does |
 | `project_create`, `project_info` | `nova.json` and `main.lua`; a listing grouped like the resource tree |
 | `read_file`, `write_file` | Lua and other text files |
-| `model_write` | `models/<name>.model.json` (the model editor's file) and `models/<name>.glb`; `bend: true` gives free-mesh limbs automatic weights, so they bend with the parts around them |
-| `model_preview` | a picture of a model from any angle, rendered by the game's own renderer; posed by a `clip` at a `time`; or `strip: 8`, a clip as one picture of eight moments from the front and the side on a ground line, with each part's joint height per moment as text |
-| `sfx_write` | `sounds/<name>.sfx.json` and `.wav` from the sound editor's synth (`arpNotes` for a short tune), and the sound's report |
+| `model_write` | `models/<name>.model.json` (the model editor's file) and `models/<name>.glb`; `bend: true` gives free-mesh limbs automatic weights, so they bend with the parts around them. Its description gives the exact shape of `clips` (tracks, keys, absolute values) with an example, and a clip's `events`: named moments (`{ "t": 0.25, "name": "step" }`) the game is told of as the clip passes them |
+| `model_preview` | a picture of a model from any angle, rendered by the game's own renderer; posed by a `clip` at a `time`; or `strip: 8`, a clip as one picture of eight moments from the front and the side on a ground line, with the heights per moment as text, every row explained: the lowest point of the whole model and of each part (a foot's sole) beside its joint (the ankle) |
+| `sfx_write` | `sounds/<name>.sfx.json` and `.wav` from the sound editor's synth (`arpNotes` for a short tune), and the sound's report. The presets pass the report's own check (a test keeps it so) |
 | `song_write` | `music/<name>.song.json` and the streamed `.ogg` (a drums track needs no `wave`) |
-| `sound_report` | a sound, a song, several as a mix, or the recording of a run, in numbers and words (level, loudness over time, where the energy sits, strongest lines, clipping, clicks, a loop's seam) with a spectrogram |
-| `sprite_write` | a pixel sprite or tileset drawn with text, as `sprites/<name>.png` and `.sprite.json`: in one call or several (`append`, `at`), with copied, mirrored, turned and recoloured frames and named frames (`.tileset.json`); returns the sheet magnified |
-| `sprite_preview` | any sprite magnified on a checker background, frames numbered, one strip per animation with the durations |
+| `sound_report` | a sound, a song, several as a mix, or the recording of a run, in numbers and words (level, loudness over time, where the energy sits, strongest lines, clipping, clicks, a loop's seam) with a spectrogram. Every warning ends with the setting to change, its value and which way (it reads the `.sfx.json` or `.song.json` the sound was made from). `sounds` takes `{ "name", "volume" }` pairs, so the mix is as the game plays it, and says where the music sits. In a run's recording a click or a clip is named with its frame and the sounds that started there. A song's seam says which tracks sound at it, and a note that starts on the first step is not a fault. `file` may be any `.wav` or `.ogg` by its whole path |
+| `sprite_write` | a pixel sprite or tileset drawn with text, as `sprites/<name>.png` and `.sprite.json`: in one call or several (`append`, `at`), with copied, mirrored, turned, recoloured and one-colour (`silhouette`) frames and named frames (`.tileset.json`); returns the sheet magnified. A short row is filled with transparent (the answer says which rows); the frame size is the commonest among the frames given (or `size`), so the frame that is a row short is the one named. A frame may be `shapes` (rect, line, circle, ellipse), `mirror` its left half onto the right, and `outline` what is drawn |
+| `sprite_preview` | any sprite magnified on a checker background, frames numbered, one strip per animation with the durations; `frame: n` is one frame close up, every pixel a numbered square, and as rows of text to edit and write back |
 | `scene_write` | `scenes/<name>.scene.json`, validated and tidied; tile layers may be rows of characters with a `legend` of tile numbers or names; returns the map |
-| `scene_preview` | a scene file as a map without running the game: tiles, every object with its name and kind, hitboxes, the grid and world coordinates; the layers as text |
-| `check` | the Problems panel's check: every problem with its file and line |
-| `play` | the game played headless along a `route` (holds, presses, waits, `until` a Lua condition, Lua) from a `start_scene` and state, returned as one film strip with the frame under each moment, plus the scene, the entities and their positions, printed Lua values, the log and the sounds started; `crop`, `zoom`, `seed`, `audio` |
+| `scene_preview` | a scene file as a map without running the game: tiles, every object with its name and kind, hitboxes, the grid and world coordinates; the layers as text; a warning when the room is smaller than the screen |
+| `check` | the Problems panel's check: every problem with its file and line. As warnings it also reads the scripts for what its few frames never reach (a `nova.<name>` the API does not have; an entity that moves itself by `vx`, `vy`, `vz`, which the engine adds too) and names the rooms smaller than the screen |
+| `play` | the game played headless along a `route` (holds, presses, waits, `until` a Lua condition, Lua; `tap_every` to act while walking, `repeat` and `steps` for a group, `walk_to` a point in 2D or 3D, `may_time_out`) from a `start_scene` and state, returned as one film strip with the frame under each moment, plus the scene, the entities and their positions (x, y, z in 3D), printed Lua values, the log and the sounds started with their volumes; `crop`, `zoom`, `seed`, `audio`. A step whose Lua fails is reported with its number and the run goes on. `out: "build/run1"` saves every picture as its own full-size file in the project, with the strip, `report.json` and the sound; `audio: "build/run.wav"` names the sound's file |
 | `screenshot` | the same tool under its older name: with no options, one picture after 90 frames (960x540; `size` changes it; `press` taps such as `key:Enter@30` still work) |
 | `track_write`, `terrain_write`, `store_art` | a racing route with its scene and road, a heightmap for it, and the icon or box art |
 
 Every tool takes a `project` folder (or uses `NOVA_PROJECT`). Tool failures come back as readable text with `isError`; a
 mistake in what was given is reported whole (every bad row of a sprite, every bad cell of a map) with the place and what
 was expected. Pictures come back as MCP image items. Headless runs play no sound: `play` with `audio: true` writes it to a
-file for `sound_report`.
+file for `sound_report`. A headless run never reloads the game when files change, so a run may write into the project; the
+folders it may write to are those the game does not load (`build/`, dot-folders, and what `nova.json`'s `"ignore"` lists).
 
 ## Watching it work
 
