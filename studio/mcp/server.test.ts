@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PRESETS } from "../src/lib/sfx";
 import { encodeWav } from "../src/lib/wav";
 import { decodePng } from "./draw";
-import { call, tools } from "./server";
+import { call, EXAMPLES, tools } from "./server";
 
 let dir = "";
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), "nova-mcp-test-"))));
@@ -25,6 +25,21 @@ describe("the Nova MCP server", () => {
     }
   });
 
+  it("gives every tool an example that uses only its own parameters, and required ones", () => {
+    for (const t of tools) {
+      const example = EXAMPLES[t.name];
+      expect(example, `${t.name} has an example`).toBeDefined();
+      for (const key of Object.keys(example!)) expect(Object.keys(t.properties), `${t.name}.${key}`).toContain(key);
+      for (const key of t.required ?? []) expect(example![key], `${t.name} needs ${key}`).toBeDefined();
+    }
+    // the examples of the tools that only write files really work
+    use("project_create", EXAMPLES.project_create);
+    for (const name of ["write_file", "model_write", "sfx_write", "sprite_write", "sprite_preview", "api", "project_info", "read_file"]) {
+      if (name === "read_file") use("write_file", { path: "entities/hero.lua", text: "return nova.entity {}\n" });
+      expect(() => use(name, EXAMPLES[name]), name).not.toThrow();
+    }
+  });
+
   it("looks the Lua API up by word", () => {
     const follow = text(call("api", { query: "camera follow" }));
     expect(follow).toContain("nova.cam.follow(entity [, lerp [, snap]])");
@@ -33,7 +48,14 @@ describe("the Nova MCP server", () => {
     expect(text(call("api", { query: "slide" }))).toMatch(/^self:slide\(/);
     expect(text(call("api", { query: "model clip", limit: 2 }))).toMatch(/\.\.\. and \d+ more: /);
     expect(text(call("api", {}))).toMatch(/Entity methods \(\d+\): self:destroy/);
-    expect(text(call("api", { group: "Sound" }))).toContain("nova.music.play");
+    // a group whole: each entry's signature and what it does, not names only
+    const sound = text(call("api", { group: "Sound" }));
+    expect(sound).toMatch(/^Sound \(\d+\): each entry's signature and what it does/);
+    expect(sound).toContain("  nova.music.play(name [, opts])\n      Play music.");
+    expect(sound).toContain("  nova.sound.play(");
+    expect(sound).not.toContain("Fields every entity has");
+    expect(text(call("api", { group: "Entity methods" }))).toMatch(/self:play_clip\(name[\s\S]*Fields every entity has/);
+    expect(text(call("api", { group: "Nothing" }))).toMatch(/there is no group "Nothing"\. Groups: /);
     expect(text(call("api", { query: "flip" }))).toContain("flip_x, flip_y (mirror the picture, not the hitbox)");
     expect(text(call("api", { query: "depth" }))).toContain("depth (bigger is further back)");
     expect(text(call("api", { query: "zebra crossing" }))).toMatch(/nothing in the Lua API matches all of "zebra crossing"/);
@@ -583,24 +605,33 @@ describe.skipIf(!built)("playing the game", () => {
     const model = {
       version: 1, scale: 0.0625,
       parts: [{ name: "post", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ from: [-2, 0, -2], size: [4, 24, 4], color: "#888888" }], children: [{ name: "arm", origin: [0, 8, 0], rotation: [0, 0, 0], cubes: [{ from: [0, -1, -1], size: [10, 2, 2], color: "#cc3333" }], children: [] }] }],
-      clips: [{ name: "lift", duration: 2, loop: false, tracks: [{ part: ["post", "arm"], prop: "position", keys: [{ t: 0, value: [0, 8, 0] }, { t: 2, value: [0, 16, 0] }] }] }],
+      clips: [{ name: "lift", duration: 2, loop: false, tracks: [{ part: ["post", "arm"], prop: "position", keys: [{ t: 0, value: [0, 8, 0] }, { t: 2, value: [0, 16, 0] }] }], events: [{ t: 2, name: "top" }, { t: 1, name: "half" }] }],
     };
     use("model_write", { name: "post", model });
+    // a clip's named moments are kept in time order in the model file and travel in the glb for the game
+    expect(JSON.parse(readFileSync(join(dir, "models/post.model.json"), "utf8")).clips[0].events).toEqual([{ t: 1, name: "half" }, { t: 2, name: "top" }]);
+    expect(readFileSync(join(dir, "models/post.glb")).toString("latin1")).toContain('"extras":{"nova":{"events":[{"t":1,"name":"half"},{"t":2,"name":"top"}]}}');
+    expect(() => use("model_write", { name: "late", model: { ...model, clips: [{ ...model.clips[0], events: [{ t: 3, name: "late" }] }] } })).toThrow(/clips\[0\]\.events\[0\] needs "t" \(seconds, from 0 to the clip's duration 2\) and a "name"/);
     const rest = use("model_preview", { name: "post" });
-    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nclips: lift 2\.00s/);
+    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nclips: lift 2\.00s \(events: half at 1\.00; top at 2\.00\)/);
     const one = decodePng(Buffer.from((rest.content[1] as { data: string }).data, "base64"));
     expect([one.w, one.h]).toEqual([640, 480]);
     const strip = use("model_preview", { name: "post", clip: "lift", strip: 3, size: 1.6 });
     const said = text(strip);
     expect(said).toContain("clip lift, 3 moments from 0 to 2.00 s");
-    expect(said).toMatch(/time\s+0\.00\s+1\.00\s+2\.00/);
-    expect(said).toMatch(/arm\s+0\.500\s+0\.750\s+1\.000/);
+    expect(said).toMatch(/time \(s\)\s+0\.00\s+1\.00\s+2\.00/);
+    // the arm is a bar two units thick about its joint: its underside is an eighth of a unit (0.0625 world) below it
+    expect(said).toMatch(/arm\s+lowest\s+0\.438\s+0\.688\s+0\.938\n\s+joint\s+0\.500\s+0\.750\s+1\.000/);
+    expect(said).toMatch(/whole model\s+lowest\s+0\.000\s+0\.000\s+0\.000/);
+    expect(said).toMatch(/post\s+lowest\s+0\.000/);
+    expect(said).toContain("<part>, lowest: the lowest point of that part's own shapes in the pose (for a foot, its sole)");
+    expect(said).toContain("<part>, joint: the height of the point the part turns about");
     expect(said).toContain("the dark lines are the ground");
     const sheet = decodePng(Buffer.from((strip.content[1] as { data: string }).data, "base64"));
     expect(sheet.w).toBeGreaterThan(3 * 240); // three moments across, front over side
     expect(sheet.h).toBeGreaterThan(2 * 300);
     expect(text(use("model_preview", { name: "post", clip: "lift", time: 2, views: ["side"] }))).toContain("clip lift at 2.00 s");
-    expect(() => use("model_preview", { name: "post", clip: "wave", strip: 4 })).toThrow(/no clip 'wave' \(its clips: lift 2\.00s\)/);
+    expect(() => use("model_preview", { name: "post", clip: "wave", strip: 4 })).toThrow(/no clip 'wave' \(its clips: lift 2\.00s/);
     expect(() => use("model_preview", { name: "post", strip: 4 })).toThrow(/give `clip` too/);
     expect(() => use("model_preview", { name: "nothing" })).toThrow(/no models\/nothing\.glb/);
   });

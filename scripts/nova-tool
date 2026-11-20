@@ -1,0 +1,13 @@
+#!/bin/bash
+# Calls one tool of the Nova MCP server from a shell, from any folder (it goes through env.sh itself, so Node is found):
+#
+#   scripts/nova-tool --list                          every tool: its whole description and its parameters
+#   scripts/nova-tool --help play                     one tool: description, parameters with types, an example
+#   scripts/nova-tool --project /path/to/game check   (or set NOVA_PROJECT)
+#   scripts/nova-tool play @/path/to/args.json
+#
+# It is `scripts/env.sh node scripts/nova-mcp-call.mjs "$@"`; see that file. Paths in the arguments are taken from the
+# folder you run it in, so give them whole.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+exec "$here/env.sh" node "$here/nova-mcp-call.mjs" "$@"

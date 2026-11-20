@@ -19,6 +19,25 @@ export function searchApi(query: string, limit = 12, group?: string): string {
   const words = query.toLowerCase().split(/[^a-z0-9_.:]+/).filter(Boolean);
   const entries: Entry[] = [...documented, { name: "entity fields", kind: "fields", signature: "entity fields (self.x, self.depth, ...)", doc: fields, group: "Scenes and entities" }];
   const pool = group ? entries.filter((e) => e.group.toLowerCase().includes(group.toLowerCase())) : entries;
+  if (!words.length && group) {
+    // one group, whole: every entry's signature and what it does in a sentence (the full text of one: ask for it by name)
+    const own = pool.filter((x) => x.kind !== "fields");
+    if (!own.length) return `there is no group "${group}". Groups: ${[...new Set(documented.map((e) => e.group))].join(", ")}`;
+    const first = (doc: string) => {
+      const m = /^(.*?[.:;])(\s|$)/.exec(doc);
+      const s = m && m[1]!.length >= 30 ? m[1]! : doc;
+      return s.length > 220 ? `${s.slice(0, 217)}...` : s;
+    };
+    const byGroup = new Map<string, Entry[]>();
+    for (const e of own) byGroup.set(e.group, [...(byGroup.get(e.group) ?? []), e]);
+    const lines: string[] = [];
+    for (const [g, list] of byGroup) {
+      lines.push(`${g} (${list.length}): each entry's signature and what it does; the whole text of one with { "query": "its name" }`);
+      for (const e of list.slice(0, Math.max(limit, 200))) lines.push(`  ${e.signature}\n      ${first(e.doc)}`);
+    }
+    if (/entit|scene/i.test([...byGroup.keys()].join(" "))) lines.push(fields);
+    return lines.join("\n");
+  }
   if (!words.length) {
     const groups = new Map<string, string[]>();
     for (const e of pool.filter((x) => x.kind !== "fields")) groups.set(e.group, [...(groups.get(e.group) ?? []), e.kind === "method" ? `self:${e.name}` : e.name]);

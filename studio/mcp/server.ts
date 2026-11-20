@@ -177,7 +177,12 @@ tool(
   "model_write",
   "Write a 3D model: `models/<name>.model.json` (what the studio's model editor edits) and the `models/<name>.glb` the game loads. `model` is the studio's model document: " +
     '{ "version": 1, "scale": 0.0625, "parts": [ { "name", "origin": [x,y,z], "rotation": [degrees], "cubes": [ { "shape": "box|wedge|pyramid|cylinder|cone|sphere|mesh", "from": [x,y,z], "size": [w,h,d], "color": "#rrggbb", "faces"?: {...}, "rotation"?, "segments"?, "smooth"? } ], "children": [ ...parts ] } ], "clips"?: [...], "texture"?: { "size": [w,h] } }. ' +
-    "Units: 16 model units = 1 world unit at the default scale. y is up. Parts turn about their origin (wheels, doors). See docs/project-format.md.",
+    "Units: 16 model units = 1 world unit at the default scale. y is up. Parts turn about their origin (wheels, doors). A round shape (cylinder, cone) always stands along y inside its box: size it standing up, then turn it with its own `rotation` to lay it down. " +
+    "`clips` are the animations: [ { \"name\": \"walk\", \"duration\": 0.8, \"loop\": true, \"tracks\": [ { \"part\": [\"hips\", \"leg_l\"], \"prop\": \"rotation\", \"keys\": [ { \"t\": 0, \"value\": [30, 0, 0] }, { \"t\": 0.4, \"value\": [-30, 0, 0], \"ease\": \"inout\" }, { \"t\": 0.8, \"value\": [30, 0, 0] } ] } ], \"events\": [ { \"t\": 0, \"name\": \"step\" }, { \"t\": 0.4, \"name\": \"step\" } ] } ]. " +
+    "A track is one property of one part: `part` is the chain of part names from the top of the tree down to the part (not just its name), `prop` is \"rotation\", \"position\" or \"scale\", and `keys` are in time order, each { \"t\": seconds from 0 to the duration, \"value\": [x, y, z], \"ease\"?: \"linear\" (default) | \"step\" | \"in\" | \"out\" | \"inout\" (how it moves on to the next key) }. " +
+    "Key values are absolute, not offsets: a rotation key is the part's whole turn in degrees (x, then y, then z), replacing its `rotation`; a position key is where the part's origin is in its parent, in model units, replacing its `origin` (to lower the hips by 1 unit, key the hips' origin with y one less); a scale key is a factor per axis. What a clip does not key stays as authored; give a looping clip the same value at 0 and at its duration. " +
+    "`events` are named moments (a foot landing): the game calls on_clip_event(name, clip) on an entity playing the clip (self:play_clip), or the animator's on_event, when the clip passes one, so sounds keep time with the motion. " +
+    "Check a clip with model_preview { clip, strip: 8 }. See docs/project-format.md.",
   {
     name: { type: "string" },
     model: { type: ["object", "string"], description: "The model document (an object, or its JSON as text)." },
@@ -223,7 +228,7 @@ tool(
     "At rest: `yaw`, `pitch`, `distance` place the camera (the default looks from the front right, a little above). The answer lists the model's clips. " +
     "Posed: `clip` and `time` (seconds) show the model as that clip poses it at that moment. " +
     "A strip: `clip` and `strip: 8` return ONE picture with eight moments across the clip (2 to 16), a row from the front and a row from the side by default (`views`: front, side, left, back, top, quarter, or a yaw in degrees), the time under each, on a ground line at y = 0, so a walk can be read like a film strip and feet that float or sink can be seen. " +
-    "With a clip the text also gives the height of each part's joint above the ground at every moment (the lowest parts, the feet, first), so \"the feet meet the ground\" can be checked in numbers. " +
+    "With a clip the text also gives heights above the ground at every moment, and says what each row is: the lowest point of the whole model, and for each part (those that come lowest, the feet, first) the lowest point of its own shapes (a foot's sole: about 0 when it stands, above 0 when it swings, below 0 when it is sunk into the ground) and the height of its joint (the ankle), so \"the feet meet the ground\" can be checked in numbers. The clips are listed with their events. " +
     "Which way a turn goes (the model file's `rotation`, a clip's rotation keys, and rx, ry, rz in Lua; right-handed, y up, the model's front is +z): +x tips the top of a part towards the front (a leg hanging down swings back; an arm raised forward is a negative x turn); +y turns the part's front towards the model's +x side (to the viewer's right when seen from the front); +z tips the top of a part towards the model's -x side (a limb hanging down swings out towards +x).",
   {
     name: { type: "string" },
@@ -710,6 +715,44 @@ tool(
   playHandler,
 );
 
+// One call that works for every tool: `tools/list` gives it as the schema's example, and `scripts/nova-mcp-call.mjs --help <tool>`
+// prints it. A test keeps each to the tool's own parameters.
+export const EXAMPLES: Record<string, Args> = {
+  api: { query: "camera follow" },
+  project_create: { name: "My Game" },
+  project_info: {},
+  read_file: { path: "entities/hero.lua" },
+  write_file: { path: "entities/coin.lua", text: 'return nova.entity { sprite = "coin", tags = { "coin" }, hitbox = { 0, 0, 16, 16 } }\n' },
+  model_write: {
+    name: "post",
+    model: {
+      version: 1, scale: 0.0625,
+      parts: [{ name: "post", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ from: [-2, 0, -2], size: [4, 24, 4], color: "#888888" }], children: [{ name: "arm", origin: [0, 20, 0], rotation: [0, 0, 0], cubes: [{ from: [0, -1, -1], size: [10, 2, 2], color: "#cc3333" }], children: [] }] }],
+      clips: [{ name: "wave", duration: 1, loop: true, tracks: [{ part: ["post", "arm"], prop: "rotation", keys: [{ t: 0, value: [0, 0, 0] }, { t: 0.5, value: [0, 0, 40], ease: "inout" }, { t: 1, value: [0, 0, 0] }] }], events: [{ t: 0.5, name: "top" }] }],
+    },
+  },
+  model_preview: { name: "post", clip: "wave", strip: 8 },
+  sfx_write: { name: "hit", preset: "hit", params: { volume: 0.4 } },
+  sound_report: { sounds: [{ name: "hit", volume: 0.7 }, "step", { name: "music/town", volume: 0.3 }] },
+  song_write: { name: "town", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", wave: "square", notes: [{ step: 0, len: 4, pitch: 60 }, { step: 8, len: 4, pitch: 64 }] }, { name: "drums", kind: "drums", notes: [{ step: 0, pitch: 36 }, { step: 4, pitch: 38 }] }] } },
+  sprite_write: { name: "dot", palette: { r: "#ff0000", w: "#ffffff" }, frames: [[".rr.", "rwwr", "rwwr", ".rr."], { rows: [".r", "rw", "rw", ".r"], mirror: "x" }], animations: [{ name: "blink", from: 0, to: 1 }] },
+  sprite_preview: { name: "dot", frame: 0 },
+  scene_write: { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 96, y: 96 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 16, tile_height: 16 }, scale: 3, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } },
+  scene_preview: { name: "room" },
+  track_write: { name: "stage1", open: true, control: [[0, 0], [0, 120], [80, 220], [200, 240], [320, 180]] },
+  terrain_write: { name: "stage1", open: true, control: [[0, 0], [0, 120], [80, 220], [200, 240], [320, 180]], profile: [[0, 0], [200, 12], [400, 4]] },
+  store_art: { kind: "icon", frames: 120, press: ["key:Enter@30"] },
+  check: {},
+  play: {
+    start_scene: "room",
+    route: [{ walk_to: [300, 200], who: "hero", tap: "a", tap_every: 30, capture: "there" }, { hold: ["right"], until: "nova.named('hero').x > 400", max: 300, may_time_out: true }, { press: "a" }, { wait: 30, capture: "after" }],
+    print: ["nova.named('hero')", "nova.count('enemy')"],
+    out: "build/run1",
+    audio: true,
+  },
+  screenshot: { frames: 90, size: "960x540" },
+};
+
 // ---- MCP over stdio ------------------------------------------------------------------------------------------------
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
@@ -739,7 +782,7 @@ function handle(msg: any) {
       send({ jsonrpc: "2.0", id, result: { protocolVersion: params?.protocolVersion ?? "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "nova", version: "0.1.0" } } });
     } else if (method === "ping") send({ jsonrpc: "2.0", id, result: {} });
     else if (method === "tools/list") {
-      send({ jsonrpc: "2.0", id, result: { tools: tools.map((t) => ({ name: `nova_${t.name}`, description: t.description, inputSchema: { type: "object", properties: t.properties, required: t.required ?? [] } })) } });
+      send({ jsonrpc: "2.0", id, result: { tools: tools.map((t) => ({ name: `nova_${t.name}`, description: t.description, inputSchema: { type: "object", properties: t.properties, required: t.required ?? [], ...(EXAMPLES[t.name] ? { examples: [EXAMPLES[t.name]] } : {}) } })) } });
     } else if (method === "tools/call") {
       const name = String(params?.name ?? "").replace(/^nova_/, "");
       try {
@@ -754,7 +797,7 @@ function handle(msg: any) {
   }
 }
 
-export { call, tools };
+export { call, handle, tools };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   let buffer = "";
