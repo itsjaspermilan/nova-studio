@@ -20,7 +20,7 @@ local race = {}
 
 local ROAD_OPTS = { shadow = false }
 -- rally: how fast a class of car covers a stage, on average (m/s), for a section's par when no driven pars are recorded
-local TYPICAL_SPEED = { formula = 31, sport = 25, everyday = 22, kart = 22, fun = 18 }
+local TYPICAL_SPEED = { sport = 25, everyday = 22 }
 local RIVALS = {
   { name = "Mika", skill = 1.0, lane = -1.8 },
   { name = "Dax", skill = 0.96, lane = 2.2 },
@@ -175,7 +175,7 @@ function race.scene()
     self.camera = { x = 0, y = 4, z = 0, heading = 0, fov = 62, tx = 0, ty = 1, tz = 0 }
     self:build_cars()
     self:build_minimap()
-    self.player.engine = audio.engine(0.6, self.player.model_id)
+    self.player.engine = audio.engine(0.6, self.player.car_id)
     self.trial = state.mode == "trial"
     self.ghost = self.trial and nova.save.get("ghost_" .. info.id, nil) or nil
     self.recording = { t = 0, pts = {} }
@@ -195,11 +195,9 @@ function race.scene()
   -- The player and three rivals on the grid; the player starts at the back (the rivals ahead are in view, none under the camera).
   function Race:build_cars()
     local mine = state.current_car().id
-    -- the rivals drive the other cars of your class (a class with fewer than three others repeats them)
+    -- the rivals drive your car in its other paints: the same machine, so a race is the drivers'
     local pool = {}
-    local class = state.current_car().class
-    for _, c in ipairs(state.cars) do if c.id ~= mine and c.class == class then pool[#pool + 1] = c.id end end
-    if #pool == 0 then for _, c in ipairs(state.cars) do if c.id ~= mine then pool[#pool + 1] = c.id end end end
+    for k, model in ipairs(state.current_car().paints) do if k > 1 then pool[#pool + 1] = model end end
     -- which cars the rivals drive: a different three for each circuit and each car of yours (the same every time)
     local turn = (state.track * 3 + state.car * 5) % #pool
     for _ = 1, turn do
@@ -239,7 +237,7 @@ function race.scene()
       car.vmax_base = car.top * diff.pace * r.skill
       car.vmax = car.vmax_base
       car.band = diff.band
-      car.engine = audio.engine(0.3, car.model_id, true)
+      car.engine = audio.engine(0.3, car.car_id, true)
       self.cars[#self.cars + 1] = car
     end
   end
@@ -615,7 +613,7 @@ function race.scene()
     end
     if nova.input.pressed("stats") then
       local c = self.player
-      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f off=%.1f rough=%d", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0, c.off_middle or 0, c.surface == "rough" and 1 or 0))
+      nova.log(string.format("rally: speed=%.1f slip=%.2f heading=%.2f yaw=%.2f x=%.1f z=%.1f orbit=%.2f lift=%.2f off=%.1f rough=%d gear=%d", c.speed, c.slip, c.heading, c.yaw_rate or 0, c.x, c.z, self.orbit and self.orbit.yaw or 0, self.orbit and self.orbit.lift or 0, c.off_middle or 0, c.surface == "rough" and 1 or 0, c.gear or 1))
     end
     if nova.input.pressed("view") then self.view_mode = self.view_mode % 3 + 1 end
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
@@ -719,26 +717,9 @@ function race.scene()
     self:update_rescue(dt)
 
     -- the sound of every engine that is close enough to hear
+    -- (engines, gear changes, tyres, wind, suspension thumps, scrapes, rivals placed in the world: lib/audio.lua)
+    audio.cars(self.cars, p, dt)
     for _, car in ipairs(self.cars) do
-      if car.engine then
-        local rev = math.max(0, math.min(1, car.rev))
-        if car.shifted then
-          -- a change of gear: a short chuff, and a pop of the exhaust on the way up near the top of the rev range
-          if car.is_player then audio.sfx("shift", { volume = car.shifted == "up" and 0.5 or 0.3, pitch = car.shifted == "up" and 1.0 or 1.3 }) end
-          car.shifted = nil
-        end
-        if car.is_player then
-          car.engine:update(dt, rev, car.ctl.throttle, car.surface == "rough" and math.abs(car.speed) > 3, car.slip)
-        else
-          local d = math.sqrt((car.x - p.x) ^ 2 + (car.z - p.z) ^ 2)
-          if d < 70 then
-            car.engine.volume = 0.5 * (1 - d / 70)
-            car.engine:update(dt, rev, car.ctl.throttle)
-          else
-            car.engine:silence()
-          end
-        end
-      end
       if car.hit then
         if car.is_player then
           audio.sfx("bump", { volume = car.hit })

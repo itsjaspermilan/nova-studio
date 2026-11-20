@@ -1,5 +1,7 @@
 # Car shapes and proportions: what the reference cars teach
 
+> Status 2026-11-20: Pine Ridge now has only the two blueprint cars of the "second pass" section (`car_gt`, `car_offroad`, in four paints each). The earlier generators this document names (`bodies.mjs`, `body.mjs`, `face.mjs`, `parts.mjs`, `blueprint-car.mjs`, `blueprint-check.mjs`, `scripts/blender/classic_car.py`) and their cars were removed; the rest is kept as the study it was.
+
 Written 2026-11-09 from the reference models the user added to `examples/` (not committed: `psx_style_cars_by_ggbot_august2023.zip`, eight
 PSX-era OBJ cars; `04dtwkw5.glb`, a painted 1980s sedan; `89-challenger.zip` and `26-mustang-13.04.2021-compressed.zip`, Blender muscle cars).
 The user's instruction: ignore the PSX resolution, study the shapes and proportions, aim for Switch 1-class graphics at 60 fps

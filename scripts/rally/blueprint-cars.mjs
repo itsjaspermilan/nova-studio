@@ -11,8 +11,8 @@ const archOutline = (zc, yc, r, n = 22, y0 = -1, a0 = -0.2, a1 = Math.PI + 0.2) 
 const mirrorX = (pts) => [...pts, ...[...pts].reverse().filter(([x]) => x > 1e-6).map(([x, y]) => [-x, y])];
 
 // ================================ the coupe ================================================================================================
-function gt() {
-  const paint = "#1f57b8", gap = shade(paint, 0.22), R = 5.4, track = 12.7, wheelZ = [24.42, -21.21];
+function gt(paint = "#1f57b8") {
+  const gap = shade(paint, 0.22), R = 5.4, track = 12.7, wheelZ = [24.42, -21.21];
   const spec = {
     paint,
     w: [[-38.15, 3], [-38, 4.75], [-37, 9.9], [-36, 11.5], [-35, 12.25], [-34, 12.85], [-33, 13.25], [-32, 13.55], [-30, 13.95], [-28, 14.25], [-26, 14.45], [-24, 14.6], [-22, 14.7], [-20, 14.75], [-16, 14.55], [-12, 14.38], [-8, 14.52], [-4, 14.68], [0, 14.75], [5, 14.75], [10, 14.65], [16, 14.5], [26, 14.5], [29, 14.45], [31, 14.25], [32, 14.0], [33, 13.55], [34, 12.5], [35, 11.1], [36, 9.2], [37, 7.35], [38, 3.55]],
@@ -130,8 +130,8 @@ function flare(name, outline, at, sx, out, proud, color) {
   return m;
 }
 
-function offroad() {
-  const paint = "#d2bb8c", gap = shade(paint, 0.3), R = 6.5, track = 11.3, wheelZ = [20.0, -17.0];
+function offroad(paint = "#d2bb8c") {
+  const gap = shade(paint, 0.3), R = 6.5, track = 11.3, wheelZ = [20.0, -17.0];
   const spec = {
     paint, material: { metallic: 0.15, roughness: 0.45, coat: 0.7 }, midY: 14,
     w: [[-29.3, 13.2], [-28.5, 13.45], [-20, 13.5], [0, 13.5], [20, 13.5], [28, 13.4], [29.6, 13.2], [30.5, 12.6]],
@@ -252,7 +252,11 @@ function offroad() {
   return { model, tail: { z: r2(-29.5 / 16), y: r2(13.9 / 16 - 0.06), x: r2(12.4 / 16 / 0.92) } };
 }
 
-export const CARS = { car_gt: gt, car_offroad: offroad };
+// Each car in its paints: the first is the one the player drives, the rest are what the rivals wear (lib/state.lua, `paints`).
+export const CARS = {
+  car_gt: () => gt(), car_gt_red: () => gt("#a81f2a"), car_gt_white: () => gt("#dfe2e6"), car_gt_grey: () => gt("#41454d"),
+  car_offroad: () => offroad(), car_offroad_green: () => offroad("#5d6b48"), car_offroad_white: () => offroad("#e2dfd3"), car_offroad_red: () => offroad("#9c3229"),
+};
 const want = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 if (process.argv[1] && process.argv[1].endsWith("blueprint-cars.mjs")) await withServer(async (nova) => {
   for (const [name, make] of Object.entries(CARS)) {

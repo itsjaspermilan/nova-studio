@@ -53,6 +53,9 @@ export interface TrackDoc {
   crowd: { kind: string[]; size: number };
   /// Stretches of the route with their own surface or width: gravel into tarmac on a stage, a narrow walled section.
   zones: Zone[];
+  /// The road has texture coordinates and names the project's road pictures, `textures/road.png` and `textures/road_grain.png`
+  /// (docs/track-editor.md, "A textured road"). Without it the road is flat colours and needs no pictures.
+  textured?: boolean;
 }
 
 export interface Roadside {
@@ -133,6 +136,7 @@ export function parseTrack(text: string): Parsed {
       roadside: o.roadside && typeof o.roadside === "object" && !Array.isArray(o.roadside) ? roadsideOf(record(o.roadside)) : null,
       crowd: { kind: names(record(o.crowd).kind), size: num(record(o.crowd).size, 1, 0.05, 20) },
       zones: Array.isArray(o.zones) ? o.zones.map(record).map(zoneOf).filter((z): z is Zone => z !== null) : [],
+      ...(o.textured === true ? { textured: true } : {}),
     },
   };
 }
@@ -158,8 +162,9 @@ const zoneOf = (o: Record<string, unknown>): Zone | null => {
 export const ROADSIDE: Roadside = { stand: "grandstand", tent: "tent_long", banner: "banner_green", flag: "flag_green", boards: ["billboard", "billboard_low"], pylon: "pylon" };
 
 export function serializeTrack(doc: TrackDoc): string {
-  const { control, zones, ...rest } = doc;
+  const { control, zones, textured, ...rest } = doc;
   if (zones.length) (rest as Record<string, unknown>).zones = zones;
+  if (textured) (rest as Record<string, unknown>).textured = true;
   const lines = control.map((p) => `    [${round(p[0])}, ${round(p[1])}]`).join(",\n");
   // (each setting on a line of its own; a list of kinds or a colour stays on that line)
   const fields = Object.entries(rest).map(([k, v]) => `  ${JSON.stringify(k)}: ${inline(v)}`);
@@ -322,7 +327,7 @@ export function buildTrack(doc: TrackDoc, previous?: string | null, name?: strin
   }
   const parsed = parseScene(JSON.stringify(scene));
   if (!parsed.ok) throw `the layout is not a valid scene: ${parsed.error}`;
-  const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open, doc.zones);
+  const glb: Uint8Array = roadGlb(doc.control, doc.road, doc.open, doc.zones, doc.textured === true);
   return { scene: serializeScene(parsed.scene), glb, report: `${stats.length} m, ${stats.objects} objects, tightest bend ~${stats.minRadius} m` };
 }
 

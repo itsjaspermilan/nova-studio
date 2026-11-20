@@ -13,6 +13,10 @@ pub const WHITE: &str = "nova:white";
 /// The project's store pictures (`icon.png`, `boxart.png`, `boxart-wide.png` in its top folder): copied into the APK for the launcher, never
 /// drawn by a game, so they are left out of the sprite atlas.
 pub const STORE_ART: [&str; 3] = ["icon.png", "boxart.png", "boxart-wide.png"];
+/// The folder of pictures for models: a model's file names one by `uri` (`"images": [{ "uri": "../textures/road.png" }]`), so that
+/// many models share it. They are not sprites: they stay out of the sprite atlas (a tiling picture may be large) and `nova.sprite`
+/// cannot draw them.
+pub const MODEL_PICTURES: &str = "textures/";
 
 pub const MAX_ATLAS: u32 = 4096;
 const GUTTER: u32 = 1;

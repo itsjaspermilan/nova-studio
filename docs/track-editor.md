@@ -45,7 +45,7 @@ A screen in the studio for laying out a racing circuit or a rally stage without 
 
 | File | What |
 |---|---|
-| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`), `roadside` (`{ stand, tent, banner, flag, boards: [two kinds], pylon, garage?, garages?, office?, gantry?, post? }` or null), `crowd` (`{ kind: [...], size }`), `zones` (`[{ from, to, road?, width?, wall? }]`, written only when there are any). Pine Ridge Rally's eight courses are examples. |
+| `tracks/<name>.track.json` | What the editor edits: `open`, `road`, `control` ([x, z] metres), `sections`, `leadIn`, `runout`, `seed`, `trees`, `small`, `rock`, `density`, `rocks`, `lamps`, `rail` (the barrier's kind), `sky` ([r, g, b]), `far` (`{ kind: [...], density }`), `landmarks` (`{ kind: [...], count, radius }`), `roadside` (`{ stand, tent, banner, flag, boards: [two kinds], pylon, garage?, garages?, office?, gantry?, post? }` or null), `crowd` (`{ kind: [...], size }`), `zones` (`[{ from, to, road?, width?, wall? }]`, written only when there are any), `textured` (`true`: see "A textured road" below; written only when set, and not yet a control in the editor: set it in the file or with `track_write`). Pine Ridge Rally's courses are examples. |
 | `scenes/<name>.scene.json` | Generated: start line and arch, finish arch and section gates (stage), waypoints every 10 m, the grid, scenery. Open it in the scene editor. |
 | `models/road_<name>.glb` | Generated: the road as one ribbon mesh. Draw it with `nova.model("road_<name>", 0, 0, 0)`. |
 
@@ -54,6 +54,25 @@ which are kept, first in the new scene: that is where a game keeps a course's se
 The generator names nothing it places. The scene refers to entity kinds the game must have
 (`road_start`, `start_arch`, `tower`, `section_gate`, `waypoint`, `grid_slot`, `flag_checkers`, `banner_green`, `guardrail`, `sign_chevron`,
 `tires`, `hay_bale`, `lamp`, and the roadside and crowd kinds chosen); the editor does not make them.
+
+## A textured road
+
+With `"textured": true` in the track file the ribbon gets texture coordinates and names two pictures of the project by `uri`
+(`docs/project-format.md`, "Tiling pictures and detail"), which every road of the project shares:
+
+- `textures/road.png`, the sheet (1024 x 1024). Along it is 64 m of road, repeating. Across it there is a column 192 texels wide for
+  each kind of road, in the order asphalt, dirt, gravel, snow, sand: the whole 12 m from edge to edge. Then two strips 32 texels wide
+  of paint: a solid line and a broken one. The sheet multiplies the road's colours (which stay the vertex colours, `ROAD_COLOURS`),
+  so white changes nothing, and its alpha cuts the outer metre ragged, so the road straggles out over the ground instead of ending on
+  a ruled line.
+- `textures/road_grain.png`, the detail picture: fine grain every 4 m.
+
+The cross-section changes too: the verge slopes down into the ground (no skirt), a loose road's colours run into one another
+instead of stepping, and asphalt gets a narrow painted line at each edge, a broken one down the middle and a shoulder of gravel.
+The project must have the two pictures (without them the road is drawn in its colours, with a warning): copy Pine Ridge Rally's,
+or make your own to the same layout (`scripts/rally/surfaces.mjs` draws them from noise; `ROAD_SHEET` in
+`scripts/lib/trackgen.mjs` is the layout). `scripts/rally/roads.mjs` makes every road of a project again from its track files.
+Without `textured` the road is what it always was: flat colours, no pictures needed.
 
 ## How it is built
 

@@ -102,7 +102,8 @@ case-insensitive systems.
 - **Images:** PNG, 8 or 16 bit, any colour type (indexed, grey, RGB, RGBA). All images are
   packed once into a single atlas (at most 4096x4096) when the project loads; nothing is
   decoded or uploaded per frame. JPEG, GIF and BMP are not supported yet and are warned
-  about.
+  about. PNGs in the folder `textures/` are pictures for models (below), not sprites: they are left out of the atlas and
+  `nova.sprite` cannot draw them.
 - **Models:** static GLB/glTF: triangle meshes in the default scene, positions, normals,
   UV set 0, COLOR_0, a base colour factor and one base colour texture, which repeats, mirrors or clamps outside 0 to 1 as its
   glTF sampler says (repeat when it says nothing; the studio's exporter writes clamp). A primitive whose material has no texture
@@ -110,6 +111,20 @@ case-insensitive systems.
   WEIGHTS_0, up to four joints per point) are read when a model is drawn with `parts` or a `clip`. Morph
   targets (shape keys: POSITION offsets, named by the mesh's `extras.targetNames`) are read and blended by name with the `morph`
   option of `nova.model` (below); extensions are reported as warnings in the log, not silently dropped.
+- **Tiling pictures and detail (added 2026-11-20).** A model's picture may be outside its file: `"images": [{ "uri": "../textures/road.png" }]`
+  names a PNG of the project, relative to the model's folder (keep such pictures in `textures/`). Every model that names the same
+  picture shares it, in memory and on the GPU, so twenty roads can use one sheet. Give the texture a sampler with
+  `"magFilter": 9729` (linear) so that it is filtered smoothly with mipmaps, and leave the wrap at repeat for a picture that tiles;
+  the picture multiplies the vertex colours, which stay the tint. A picture that is not found is a warning and the model is drawn
+  without it. A material may also name a **detail picture**: `"extras": { "nova": { "detail": { "index": 1, "scale": [16, 16] } } }`,
+  where `index` is one of the file's textures and `scale` (one number or [u, v], 8 when absent) is how many times it repeats across
+  the base picture's u and v. It is fine grain laid over the base picture: the colour is multiplied by twice its value, so mid-grey
+  (128) changes nothing, lighter texels brighten and darker ones darken (the picture is read as plain values, not sRGB). Far away
+  its mipmaps average out to that grey, so the grain fades by itself and its repeat does not show. It costs one more texture read
+  a pixel, on the models that have one only (`fs_detail` in `mesh.wgsl`); it needs a base colour picture, and it is not drawn on
+  see-through or skinned models, on models lit by their material (`"materials"`) or drawn with a custom shader. Pine Ridge Rally's
+  ground (`scripts/rally/land.mjs`) and roads (the track editor's `"textured": true`, `docs/track-editor.md`) use both, with
+  pictures made by `scripts/rally/surfaces.mjs`.
 - **Scripts:** Lua 5.4.
 - **Keyframe animations:** `animations/<name>.anim.json` (see [Keyframe animations](#keyframe-animations-animationsnameanimjson)), checked when the project loads.
 

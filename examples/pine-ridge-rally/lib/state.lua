@@ -21,11 +21,8 @@ state.tracks = {
 }
 -- The classes: you race the other cars of your own class (the grid on the car page is split by them)
 state.classes = {
-  { id = "formula", name = "Formula", blurb = "Open-wheel racers: the quickest, and they hold the road." },
-  { id = "sport", name = "Sport", blurb = "Fast road cars that slide under power." },
-  { id = "everyday", name = "Everyday", blurb = "Family cars and workhorses: slower, and heavy in the bends." },
-  { id = "kart", name = "Kart", blurb = "Tiny and nimble: quick off the line and glued to the road, but slow at the top end." },
-  { id = "fun", name = "Fun", blurb = "Service vehicles: heavy, slow and silly. Just for fun." },
+  { id = "sport", name = "Sport", blurb = "A fast road car: quick, low, and it slides under power." },
+  { id = "everyday", name = "4x4", blurb = "A workhorse: slower on the road, at home on gravel, sand and snow." },
 }
 -- The rally stages: point to point, each in the country of one of the circuits (`look`), five sections each (see lib/race.lua). The scene of
 -- a stage is the stage's id.
@@ -43,47 +40,39 @@ state.stages = {
   -- made by scripts/rally/random-stage.mjs from a seed (the studio's "New random route"); `open`: always playable, whatever else has been won
   { id = "stage_random_1", look = "stage_random_1", name = "Random Stage", blurb = "A stage made up from a seed: forest roads nobody has driven before.", laps = 1, km = 3.1, sections = 7, level = 1, open = true },
 }
--- `price` is what a car costs in the garage, in coins; a new player has STARTING_COINS, enough for one of the three `starter` cars (one
--- each of Sport, Everyday and Kart), and earns more by racing (state.reward).
+-- The two cars, each modelled from its blueprint (scripts/rally/blueprint-cars.mjs) and each its own machine. What the numbers mean:
+-- `power` is the pull in first gear (m/s squared) and `top` the top speed on the flat (m/s). `gears` is the gearbox: for each gear the
+--   speed it runs out at (m/s) and how hard it pulls (a share of `power`); `shift` is how long a change takes (seconds with no pull).
+-- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
+-- `grip` is how much the tyres hold in a bend on the road (1 is an ordinary road car), `brake` how hard the brakes bite, `turn` how
+--   eagerly it changes direction, `oversteer` how readily the rear lets go under power in a bend (0 never, 1 a lot).
+-- `loose` is what loose ground does to it: `dirt` scales its grip on gravel, sand and snow roads; off the road (`rough`) its top speed
+--   falls to `rough_top` of normal, the drag is scaled by `rough_drag` and the grip by `rough_grip`.
+-- `spring` and `damper` are the suspension (stiff and flat, or soft and wallowing), `lean` how much the body rolls and nods.
+-- `wheel` is the wheels' radius in metres. `paints` are its models: the first is the player's, the rest are what rivals wear.
+-- `price`: both are starters (a new player can afford either).
 state.cars = {
-  -- `oversteer`: how readily the rear lets go under power in a bend (0 never, 1 a lot); the sedan and the hatchback are the
-  -- drifters, the open-wheel cars hold the road
-  -- `wheel`: the wheels' radius in metres (the models' wheels are 0.6, 0.68, 0.66 and 0.62 m across), for how fast they spin
-  -- `grip` is how much the tyres hold in a bend (1 is an ordinary road car) and `brake` how hard the brakes bite (1 likewise): the
-  -- open-wheel cars have most of both, a van or a pickup the least. The rivals drive their cars up to what these allow.
-  -- `idle_rpm` and `max_rpm` are the engine's range (the same numbers as in scripts/rally/engines.mjs, which makes its sound).
-  -- `power` is the pull in first gear (m/s squared) and `top` the top speed (m/s): the open-wheel cars are the quick ones
-  { id = "car", price = 25000, grip = 1.2, brake = 1.25, class = "formula", name = "Redline", oversteer = 0.35, wheel = 0.385, power = 11.5, top = 50, idle_rpm = 3500, max_rpm = 12500 },
-  { id = "car_blue", price = 6000, grip = 1, brake = 1, class = "sport", name = "Blue Streak", oversteer = 0.6, wheel = 0.385, power = 8.5, top = 44, idle_rpm = 900, max_rpm = 7000 },
-  { id = "car_green", price = 1000, starter = true, grip = 0.98, brake = 0.95, class = "sport", name = "Green Machine", oversteer = 0.7, wheel = 0.36, power = 8, top = 42, idle_rpm = 1000, max_rpm = 6800 },
-  { id = "car_yellow", price = 12000, grip = 1.15, brake = 1.2, class = "formula", name = "Sunburst", oversteer = 0.45, wheel = 0.385, power = 11, top = 48, idle_rpm = 2500, max_rpm = 9800 },
-  { id = "car_sedan", price = 1000, starter = true, grip = 0.92, brake = 0.9, class = "everyday", name = "Commuter", oversteer = 0.5, wheel = 0.375, power = 8, top = 42, idle_rpm = 800, max_rpm = 6500 },
-  { id = "car_suv", price = 3000, grip = 0.88, brake = 0.9, class = "everyday", name = "Trailblazer", oversteer = 0.4, wheel = 0.44, power = 8.5, top = 42, idle_rpm = 700, max_rpm = 5800 },
-  { id = "car_suvl", price = 9000, grip = 0.95, brake = 0.95, class = "sport", name = "Grand Tourer", oversteer = 0.5, wheel = 0.44, power = 9.5, top = 46, idle_rpm = 600, max_rpm = 5500 },
-  { id = "car_taxi", price = 1500, grip = 0.9, brake = 0.9, class = "everyday", name = "Cab", oversteer = 0.6, wheel = 0.375, power = 7.5, top = 40, idle_rpm = 850, max_rpm = 6000 },
-  { id = "car_police", price = 7500, grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
-  { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.4, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
-  { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.425, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
-  { id = "car_coupe", price = 8000, grip = 1.05, brake = 1.05, class = "sport", name = "Nightrunner", oversteer = 0.65, wheel = 0.316, power = 9.2, top = 46, idle_rpm = 900, max_rpm = 7200 },
-  { id = "car_offroad", price = 4500, grip = 0.9, brake = 0.9, class = "everyday", name = "Outback", oversteer = 0.35, wheel = 0.406, power = 8.6, top = 40, idle_rpm = 650, max_rpm = 4800 },
-  { id = "car_gt", price = 18000, grip = 1.12, brake = 1.15, class = "sport", name = "Apex GT", oversteer = 0.5, wheel = 0.338, power = 10.2, top = 49, idle_rpm = 800, max_rpm = 7600 },
-  -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
-  -- won three races, the car kit's service vehicles
-  { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.375, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },
-  { id = "racecar_orange", price = 16000, grip = 1.12, brake = 1.15, class = "formula", name = "Tangerine", oversteer = 0.5, wheel = 0.375, power = 11.8, top = 49.5, idle_rpm = 3800, max_rpm = 13500 },
-  { id = "racecar_red", price = 20000, grip = 1.22, brake = 1.25, class = "formula", name = "Rosso", oversteer = 0.25, wheel = 0.375, power = 10.8, top = 47.5, idle_rpm = 3200, max_rpm = 12000 },
-  { id = "racecar_white", price = 18000, grip = 1.15, brake = 1.2, class = "formula", name = "Phantom", oversteer = 0.4, wheel = 0.375, power = 11.4, top = 50.5, idle_rpm = 3000, max_rpm = 11500 },
-  { id = "kart_oobi", price = 1000, starter = true, grip = 1.35, brake = 1.3, class = "kart", name = "Oobi", oversteer = 0.5, wheel = 0.27, power = 10, top = 33, idle_rpm = 2200, max_rpm = 13000 },
-  { id = "kart_oodi", price = 4000, grip = 1.3, brake = 1.3, class = "kart", name = "Oodi", oversteer = 0.6, wheel = 0.27, power = 10.5, top = 34, idle_rpm = 2400, max_rpm = 13500 },
-  { id = "kart_ooli", price = 3000, grip = 1.4, brake = 1.35, class = "kart", name = "Ooli", oversteer = 0.4, wheel = 0.27, power = 9.5, top = 32.5, idle_rpm = 2000, max_rpm = 12500 },
-  { id = "kart_oopi", price = 3500, grip = 1.32, brake = 1.3, class = "kart", name = "Oopi", oversteer = 0.55, wheel = 0.27, power = 10.2, top = 33.5, idle_rpm = 2300, max_rpm = 13200 },
-  { id = "kart_oozi", price = 4500, grip = 1.28, brake = 1.25, class = "kart", name = "Oozi", oversteer = 0.65, wheel = 0.27, power = 10.8, top = 34.5, idle_rpm = 2500, max_rpm = 14000 },
-  { id = "ambulance", price = 5000, grip = 0.85, brake = 0.85, class = "fun", name = "Ambulance", oversteer = 0.35, wheel = 0.375, power = 8, top = 41, idle_rpm = 750, max_rpm = 5200 },
-  { id = "firetruck", price = 8000, grip = 0.8, brake = 0.8, class = "fun", name = "Fire Engine", oversteer = 0.25, wheel = 0.425, power = 7, top = 37, idle_rpm = 600, max_rpm = 3600 },
-  { id = "garbage_truck", price = 6000, grip = 0.78, brake = 0.78, class = "fun", name = "Bin Lorry", oversteer = 0.2, wheel = 0.425, power = 6.5, top = 35, idle_rpm = 600, max_rpm = 3400 },
-  { id = "delivery", price = 3500, grip = 0.82, brake = 0.82, class = "fun", name = "Courier", oversteer = 0.3, wheel = 0.375, power = 7.5, top = 39, idle_rpm = 750, max_rpm = 4600 },
-  { id = "tractor", price = 2500, grip = 0.9, brake = 0.9, class = "fun", name = "Tractor", oversteer = 0.45, wheel = 0.38, power = 6, top = 30, idle_rpm = 500, max_rpm = 2600 },
+  { id = "car_gt", name = "Apex GT", class = "sport", price = 1000, starter = true,
+    blurb = "3.0 litre turbo straight-six, eight gears. Fast and sharp on tarmac; hates leaving it.",
+    power = 10.6, top = 54, idle_rpm = 750, max_rpm = 7000, shift = 0.11,
+    gears = { { top = 9.5, pull = 1.5 }, { top = 15.5, pull = 1.3 }, { top = 21.5, pull = 1.15 }, { top = 28, pull = 1.03 }, { top = 35, pull = 0.94 }, { top = 42, pull = 0.86 }, { top = 49, pull = 0.8 }, { top = 56, pull = 0.74 } },
+    grip = 1.14, brake = 1.2, turn = 1.08, oversteer = 0.55,
+    loose = { dirt = 0.86, rough_top = 0.42, rough_drag = 1.3, rough_grip = 0.85 },
+    spring = 660, damper = 51, lean = 0.75, wheel = 0.338,
+    paints = { "car_gt", "car_gt_red", "car_gt_white", "car_gt_grey" } },
+  { id = "car_offroad", name = "Outback", class = "everyday", price = 1000, starter = true,
+    blurb = "4.2 litre diesel straight-six, five gears, four-wheel drive. Slow to wind up, unbothered by gravel, sand or snow.",
+    power = 7.8, top = 38, idle_rpm = 650, max_rpm = 4200, shift = 0.27,
+    gears = { { top = 8, pull = 1.6 }, { top = 14, pull = 1.28 }, { top = 21, pull = 1.02 }, { top = 29.5, pull = 0.84 }, { top = 39, pull = 0.7 } },
+    grip = 0.9, brake = 0.88, turn = 0.9, oversteer = 0.22,
+    loose = { dirt = 1.22, rough_top = 0.85, rough_drag = 0.4, rough_grip = 1.3 },
+    spring = 360, damper = 29, lean = 1.6, wheel = 0.406,
+    paints = { "car_offroad", "car_offroad_green", "car_offroad_white", "car_offroad_red" } },
 }
+-- The car a model belongs to (a paint is a model of its own): "car_gt_red" -> the Apex GT's entry.
+local by_model = {}
+for _, c in ipairs(state.cars) do for _, m in ipairs(c.paints) do by_model[m] = c end end
+function state.car_of(model) return by_model[model] end
 
 -- How hard the rivals drive (race mode). `pace` is the share of its car's top speed a rival runs at, `corner` the share of what its tyres can
 -- hold that it dares in a bend, and `band` how much it eases off when it is well ahead of you or pushes when well behind (a share of its speed).

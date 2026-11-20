@@ -10,6 +10,7 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Mat4, Quat, Vec3, Vec4};
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -69,7 +70,7 @@ pub struct MeshData {
     pub morphs: Vec<MorphTarget>,
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
-    pub texture: Option<Image>,
+    pub texture: Option<Arc<Image>>,
     /// How `texture` repeats across u and v (glTF's repeat unless the file says otherwise; meshes made in code clamp).
     pub wrap: [Wrap; 2],
     /// `texture` is filtered smoothly (the glTF sampler's magFilter is LINEAR), with mipmaps when its sides are powers of two;
@@ -83,6 +84,81 @@ pub struct MeshData {
     /// The base colour picture already compressed for the GPU (a `.ktx2` beside the model; `crate::ktx2`): used instead of `texture`
     /// where the GPU has its format.
     pub compressed: Option<std::sync::Arc<crate::ktx2::Ktx2>>,
+    /// A detail picture: fine grain laid over the base colour picture at a closer repeat (a material's `extras.nova.detail`).
+    pub detail: Option<Detail>,
+}
+
+/// A model's detail picture (`"extras": { "nova": { "detail": { "index": 1, "scale": [16, 16] } } }` on a glTF material; `index` is
+/// one of the file's textures). It is drawn over the base colour picture, repeating `scale` times as often across u and v, and
+/// multiplies the colour by twice its value: mid-grey (128) leaves the colour as it is, lighter texels brighten it and darker ones
+/// darken it. Far away its smaller copies average out to grey, so the grain fades by itself and no repeat shows.
+#[derive(Clone, Debug)]
+pub struct Detail {
+    pub image: Arc<Image>,
+    pub scale: [f32; 2],
+}
+
+/// A picture of a glTF file: one inside the file, or one it names by `uri` (a PNG of the project, shared by every model that names it).
+pub enum Picture {
+    Embedded(gltf::image::Data),
+    Shared(Arc<Image>),
+}
+
+/// Finds the pictures a model names by `uri`: given the uri as written in the file, the decoded picture (None: there is no such file).
+pub type Pictures<'a> = &'a dyn Fn(&str) -> Option<Arc<Image>>;
+
+/// Stands in for every picture named by `uri` with one white texel: for a model read outside a project (bytes built into the
+/// program, tests) or only for its shape (a collision mesh), where the pictures are not wanted.
+pub fn blank_pictures(_: &str) -> Option<Arc<Image>> {
+    Some(Arc::new(Image {
+        width: 1,
+        height: 1,
+        rgba: vec![255; 4],
+    }))
+}
+
+/// The project file a model names by `uri`: `uri` is relative to the model's folder (`../textures/road.png` from
+/// `models/road.glb` is `textures/road.png`). None for a uri with a scheme, an absolute one, or one that leaves the project.
+pub fn picture_path(model: &str, uri: &str) -> Option<String> {
+    if uri.contains(':') || uri.starts_with('/') || uri.contains('\\') {
+        return None;
+    }
+    let mut parts: Vec<&str> = model.split('/').collect();
+    parts.pop();
+    for part in uri.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            name => parts.push(name),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+type Opened = (gltf::Document, Vec<gltf::buffer::Data>, Vec<Picture>);
+
+/// A glTF file opened: its document, its buffers and its pictures. Pictures inside the file are decoded here; one named by `uri`
+/// (other than a `data:` uri) is asked of `pictures`, since a project's files are not always on a disk (an APK's archive).
+fn open(bytes: &[u8], pictures: Pictures) -> Result<Opened, String> {
+    let failed = |e: gltf::Error| format!("glTF import failed: {e}");
+    let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes).map_err(failed)?;
+    let buffers = gltf::import_buffers(&document, None, blob).map_err(failed)?;
+    let mut images = Vec::new();
+    for image in document.images() {
+        images.push(match image.source() {
+            gltf::image::Source::Uri { uri, .. } if !uri.starts_with("data:") => {
+                Picture::Shared(pictures(uri).ok_or_else(|| {
+                    format!("the picture '{uri}' it names was not found (a PNG, from the model's folder)")
+                })?)
+            }
+            source => Picture::Embedded(
+                gltf::image::Data::from_source(source, None, &buffers).map_err(failed)?,
+            ),
+        });
+    }
+    Ok((document, buffers, images))
 }
 
 /// What a glTF material says about a surface beyond its colour, for the lit-by-material look (see `docs/materials.md`). Every list
@@ -117,25 +193,48 @@ struct MeshTextures {
     normal: Option<usize>,
     surface: Option<usize>,
     emissive: Option<usize>,
+    /// The detail picture (a texture of the file) and how many times it repeats across the base picture's u and v.
+    detail: Option<(usize, [f32; 2])>,
     /// The vertices of parts without a picture.
     plain: Vec<std::ops::Range<usize>>,
 }
 
 impl MeshTextures {
     /// Puts the chosen pictures on `out`.
-    fn apply(&self, out: &mut MeshData, images: &[gltf::image::Data]) -> Result<(), String> {
-        let image = |index: usize| -> Result<Image, String> {
-            let data = &images[index];
-            Ok(Image {
-                width: data.width,
-                height: data.height,
-                rgba: to_rgba(data)?,
+    fn apply(
+        &self,
+        out: &mut MeshData,
+        document: &gltf::Document,
+        images: &[Picture],
+    ) -> Result<(), String> {
+        let shared = |index: usize| -> Result<Arc<Image>, String> {
+            Ok(match &images[index] {
+                Picture::Shared(image) => image.clone(),
+                Picture::Embedded(data) => Arc::new(Image {
+                    width: data.width,
+                    height: data.height,
+                    rgba: to_rgba(data)?,
+                }),
             })
         };
+        let image = |index: usize| -> Result<Image, String> { Ok((*shared(index)?).clone()) };
         if let Some((index, wrap, smooth)) = self.base {
             out.wrap = wrap;
             out.smooth = smooth;
-            out.texture = Some(image(index)?);
+            out.texture = Some(shared(index)?);
+            if let Some((texture, scale)) = self.detail {
+                match document.textures().nth(texture) {
+                    Some(t) => {
+                        out.detail = Some(Detail {
+                            image: shared(t.source().index())?,
+                            scale,
+                        })
+                    }
+                    None => out.notes.push(format!(
+                        "detail: the file has no texture {texture}; the detail picture is not drawn"
+                    )),
+                }
+            }
             for range in &self.plain {
                 for v in &mut out.vertices[range.clone()] {
                     v.uv = NO_TEXTURE_UV;
@@ -299,6 +398,34 @@ fn read_influences(
     Some(out)
 }
 
+/// A material's detail picture (`extras.nova.detail`, see [`Detail`]): its `index` (a texture of the file) and its `scale` (one
+/// number or [u, v], each from 1/1024 to 1024; 8 when absent).
+fn detail_of(material: &gltf::Material) -> Result<Option<(usize, [f32; 2])>, &'static str> {
+    let Some(detail) = material
+        .extras()
+        .as_ref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.get()).ok())
+        .and_then(|v| v.get("nova").and_then(|n| n.get("detail")).cloned())
+    else {
+        return Ok(None);
+    };
+    let texture = detail.get("index").and_then(|i| i.as_u64()).ok_or(
+        "detail: `index` must be one of the file's textures; the detail picture is not drawn",
+    )?;
+    let ok = |v: f64| (v.is_finite() && (1.0 / 1024.0..=1024.0).contains(&v)).then_some(v as f32);
+    let scale = match detail.get("scale") {
+        None => Some([8.0, 8.0]),
+        Some(serde_json::Value::Array(a)) if a.len() == 2 => a[0]
+            .as_f64()
+            .and_then(ok)
+            .zip(a[1].as_f64().and_then(ok))
+            .map(|(u, v)| [u, v]),
+        Some(v) => v.as_f64().and_then(ok).map(|s| [s, s]),
+    }
+    .ok_or("detail: `scale` must be a number or [u, v], each from 1/1024 to 1024; the detail picture is not drawn")?;
+    Ok(Some((texture as usize, scale)))
+}
+
 /// Reads every triangle primitive of a mesh into `out`, with positions and normals moved by `world`.
 fn append_mesh(
     out: &mut MeshData,
@@ -333,6 +460,12 @@ fn append_mesh(
         let pbr = primitive.material().pbr_metallic_roughness();
         let factor = pbr.base_color_factor();
         let textured = pbr.base_color_texture().is_some();
+        if textured && textures.detail.is_none() {
+            match detail_of(&primitive.material()) {
+                Ok(found) => textures.detail = found,
+                Err(note) => out.notes.push(note.into()),
+            }
+        }
         if let Some(info) = pbr.base_color_texture() {
             let index = info.texture().source().index();
             let sampler = info.texture().sampler();
@@ -921,8 +1054,12 @@ fn read_shapes<const N: usize>(
 
 /// Reads a glTF as a tree of parts, for models whose pieces move on their own (wheels, doors, arms).
 pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
-    let (document, buffers, images) =
-        gltf::import_slice(bytes).map_err(|e| format!("glTF import failed: {e}"))?;
+    import_parts_with(bytes, &blank_pictures)
+}
+
+/// [`import_parts`] for a model of a project: `pictures` finds the pictures it names by `uri`.
+pub fn import_parts_with(bytes: &[u8], pictures: Pictures) -> Result<ModelParts, String> {
+    let (document, buffers, images) = open(bytes, pictures)?;
     let scene = document
         .default_scene()
         .or_else(|| document.scenes().next())
@@ -952,7 +1089,7 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
             let mut textures = MeshTextures::default();
             append_mesh(&mut data, &source, Mat4::IDENTITY, &buffers, &mut textures);
             if !data.vertices.is_empty() {
-                textures.apply(&mut data, &images)?;
+                textures.apply(&mut data, &document, &images)?;
                 if let Some(skin) = node.skin() {
                     let influences = read_influences(&source, &buffers);
                     match influences {
@@ -1086,8 +1223,12 @@ pub fn import_parts(bytes: &[u8]) -> Result<ModelParts, String> {
 }
 
 pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
-    let (document, buffers, images) =
-        gltf::import_slice(bytes).map_err(|e| format!("glTF import failed: {e}"))?;
+    import_glb_with(bytes, &blank_pictures)
+}
+
+/// [`import_glb`] for a model of a project: `pictures` finds the pictures it names by `uri`.
+pub fn import_glb_with(bytes: &[u8], pictures: Pictures) -> Result<MeshData, String> {
+    let (document, buffers, images) = open(bytes, pictures)?;
     let mut out = MeshData::default();
     if document.animations().count() > 0 {
         out.notes.push("animations are ignored".into());
@@ -1118,7 +1259,7 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
     if out.vertices.is_empty() {
         return Err("glTF contains no triangle geometry".into());
     }
-    textures.apply(&mut out, &images)?;
+    textures.apply(&mut out, &document, &images)?;
     out.notes.sort();
     out.notes.dedup();
     Ok(out)
@@ -1129,6 +1270,125 @@ mod tests {
     use super::*;
 
     const CAR: &[u8] = include_bytes!("../assets/spike/car.glb");
+
+    /// A one-triangle binary glTF whose material has a base colour picture and a detail picture, both named by `uri`.
+    fn shared_picture_glb(detail: &str) -> Vec<u8> {
+        let mut bin = Vec::new();
+        for v in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] {
+            bin.extend(v.to_le_bytes());
+        }
+        for v in [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0] {
+            bin.extend(v.to_le_bytes());
+        }
+        let json = format!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"nodes":[{{"mesh":0}}],
+            "meshes":[{{"primitives":[{{"attributes":{{"POSITION":0,"TEXCOORD_0":1}},"material":0}}]}}],
+            "materials":[{{"pbrMetallicRoughness":{{"baseColorTexture":{{"index":0}}}},"extras":{{"nova":{{"detail":{detail}}}}}}}],
+            "textures":[{{"source":0}},{{"source":1}}],
+            "images":[{{"uri":"../textures/road.png"}},{{"uri":"../textures/grain.png"}}],
+            "accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,0,1]}},
+                         {{"bufferView":1,"componentType":5126,"count":3,"type":"VEC2"}}],
+            "bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}},{{"buffer":0,"byteOffset":36,"byteLength":24}}],
+            "buffers":[{{"byteLength":60}}]}}"#
+        );
+        let mut js = json.into_bytes();
+        while js.len() % 4 != 0 {
+            js.push(b' ');
+        }
+        let mut out = Vec::new();
+        out.extend(b"glTF");
+        out.extend(2u32.to_le_bytes());
+        out.extend((12 + 8 + js.len() as u32 + 8 + bin.len() as u32).to_le_bytes());
+        out.extend((js.len() as u32).to_le_bytes());
+        out.extend(b"JSON");
+        out.extend(&js);
+        out.extend((bin.len() as u32).to_le_bytes());
+        out.extend(b"BIN\0");
+        out.extend(&bin);
+        out
+    }
+
+    #[test]
+    fn pictures_named_by_uri_are_shared_and_a_detail_picture_is_read() {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let road = Arc::new(Image {
+            width: 2,
+            height: 2,
+            rgba: vec![200; 16],
+        });
+        let grain = Arc::new(Image {
+            width: 4,
+            height: 4,
+            rgba: vec![128; 64],
+        });
+        let find = |uri: &str| {
+            asked.borrow_mut().push(uri.to_string());
+            Some(if uri.ends_with("road.png") {
+                road.clone()
+            } else {
+                grain.clone()
+            })
+        };
+        let glb = shared_picture_glb(r#"{"index":1,"scale":[16,4]}"#);
+        let mesh = import_glb_with(&glb, &find).expect("imports");
+        assert_eq!(
+            *asked.borrow(),
+            ["../textures/road.png", "../textures/grain.png"]
+        );
+        // the very pictures that were handed over, not copies: every model that names them shares them
+        assert!(Arc::ptr_eq(mesh.texture.as_ref().unwrap(), &road));
+        let detail = mesh.detail.as_ref().expect("the detail picture");
+        assert!(Arc::ptr_eq(&detail.image, &grain));
+        assert_eq!(detail.scale, [16.0, 4.0]);
+        assert_eq!(mesh.wrap, [Wrap::Repeat, Wrap::Repeat]);
+        assert!(mesh.notes.is_empty(), "{:?}", mesh.notes);
+        // one number repeats the same both ways; a model's parts carry the detail too
+        let parts = import_parts_with(&shared_picture_glb(r#"{"index":1,"scale":8}"#), &find)
+            .expect("imports as parts");
+        let part = parts.parts[0].mesh.as_ref().expect("a mesh");
+        assert_eq!(part.detail.as_ref().unwrap().scale, [8.0, 8.0]);
+        // read without a project (for its shape only), the pictures are one white texel each
+        let alone = import_glb(&glb).expect("imports alone");
+        assert_eq!(alone.texture.as_ref().unwrap().rgba, [255; 4]);
+    }
+
+    #[test]
+    fn a_detail_picture_that_makes_no_sense_is_a_note_and_a_missing_picture_an_error() {
+        let white = |_: &str| blank_pictures("");
+        for bad in [
+            r#"{"index":7}"#,
+            r#"{"scale":[16,16]}"#,
+            r#"{"index":1,"scale":0}"#,
+            r#"{"index":1,"scale":[1,2,3]}"#,
+        ] {
+            let mesh = import_glb_with(&shared_picture_glb(bad), &white).expect("still imports");
+            assert!(mesh.detail.is_none(), "{bad}");
+            assert!(
+                mesh.notes.iter().any(|n| n.starts_with("detail:")),
+                "{bad}: {:?}",
+                mesh.notes
+            );
+        }
+        let error = import_glb_with(&shared_picture_glb(r#"{"index":1}"#), &|_| None)
+            .err()
+            .expect("a picture that is not found");
+        assert!(error.contains("../textures/road.png"), "{error}");
+    }
+
+    #[test]
+    fn a_picture_uri_is_a_project_path_from_the_models_folder() {
+        let path = |uri| picture_path("models/road_a.glb", uri);
+        assert_eq!(
+            path("../textures/road.png").as_deref(),
+            Some("textures/road.png")
+        );
+        assert_eq!(path("road.png").as_deref(), Some("models/road.png"));
+        assert_eq!(path("./skins/a.png").as_deref(), Some("models/skins/a.png"));
+        assert_eq!(path("../../outside.png"), None);
+        assert_eq!(path("/etc/passwd"), None);
+        assert_eq!(path("https://example.com/a.png"), None);
+        assert_eq!(picture_path("road.glb", "../a.png"), None);
+    }
 
     #[test]
     fn imports_the_spike_car_with_texture_and_no_notes() {

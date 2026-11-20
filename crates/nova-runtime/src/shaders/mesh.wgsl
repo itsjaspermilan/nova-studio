@@ -280,6 +280,39 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // its own colours; sampled anyway, since a sample must be taken by every pixel alike)
     let picture = textureSample(base_texture, base_sampler, in.uv);
     let base = select(picture, vec4<f32>(1.0), in.uv.x > 1.0e6) * in.color;
+    return plain_light(in, base);
+}
+
+// A model with a detail picture (a glTF material's `extras.nova.detail`; model.rs `Detail`): fine grain that repeats over the base
+// colour picture `scale` times as often and multiplies the colour by twice its value, so mid-grey changes nothing. Far away the
+// picture's smaller copies average out to that grey, so the grain fades by itself. One more texture read than fs_main.
+struct DetailParams {
+    scale: vec4<f32>,   // xy: how many times the detail picture repeats across the base picture's u and v
+};
+@group(3) @binding(9) var detail_map: texture_2d<f32>;
+@group(3) @binding(10) var detail_sampler: sampler;
+@group(3) @binding(11) var<uniform> detail_params: DetailParams;
+
+@fragment
+fn fs_detail(in: VertexOut) -> @location(0) vec4<f32> {
+    if (in.dissolve != 0.0) {
+        let noise = fract(52.9829189 * fract(dot(in.position.xy, vec2<f32>(0.06711056, 0.00583715))));
+        if (in.dissolve < 0.0) {
+            if (noise < -in.dissolve) { discard; }
+        } else {
+            if (noise >= in.dissolve) { discard; }
+        }
+    }
+    let picture = textureSample(base_texture, base_sampler, in.uv);
+    let grain = textureSample(detail_map, detail_sampler, in.uv * detail_params.scale.xy).rgb * 2.0;
+    let plain = in.uv.x > 1.0e6;
+    let base = select(vec4<f32>(picture.rgb * grain, picture.a), vec4<f32>(1.0), plain) * in.color;
+    return plain_light(in, base);
+}
+
+// The plain look's light on a surface of colour `base` (the picture times the vertex colour and the tint): fs_main's work, shared
+// with fs_detail.
+fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
     // cut-out textures (leaves, glass, plants): see-through texels are not drawn at all
     if (base.a < 0.3) {
         discard;

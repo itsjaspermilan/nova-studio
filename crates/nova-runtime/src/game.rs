@@ -3683,7 +3683,10 @@ impl Game {
         let mut fx_images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
             // the store's pictures (the launcher icon and the box art) are for the APK and launchers, not for drawing: they stay out of the atlas
-            if assets::STORE_ART.contains(&asset.id.as_str()) {
+            // (and the pictures in `textures/` are for models, which name them in their files: not sprites, so not in the atlas either)
+            if assets::STORE_ART.contains(&asset.id.as_str())
+                || asset.id.starts_with(assets::MODEL_PICTURES)
+            {
                 continue;
             }
             let bytes = vfs.read(&asset.id)?;
@@ -3739,9 +3742,38 @@ impl Game {
         let mut model_boxes: HashMap<String, Vec<[f32; 5]>> = HashMap::new();
         let mut model_scales: HashMap<String, f32> = HashMap::new();
         let mut morph_variants = morph_api::Variants::default();
+        // pictures that models name by `uri` (a road's surface, the ground's grain): each is read once, however many models name it
+        let shared_pictures: RefCell<HashMap<String, Option<Arc<model::Image>>>> =
+            RefCell::new(HashMap::new());
+        let missing_pictures: RefCell<Vec<String>> = RefCell::new(Vec::new());
         for asset in project.assets_of(AssetKind::Model) {
             let bytes = vfs.read(&asset.id)?;
-            let mut mesh = model::import_glb(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
+            // (a picture that is not there is a warning, and the model is drawn without it: in its own colours)
+            let pictures = |uri: &str| -> Option<Arc<model::Image>> {
+                let found = model::picture_path(&asset.id, uri).and_then(|path| {
+                    shared_pictures
+                        .borrow_mut()
+                        .entry(path)
+                        .or_insert_with_key(|path| {
+                            let bytes = vfs.read(path).ok()?;
+                            assets::decode_png(&bytes).ok().map(Arc::new)
+                        })
+                        .clone()
+                });
+                if found.is_none() {
+                    let note = format!(
+                        "{}: the picture '{uri}' it names was not found (a PNG, from the model's folder); drawn without it",
+                        asset.id
+                    );
+                    let mut missing = missing_pictures.borrow_mut();
+                    if !missing.contains(&note) {
+                        missing.push(note);
+                    }
+                }
+                found.or_else(|| model::blank_pictures(uri))
+            };
+            let mut mesh = model::import_glb_with(&bytes, &pictures)
+                .map_err(|e| format!("{}: {e}", asset.id))?;
             // a compressed base colour picture beside the model (`models/car.ktx2` for `models/car.glb`)
             if let Some(stem) = asset.id.strip_suffix(".glb") {
                 let side = format!("{stem}.ktx2");
@@ -3754,7 +3786,7 @@ impl Game {
             }
             // The same file as separate parts, used when a script turns parts or plays a clip. That importer handles skins and
             // animation clips, so the whole-model importer's notes that it ignores them do not apply when it succeeds.
-            let as_parts = model::import_parts(&bytes);
+            let as_parts = model::import_parts_with(&bytes, &pictures);
             for note in &mesh.notes {
                 let handled = as_parts.is_ok()
                     && (note == "animations are ignored" || note == "skins/bones are ignored");
@@ -3830,6 +3862,7 @@ impl Game {
                 model_parts.insert(asset.id.clone(), runtime);
             }
         }
+        warnings.extend(missing_pictures.into_inner());
 
         let mut sounds: HashMap<String, Arc<Sample>> = HashMap::new();
         let mut streams: HashMap<String, StreamSource> = HashMap::new();

@@ -92,12 +92,7 @@ function bg.wheels(t)
 end
 
 -- How long each model is, for the size it is shown at (the back of its body, from lib's car table, doubled; trucks and karts differ).
-local LENGTH = {
-  kart = 2.0, ambulance = 4.1, firetruck = 4.4, garbage_truck = 4.7, delivery = 4.4, tractor = 2.6,
-  -- the remade road cars (scripts/rally/cars.mjs), in metres
-  car_sedan = 4.65, car_taxi = 5.2, car_police = 5.2, car_green = 3.85, car_blue = 4.9, car_suv = 4.15, car_suvl = 4.65, car_van = 4.6,
-  car_pickup = 5.3, car_coupe = 4.56, car_offroad = 4.07, car_gt = 4.77, car_yellow = 4.9, car = 4.9, racecar_green = 4.6, racecar_orange = 4.6, racecar_red = 4.6, racecar_white = 4.6,
-}
+local LENGTH = { car_offroad = 4.15, car_gt = 4.77 } -- metres
 local GREY = { 70, 72, 80 }
 local SHOWN = { ry = 0, tint = nil, scale = 1, shadow = false }
 local POOL = { color = { 255, 214, 160, 70 } }
@@ -111,7 +106,7 @@ function bg.cars(list, cards, on, angles, dt)
       local focused = i == on
       local picture_h = r.h - 24 -- (the name band along the bottom of the card)
       local x, y, z, unit = bg.unproject(r.x + r.w / 2, r.y + picture_h * 0.62, 34)
-      local length = LENGTH[car.id] or (car.id:match("^kart") and LENGTH.kart) or (car.class == "formula" and 3.4) or 3.3
+      local length = LENGTH[car.id] or 4.5
       local scale = math.min(r.w * unit * 0.78 / length, picture_h * unit * 0.5 / 1.6)
       angles[i] = angles[i] or -0.75
       if focused then angles[i] = angles[i] + dt * 0.9 end

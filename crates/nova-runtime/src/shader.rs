@@ -484,6 +484,7 @@ mod tests {
             (naga::ShaderStage::Vertex, "vs_material"),
             (naga::ShaderStage::Vertex, "vs_skinned_material"),
             (naga::ShaderStage::Fragment, "fs_material"),
+            (naga::ShaderStage::Fragment, "fs_detail"),
         ] {
             let mut out = String::new();
             let pipeline = naga::back::glsl::PipelineOptions {

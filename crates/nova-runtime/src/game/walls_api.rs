@@ -49,6 +49,7 @@ pub(super) fn cube_mesh(glow: bool) -> MeshData {
         morphs: Vec::new(),
         material: None,
         compressed: None,
+        detail: None,
         vertices,
         indices,
         texture: None,

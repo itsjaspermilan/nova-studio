@@ -19,6 +19,7 @@
   "roadside": { "stand": "grandstand", "tent": "tent_long", "banner": "banner_green", "flag": "flag_checkers", "boards": ["billboard", "billboard_low"], "pylon": "pylon" },
   "crowd": { "kind": ["crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md"], "size": 2 },
   "zones": [{ "from": 240, "to": 500, "width": 8, "wall": "barrier_wall" }, { "from": 1335, "to": 1650, "width": 8, "wall": "barrier_wall" }],
+  "textured": true,
   "control": [
     [0, -140],
     [0, -79],

@@ -19,8 +19,9 @@ local ground_opts = { scale = 1, shadow = false } -- (the far scenery casts no s
 -- `kind`: "forest", "autumn", "desert", "snow" or "night".
 function horizon.draw(cx, cz, kind)
   local ground = (kind == "desert" and "land_sand") or (kind == "snow" and "land_snow") or (kind == "night" and "land_night") or (kind == "autumn" and "land_autumn") or "land_grass"
-  -- (the ground is a grid of squares that the hills lift by their vertices: it moves a whole square at a time, so that they do not slide over the hills)
-  local sx, sz = math.floor(cx / 16 + 0.5) * 16, math.floor(cz / 16 + 0.5) * 16
+  -- (the ground is a grid of 16 m squares that the hills lift by their vertices, with a picture 64 m across (scripts/rally/land.mjs): it
+  -- moves a whole picture at a time, so that neither the squares nor the picture slide over the hills)
+  local sx, sz = math.floor(cx / 64 + 0.5) * 64, math.floor(cz / 64 + 0.5) * 64
   nova.model(ground, sx, 0, sz, ground_opts)
   -- the mountains: two rings of faceted ridges round the camera (scripts/rally/skyline.mjs), a different range for each country
   -- (built 1000 m down and drawn 1000 m up, above the engine's lift line, so the ring is not lifted point by point by the hills it slides

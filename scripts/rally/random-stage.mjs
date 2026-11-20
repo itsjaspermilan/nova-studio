@@ -35,5 +35,5 @@ scene.objects.splice(keep.length, 0, { kind: "road", x: 0, y: 0, z: 0, props: { 
 fs.writeFileSync(path.join(project, "tracks", `${id}.track.json`), JSON.stringify(track, null, 2) + "\n");
 fs.writeFileSync(path.join(project, "scenes", `${id}.scene.json`), JSON.stringify(scene, null, 2) + "\n");
 fs.writeFileSync(path.join(project, "scenes", `${id}.lua`), `-- A course: everything about it (road, scenery, crowd, and its settings in the race object) is in ${id}.scene.json.\nreturn require("lib.race").scene()\n`);
-fs.writeFileSync(path.join(project, "models", `road_${id}.glb`), roadGlb(track.control, track.road, true, []));
+fs.writeFileSync(path.join(project, "models", `road_${id}.glb`), roadGlb(track.control, track.road, true, [], track.textured === true));
 console.log(`${id}: ${route.length} m, tightest bend ${route.minRadius} m, ${track.sections} sections, ${stats.objects} objects (seed ${seed}, like ${like})`);

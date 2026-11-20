@@ -49,6 +49,12 @@ pub(super) struct GpuMaterial {
 
 /// The GPU objects behind materials and custom shaders.
 pub(super) struct Extras {
+    /// Models with a detail picture (`fs_detail`): the picture, its sampler and how often it repeats, as group 3.
+    detail_layout: wgpu::BindGroupLayout,
+    pub detail_pipeline: wgpu::RenderPipeline,
+    detail_sampler: wgpu::Sampler,
+    /// Detail pictures already on the GPU, by the picture's address (kept alive here, so that no other picture takes the address).
+    detail_views: HashMap<usize, (std::sync::Arc<Image>, wgpu::TextureView)>,
     material_layout: wgpu::BindGroupLayout,
     pub material_pipeline: wgpu::RenderPipeline,
     pub material_blend_pipeline: wgpu::RenderPipeline,
@@ -255,6 +261,7 @@ impl Extras {
         format: wgpu::TextureFormat,
         screen_format: wgpu::TextureFormat,
         samples: u32,
+        detail_aniso: u16,
         shared: &Shared,
     ) -> Self {
         let both = wgpu::ShaderStages::VERTEX_FRAGMENT;
@@ -331,6 +338,54 @@ impl Extras {
             "custom post pipeline layout",
             &[shared.texture, &custom_layout],
         );
+        let detail_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("detail layout"),
+            entries: &[
+                texture_entry(9, fragment, true),
+                sampler_entry(10),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 11,
+                    visibility: fragment,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(16),
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let detail_pipeline = model_pipeline(
+            device,
+            "detail meshes",
+            &pipeline_layout(
+                "detail pipeline layout",
+                &[
+                    shared.globals,
+                    shared.texture,
+                    shared.shadow,
+                    &detail_layout,
+                ],
+            ),
+            shared.mesh_shader,
+            "vs_main",
+            "fs_detail",
+            &model_buffers(false, false),
+            format,
+            samples,
+            false,
+        );
+        // (fine grain needs less help at a slant than a base picture does: beyond a few metres it has averaged out anyway)
+        let detail_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("detail pictures"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            anisotropy_clamp: detail_aniso.clamp(1, 4),
+            ..Default::default()
+        });
         let make_material = |label: &str, skinned: bool, blend: bool| {
             let buffers = model_buffers(skinned, true);
             model_pipeline(
@@ -379,6 +434,10 @@ impl Extras {
             ..Default::default()
         });
         Self {
+            detail_layout,
+            detail_pipeline,
+            detail_sampler,
+            detail_views: HashMap::new(),
             material_layout,
             material_pipeline,
             material_blend_pipeline,
@@ -481,6 +540,49 @@ pub(super) struct Slot {
 }
 
 impl Gfx {
+    /// The detail picture of a mesh that has one, with how often it repeats (None for a mesh without, or without a base picture).
+    pub(super) fn upload_detail(&mut self, mesh: &MeshData) -> Option<wgpu::BindGroup> {
+        let detail = mesh.detail.as_ref()?;
+        mesh.texture.as_ref()?;
+        let key = std::sync::Arc::as_ptr(&detail.image) as usize;
+        let (device, queue) = (&self.device, &self.queue);
+        let view = &self
+            .extras
+            .detail_views
+            .entry(key)
+            .or_insert_with(|| {
+                // (values, not colours: 128 is "no change"; every smaller copy is made, so the grain fades with distance)
+                let view = map_view(device, queue, &detail.image, false, true, "detail picture");
+                (detail.image.clone(), view)
+            })
+            .1;
+        let scale = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("detail repeat"),
+                contents: bytemuck::cast_slice(&[detail.scale[0], detail.scale[1], 0.0, 0.0]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+        Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("mesh detail"),
+            layout: &self.extras.detail_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 9,
+                    resource: wgpu::BindingResource::TextureView(view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.extras.detail_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: scale.as_entire_binding(),
+                },
+            ],
+        }))
+    }
+
     /// The material buffer and maps of a mesh drawn with its material (None for a plain mesh).
     pub(super) fn upload_material(&mut self, mesh: &MeshData) -> Option<GpuMaterial> {
         let material = mesh.material.as_ref()?;

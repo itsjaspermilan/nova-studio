@@ -506,7 +506,119 @@ export const ROAD_COLOURS = {
 };
 const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road"], [4.14, 5.02, "line"], [5.02, 6, "verge"]];
 
-export function roadGlb(control, kind, open = false, zones = []) {
+// ---- the road with its surface pictures ("textured": true in the track file) -----------------------------------------------------------
+// The same ribbon with texture coordinates, naming two pictures of the project by `uri` (every road shares them; Pine Ridge Rally's are
+// made by scripts/rally/surfaces.mjs, which draws the sheet this layout describes):
+// - `textures/road.png`, the sheet: along it (v) is 64 m of road, repeating; across it (u) is a column 192 texels wide for each kind of
+//   road (the whole 12 m from edge to edge) and then two narrow strips of paint, a solid line and a broken one. It multiplies the
+//   vertex colours below, which stay the road's colours, and its alpha cuts the outer edge ragged;
+// - `textures/road_grain.png`, a detail picture (the material's `extras.nova.detail`): fine grain every 4 m.
+// The cross-section changes with it: the verge slopes down into the ground (no skirt), the colours run into one another across a loose
+// road instead of stepping, and asphalt gets a narrow painted line at each edge and a broken one down the middle.
+export const ROAD_SHEET = { size: 1024, column: 192, kinds: ["road_asphalt", "road_dirt", "road_gravel", "road_snow", "road_sand"], paint: 960, strip: 32, metres: 64, sheet: "../textures/road.png", grain: "../textures/road_grain.png", repeat: 16 };
+// (beside tarmac the verge is a shoulder of gravel and earth, whatever the ground is; the flat road's mint verge is not used)
+const SHOULDER = [0.33, 0.29, 0.23];
+const blend = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+/// The bands of a kind of road from the middle to one edge: [from, to (metres), colour at from, colour at to, where on the sheet, drop
+/// at the outer edge]. "solid" and "broken" are the paint strips; everything else is the kind's own column.
+function bands(kind) {
+  const c = ROAD_COLOURS[kind];
+  if (kind === "road_asphalt") {
+    return [
+      [0.075, 4.25, c.road, c.road], [4.25, 4.45, c.line, c.line, "solid"], [4.45, 5, c.road, c.road],
+      [5, 6, blend(c.road, SHOULDER, 0.6), SHOULDER, null, true],
+    ];
+  }
+  return [[0, 3.6, c.road, c.road], [3.6, 4.6, c.road, c.line], [4.6, 5.2, c.line, c.verge], [5.2, 6, c.verge, c.verge, null, true]];
+}
+
+function texturedRoadGlb(control, kind, open, zones) {
+  const rows = centreline(control, 2, open);
+  const n = rows.length, S = ROAD_SHEET;
+  const positions = [], normals = [], colors = [], uvs = [], indices = [];
+  const TOP = 0.02, SKIRT = -0.3;
+  // a, b, c, d go round the quad, each [position, colour, uv]; they are flipped if they face down
+  const quad = (a, b, c, d) => {
+    const u = [0, 1, 2].map((k) => b[0][k] - a[0][k]), v = [0, 1, 2].map((k) => c[0][k] - a[0][k]);
+    let nrm = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const len = Math.hypot(...nrm) || 1;
+    nrm = nrm.map((x) => x / len);
+    const flip = nrm[1] < 0;
+    if (flip) nrm = nrm.map((x) => -x);
+    const base = positions.length / 3;
+    for (const q of flip ? [a, d, c, b] : [a, b, c, d]) { positions.push(...q[0]); normals.push(...nrm); colors.push(...q[1], 1); uvs.push(...q[2]); }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const scale = (i) => halfAt(zones, (i % n) * 2) / (ROAD_WIDTH / 2);
+  const at = (i, off, y) => { const p = rows[i % n]; const o = off * scale(i); return [p.x + p.tz * o, y, p.z - p.tx * o]; };
+  // (a circuit's sheet is stretched a little so that a whole number of repeats fits the lap: no seam where the lap closes)
+  const laps = (n * 2) / S.metres, fit = open ? 1 : Math.max(1, Math.round(laps)) / laps;
+  const along = (i) => ((i * 2) / S.metres) * fit;
+  const across = (column, x, where) => {
+    if (where === "solid" || where === "broken") return (S.paint + (where === "broken" ? S.strip : 0) + S.strip / 2 + (x > 0 ? 6 : -6)) / S.size;
+    return (column * S.column + (x / ROAD_WIDTH + 0.5) * S.column) / S.size;
+  };
+  for (let i = 0; i < (open ? n - 1 : n); i++) {
+    const j = i + 1, here = roadAt(zones, i * 2, kind), column = Math.max(0, S.kinds.indexOf(here));
+    const strip = (from, to, cFrom, cTo, where, yFrom, yTo) => {
+      // (a paint strip is read across its middle: the sheet's own offset of each edge is given by a point just inside it)
+      const uFrom = across(column, where ? -1 : from, where), uTo = across(column, where ? 1 : to, where);
+      quad([at(i, from, yFrom), cFrom, [uFrom, along(i)]], [at(i, to, yTo), cTo, [uTo, along(i)]], [at(j, to, yTo), cTo, [uTo, along(j)]], [at(j, from, yFrom), cFrom, [uFrom, along(j)]]);
+    };
+    for (const [from, to, cFrom, cTo, where, drop] of bands(here)) {
+      strip(from, to, cFrom, cTo, where, TOP, drop ? SKIRT : TOP);
+      strip(-to, -from, cTo, cFrom, where, drop ? SKIRT : TOP, TOP);
+    }
+    if (here === "road_asphalt") strip(-0.075, 0.075, ROAD_COLOURS[here].line, ROAD_COLOURS[here].line, "broken", TOP, TOP);
+  }
+  const P = new Float32Array(positions), N = new Float32Array(normals), C = new Float32Array(colors), T = new Float32Array(uvs), I = new Uint32Array(indices);
+  const count = positions.length / 3;
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let k = 0; k < positions.length; k++) { min[k % 3] = Math.min(min[k % 3], P[k]); max[k % 3] = Math.max(max[k % 3], P[k]); }
+  const linear = { magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 };
+  return packGlb({
+    asset: { version: "2.0", generator: "nova scripts/lib/trackgen.mjs" },
+    scene: 0, scenes: [{ nodes: [0] }], nodes: [{ name: "road", mesh: 0 }],
+    meshes: [{ name: "road", primitives: [{ attributes: { POSITION: 0, NORMAL: 1, COLOR_0: 2, TEXCOORD_0: 3 }, indices: 4, material: 0, mode: 4 }] }],
+    materials: [{ name: "road", pbrMetallicRoughness: { baseColorTexture: { index: 0 }, metallicFactor: 0, roughnessFactor: 1 }, extras: { nova: { detail: { index: 1, scale: [S.repeat, S.repeat] } } } }],
+    textures: [{ source: 0, sampler: 0 }, { source: 1, sampler: 0 }],
+    samplers: [linear],
+    images: [{ uri: S.sheet }, { uri: S.grain }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count, type: "VEC3", min, max },
+      { bufferView: 1, componentType: 5126, count, type: "VEC3" },
+      { bufferView: 2, componentType: 5126, count, type: "VEC4" },
+      { bufferView: 3, componentType: 5126, count, type: "VEC2" },
+      { bufferView: 4, componentType: 5125, count: indices.length, type: "SCALAR" },
+    ],
+  }, [P, N, C, T, I]);
+}
+
+/// A binary glTF from its JSON (without `bufferViews` and `buffers`, which are made here) and its arrays: one buffer view each, the
+/// last one the indices. (Plain typed arrays, not Node's Buffer: the studio makes the road in the browser too.)
+export function packGlb(json, arrays) {
+  const parts = arrays.map((a) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength));
+  const offsets = []; let length = 0;
+  for (const b of parts) { offsets.push(length); length += b.length; }
+  json.bufferViews = parts.map((b, k) => ({ buffer: 0, byteOffset: offsets[k], byteLength: b.length, target: k === parts.length - 1 ? 34963 : 34962 }));
+  json.buffers = [{ byteLength: length }];
+  const text = new TextEncoder().encode(JSON.stringify(json));
+  const js = new Uint8Array(text.length + ((4 - (text.length % 4)) % 4)).fill(0x20);
+  js.set(text);
+  const out = new Uint8Array(12 + 8 + js.length + 8 + length);
+  const view = new DataView(out.buffer);
+  out.set([0x67, 0x6c, 0x54, 0x46], 0); view.setUint32(4, 2, true); view.setUint32(8, out.length, true);
+  view.setUint32(12, js.length, true); out.set([0x4a, 0x53, 0x4f, 0x4e], 16); out.set(js, 20);
+  const bin = 20 + js.length;
+  view.setUint32(bin, length, true); out.set([0x42, 0x49, 0x4e, 0], bin + 4);
+  let o = bin + 8;
+  for (const b of parts) { out.set(b, o); o += b.length; }
+  return out;
+}
+
+/// The road as one ribbon mesh (binary glTF). `textured`: with texture coordinates and the project's road pictures (see above).
+export function roadGlb(control, kind, open = false, zones = [], textured = false) {
+  if (textured) return texturedRoadGlb(control, kind, open, zones);
   const rows = centreline(control, 2, open);
   const n = rows.length;
   const positions = [], normals = [], colors = [], indices = [];

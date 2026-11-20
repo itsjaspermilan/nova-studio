@@ -3,12 +3,11 @@
 local fx = require("lib.fx")
 local state = require("lib.state")
 
-local Car = nova.entity { model = "car", tags = { "car" } }
+local Car = nova.entity { model = "car_gt", tags = { "car" } }
 
 local HIT_POINTS = { 1.0, -1.0 } -- where the car's two collision circles are, along it from the middle (metres)
 local WHEEL_RADIUS = 0.30       -- (the models' wheels are 0.6 m across; the cars are 3.5 to 3.9 m long)
--- A five-speed gearbox: the speed each gear runs out at (m/s, at the car's normal top speed), and how hard it pulls.
--- Low gears pull hard and run out fast; fifth is long and gentle.
+-- A gearbox for a car that has none of its own (each car of lib/state.lua has): the speed each gear runs out at (m/s) and how hard it pulls.
 local GEARS = { { top = 13, pull = 1.35 }, { top = 22, pull = 1.12 }, { top = 30, pull = 0.97 }, { top = 38, pull = 0.86 }, { top = 44, pull = 0.78 } }
 local UPSHIFT, DOWNSHIFT = 0.94, 0.45   -- changes up above this share of the gear's top speed, down below that one
 local KICKDOWN = 0.8                    -- throttle pressed well down: down to the lowest gear the speed is below this share of
@@ -76,17 +75,20 @@ function Car:create()
   self.ctl = { throttle = 0, brake = 0, steer = 0, handbrake = false }
   self.progress = 0
   self.waypoint = nil
-  self.model_id = getmetatable(self).__model
+  self.model_id = getmetatable(self).__model   -- the model drawn: a car in one of its paints
   local layout = wheel_layout(self.model_id)
   self.wheels, self.wheelbase, self.track = layout.wheels, layout.wheelbase, layout.track
   self.wheel_radius = WHEEL_RADIUS
-  for _, c in ipairs(state.cars) do
-    if c.id == self.model_id then
-      self.wheel_radius = c.wheel or WHEEL_RADIUS
-      self.power, self.top = c.power or self.power, c.top or self.top
-      self.grip_stat, self.brake_power = c.grip or 1, 30 * (c.brake or 1)
-    end
-  end
+  -- the car's own machine (lib/state.lua): engine, gearbox, tyres, what loose ground does to it, suspension
+  local c = state.car_of(self.model_id) or state.cars[1]
+  self.car_id = c.id
+  self.wheel_radius = c.wheel or WHEEL_RADIUS
+  self.power, self.top = c.power or self.power, c.top or self.top
+  self.grip_stat, self.brake_power = c.grip or 1, 30 * (c.brake or 1)
+  self.gears, self.shift_seconds = c.gears or GEARS, c.shift or SHIFT_TIME
+  self.turn = c.turn or 1
+  self.loose_stat = c.loose or { dirt = 1, rough_top = 0.5, rough_drag = 1, rough_grip = 1 }
+  self.spring, self.damper, self.lean = c.spring or SPRING, c.damper or DAMPER, c.lean or 1
   self.parts_table = {
     body = { rx = 0, rz = 0, y = 0 },
     wheel_fl = { rx = 0, ry = 0, y = 0 }, wheel_fr = { rx = 0, ry = 0, y = 0 },
@@ -121,11 +123,14 @@ end
 function Car:drive(dt)
   local c = self.ctl
   local kind = SURFACE[self.surface] or SURFACE.road
-  local grip_scale = self:grip_now()
+  -- what this car makes of loose ground: a 4x4 holds on gravel and ploughs on through the rough, a road car skates and bogs down
+  local loose = self.loose_stat
+  local loose_grip = self.surface == "dirt" and loose.dirt or (self.surface == "rough" and loose.rough_grip or 1)
+  local grip_scale = self:grip_now() * loose_grip
   local live = self.enabled
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
-  local top = self.top * (self.surface == "rough" and 0.5 or 1) * (1 - 0.25 * self.damage) * (1 + 0.05 * (self.draft or 0)) -- (a slipstream: see race.lua)
+  local top = self.top * (self.surface == "rough" and loose.rough_top or 1) * (1 - 0.25 * self.damage) * (1 + 0.05 * (self.draft or 0)) -- (a slipstream: see race.lua)
 
   -- steering: the faster you go, the less the wheels can turn the car (and a damaged car drifts to one side)
   local steer = live and c.steer or 0
@@ -143,7 +148,7 @@ function Car:drive(dt)
   self.lock = lock
   -- how fast the car can turn: what the tyres hold (less the faster it goes), and, below about 12 m/s, what the wheels' angle
   -- gives (a car turns by its speed over the radius of the circle the wheels point at: parking-speed turns are slow, not a spin)
-  local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1), math.abs(vf) * 0.2)
+  local omega = math.min(2.5, kind.lateral * grip_scale * downforce / math.max(math.abs(vf), 1), math.abs(vf) * 0.2) * self.turn
   if c.handbrake and live then omega = omega * 1.45 end
   -- lifting off the accelerator in a bend moves the weight onto the front tyres, which bite harder: the car turns in sharper (the
   -- player's car; it eases in and out over a quarter of a second or so, so that it is a feel and not a jolt)
@@ -163,7 +168,8 @@ function Car:drive(dt)
   local vl = self.velx * cosh - self.velz * sinh
 
   -- the gearbox changes by itself: up near the end of a gear, down when the revs fall away
-  local scale = self.top / 44
+  local GEARS, SHIFT_TIME = self.gears, self.shift_seconds
+  local scale = 1 -- (each car's gears are in its own speeds)
   self.shift_time = math.max(0, self.shift_time - dt)
   local gear = GEARS[self.gear]
   local share = math.max(0, vf) / (gear.top * scale)
@@ -206,7 +212,7 @@ function Car:drive(dt)
   -- (the grass drags hardest at speed; at a crawl it holds back only a little, so a car can always reverse out of it: with the
   -- whole drag at every speed, reverse, which pulled half as hard as first gear, could not move a car on the grass at all)
   local sign = vf >= 0 and 1 or -1
-  local drag = kind.drag * math.min(1, 0.25 + math.abs(vf) / 10)
+  local drag = kind.drag * (self.surface == "rough" and loose.rough_drag or 1) * math.min(1, 0.25 + math.abs(vf) / 10)
   vf = vf - sign * math.min(math.abs(vf), (1.1 + drag + 0.055 * math.abs(vf)) * dt)
   if vf > top then vf = vf - (vf - top) * 1.5 * dt end
 
@@ -227,9 +233,11 @@ function Car:drive(dt)
 
   -- scenery in the way: the car is two circles (the front and the rear, a metre either side of the middle), not one big one, so that its length
   -- touches a barrier and a corner glances off. A hit takes the speed into the object away (with a little bounce) and scrapes the rest along.
+  self.scrape = math.max(0, (self.scrape or 0) - dt * 6)   -- (rubbing along a barrier: heard, lib/audio.lua)
   for _, off in ipairs(HIT_POINTS) do
     local px, pz = nova.scenery.push(self.x + sinh * off, self.z + cosh * off, 0.9)
     if px then
+      self.scrape = math.min(1, math.sqrt(self.velx * self.velx + self.velz * self.velz) / 15)
       self.x, self.z = self.x + px, self.z + pz
       local nl = math.sqrt(px * px + pz * pz)
       if nl > 0 then
@@ -310,8 +318,9 @@ function Car:suspension(dt, vf, accel, lateral_accel)
   local sp = self.susp
   local size = (BUMPS[self.surface] or BUMPS.road) * math.min(1, 0.3 + math.abs(vf) / 20)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
-  local long_shift = math.max(-0.07, math.min(0.07, accel * 0.0026))    -- braking (negative) drops the nose
-  local side_shift = math.max(-0.07, math.min(0.07, lateral_accel * 0.002))   -- turning left (positive) loads the left side
+  local lean = self.lean -- (a soft, tall car nods and rolls more than a low, stiff one)
+  local long_shift = math.max(-0.07 * lean, math.min(0.07 * lean, accel * 0.0026 * lean))    -- braking (negative) drops the nose
+  local side_shift = math.max(-0.07 * lean, math.min(0.07 * lean, lateral_accel * 0.002 * lean))   -- turning left (positive) loads the left side
   local h0 = nova.terrain_height(self.x, self.z) -- (the model is lifted by this; each wheel is as far above or below it as the hill is under it)
   for i, name in ipairs(WHEEL_NAMES) do
     local w = self.wheels[name]
@@ -322,7 +331,7 @@ function Car:suspension(dt, vf, accel, lateral_accel)
     sp.w[i] = sp.w[i] + (h - sp.w[i]) * math.min(1, dt * WHEEL_FOLLOW)
     h = sp.w[i]
     local target = h + (w.fwd > 0 and long_shift or -long_shift) + (w.left > 0 and -side_shift or side_shift)
-    local pull = SPRING * (target - sp.b[i]) - DAMPER * sp.bv[i]
+    local pull = self.spring * (target - sp.b[i]) - self.damper * sp.bv[i]
     if self.hit then pull = pull + 35 * self.hit * ((i * 37) % 3 - 1) end  -- a knock sets the body rocking
     sp.bv[i] = sp.bv[i] + pull * dt
     sp.b[i] = sp.b[i] + sp.bv[i] * dt
@@ -355,20 +364,8 @@ end
 -- lamp in the middle, as on an open-wheel car or a kart). Measured from the red at the back of each model (2026-11-08); the road cars were
 -- remade 2026-11-09 by scripts/rally/cars.mjs, which prints their numbers.
 local TAIL = {
-  car = { z = -2.27, y = 0.54, x = 0.62 }, car_yellow = { z = -2.27, y = 0.54, x = 0.62 },
-  racecar_green = { z = -2.12, y = 0.41, x = 0 }, racecar_orange = { z = -2.12, y = 0.41, x = 0 },
-  racecar_red = { z = -2.12, y = 0.41, x = 0 }, racecar_white = { z = -2.12, y = 0.41, x = 0 },
-  car_blue = { z = -2.27, y = 0.54, x = 0.62 }, car_green = { z = -1.89, y = 0.64, x = 0.61 },
-  car_sedan = { z = -2.21, y = 0.56, x = 0.61 }, car_suv = { z = -2.21, y = 0.86, x = 0.64 },
-  car_suvl = { z = -2.33, y = 0.86, x = 0.64 }, car_taxi = { z = -2.33, y = 0.56, x = 0.61 },
-  car_police = { z = -2.33, y = 0.56, x = 0.61 }, car_van = { z = -2.39, y = 0.84, x = 0.6 },
-  car_pickup = { z = -2.46, y = 0.8, x = 0.61 },
-  car_coupe = { z = -2.21, y = 0.58, x = 0.56 }, car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
-  ambulance = { z = -2.02, y = 0.6, x = 0.7 }, firetruck = { z = -2.09, y = 0.67, x = 0.61 },
-  garbage_truck = { z = -2.12, y = 0.67, x = 0.61 }, delivery = { z = -2.19, y = 0.53, x = 0.7 },
-  tractor = { z = -1.14, y = 0.8, x = 0.4 },
+  car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
 }
-local KART_TAIL = { z = -0.79, y = 0.45, x = 0 }
 local LENS = { color = { 255, 40, 30, 255 } }
 local GLOW = { color = { 255, 30, 20, 110 } }
 
@@ -378,7 +375,7 @@ function Car:draw_tail_lights()
   if self.night == nil then self.night = require("lib.course").current().night and true or false end
   local braking = self.enabled and (self.ctl.brake or 0) > 0.1
   if not braking and not self.night then return end
-  local t = TAIL[self.model_id] or (self.model_id:match("^kart") and KART_TAIL) or TAIL.car_sedan
+  local t = TAIL[self.car_id] or TAIL.car_gt
   local k = braking and 1 or 0.35
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local y = t.y + 0.06 + (self.lift or 0) - (self.pitch or 0) * t.z

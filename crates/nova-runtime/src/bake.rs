@@ -167,6 +167,7 @@ pub fn bake(
         morphs: Vec::new(),
         material: None,
         compressed: None,
+        detail: None,
         vertices,
         indices,
         texture: None,

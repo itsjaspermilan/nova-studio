@@ -545,7 +545,12 @@ fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("PIPEWIRE_ALSA").is_none() {
         // SAFETY: nothing else runs yet.
-        unsafe { std::env::set_var("PIPEWIRE_ALSA", "{ alsa.period-bytes=2048 alsa.buffer-bytes=8192 node.latency=256/48000 }") };
+        unsafe {
+            std::env::set_var(
+                "PIPEWIRE_ALSA",
+                "{ alsa.period-bytes=2048 alsa.buffer-bytes=8192 node.latency=256/48000 }",
+            )
+        };
     }
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("nova_runtime=info,warn"),

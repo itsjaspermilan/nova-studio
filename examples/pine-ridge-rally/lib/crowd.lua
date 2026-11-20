@@ -1,6 +1,6 @@
 -- The people watching: the spectator objects of the course's scene file (groups beside the road by the start, on the outside of the hard
 -- corners and here and there along the straights, placed by the track generator and editable in the scene editor), turned to the road and
--- cheering, jumping or just standing. They are Kenney's Mini Characters (CC0), each with its own clip rate and phase, drawn only when they are
+-- cheering, jumping or just standing. They are the figures made by scripts/rally/scenery-built.mjs, each with its own clip rate and phase, drawn only when they are
 -- near the camera; the engine skins them on the GPU, so a crowd costs little.
 local crowd = {}
 

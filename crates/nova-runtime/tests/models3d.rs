@@ -1076,13 +1076,14 @@ fn meshes_with_the_same_picture_share_one_texture() {
         morphs: Vec::new(),
         material: None,
         compressed: None,
+        detail: None,
         vertices: vec![v; 3],
         indices: vec![0, 1, 2],
-        texture: Some(Image {
+        texture: Some(std::sync::Arc::new(Image {
             width: 2,
             height: 2,
             rgba: vec![colour; 16],
-        }),
+        })),
         wrap: Default::default(),
         smooth: false,
         notes: Vec::new(),

@@ -53,7 +53,7 @@ describe("a model the scene view can draw", () => {
 
   it("is the studio's own model when there is a .model.json, and null when there is nothing", async () => {
     const own = readFileSync(`${rally}../skin-demo/models/walker.model.json`, "utf8");
-    expect(await loadModelDoc(api({ "models/walker.model.json": own, "models/walker.glb": glb("car") }), "walker")).not.toBeNull();
+    expect(await loadModelDoc(api({ "models/walker.model.json": own, "models/walker.glb": glb("car_gt") }), "walker")).not.toBeNull();
     expect(await loadModelDoc(api({}), "nothing")).toBeNull();
   });
 });

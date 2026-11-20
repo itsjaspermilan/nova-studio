@@ -1,7 +1,7 @@
 -- The car on show on the title, menu and results screens, standing on the road. It wears whichever car the player picked.
 local state = require("lib.state")
 
-local ShowCar = nova.entity { model = "car", tags = { "show" } }
+local ShowCar = nova.entity { model = "car_gt", tags = { "show" } }
 
 function ShowCar:create()
   self:wear()

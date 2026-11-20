@@ -108,17 +108,17 @@ fn an_etc2_picture_looks_like_the_rgba_one_it_came_from() {
     );
 
     let mut plain = quad();
-    plain.texture = Some(image.clone());
+    plain.texture = Some(std::sync::Arc::new(image.clone()));
     let a = render(&mut gfx, &plain);
 
     let mut squeezed = quad();
     squeezed.compressed = Some(compressed);
     // (a stand-in picture for a GPU that cannot read ETC2: it must not be what is drawn where ETC2 works)
-    squeezed.texture = Some(Image {
+    squeezed.texture = Some(std::sync::Arc::new(Image {
         width: 4,
         height: 4,
         rgba: [255, 0, 255, 255].repeat(16),
-    });
+    }));
     let b = render(&mut gfx, &squeezed);
 
     let has_etc2 = gfx

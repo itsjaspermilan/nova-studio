@@ -737,6 +737,8 @@ struct GpuMesh {
     bounds: ([f32; 3], f32),
     /// Drawn lit by its glTF material (the project opted in).
     material: Option<custom::GpuMaterial>,
+    /// Its detail picture (group 3 of the detail pipeline), for a solid, unskinned mesh that is not drawn by its material.
+    detail: Option<wgpu::BindGroup>,
 }
 
 /// Times the GPU's work on a frame with two timestamps (the start of the first pass, the end of the last) and reads them back a
@@ -991,6 +993,8 @@ pub struct Gfx {
     /// Texture bind groups of model meshes by the picture's contents, so that models that carry the same picture (a kit's shared
     /// palette, embedded in every file) share one texture.
     texture_cache: HashMap<u64, wgpu::BindGroup>,
+    /// The content hash of each model picture seen, by the picture's address (the picture is kept, so the address stays its own).
+    image_hashes: HashMap<usize, (std::sync::Arc<Image>, u64)>,
     /// Model textures' samplers, by smooth filtering (a billboard's) or not and the wrap across u and v (from the glTF file).
     mesh_samplers: HashMap<(bool, [Wrap; 2]), wgpu::Sampler>,
     /// GPU timing, where the adapter can do it.
@@ -2293,6 +2297,7 @@ impl Gfx {
             world_format,
             format,
             samples,
+            quality.aniso as u16,
             &custom::Shared {
                 globals: &globals_layout,
                 texture: &texture_layout,
@@ -2367,6 +2372,7 @@ impl Gfx {
             model_instances,
             view_instances,
             texture_cache: HashMap::new(),
+            image_hashes: HashMap::new(),
             mesh_samplers: HashMap::new(),
             gpu_timer,
             textures_shared: 0,
@@ -2653,6 +2659,7 @@ impl Gfx {
                 smooth: mesh.smooth,
                 notes: Vec::new(),
                 compressed: mesh.compressed.clone(),
+                detail: mesh.detail.clone(),
             },
             None,
         ));
@@ -2708,8 +2715,19 @@ impl Gfx {
             match &mesh.texture {
                 Some(image) => {
                     use std::hash::{Hash, Hasher};
+                    // (a picture many models share, a road's or the ground's, is hashed once: found again by its address, which
+                    // stays its own while it is kept here)
+                    let content = self
+                        .image_hashes
+                        .entry(std::sync::Arc::as_ptr(image) as usize)
+                        .or_insert_with(|| {
+                            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                            (image.width, image.height, &image.rgba).hash(&mut hasher);
+                            (image.clone(), hasher.finish())
+                        })
+                        .1;
                     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    (image.width, image.height, &image.rgba, smooth, mesh.wrap).hash(&mut hasher);
+                    (content, smooth, mesh.wrap).hash(&mut hasher);
                     let key = hasher.finish();
                     if let Some(group) = self.texture_cache.get(&key) {
                         self.textures_shared += 1;
@@ -2759,7 +2777,13 @@ impl Gfx {
             }
         };
         let material = self.upload_material(mesh);
+        let detail = if material.is_none() && !translucent {
+            self.upload_detail(mesh)
+        } else {
+            None
+        };
         self.meshes.push(GpuMesh {
+            detail,
             vertices,
             indices,
             index_count: mesh.indices.len() as u32,
@@ -2986,17 +3010,19 @@ impl Gfx {
                             skin: None,
                             bounds: bounding_sphere(vertices),
                             material: None,
+                            detail: None,
                         },
                     );
                 }
                 MeshOp::Variant { id, base, vertices } => {
                     let Some(b) = self.mesh(*base) else { continue };
-                    let (indices, index_count, texture, translucent, material) = (
+                    let (indices, index_count, texture, translucent, material, detail) = (
                         b.indices.clone(),
                         b.index_count,
                         b.texture.clone(),
                         b.translucent,
                         b.material.clone(),
+                        b.detail.clone(),
                     );
                     let buffer =
                         self.device
@@ -3017,6 +3043,7 @@ impl Gfx {
                             skin: None,
                             bounds: bounding_sphere(vertices),
                             material,
+                            detail,
                         },
                     );
                 }
@@ -3727,6 +3754,7 @@ impl Gfx {
                 pass.set_bind_group(2, &self.shadow_group, &[]);
                 let mut skinned_now = false;
                 let mut material_now = false;
+                let mut detail_now = false;
                 let stride = std::mem::size_of::<ModelInstance>() as u64;
                 let mut start = 0usize;
                 while start < world_models.len() {
@@ -3744,12 +3772,21 @@ impl Gfx {
                         start = end;
                         continue;
                     }
-                    if mesh.skin.is_some() != skinned_now || mesh.material.is_some() != material_now
+                    // (a detail picture is for a solid, unskinned mesh in the plain look)
+                    let detail = mesh
+                        .detail
+                        .as_ref()
+                        .filter(|_| mesh.skin.is_none() && mesh.material.is_none() && !translucent);
+                    if mesh.skin.is_some() != skinned_now
+                        || mesh.material.is_some() != material_now
+                        || detail.is_some() != detail_now
                     {
                         skinned_now = mesh.skin.is_some();
                         material_now = mesh.material.is_some();
+                        detail_now = detail.is_some();
                         let x = &self.extras;
                         pass.set_pipeline(match (skinned_now, material_now) {
+                            (false, false) if detail_now => &x.detail_pipeline,
                             (true, false) => &self.skinned_pipeline,
                             (true, true) => &x.skinned_material_pipeline,
                             (false, true) if translucent => &x.material_blend_pipeline,
@@ -3765,6 +3802,9 @@ impl Gfx {
                     }
                     if let Some(skin) = &mesh.skin {
                         pass.set_vertex_buffer(2, skin.slice(..));
+                    }
+                    if let Some(detail) = detail {
+                        pass.set_bind_group(3, detail, &[]);
                     }
                     if let Some(material) = &mesh.material {
                         // (its maps, with the joint palette, are group 3; its tangents and factors follow the other buffers)

@@ -288,6 +288,7 @@ end"
         morphs: Vec::new(),
         material: None,
         compressed: None,
+        detail: None,
         vertices: posed,
         indices: mesh.indices.clone(),
         texture: mesh.texture.clone(),

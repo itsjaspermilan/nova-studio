@@ -1,6 +1,6 @@
 -- A person watching the race, placed beside the road in the scene file (the track generator puts them there in groups: by the start, on the
 -- outside of the hard bends, along the straights; move, add or take away any of them in the scene editor). Each crowd_* kind is one of
--- Kenney's Mini Characters (CC0). `ry` turns them (to face the road), `sx` is their size (the models are 0.67 m tall as made: 2 makes a
+-- the figures made by scripts/rally/scenery-built.mjs. `ry` turns them (to face the road), `sx` is their size (the models are 0.67 m tall as made: 2 makes a
 -- person about 1.35 m), `hop` how high they jump as they cheer (0: they stand still), and `rate` and `phase` the speed and start of their
 -- clip, so that a crowd does not move as one. lib/crowd.lua draws and animates them.
 local crowd = require("lib.crowd")

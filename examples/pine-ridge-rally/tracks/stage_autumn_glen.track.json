@@ -19,6 +19,7 @@
   "roadside": { "stand": "grandstand", "tent": "tent_long", "banner": "banner_red", "flag": "flag_red", "boards": ["billboard", "billboard_low"], "pylon": "pylon" },
   "crowd": { "kind": ["crowd_fa", "crowd_fb", "crowd_fc", "crowd_fd", "crowd_ma", "crowd_mb", "crowd_mc", "crowd_md"], "size": 2 },
   "zones": [{ "from": 1130, "to": 3210, "road": "road_asphalt" }],
+  "textured": true,
   "control": [
     [0, -140],
     [0, -73.4],

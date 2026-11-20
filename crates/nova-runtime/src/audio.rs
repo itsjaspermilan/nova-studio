@@ -260,7 +260,9 @@ fn pick_device(host: &cpal::Host) -> Result<cpal::Device, String> {
             list.map(|d| {
                 let label = format!(
                     "{} [{:?}]",
-                    d.description().map(|n| n.name().to_string()).unwrap_or_default(),
+                    d.description()
+                        .map(|n| n.name().to_string())
+                        .unwrap_or_default(),
                     d.id().ok()
                 );
                 (d, label)
@@ -270,14 +272,21 @@ fn pick_device(host: &cpal::Host) -> Result<cpal::Device, String> {
         .unwrap_or_default();
     log::info!(
         "audio devices: {}",
-        names.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(" | ")
+        names
+            .iter()
+            .map(|(_, n)| n.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ")
     );
-    let wanted = std::env::var("NOVA_AUDIO_DEVICE").ok().or_else(|| {
-        cfg!(target_os = "linux").then(|| "pipewire".to_string())
-    });
+    let wanted = std::env::var("NOVA_AUDIO_DEVICE")
+        .ok()
+        .or_else(|| cfg!(target_os = "linux").then(|| "pipewire".to_string()));
     if let Some(want) = wanted {
         let want = want.to_lowercase();
-        if let Some((d, _)) = names.into_iter().find(|(_, n)| n.to_lowercase().contains(&want)) {
+        if let Some((d, _)) = names
+            .into_iter()
+            .find(|(_, n)| n.to_lowercase().contains(&want))
+        {
             return Ok(d);
         }
     }

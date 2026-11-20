@@ -26,43 +26,14 @@ thread_local! {
     /// Set by a test that plays as a new player (no cars, the starting coins, only the first course of each list open). Otherwise `load`
     /// gives the game a save in which every car is owned, every course is open, and `CAR` is the car last driven.
     static FRESH: Cell<bool> = const { Cell::new(false) };
-    /// The car the save says was driven last, as a number into `state.cars` (lib/state.lua; 1 is Redline).
+    /// The car the save says was driven last, as a number into `state.cars` (lib/state.lua; 1 is the Apex GT, 2 the Outback).
     static CAR: Cell<usize> = const { Cell::new(1) };
 }
 
 /// The cars of `state.cars`, in its order (lib/state.lua): the save of an ordinary test owns them all.
-const CARS: [&str; 28] = [
-    "car",
-    "car_blue",
-    "car_green",
-    "car_yellow",
-    "car_sedan",
-    "car_suv",
-    "car_suvl",
-    "car_taxi",
-    "car_police",
-    "car_van",
-    "car_pickup",
-    "car_coupe",
-    "car_offroad",
-    "car_gt",
-    "racecar_green",
-    "racecar_orange",
-    "racecar_red",
-    "racecar_white",
-    "kart_oobi",
-    "kart_oodi",
-    "kart_ooli",
-    "kart_oopi",
-    "kart_oozi",
-    "ambulance",
-    "firetruck",
-    "garbage_truck",
-    "delivery",
-    "tractor",
-];
-/// The first car of each class (formula, sport, everyday, kart, fun), as numbers into `state.cars`.
-const CLASS_CARS: [usize; 5] = [1, 2, 5, 16, 21];
+const CARS: [&str; 2] = ["car_gt", "car_offroad"];
+/// The car of each class (sport: the Apex GT; everyday: the Outback 4x4), as numbers into `state.cars`.
+const CLASS_CARS: [usize; 2] = [1, 2];
 
 /// The course ids in the order of the game's lists (lib/state.lua): circuits, then stages.
 const CIRCUITS: [&str; 10] = [
@@ -314,8 +285,8 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
         !log.iter().any(|l| l.contains("put back on the road")),
         "nobody got stuck: {log:?}"
     );
-    // every car has a time when the player finishes (the ones still racing get an estimate, not "did not finish"), and a Formula
-    // car's rivals drive other Formula cars
+    // every car has a time when the player finishes (the ones still racing get an estimate, not "did not finish"), and the
+    // rivals drive the player's car in its other paints
     let line = log
         .iter()
         .find(|l| l.contains("a time for"))
@@ -330,14 +301,7 @@ fn a_whole_race_on_dust_valley_ends_on_the_results_screen() {
     assert_eq!(rivals.len(), 3, "{line}");
     for r in rivals {
         assert!(
-            [
-                "car_yellow",
-                "racecar_green",
-                "racecar_orange",
-                "racecar_red",
-                "racecar_white"
-            ]
-            .contains(&r),
+            ["car_gt_red", "car_gt_white", "car_gt_grey"].contains(&r),
             "{line}"
         );
     }
@@ -607,8 +571,7 @@ fn cornering_with(
     steer: f32,
     throttle: bool,
 ) -> (f32, f32, f32) {
-    // 0 is Redline (the Formula class); 1 and 2 are the first two of the Sport class (Blue Streak, Green Machine); a time trial: no rivals
-    // to bump the car
+    // 0 is the Apex GT, 1 the Outback 4x4; a time trial: no rivals to bump the car
     let mut g = load_car(1 + car_steps);
     setup(&mut g, Mode::Trial, 0, 0);
     let mut log = Vec::new();
@@ -654,25 +617,72 @@ fn stat(g: &mut Game) -> std::collections::HashMap<String, f32> {
 }
 
 #[test]
-fn the_sedan_and_hatchback_drift_under_power_in_a_bend_and_the_formula_car_grips() {
-    // Redline (0), Blue Streak (1), Green Machine (2)
-    let (formula_slip, _, _) = cornering(0, 90, 4, 0.7);
-    let (blue_slip, _, _) = cornering(1, 90, 4, 0.7);
-    let (_, blue_speed, _) = cornering(1, 50, 4, 0.7);
-    let (green_slip, _, _) = cornering(2, 90, 4, 0.7);
-    let (gentle_slip, _, _) = cornering(1, 90, 4, 0.4);
+fn the_coupe_slides_under_power_in_a_bend_and_the_4x4_does_not() {
+    // the Apex GT (0), the Outback (1)
+    let (gt_slip, _, _) = cornering(0, 90, 4, 0.7);
+    let (_, gt_speed, _) = cornering(0, 50, 4, 0.7);
+    let (offroad_slip, _, _) = cornering(1, 90, 4, 0.7);
+    let (gentle_slip, _, _) = cornering(0, 90, 4, 0.4);
+    assert!(gt_slip > 0.6, "the coupe slides: {gt_slip}");
     assert!(
-        blue_slip > 0.6 && green_slip > 0.6,
-        "the road cars slide: {blue_slip} {green_slip}"
+        offroad_slip < gt_slip - 0.15,
+        "the 4x4 holds its line better: {offroad_slip} against {gt_slip}"
     );
-    assert!(formula_slip < 0.6, "the formula car grips: {formula_slip}");
     assert!(
         gentle_slip < 0.4,
-        "a gentle bend does not make the road car slide: {gentle_slip}"
+        "a gentle bend does not make the coupe slide: {gentle_slip}"
     );
     assert!(
-        blue_speed > 12.0,
-        "and a drift keeps its speed: {blue_speed}"
+        gt_speed > 12.0,
+        "and it keeps its speed through the slide: {gt_speed}"
+    );
+}
+
+/// Each car is its own machine: the coupe has eight gears, pulls harder and runs faster; the 4x4 has five, and on the grass it keeps
+/// most of its speed where the coupe bogs down.
+#[test]
+fn the_two_cars_have_their_own_gearboxes_speeds_and_ways_with_the_rough() {
+    let flat_out = |car: usize| {
+        let mut g = load_car(car);
+        setup(&mut g, Mode::Trial, 0, 0);
+        let mut log = Vec::new();
+        run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
+            l.iter().any(|x| x == "go")
+        });
+        tap(&mut g, "key:F9");
+        let mut top_gear = 0.0f32;
+        let mut top_speed = 0.0f32;
+        let mut at_three = 0.0f32;
+        for f in 0..60 * 40 {
+            frame_with(&mut g, &[]);
+            if f % 30 == 29 {
+                let s = stat(&mut g);
+                top_gear = top_gear.max(s["gear"]);
+                top_speed = top_speed.max(s["speed"]);
+                if f == 179 {
+                    at_three = s["speed"];
+                }
+            }
+        }
+        (top_gear, top_speed, at_three)
+    };
+    let (gt_gear, gt_top, gt_three) = flat_out(1);
+    let (off_gear, off_top, off_three) = flat_out(2);
+    assert!(
+        (6.0..=8.0).contains(&gt_gear),
+        "the coupe gets well up its eight gears on a lap: {gt_gear}"
+    );
+    assert!(
+        (4.0..=5.0).contains(&off_gear),
+        "the 4x4 has five: {off_gear}"
+    );
+    assert!(
+        gt_top > off_top + 6.0,
+        "the coupe is much the faster: {gt_top} against {off_top}"
+    );
+    assert!(
+        gt_three > off_three + 2.0,
+        "and quicker off the line: {gt_three} against {off_three}"
     );
 }
 
@@ -979,19 +989,7 @@ fn one_lap(car: usize, circuit_steps: usize) -> String {
 #[test]
 #[ignore]
 fn ai_balance() {
-    let cars = [
-        ("Redline", 1),
-        ("Sunburst", 4),
-        ("Blue Streak", 2),
-        ("Green Machine", 3),
-        ("Grand Tourer", 7),
-        ("Patrol", 9),
-        ("Commuter", 5),
-        ("Trailblazer", 6),
-        ("Cab", 8),
-        ("Delivery Van", 10),
-        ("Hauler", 11),
-    ];
+    let cars = [("Apex GT", 1), ("Outback", 2)];
     // AI_CARS=Redline,Cab limits the sweep to some cars
     let only = std::env::var("AI_CARS").unwrap_or_default();
     // (the difficulty is the course's: Pine Ridge is Easy, Frost Pass Medium, Copper Canyon Hard)
@@ -1061,7 +1059,7 @@ fn a_rally_stage_is_driven_in_sections_and_scored() {
 }
 
 /// The classes of car in the order of their tabs on the car page (lib/state.lua).
-const CLASSES: [&str; 5] = ["formula", "sport", "everyday", "kart", "fun"];
+const CLASSES: [&str; 2] = ["sport", "everyday"];
 
 /// The section times of a good run by the first car of each class on each stage (for lib/pars.lua). Run on purpose:
 /// `cargo test --release -p nova-runtime --test rally rally_pars -- --ignored --nocapture` (COURSES=stage_canyon,... for some).
