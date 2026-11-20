@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "tile_width": 16,
+  "tile_height": 16,
+  "solid": [],
+  "names": {
+    "0": "pip_full",
+    "1": "pip_empty"
+  },
+  "terrains": []
+}

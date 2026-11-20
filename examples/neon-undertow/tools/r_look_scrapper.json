@@ -1,0 +1,39 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 650, 470, 'right';\nlocal s = nova.named('scrapper'); s.x, s.y = 700, 470; s.facing = 'left'; s.state = 'tell'; s.t = 0",
+ "route": [
+  {
+   "wait": 3,
+   "capture": "tell begins"
+  },
+  {
+   "wait": 10,
+   "capture": "tell"
+  },
+  {
+   "wait": 12,
+   "capture": "tell, late"
+  },
+  {
+   "wait": 6,
+   "capture": "swing"
+  },
+  {
+   "wait": 3,
+   "capture": "swing 2"
+  },
+  {
+   "wait": 6,
+   "capture": "recover"
+  }
+ ],
+ "zoom": 3,
+ "crop": [
+  330,
+  190,
+  330,
+  170
+ ],
+ "out": "build/look_scrapper",
+ "columns": 3
+}

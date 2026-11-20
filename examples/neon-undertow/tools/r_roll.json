@@ -1,0 +1,56 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 200, 470, 'right'\nlocal R = nova.named('runner'); local J = require('lib.juice'); H = {}; local orig = R.update;\nR.update = function(self, dt) orig(self, dt); H[#H+1] = string.format('%.2f,%.2f,%d,%d,%s', self.x, self.y, self.f, J.hold, self.state) end; X0 = r.x",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "tap": "dash",
+   "tap_every": 200,
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 6
+  },
+  {
+   "until": "nova.named('runner').state ~= 'roll'",
+   "max": 40,
+   "capture": "roll over"
+  },
+  {
+   "lua": "R1 = nova.named('runner').x - X0; ROLLS_AFTER_1 = nova.named('runner').stats.rolls"
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "wait": 20
+  },
+  {
+   "lua": "EARLY = nova.named('runner').stats.rolls"
+  },
+  {
+   "until": "nova.named('runner').roll_cd <= 0",
+   "max": 60
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "wait": 3,
+   "capture": "second roll"
+  },
+  {
+   "lua": "LATE = nova.named('runner').stats.rolls"
+  }
+ ],
+ "print": [
+  "string.format('%.2f', R1)",
+  "ROLLS_AFTER_1",
+  "EARLY",
+  "LATE",
+  "table.concat(H, ' ')"
+ ]
+}

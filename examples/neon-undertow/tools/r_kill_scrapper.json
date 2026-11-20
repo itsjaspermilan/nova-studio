@@ -1,0 +1,79 @@
+{
+ "start_scene": "test_room",
+ "invincible": true,
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 640, 470, 'right'; local s = nova.named('scrapper'); s.x, s.y = 700, 470",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.count('scrap') > 0",
+   "max": 60,
+   "capture": "the burst"
+  },
+  {
+   "wait": 2,
+   "capture": "burst 2"
+  },
+  {
+   "wait": 3,
+   "capture": "burst 3"
+  },
+  {
+   "wait": 6,
+   "capture": "scrap on the floor"
+  },
+  {
+   "lua": "DROPPED = nova.count('scrap'); ALIVE = nova.count('scrapper')"
+  },
+  {
+   "repeat": 3,
+   "until": "nova.count('scrap') == 0",
+   "steps": [
+    {
+     "walk_to": "scrap",
+     "who": "runner",
+     "max": 120,
+     "may_time_out": true
+    },
+    {
+     "wait": 2
+    }
+   ]
+  },
+  {
+   "wait": 5,
+   "capture": "all taken"
+  }
+ ],
+ "zoom": 2,
+ "crop": [
+  330,
+  150,
+  420,
+  220
+ ],
+ "out": "build/look_kill",
+ "columns": 3,
+ "print": [
+  "DROPPED",
+  "ALIVE",
+  "require('lib.juice').scrap",
+  "nova.count('scrap')"
+ ]
+}

@@ -1,0 +1,99 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 250, 470, 'right'",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "C0 = string.format('%.3f', nova.named('runner').charge)"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "C1 = string.format('%.3f', nova.named('runner').charge); S1 = nova.named('runner').stats.shots"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "C2 = string.format('%.3f', nova.named('runner').charge)"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "C3 = string.format('%.3f', nova.named('runner').charge); S3 = nova.named('runner').stats.shots; DUMMY = nova.named('dummy').total"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "C4 = string.format('%.3f', nova.named('runner').charge); S4 = nova.named('runner').stats.shots; K4 = nova.named('runner').stats.clicks; DUMMY4 = nova.named('dummy').total"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x = 380"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "lua": "C5 = string.format('%.3f', nova.named('runner').charge); B5 = nova.named('runner').stats.baton_hits"
+  }
+ ],
+ "print": [
+  "C0",
+  "C1",
+  "S1",
+  "C2",
+  "C3",
+  "S3",
+  "DUMMY",
+  "C4",
+  "S4",
+  "K4",
+  "DUMMY4",
+  "C5",
+  "B5"
+ ]
+}

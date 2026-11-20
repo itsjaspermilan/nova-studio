@@ -1,0 +1,34 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 470, 'right';\nlocal s = nova.named('scrapper'); s.x, s.y = 700, 470; s.facing = 'left'; s.state = 'tell'; s.t = 0",
+ "route": [
+  {
+   "wait": 1
+  },
+  {
+   "until": "nova.named('scrapper').t >= 0.5 - 15/60",
+   "max": 60
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "tap": "dash",
+   "tap_every": 200,
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 5
+  },
+  {
+   "wait": 20,
+   "capture": "B: swing lands after the roll's untouchable time"
+  },
+  {
+   "lua": "B_HP = nova.named('runner').hp; B_SWINGS = nova.named('scrapper').swings; B_HURT = nova.named('runner').stats.hurt"
+  }
+ ],
+ "print": [
+  "B_HP",
+  "B_SWINGS",
+  "B_HURT"
+ ]
+}

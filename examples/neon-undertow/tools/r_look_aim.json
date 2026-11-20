@@ -1,0 +1,52 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 470, 'right'",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 12,
+   "capture": "aim right"
+  },
+  {
+   "hold": [
+    "ranged",
+    "up",
+    "right"
+   ],
+   "frames": 12,
+   "capture": "aim up-right"
+  },
+  {
+   "wait": 5,
+   "capture": "shot flies"
+  },
+  {
+   "wait": 10,
+   "capture": "shot lands"
+  },
+  {
+   "lua": "nova.named('runner').charge = 0"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 8,
+   "capture": "aim, no charge"
+  }
+ ],
+ "zoom": 2,
+ "crop": [
+  150,
+  130,
+  520,
+  220
+ ],
+ "out": "build/look_aim",
+ "columns": 3
+}

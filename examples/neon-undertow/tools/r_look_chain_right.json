@@ -1,0 +1,61 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 380, 470, 'right'",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3,
+   "capture": "1 wind-up"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 1",
+   "max": 30,
+   "capture": "1 hit"
+  },
+  {
+   "wait": 5,
+   "capture": "1 later"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 2",
+   "max": 40
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 1,
+   "capture": "2 hit"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 3",
+   "max": 40,
+   "capture": "3 hit (heavy)"
+  },
+  {
+   "wait": 3,
+   "capture": "3 later"
+  },
+  {
+   "wait": 5,
+   "capture": "3 end"
+  }
+ ],
+ "zoom": 2,
+ "crop": [
+  210,
+  120,
+  480,
+  270
+ ],
+ "out": "build/look_chain_right",
+ "columns": 3
+}

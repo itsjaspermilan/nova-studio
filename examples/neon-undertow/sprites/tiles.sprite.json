@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "tiles.png",
+  "frame_width": 16,
+  "frame_height": 16,
+  "columns": 16,
+  "frames": 246,
+  "frame_duration_ms": 100
+}

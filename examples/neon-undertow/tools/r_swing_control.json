@@ -1,0 +1,14 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 650, 470, 'right';\nlocal s = nova.named('scrapper'); s.x, s.y = 700, 470; s.facing = 'left'; s.state = 'tell'; s.t = 0",
+ "route": [
+  {
+   "wait": 45,
+   "capture": "the swing lands"
+  }
+ ],
+ "print": [
+  "nova.named('runner').hp",
+  "nova.named('scrapper').swings"
+ ]
+}
