@@ -23,7 +23,8 @@ import { type Raster } from "../src/lib/pixels";
 import { searchApi } from "./api";
 import { pngOf } from "./draw";
 import { previewModel } from "./models";
-import { playGame, ROUTE_HELP } from "./play";
+import { ignoredPlace, playGame, ROUTE_HELP } from "./play";
+import { MOVED, nearest, nestedWarnings, unknownKeys } from "./keys";
 import { previewSprite, writeSprite } from "./sprites";
 import { PRESETS, DEFAULTS, RANGES, WAVES, cleanArpNotes, fromJson as sfxFromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
@@ -717,6 +718,11 @@ const playProperties = {
   state: { type: "string", enum: ["end", "all", "none"], description: "The list of entities with positions: at the end (default), at every picture, or not at all." },
   audio: { type: ["boolean", "string"], description: 'true: also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report). With `out` it is <out>/run.wav; a path such as "build/run1.wav" (in the project, in a folder the game ignores) says where yourself.' },
   out: { type: "string", description: 'A folder in the project for the run\'s files: every picture taken (each `capture`, `capture_at` frame, `every` frame and the last) as its own full-size PNG named by its frame and caption (f00031-at-the-door.png), the film strip (strip.png), report.json and, with `audio: true`, run.wav. It must be a place the game does not load: under "build/", a dot-folder, or a folder listed in nova.json\'s "ignore" ("shots/run1" with { "ignore": ["shots"] }). The answer lists what was written. A run never reloads the game when files change, so writing there is safe.' },
+  invincible: { type: "boolean", description: "The hero cannot die in this run, so a clumsy route still gets to the end: after every frame its `hp` (or `health`, `hearts`, `lives`, `life`, `energy`, whichever it has as a number) is put back to the most it has had, and the answer says which field and how often. `nova.testing.invincible` is true in such a run, for a game whose damage code is not a plain field: `if nova.testing.invincible then return end`. `who` names the entity (left out: the one named or tagged hero or player)." },
+  who: { type: "string", description: "Who `invincible` protects: a scene object's name or a tag." },
+  stop_on_fail: { type: "boolean", description: 'End the route at the first step that fails (an `until`, `walk_to` or `fight` that ran out, or Lua that failed; a step with "may_time_out": true does not count), with a picture of where that is, instead of playing the later steps from the wrong place. Everything gathered up to there is returned.' },
+  overlay: { type: ["array", "boolean"], items: { type: "string" }, description: 'Draw over every picture of the run (2D): "hitboxes" (each entity\'s hitbox, green), "solids" (solid tiles shaded red, entities tagged solid outlined red), "names" (name:kind over each entity). true is all three. For "how near is near": why a press next to a chest did nothing.' },
+  compare: { type: ["string", "object"], description: 'Play the same run a second time with one difference and say how much of each picture it changed: the Lua that makes the difference, "nova.shadows(nil)" (run once when the scene is up, after `lua`), or { "lua": "nova.shadows(nil)", "each_frame": true, "label": "no shadows" } when the scene\'s own code would set it back every frame. The answer gives, per picture, the share of pixels that differ, by how much, and the box they are in; the second run\'s strip is returned as a second picture. It answers "is this effect drawn at all, and where".' },
   columns: { type: "number", description: "How many pictures across the film strip." },
   press: { type: "array", items: { type: "string" }, description: 'Taps by frame, each "source@frame", for example "key:Enter@30": the key is held for two frames from that frame. (A route is easier.)' },
   hold: { type: "array", items: { type: "string" }, description: 'Actions held every frame of the run, for example ["throttle", "steer=0.3"].' },
@@ -769,7 +775,7 @@ export const EXAMPLES: Record<string, Args> = {
   song_write: { name: "town", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", wave: "square", notes: [{ step: 0, len: 4, pitch: 60 }, { step: 8, len: 4, pitch: 64 }] }, { name: "drums", kind: "drums", notes: [{ step: 0, pitch: 36 }, { step: 4, pitch: 38 }] }] } },
   sprite_write: { name: "dot", palette: { r: "#ff0000", w: "#ffffff" }, frames: [[".rr.", "rwwr", "rwwr", ".rr."], { rows: [".r", "rw", "rw", ".r"], mirror: "x" }], animations: [{ name: "blink", from: 0, to: 1 }] },
   sprite_preview: { name: "dot", frame: 0 },
-  scene_write: { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 96, y: 96 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 16, tile_height: 16 }, scale: 3, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } },
+  scene_write: { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 96, y: 96 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 16, tile_height: 16, scale: 3 }, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } },
   scene_preview: { name: "room" },
   track_write: { name: "stage1", open: true, control: [[0, 0], [0, 120], [80, 220], [200, 240], [320, 180]] },
   terrain_write: { name: "stage1", open: true, control: [[0, 0], [0, 120], [80, 220], [200, 240], [320, 180]], profile: [[0, 0], [200, 12], [400, 4]] },
@@ -788,9 +794,45 @@ export const EXAMPLES: Record<string, Args> = {
 // ---- MCP over stdio ------------------------------------------------------------------------------------------------
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
+const PICTURES = new Set(["play", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art"]);
+
+/// Keys some handlers read that their schema does not list (older spellings, kept working).
+const ALSO: Record<string, string[]> = { play: ["steps", "god"], screenshot: ["steps", "god"], model_preview: ["view"] };
+
+/// Every tool that returns a picture takes this too.
+const IMAGE_OUT = {
+  type: "string",
+  description: 'Also save the picture this call returns to this path, and say so on the first line of the answer (so it is not lost when the output is filtered): a path in the project in a place the game does not load ("build/look.png", a dot-folder, a folder in nova.json\'s "ignore"), or any path given whole. It must end in .png; a second picture gets -2 before the ending.',
+};
+
+/// The one place every call goes through. Nothing is ignored in silence: a key the tool does not have is refused by name
+/// with the nearest key it does have; a key that sits in the wrong place inside its arguments (a tileset's `scale` beside
+/// `tileset`, a sprite frame's `colour`) is said as a warning at the top of the answer.
+function checkKeys(t: Tool, args: Args): string[] {
+  const allowed = [...Object.keys(t.properties), "image_out", ...(ALSO[t.name] ?? [])];
+  const unknown = unknownKeys(args, allowed, `the ${t.name} tool`, MOVED[t.name] ?? {});
+  if (unknown.length) throw new Error(`${unknown.join("; ")}. Nothing was done. ${t.name} takes: ${Object.keys(t.properties).join(", ")}`);
+  return nestedWarnings(t.name, args).map((w) => `warning: ${w} (it was not used)`);
+}
+
+/// Copies the pictures of an answer to where `image_out` says.
+function saveImages(args: Args, images: string[]): string[] {
+  if (args.image_out === undefined || args.image_out === null || args.image_out === "" || !images.length) return [];
+  const given = String(args.image_out);
+  if (!/\.png$/i.test(given)) throw new Error(`image_out "${given}" must end in .png`);
+  const first = given.startsWith("/") ? resolve(given) : ignoredPlace(projectRoot(args), given, "image_out");
+  return images.map((file, i) => {
+    const to = i === 0 ? first : first.replace(/\.png$/i, `-${i + 1}.png`);
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, readFileSync(file));
+    return to;
+  });
+}
+
 function call(name: string, args: Args) {
   const t = tools.find((x) => x.name === name);
-  if (!t) throw new Error(`unknown tool '${name}'`);
+  if (!t) throw new Error(`unknown tool '${name}'${nearest(name, tools.map((x) => x.name)) ? `; did you mean '${nearest(name, tools.map((x) => x.name))}'?` : ""}`);
+  const warnings = checkKeys(t, args);
   for (const key of t.required ?? []) if (args[key] === undefined) throw new Error(`'${key}' is required`);
   written = [];
   let r: Result;
@@ -800,9 +842,12 @@ function call(name: string, args: Args) {
     logActivity(args, name, e instanceof Error ? e.message : String(e), true);
     throw e;
   }
+  const images = typeof r === "string" ? [] : (r.images ?? []);
+  const saved = saveImages(args, images);
+  const text = [...(saved.length ? [`picture saved: ${saved.join(", ")}`] : []), ...warnings, typeof r === "string" ? r : r.text].join("\n");
   logActivity(args, name, typeof r === "string" ? r : r.text, false);
-  const content: unknown[] = [{ type: "text", text: typeof r === "string" ? r : r.text }];
-  if (typeof r !== "string") for (const file of r.images ?? []) content.push({ type: "image", data: readFileSync(file).toString("base64"), mimeType: "image/png" });
+  const content: unknown[] = [{ type: "text", text }];
+  for (const file of images) content.push({ type: "image", data: readFileSync(file).toString("base64"), mimeType: "image/png" });
   return { content };
 }
 
@@ -814,7 +859,8 @@ function handle(msg: any) {
       send({ jsonrpc: "2.0", id, result: { protocolVersion: params?.protocolVersion ?? "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "nova", version: "0.1.0" } } });
     } else if (method === "ping") send({ jsonrpc: "2.0", id, result: {} });
     else if (method === "tools/list") {
-      send({ jsonrpc: "2.0", id, result: { tools: tools.map((t) => ({ name: `nova_${t.name}`, description: t.description, inputSchema: { type: "object", properties: t.properties, required: t.required ?? [], ...(EXAMPLES[t.name] ? { examples: [EXAMPLES[t.name]] } : {}) } })) } });
+      // (`image_out` is listed for the tools known to return a picture; any tool that returns one honours it)
+      send({ jsonrpc: "2.0", id, result: { tools: tools.map((t) => ({ name: `nova_${t.name}`, description: t.description, inputSchema: { type: "object", properties: PICTURES.has(t.name) ? { ...t.properties, image_out: IMAGE_OUT } : t.properties, required: t.required ?? [], ...(EXAMPLES[t.name] ? { examples: [EXAMPLES[t.name]] } : {}) } })) } });
     } else if (method === "tools/call") {
       const name = String(params?.name ?? "").replace(/^nova_/, "");
       try {
