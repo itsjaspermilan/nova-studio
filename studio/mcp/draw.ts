@@ -193,6 +193,8 @@ export function paste(dst: Raster, src: Raster, x: number, y: number, scale = 1,
 
 /// Text with a dark edge so that it reads on any picture. Returns its size.
 export function label(r: Raster, x: number, y: number, text: string, color: Rgba = INK, scale = 1, edge = true): { w: number; h: number } {
+  x = Math.round(x);
+  y = Math.round(y);
   if (edge) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) drawText(r, x + dx * scale, y + dy * scale, text, [0, 0, 0, 255], scale);
   return drawText(r, x, y, text, color, scale);
 }

@@ -1,7 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { encodeWav } from "../src/lib/wav";
 import { decodePng } from "./draw";
 import { call, tools } from "./server";
 
@@ -223,6 +225,138 @@ describe("the Nova MCP server", () => {
     expect(() => use("model_write", { name: "../x", model: crate })).toThrow(/names use letters/);
     expect(() => call("nope", {})).toThrow(/unknown tool/);
     expect(() => call("project_create", { project: dir })).toThrow(/'name' is required/);
+  });
+});
+
+describe("hearing without ears", () => {
+  it("reads a tone, a tune, noise and a rumble, and warns about what will not be heard", () => {
+    // a sine at 880 Hz
+    const tone = text(use("sfx_write", { name: "tone", params: { wave: "sine", freq: 880, sustain: 0.5, decay: 0.1, volume: 0.5 } }));
+    expect(tone).toMatch(/reading: nearly a pure tone at 8[78]\d Hz \(A5\)/);
+    expect(tone).toMatch(/peak -6\.\d dBFS/);
+    expect(tone).toMatch(/strongest lines: 8[78]\d Hz A5 \d+ %/);
+    expect(tone).toContain("no clipping");
+    // a four-note fanfare in one effect: the pitch over time climbs through the notes
+    const fanfare = text(use("sfx_write", { name: "fanfare", params: { freq: 523, arpTime: 0.11, arpNotes: [4, 7, 12], sustain: 0.4 } }));
+    expect(fanfare).toContain("rising in pitch");
+    const pitches = /strongest pitch over time \(8 equal parts\): ([\d\s-]+) Hz/.exec(fanfare)![1]!.split(" ").filter((p) => p !== "-").map(Number);
+    expect(pitches[0]).toBeGreaterThan(480);
+    expect(pitches[0]).toBeLessThan(560);
+    expect(pitches.at(-1)).toBeGreaterThan(1000);
+    expect(JSON.parse(readFileSync(join(dir, "sounds/fanfare.sfx.json"), "utf8")).arpNotes).toEqual([4, 7, 12]);
+    // white noise, and noise so slow it is a rumble small speakers cannot play
+    expect(text(use("sfx_write", { name: "hiss", params: { wave: "noise", freq: 3000, sustain: 0.3 } }))).toContain("mostly noise");
+    const step = text(use("sfx_write", { name: "step", params: { wave: "noise", freq: 50, sustain: 0.05, decay: 0.1 } }));
+    expect(step).toMatch(/WARNING: almost all of its energy \(\d\d %\) is below 80 Hz/);
+    expect(() => use("sfx_write", { name: "x", params: { pitch: 400 } })).toThrow(/params has "pitch", which the synth does not have/);
+    expect(() => use("sfx_write", { name: "x", params: { arpNotes: "up" } })).toThrow(/arpNotes is a list of semitones/);
+  });
+
+  it("reports existing sounds with a spectrogram, compares a mix, and checks a loop's seam", () => {
+    use("sfx_write", { name: "loud", params: { wave: "square", freq: 440, sustain: 0.5, volume: 0.9 } });
+    use("sfx_write", { name: "soft", params: { wave: "sine", freq: 440, sustain: 0.5, volume: 0.05 } });
+    const r = use("sound_report", { sounds: ["loud", "sounds/soft.wav"] });
+    const said = text(r);
+    expect(said).toContain("sounds/loud.wav: 0.7");
+    expect(said).toMatch(/the mix, loudest first[\s\S]*sounds\/loud\.wav[\s\S]*sounds\/soft\.wav\s+-\d+\.\d\s+(\d+\.\d)/);
+    const below = Number(/sounds\/soft\.wav\s+-\d+\.\d\s+(\d+\.\d)/.exec(said)![1]);
+    expect(below).toBeGreaterThan(20); // 0.05 against 0.9 of a brighter wave
+    expect(said).toMatch(/the quietest is \d+\.\d dB under the loudest/);
+    const picture = decodePng(Buffer.from((r.content[1] as { data: string }).data, "base64"));
+    expect(picture.w).toBe(720);
+    expect(picture.h).toBeGreaterThan(600); // two sounds, one under the other
+    // a sound that stops dead is a loop with a click, and a one-shot with a click at the end
+    const cut = text(use("sound_report", { sound: "loud.sfx.json", loop: true, picture: false }));
+    expect(cut).toContain("loop seam: matches");
+    const wav = encodeWav({ rate: 8000, channels: [Float32Array.from({ length: 4000 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 100.3 * i) / 8000) + 0.3)] });
+    mkdirSync(join(dir, "sounds"), { recursive: true });
+    writeFileSync(join(dir, "sounds/drone.wav"), wav);
+    const drone = text(use("sound_report", { sound: "drone", loop: true, picture: false }));
+    expect(drone).toContain("WARNING: a DC offset of 30");
+    expect(drone).toMatch(/loop seam: DOES NOT MATCH|loop seam: matches/);
+    const oneShot = text(use("sound_report", { sound: "drone", picture: false }));
+    expect(oneShot).toMatch(/it starts at 30 % of full scale instead of from silence: a click at the start/);
+    expect(() => use("sound_report", { sound: "nothing" })).toThrow(/there is no sound 'nothing'.*sounds\/loud\.wav/);
+    expect(() => use("sound_report", { file: "/etc/hosts" })).toThrow(/outside the project/);
+    expect(() => use("sound_report", {})).toThrow(/say which sound/);
+  });
+
+  it("lets a drums track go without a wave and a note without a length, and reports a song as a loop", () => {
+    const song = { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", notes: [{ step: 0, len: 4, pitch: 69 }] }, { name: "drums", kind: "drums", notes: [{ step: 0, pitch: 36 }, { step: 8, pitch: 38 }] }] };
+    use("song_write", { name: "tune", song });
+    const saved = JSON.parse(readFileSync(join(dir, "music/tune.song.json"), "utf8"));
+    expect(saved.tracks[0].wave).toBe("square");
+    expect(saved.tracks[1]).toMatchObject({ kind: "drums", wave: "noise" });
+    expect(saved.tracks[1].notes[0]).toMatchObject({ step: 0, len: 1, pitch: 36, vel: 0.8 });
+    const said = text(use("sound_report", { sound: "tune.song.json", picture: false }));
+    expect(said).toMatch(/music\/tune\.song\.json: 2\.\d\d s, stereo/);
+    expect(said).toContain("loop seam:");
+    expect(() => use("song_write", { name: "bad", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "x", kind: "piano", notes: [] }] } })).toThrow(/kind must be "synth" or "drums".*A small song:/);
+  });
+});
+
+// The tools that run the game need the runtime built (`cargo build --release -p nova-runtime`); without it these are skipped.
+const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../target/release/nova"));
+
+describe.skipIf(!built)("playing the game", () => {
+  const game = () => {
+    use("project_create", { name: "Walk" });
+    use("sprite_write", { name: "hero", palette: { a: "#ffffff" }, frames: [["aaaa", "aaaa", "aaaa", "aaaa"]] });
+    use("write_file", { path: "main.lua", text: 'nova.start("title")\n' });
+    use("write_file", { path: "scenes/title.lua", text: "return nova.scene {}\n" });
+    use("write_file", { path: "scenes/room.lua", text: "local R = nova.scene {}\nfunction R:enter() nova.log('in the room ' .. math.random(100000)) end\nreturn R\n" });
+    use("write_file", { path: "entities/hero.lua", text: "local H = nova.entity { sprite = 'hero', hp = 3 }\nfunction H:update(dt)\n  if nova.input.down('right') then self.x = self.x + 60 * dt end\n  if nova.input.pressed('a') then nova.log('swing') end\nend\nreturn H\n" });
+    use("scene_write", { name: "room", picture: false, scene: { version: 1, background: [10, 20, 40], objects: [{ kind: "hero", name: "hero", x: 100, y: 100 }] } });
+  };
+
+  it("follows a route from a named scene and returns a film strip, the state, the log and the size", () => {
+    game();
+    const r = use("play", {
+      start_scene: "room",
+      lua: "nova.named('hero').hp = 1",
+      route: [{ hold: ["right"], frames: 30, capture: "walked" }, { press: "a" }, { hold: ["right"], until: "nova.named('hero').x >= 200", max: 200, capture: "at 200" }],
+      print: ["nova.named('hero').hp"],
+      size: "320x180",
+    });
+    const said = text(r);
+    expect(said).toMatch(/^ran \d+ frames \(\d+\.\d s of game time\) at 320x180/);
+    expect(said).toContain('f31 "walked": nova.named(\'hero\').hp = 1');
+    expect(said).toMatch(/f\d+ "at 200": /);
+    expect(said).toMatch(/scene room, camera at [\d.]+, [\d.]+, 1 entities alive\n\s+hero:hero at 20\d(\.\d)?, 100/);
+    expect(said).toMatch(/f1 in the room \d+/);
+    expect(said).toContain("f32 swing");
+    expect(said).toContain("film strip of 2 moments");
+    const strip = decodePng(Buffer.from((r.content[1] as { data: string }).data, "base64"));
+    expect(strip.w).toBeGreaterThan(600); // two tiles of 320 side by side
+    // the same route again does the same (math.random is seeded); another seed does not
+    const again = text(use("play", { start_scene: "room", size: "320x180", frames: 2 }));
+    const same = text(use("play", { start_scene: "room", size: "320x180", frames: 2 }));
+    const other = text(use("play", { start_scene: "room", size: "320x180", frames: 2, seed: 99 }));
+    const line = (s: string) => /in the room \d+/.exec(s)![0];
+    expect(line(again)).toBe(line(same));
+    expect(line(other)).not.toBe(line(again));
+  });
+
+  it("keeps the plain screenshot working, says its size, and crops and enlarges", () => {
+    game();
+    const r = use("screenshot", { frames: 5 });
+    expect(text(r)).toMatch(/^ran 5 frames .* at 960x540/);
+    expect(text(r)).toMatch(/saved at .*\.png$/);
+    const shot = decodePng(Buffer.from((r.content[1] as { data: string }).data, "base64"));
+    expect([shot.w, shot.h]).toEqual([960, 540]);
+    const close = use("screenshot", { frames: 5, start_scene: "room", size: "640x360", crop: [0, 0, 100, 50], zoom: 4, press: ["key:Enter@2"], hold: ["right"] });
+    const part = decodePng(Buffer.from((close.content[1] as { data: string }).data, "base64"));
+    expect([part.w, part.h]).toEqual([400, 200]);
+    expect(text(close)).toContain("the part [0, 0, 100, 50] enlarged x4");
+  });
+
+  it("reports a Lua error, an unknown action and a step that is not one", () => {
+    game();
+    const r = text(use("play", { start_scene: "room", route: [{ hold: ["jump"], frames: 2 }, { lua: "nothing.x = 1" }], size: "320x180" }));
+    expect(r).toContain("warning: 'jump' is not an input action of this game");
+    expect(r).toMatch(/ERROR: step 2 lua: .*nothing/);
+    expect(() => use("play", { route: [{ walk: "right" }] })).toThrow(/route step 1 has "walk".*A route is a list of steps/);
+    expect(() => use("play", { size: "big" })).toThrow(/WIDTHxHEIGHT/);
   });
 });
 

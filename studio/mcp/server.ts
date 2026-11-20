@@ -8,7 +8,7 @@
 // Every file operation stays inside the project folder.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,10 +21,12 @@ import { evaluate } from "../src/lib/modifiers";
 import { encodePng } from "../src/lib/png-encode";
 import { type Raster } from "../src/lib/pixels";
 import { pngOf } from "./draw";
+import { playGame, ROUTE_HELP } from "./play";
 import { previewSprite, writeSprite } from "./sprites";
-import { PRESETS, DEFAULTS, RANGES, WAVES, render, toJson, type SfxParams } from "../src/lib/sfx";
-import { encodeWav } from "../src/lib/wav";
-import { parseSong, renderSong, serializeSong, songSeconds } from "../src/lib/song";
+import { PRESETS, DEFAULTS, RANGES, WAVES, cleanArpNotes, fromJson as sfxFromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
+import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
+import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrack } from "../src/lib/song";
+import { analyse, describe, mixTable, spectrogram, stack } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene } from "./scenes";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
@@ -242,7 +244,11 @@ tool(
 tool(
   "sfx_write",
   `Write a sound effect: \`sounds/<name>.sfx.json\` (the sound editor's settings) and \`sounds/<name>.wav\`. Start from a preset (${Object.keys(PRESETS).join(", ")}) and/or give parameters: ` +
-    Object.entries(RANGES).map(([k, r]) => `${k} ${r.min}..${r.max}`).join(", ") + `, wave (${WAVES.join("|")}), seed. In Lua: nova.sound.play("<name>").`,
+    Object.entries(RANGES).map(([k, r]) => `${k} ${r.min}..${r.max}`).join(", ") + `, wave (${WAVES.join("|")}), seed. ` +
+    "What they mean: the sound lasts attack + sustain + decay seconds (at most 4). `freq` is the pitch in Hz at the start (440 is the A above middle C; 880 an octave up); `slide` bends it by octaves per second (negative falls: a laser, a fall), `freqLimit` cuts the sound off when the pitch falls below it. " +
+    "For the `noise` wave `freq` is how often the noise takes a new random value, so it sets the colour, not a pitch, and most of the energy lies below about half of it: 3000 (the top) is a bright crunch (a hit, an explosion, steps on gravel), 800 to 1500 a duller rattle, and below about 200 a rumble of slow thuds that small speakers cannot play (a footstep at freq 30 to 70 is nearly inaudible on a handheld: use 1500 to 3000 with a short decay, and a `highpass` of 500 or more for a hiss). " +
+    "`arpSemitones` jumps the pitch once after `arpTime` seconds (a coin: 12). For a little tune give `arpNotes`, semitones from `freq`, one every `arpTime` seconds after the first note: { \"freq\": 523, \"arpTime\": 0.11, \"arpNotes\": [4, 7, 12], \"sustain\": 0.4 } is a four-note rising fanfare (one envelope over the whole tune; for separate notes with their own attack write a short song with song_write and play it as a sound). " +
+    "`punch` adds a loud start, `lowpass` and `highpass` (Hz) soften or thin it, `duty` is the square wave's width (0.5 hollow, 0.1 thin and nasal). It returns the sound_report of what it made (level, where the energy sits, warnings). In Lua: nova.sound.play(\"<name>\", { volume = 0.8, pitch = 1.1 }).",
   { name: { type: "string" }, preset: { type: "string" }, params: { type: "object" } },
   ["name"],
   (a) => {
@@ -250,6 +256,9 @@ tool(
     const name = safeName(a.name, "Sound");
     const base = a.preset ? PRESETS[String(a.preset)] : DEFAULTS;
     if (!base) throw new Error(`unknown preset '${a.preset}' (${Object.keys(PRESETS).join(", ")})`);
+    const known = new Set([...Object.keys(RANGES), "wave", "seed", "arpNotes"]);
+    const unknown = Object.keys(a.params ?? {}).filter((k) => !known.has(k));
+    if (unknown.length) throw new Error(`params has "${unknown.join('", "')}", which the synth does not have (it has ${[...known].join(", ")})`);
     const p: SfxParams = { ...base, ...(a.params ?? {}) };
     if (!WAVES.includes(p.wave)) throw new Error(`wave must be one of ${WAVES.join(", ")}`);
     for (const [k, r] of Object.entries(RANGES)) {
@@ -257,18 +266,105 @@ tool(
       if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${k} must be a number`);
       (p as any)[k] = Math.min(r.max, Math.max(r.min, v));
     }
+    if (p.arpNotes !== undefined) {
+      const notes = cleanArpNotes(p.arpNotes);
+      if (!notes) throw new Error('arpNotes is a list of semitones from freq, like [4, 7, 12] (up to 16 notes)');
+      p.arpNotes = notes;
+    }
     const sound = render(p);
     const bytes = encodeWav(sound);
     put(root, `sounds/${name}.sfx.json`, toJson(p));
     put(root, `sounds/${name}.wav`, bytes);
-    return `sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s`;
+    const report = describe(analyse(`sounds/${name}.wav`, sound));
+    return `sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s\n${report}`;
+  },
+);
+
+/// Finds a sound of the project by name or path and decodes it: the file the game plays when there is one, else the editor's
+/// settings rendered (`.sfx.json`, `.song.json`). `file` may also be a WAV the play tool wrote (in the temporary folder).
+function loadSound(root: string, given: string): { name: string; sound: Sound; music: boolean } {
+  const tries: string[] = [];
+  const absolute = given.startsWith("/");
+  if (absolute) {
+    const full = resolve(given);
+    const tmp = resolve(tmpdir());
+    const realTmp = existsSync(tmp) ? realpathSync(tmp) : tmp;
+    if (!(full.startsWith(root + sep) || full.startsWith(tmp + sep) || full.startsWith(realTmp + sep))) throw new Error(`'${given}' is outside the project folder (a sound is named by its path in the project, or is a file the play tool wrote)`);
+    tries.push(full);
+  } else {
+    const base = given.replace(/\.(wav|ogg|sfx\.json|song\.json)$/i, "");
+    const hasExt = base !== given;
+    if (hasExt) for (const dir of given.includes("/") ? [""] : ["", "sounds/", "music/"]) tries.push(inside(root, `${dir}${given}`));
+    for (const dir of given.includes("/") ? [""] : ["sounds/", "music/"]) {
+      for (const ext of [".wav", ".ogg", ".sfx.json", ".song.json"]) tries.push(inside(root, `${dir}${base}${ext}`));
+    }
+  }
+  const file = tries.find((f) => existsSync(f));
+  if (!file) {
+    const have = ["sounds", "music"].flatMap((d) => (existsSync(join(root, d)) ? readdirSync(join(root, d)).filter((f) => /\.(wav|ogg)$/i.test(f)).map((f) => `${d}/${f}`) : []));
+    throw new Error(`there is no sound '${given}' (looked in sounds/ and music/ for .wav, .ogg, .sfx.json and .song.json). This project has: ${have.slice(0, 30).join(", ") || "no sounds yet"}`);
+  }
+  const name = file.startsWith(root + sep) ? relative(root, file) : file;
+  const music = /(^|\/)music\//.test(name) || /\.song\.json$/.test(name);
+  if (/\.sfx\.json$/i.test(file)) {
+    const p = sfxFromJson(readFileSync(file, "utf8"));
+    if (!p) throw new Error(`${name} is not a sound effect file`);
+    return { name, sound: render(p), music };
+  }
+  if (/\.song\.json$/i.test(file)) {
+    const parsed = parseSong(readFileSync(file, "utf8"));
+    if (!parsed.ok) throw new Error(`${name}: ${parsed.error}`);
+    return { name, sound: renderSong(parsed.song), music };
+  }
+  if (/\.ogg$/i.test(file)) {
+    // decoded by the game's own decoder
+    const dir = mkdtempSync(join(tmpdir(), "nova-wav-"));
+    try {
+      const out = join(dir, "sound.wav");
+      const r = run(novaBin, ["wav", file, out]);
+      if (!existsSync(out)) throw new Error(`${name} could not be decoded: ${r.out}`);
+      return { name, sound: decodeWav(readFileSync(out)), music };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  return { name, sound: decodeWav(readFileSync(file)), music };
+}
+
+tool(
+  "sound_report",
+  "Hear a sound without ears: what a sound of the project is, in numbers and plain words, and a picture (its waveform over its spectrogram: time left to right, pitch upward from 40 Hz to 16 kHz, brighter is louder). " +
+    "For each sound: length; peak, RMS and loudness (LUFS); how the loudness moves over time; the spectral centroid and how the energy divides between sub-bass, bass, mids, presence and air; the strongest spectral lines with their note names and share of the energy; the strongest pitch over time (a rising chirp, a tune); a reading in words (\"nearly a pure tone at 3.6 kHz\", \"mostly noise\", \"bass-heavy\", \"loudest at the start, then dying away\"); and warnings: clipping, clicks, a start or end that is not silent, silence before the sound, a piercing steady tone, energy that small speakers cannot play (below 80 Hz). " +
+    "`sound` is a name or path (\"hit\", \"music/town.ogg\", \"sounds/hit.sfx.json\"); `sounds` is a list, which also gives the mix: which is loudest and by how much, so effects and music can be balanced with the `volume` option of nova.sound.play. `loop: true` also checks that the end meets the start without a click (music and .song.json files are checked as loops unless `loop` is false). " +
+    "`file` is a WAV written by the play tool's `audio: true`: what a whole run sounded like. Headless runs play no sound, so this is how sound is checked.",
+  {
+    sound: { type: "string", description: 'A sound by name or project path: "hit", "music/town", "sounds/step.wav".' },
+    sounds: { type: "array", items: { type: "string" }, description: "Several sounds: each is reported, then compared as a mix." },
+    file: { type: "string", description: "A WAV file the play tool wrote (audio: true)." },
+    loop: { type: "boolean", description: "Check the seam of a loop (default: yes for music, no for effects)." },
+    picture: { type: "boolean", description: "false: words only." },
+  },
+  [],
+  (a) => {
+    const root = projectRoot(a);
+    const names: string[] = [...(a.sound ? [String(a.sound)] : []), ...(Array.isArray(a.sounds) ? a.sounds.map(String) : []), ...(a.file ? [String(a.file)] : [])];
+    if (!names.length) throw new Error('say which sound: "sound": "hit", or "sounds": ["hit", "step", "music/town"], or "file": a WAV from the play tool');
+    const list = names.map((n) => {
+      const s = loadSound(root, n);
+      const run = a.file !== undefined && n === String(a.file); // (a recording of a run starts and stops anywhere)
+      return analyse(s.name, s.sound, { loop: a.loop ?? (s.music && !run), run });
+    });
+    const text = [...list.map(describe), ...(list.length > 1 ? [mixTable(list)] : [])].join("\n\n");
+    if (a.picture === false) return text;
+    return { text, images: [keepPicture("sound", stack(list.slice(0, 4).map((s) => spectrogram(s))))] };
   },
 );
 
 tool(
   "song_write",
   "Write a song: `music/<name>.song.json` (the music editor's step sequencer) and the `music/<name>.ogg` the game streams. `song`: " +
-    '{ "version": 1, "bpm": 40-240, "stepsPerBeat": 1-8, "length": steps (a bar is stepsPerBeat*4), "tracks": [ { "name", "kind": "synth"|"drums", "wave": "square|saw|triangle|sine|noise", "duty", "attack", "decay", "sustain", "release", "volume": 0-1, "pan": -1..1, "mute": false, "notes": [ { "step", "len", "pitch": midi (60 = middle C; for drums 36 kick, 38 snare, 42 hat...), "vel": 0-1 } ] } ] }. ' +
+    '{ "version": 1, "bpm": 40-240, "stepsPerBeat": 1-8, "length": steps (a bar is stepsPerBeat*4), "tracks": [ { "name", "kind": "synth"|"drums", "wave": "square|saw|triangle|sine|noise", "duty", "attack", "decay", "sustain", "release", "volume": 0-1, "pan": -1..1, "mute": false, "notes": [ { "step", "len", "pitch": midi (60 = middle C), "vel": 0-1 } ] } ] }. ' +
+    "What each kind of track needs: a **synth** track needs `name`, `kind` and `notes` (wave defaults to square; attack, decay, sustain, release, volume, pan have the editor's defaults); a **drums** track needs only `name`, `kind` and `notes`: it has no wave, and a note's pitch picks the drum: 36 kick, 38 snare, 39 clap, 42 closed hat, 46 open hat, 45 tom, 49 crash (its length does not matter). A note needs `step` and `pitch`; `len` defaults to 1 step and `vel` to 0.8. " +
     "Synth tracks can take a fuller voice (leave these out for the plain chip sound): \"unison\" 1-7 detuned oscillators spread \"detune\" cents (0-60) across the stereo field, \"cutoff\" Hz low-pass with \"resonance\" 0-0.9 and \"sweep\" 0-1 (the note's envelope opens the filter by up to three octaves: plucks, bass), \"sub\" 0-1 (a sine an octave down), \"vibrato\" 0-0.5 semitones, and \"reverb\" 0-1 (the share sent to the song's room). Drum tracks can set \"kit\": \"studio\" (a kick with a click and weight, a snare with a tone and rattle, metallic hats) instead of the chip kit, and a \"reverb\" send. The song can have \"room\": { \"size\": 0-1, \"damping\": 0-1, \"mix\": 0-2 } for the reverb (default 0.55, 0.4, 1). " +
     "The song loops without a gap. In Lua: nova.music.play(\"<name>\").",
   { name: { type: "string" }, song: { type: ["object", "string"] } },
@@ -276,8 +372,23 @@ tool(
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Song");
-    const parsed = parseSong(typeof a.song === "string" ? a.song : JSON.stringify(a.song));
-    if (!parsed.ok) throw new Error(`the song is not valid: ${parsed.error}`);
+    let given: any;
+    try {
+      given = asJson(a.song);
+    } catch (e) {
+      throw new Error(`the song is not valid: not valid JSON: ${e instanceof Error ? e.message : e}`);
+    }
+    // what a track leaves out is the editor's default for its kind (a drums track needs no wave; a note no vel or len)
+    if (given && Array.isArray(given.tracks)) {
+      given.tracks = given.tracks.map((t: any, i: number) => {
+        if (!t || typeof t !== "object") return t;
+        const base = t.kind === "drums" ? drumTrack(t.name ?? `drums ${i + 1}`) : synthTrack(t.name ?? `track ${i + 1}`);
+        const notes = Array.isArray(t.notes) ? t.notes.map((n: any) => (n && typeof n === "object" ? { len: 1, vel: 0.8, ...n } : n)) : t.notes;
+        return { ...base, ...t, notes };
+      });
+    }
+    const parsed = parseSong(JSON.stringify(given));
+    if (!parsed.ok) throw new Error(`the song is not valid: ${parsed.error}. A small song: { "version": 1, "bpm": 120, "stepsPerBeat": 4, "length": 16, "tracks": [ { "name": "lead", "kind": "synth", "wave": "square", "notes": [ { "step": 0, "len": 4, "pitch": 60 } ] }, { "name": "drums", "kind": "drums", "notes": [ { "step": 0, "pitch": 36 }, { "step": 4, "pitch": 38 } ] } ] }`);
     const wav = encodeWav(renderSong(parsed.song));
     put(root, `music/${name}.song.json`, serializeSong(parsed.song));
     if (!existsSync(oggBin)) {
@@ -506,25 +617,44 @@ tool("check", "Check the project the way the studio's Problems panel does: load 
   return r.out || "no errors";
 });
 
+const playProperties = {
+  route: { type: "array", items: { type: "object" }, description: ROUTE_HELP },
+  start_scene: { type: "string", description: 'Start in this scene instead of the one main.lua names ("cave", "levels.3").' },
+  lua: { type: "string", description: "Lua run once when the scene is up, before the route: place the player, give the key, set the health (nova.named('hero').x = 200)." },
+  capture_at: { type: "array", items: { type: "number" }, description: "Frames to take pictures after (1 is the first frame; 60 = one second in)." },
+  every: { type: "number", description: "Also take a picture every this many frames (an animation or a movement as a film strip)." },
+  print: { type: "array", items: { type: "string" }, description: "Lua expressions whose values are reported at every picture and at the end: \"nova.named('hero').hp\", \"nova.count('enemy')\", \"nova.current_scene()\"." },
+  frames: { type: "number", description: "Run at least this many frames (60 = one second). Default 90 without a route; with one, the route's own length." },
+  seed: { type: "number", description: "The seed of math.random. Runs are repeatable: the same seed and input give the same run (1 when left out)." },
+  size: { type: "string", description: 'The picture size, "WIDTHxHEIGHT". Default "960x540" (the CLI\'s own default is 1280x720). The game always sees a screen 540 units high.' },
+  crop: { type: "array", items: { type: "number" }, description: "[x, y, w, h] in picture pixels: return this part of every picture." },
+  zoom: { type: "number", description: "Enlarge every picture (or its crop) this many times, without blur: small pixel art read closely." },
+  state: { type: "string", enum: ["end", "all", "none"], description: "The list of entities with positions: at the end (default), at every picture, or not at all." },
+  audio: { type: "boolean", description: "Also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report)." },
+  columns: { type: "number", description: "How many pictures across the film strip." },
+  press: { type: "array", items: { type: "string" }, description: 'Taps by frame, each "source@frame", for example "key:Enter@30": the key is held for two frames from that frame. (A route is easier.)' },
+  hold: { type: "array", items: { type: "string" }, description: 'Actions held every frame of the run, for example ["throttle", "steer=0.3"].' },
+  width: { type: "number" },
+  height: { type: "number" },
+};
+const playHandler = (a: Args): Result => playGame(projectRoot(a), a, (args, timeout) => run(novaBin, args, timeout), keepPicture);
+
+tool(
+  "play",
+  "Play the game headless along a route and see what happened: one call returns a film strip (one picture with a tile per moment, the frame number under each) and a report in words: the scene and every entity with its position at the end, the values of the Lua expressions you asked for at each picture, the game's log lines (nova.log) and the sounds it started, each with its frame, and any Lua error. " +
+    "Use it to check that a level can be played: walk to the key, fight, open the chest, and read the strip. `route` drives the game with its input action names (nova.json's `input`, or the built-in left right up down a b x y start select and the axes move_x move_y). `start_scene` and `lua` begin somewhere else in some state, so a late room needs no walk. " +
+    "Pictures: each step's `capture`, `capture_at` frames, `every` N frames, and always the last frame; `crop` and `zoom` look closely. Runs are repeatable (math.random is seeded). A headless run has no sound device: `audio: true` writes the run's sound to a file for sound_report. With no options it is a picture after 90 frames.",
+  playProperties,
+  [],
+  playHandler,
+);
+
 tool(
   "screenshot",
-  "Run the project headless for some frames and return a picture of the last one. Keys are pressed only as `press` and `hold` say, so use those to get past menus and into the game.",
-  {
-    frames: { type: "number", description: "How many frames to run first (60 = one second). Default 90." },
-    press: { type: "array", items: { type: "string" }, description: 'Taps, each "source@frame", for example "key:Enter@30": the key is held for two frames from that frame. Use them to get past menus.' },
-    hold: { type: "array", items: { type: "string" }, description: 'Actions held every frame, for example ["throttle", "steer=0.3"].' },
-    width: { type: "number" },
-    height: { type: "number" },
-  },
+  "Run the project headless for some frames and return a picture of the last one (960x540 unless `size` says otherwise; the answer says the size). Keys are pressed only as `press` and `hold` say. It takes every option of `play` (a `route` of steps, `start_scene`, `lua`, `capture_at`, `every`, `print`, `crop`, `zoom`): use `play` to walk through the game and get a film strip.",
+  playProperties,
   [],
-  (a) => {
-    const root = projectRoot(a);
-    const out = join(tmpdir(), `nova-shot-${Date.now()}.png`);
-    const extra = [...(a.press?.length ? ["--press", a.press.join(",")] : []), ...(a.hold?.length ? ["--hold", a.hold.join(",")] : [])];
-    const r = run(novaBin, ["run", root, "--headless", "--frames", String(a.frames ?? 90), "--size", `${a.width ?? 960}x${a.height ?? 540}`, ...extra, "--capture", out]);
-    if (!existsSync(out)) throw new Error(`no picture was made:\n${r.out}`);
-    return { text: `${r.out.split("\n").slice(-3).join("\n")}\nsaved at ${out}`, images: [out] };
-  },
+  playHandler,
 );
 
 // ---- MCP over stdio ------------------------------------------------------------------------------------------------

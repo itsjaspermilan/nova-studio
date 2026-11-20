@@ -177,13 +177,8 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
   const images = (scene.images ?? []) as Args[];
   const texts = (scene.texts ?? []) as Args[];
   const lines: string[] = [];
-  let worldHeight = 540;
-  try {
-    const nova = JSON.parse(readFileSync(join(root, "nova.json"), "utf8"));
-    if (typeof nova.world_height === "number" && nova.world_height > 0) worldHeight = nova.world_height;
-  } catch {
-    // no nova.json: the default view
-  }
+  // (the screen is always 540 units high, 960 wide at 16:9; nova.json's world_height is only how many pixels the world is drawn with)
+  const worldHeight = 540;
   const viewW = Math.round((worldHeight * 16) / 9);
   if (scene.camera && !maps.length) {
     lines.push(`scenes/${short}.scene.json is a 3D scene (it has a "camera"): ${objects.length} objects. A map picture is for 2D scenes; use the play tool to look at it.`);

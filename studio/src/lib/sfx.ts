@@ -24,6 +24,9 @@ export interface SfxParams {
   /// Jump by this many semitones after `arpTime` seconds.
   arpSemitones: number;
   arpTime: number;
+  /// A little tune instead of one jump: semitones above (or below) `freq`, one step every `arpTime` seconds after the first, which is `freq` itself.
+  /// `[4, 7, 12]` is a four-note rising fanfare. The last note holds to the end. When given, `arpSemitones` is not used.
+  arpNotes?: number[];
   attack: number;
   sustain: number;
   decay: number;
@@ -95,7 +98,10 @@ export function render(params: SfxParams, rate = SAMPLE_RATE): Sound {
     let octaves = p.slide * t + 0.5 * p.slideDelta * t * t;
     octaves = Math.max(-12, Math.min(12, octaves));
     let freq = p.freq * 2 ** octaves;
-    if (p.arpSemitones !== 0 && t >= p.arpTime) freq *= 2 ** (p.arpSemitones / 12);
+    if (p.arpNotes?.length) {
+      const step = Math.floor(t / Math.max(0.001, p.arpTime));
+      if (step > 0) freq *= 2 ** (p.arpNotes[Math.min(step, p.arpNotes.length) - 1]! / 12);
+    } else if (p.arpSemitones !== 0 && t >= p.arpTime) freq *= 2 ** (p.arpSemitones / 12);
     if (p.vibratoDepth > 0) freq *= 1 + p.vibratoDepth * 0.5 * Math.sin(2 * Math.PI * p.vibratoSpeed * t);
     if (p.freqLimit > 0 && freq < p.freqLimit) {
       length = i;
@@ -170,6 +176,12 @@ export function randomFrom(rng: () => number): SfxParams {
   return mutate({ ...base, wave: WAVES[Math.floor(rng() * WAVES.length)]! }, rng, 0.6);
 }
 
+/// The steps of a tune as they are kept: up to 16 whole or fractional semitones from -36 to 36, or undefined when there are none.
+export function cleanArpNotes(v: unknown): number[] | undefined {
+  if (!Array.isArray(v) || !v.length || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
+  return (v as number[]).slice(0, 16).map((n) => Math.max(-36, Math.min(36, n)));
+}
+
 export function toJson(params: SfxParams): string {
   return `${JSON.stringify({ version: 1, ...params }, null, 2)}\n`;
 }
@@ -185,6 +197,8 @@ export function fromJson(text: string): SfxParams | null {
       const n = v[key];
       if (typeof n === "number" && Number.isFinite(n)) out[key] = clamp(n, RANGES[key].min, RANGES[key].max);
     }
+    const notes = cleanArpNotes(v.arpNotes);
+    if (notes) out.arpNotes = notes;
     return out;
   } catch {
     return null;
