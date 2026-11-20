@@ -14,6 +14,8 @@
 import { BLOB_MASKS, E, N, NE, NW, S, SE, SW, W, type Terrain } from "../../src/lib/autotile";
 import { hash2, Img, mix, rngOf, seedOf, shade, SHADOW, type Ramp, type Rgba } from "./paint";
 import { describePalette, paletteOf } from "./palettes";
+import { HD_PROPS, HD_TERRAINS, railHd, stripHd } from "./city-hd";
+import { styleOf } from "./style";
 import { CITY_EDGES, CITY_PROP_NAMES, CITY_PROPS, CITY_TERRAIN_NAMES, CITY_TERRAINS } from "./city-tiles";
 import { faceEnds, ground, lightSide, lump, speckle, times, type Ctx, type EdgeKind, type Probe, type PropKind, type Shape, type TerrainKind } from "./tilekit";
 import { writeSheet, type Put } from "./sheet";
@@ -742,12 +744,18 @@ const pick = (given: unknown, all: string[], what: string, fallback: string[]): 
 
 /// `tileset_make`: see the tool's description in server.ts.
 export function makeTileset(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
-  const t = a.tile === undefined ? 16 : Number(a.tile);
+  const hd = styleOf(a) === "detailed";
+  if (hd && a.tile !== undefined && Number(a.tile) !== 32) throw new Error(`"tile": the detailed style is drawn at 32 pixels a tile (leave "tile" out, and draw the layer with "scale": 1.5)`);
+  const t = hd ? 32 : a.tile === undefined ? 16 : Number(a.tile);
   if (!TILE_SIZES.includes(t)) throw new Error(`"tile" is the tile size in pixels: ${TILE_SIZES.join(", ")} (16 is the one the art is tuned for; the others are the same drawings made larger)`);
   const P = paletteOf(a.palette);
   const c: Ctx = { t, k: t / 16, P, seed: Math.floor(Number(a.seed ?? 1)) || 0 };
-  const terrains = pick(a.terrains, TERRAIN_NAMES, "terrains", P.city ? CITY_TERRAIN_NAMES : CLASSIC_TERRAIN_NAMES);
-  const props = pick(a.props, PROP_NAMES, "props", P.city ? CITY_PROP_NAMES : CLASSIC_PROP_NAMES);
+  const terrains = pick(a.terrains, TERRAIN_NAMES, "terrains", P.city || hd ? CITY_TERRAIN_NAMES : CLASSIC_TERRAIN_NAMES);
+  const props = pick(a.props, PROP_NAMES, "props", P.city || hd ? CITY_PROP_NAMES : CLASSIC_PROP_NAMES);
+  if (hd) {
+    const missing = [...terrains.filter((n) => !CITY_TERRAIN_NAMES.includes(n)), ...props.filter((n) => !HD_PROPS[n])];
+    if (missing.length) throw new Error(`the detailed style is drawn for the city: ${missing.map((m) => `'${m}'`).join(", ")} ${missing.length > 1 ? "have" : "has"} no detailed drawing. Its terrains: ${CITY_TERRAIN_NAMES.join(", ")}; its props: ${CITY_PROP_NAMES.join(", ")}`);
+  }
 
   const frames: Img[] = [];
   const names: Record<number, string> = {};
@@ -760,7 +768,9 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     return frames.length - 1;
   };
 
-  for (const kind of ALL_TERRAINS.filter((k) => terrains.includes(k.name))) {
+  for (const plain of ALL_TERRAINS.filter((k) => terrains.includes(k.name))) {
+    const H = hd ? HD_TERRAINS[plain.name]! : null;
+    const kind: typeof plain = H ? { ...plain, variants: H.variants ?? plain.variants, texture: H.texture, edge: H.edge, shape: { inset: plain.shape.inset * 2, round: plain.shape.round * 2, wobble: plain.shape.wobble * 2 } } : plain;
     const wob = [0, 1, 2, 3].map((side) => wobbleOf(t, kind.shape.wobble, seedOf(`${kind.name}/${side}`) + c.seed));
     const textures = Array.from({ length: kind.variants }, (_, v) => kind.texture(c, v));
     const tiles: number[] = [];
@@ -778,12 +788,13 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
   }
   for (const kind of EDGES.filter((k) => terrains.includes(k.name))) {
     const tiles: number[] = [];
-    for (let mask = 0; mask < 16; mask++) tiles.push(add(kind.tile(c, mask), mask === 15 ? kind.name : `${kind.name}_${["n", "e", "s", "w"].filter((_, i) => mask & (1 << i)).join("") || "post"}`, kind.solid));
+    const draw = hd ? (kind.name === "tram_rail" ? railHd : (cc: Ctx, m: number) => stripHd(cc, m, cc.P.accent[kind.name === "neon_strip" ? 0 : 1])) : kind.tile;
+    for (let mask = 0; mask < 16; mask++) tiles.push(add(draw(c, mask), mask === 15 ? kind.name : `${kind.name}_${["n", "e", "s", "w"].filter((_, i) => mask & (1 << i)).join("") || "post"}`, kind.solid));
     docTerrains.push({ name: kind.name, mode: "edges", tiles });
   }
   for (const kind of ALL_PROPS.filter((p) => props.includes(p.name))) {
-    for (let v = 0; v < kind.variants; v++) {
-      const img = kind.draw(c, v);
+    for (let v = 0; v < (hd ? 1 : kind.variants); v++) {
+      const img = hd ? HD_PROPS[kind.name]!(c) : kind.draw(c, v);
       const base = v ? `${kind.name}_${v + 1}` : kind.name;
       // the anchor's tile first (it carries the name a map uses), then the others by where they are from it
       const cells: [number, number][] = [[kind.anchor, kind.h - 1]];
@@ -805,7 +816,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     ...EDGES.filter((k) => terrains.includes(k.name)).map((k) => `  ${k.name}${k.solid ? " (solid)" : ""}: ${k.what}`),
     `props (one character in a painted map places the whole thing):`,
     ...ALL_PROPS.filter((p) => props.includes(p.name)).map((p) => `  ${p.name}${p.solid ? " (solid)" : ""}: ${p.what}${p.variants > 1 ? `; ${p.variants} variants` : ""}`),
-    `Paint a map: scene_write { "name": "meadow", "scene": { "version": 1, "tilemaps": [ { "tileset": "${name}", "scale": 3, "paint": { "g": "grass", "p": "path", "w": "water", "T": "tree", "f": "flowers" }, "tiles": ["gggTgg", "gppppg", "gpwwfg", "gggggg"] } ] } }`,
+    `Paint a map: scene_write { "name": "meadow", "scene": { "version": 1, "tilemaps": [ { "tileset": "${name}", "scale": ${hd ? 1.5 : 3}, "paint": { "g": "grass", "p": "path", "w": "water", "T": "tree", "f": "flowers" }, "tiles": ["gggTgg", "gppppg", "gpwwfg", "gggggg"] } ] } }`,
     `Every tile has a name (the whole tile of a terrain is its name, e.g. "grass"; variants "grass_2"; an edge "path_edge_n"); redraw one with sprite_preview { "frame": "<name>" } and sprite_write { "at": n }, or add your own with "append": true.`,
   ];
   return { text: said.join("\n"), picture: made.picture };

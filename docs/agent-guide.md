@@ -140,6 +140,15 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    clip. Fix every WARNING (clipping, a click at the start or end, energy below 80 Hz that a handheld cannot play): each ends
    with the setting to change, its value now and which way to move it. The presets of `sfx_write` pass the check as they are.
 
+**A neon city (and the detailed style).** The same makers make a cyberpunk city: give `tileset_make`, `character_make`,
+`creature_make` and `items_make` one of the city palettes (`"gutter market"`, `"bloom labs"`, `"hollow line"`, `"spire"`)
+and the same `"style": "detailed"`. Each palette has two accents; only what matters glows in them (`glow_color` 1 or 2 picks
+which for a person or a creature). The detailed style has twice the pixels at the same size on the screen, so paint its
+layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox); a detailed
+person has `roll_<dir>` besides idle, walk, attack and hurt, and every city creature a `tell` frame to show before it hurts.
+`examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
+`play` at game scale on a dark street, not in the sheet.
+
 ## The shortest path to a checked 3D game
 
 `examples/starter-3d` is this path done once (`project_create { "name": "My Game", "template": "3d" }` copies it): a hero

@@ -6,6 +6,9 @@
 import { colourOf, Img, mix, ramp, shade, SHADOW, type Ramp, type Rgba } from "./paint";
 import { accentOf, lit, paletteOf } from "./palettes";
 import { CITY_CREATURE_NAMES, CITY_CREATURES, cityCtx, cityFrames, up } from "./city-creatures";
+import { HD_CREATURE_NAMES, hdFrames } from "./creatures-hd";
+import { hdRamp } from "./pix3d";
+import { styleOf } from "./style";
 import { writeSheet, type Put } from "./sheet";
 
 type Args = Record<string, any>;
@@ -223,6 +226,7 @@ export { CITY_CREATURE_NAMES };
 /// `creature_make`: see the tool's description in makers/index.ts.
 export function makeCreature(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
   const kindName = String(a.kind ?? "").trim().toLowerCase().replace(/[ -]/g, "_");
+  if (styleOf(a) === "detailed") return makeHdCreature(name, kindName, a, put);
   if (CITY_CREATURES[kindName]) return makeCityCreature(name, kindName, a, put);
   const kind = KINDS[kindName];
   if (!kind) throw new Error(`"kind" is one of ${CREATURES.join(", ")} (got '${a.kind ?? ""}')`);
@@ -301,6 +305,38 @@ function makeCityCreature(name: string, kindName: string, a: Args, put: Put): { 
       `${kindName}: ${kind.what}; drawn at ${D}x${D}${n !== D ? `, made ${n}x${n}` : ""}; palette "${P.name}"`,
       `animations: ${states}. "tell" is the moment before it hurts (its outline and lights flash in the glow colour): show it 0.4 s before the attack. "hit" is the white copy to show for a moment when it is hurt.`,
       `In its entity: sprite = "${name}", anim = "${made0.tags[0]!.name}", pivot = { ${Math.round((pivot.x / n) * 1000) / 1000}, ${Math.round((pivot.y / n) * 1000) / 1000} }, hitbox = { ${box.x - pivot.x}, ${box.y - pivot.y}, ${box.w}, ${box.h} }, sx = 3, sy = 3, tags = { "enemy" }; self.flip_x = true faces it the other way.`,
+    ].join("\n"),
+    picture: made.picture,
+  };
+}
+
+/// A city archetype in the detailed style (creatures-hd.ts): twice the pixels, drawn with sx = 1.5.
+function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
+  if (!HD_CREATURE_NAMES.includes(kindName)) throw new Error(`"kind": the detailed style is drawn for the city's archetypes: ${HD_CREATURE_NAMES.join(", ")} (got '${a.kind ?? ""}')`);
+  if (a.size !== undefined) throw new Error(`"size": a detailed archetype has its own size (leave "size" out)`);
+  const kind = CITY_CREATURES[kindName]!;
+  const P = paletteOf(a.palette);
+  const warm = mix(P.accent[0][2], [255, 255, 255, 255], 0.65);
+  const made0 = hdFrames(kindName, {
+    P,
+    r: hdRamp(lit(P, colourOf(a.color ?? a.colour, '"color"', kind.colour)), warm),
+    r2: hdRamp(lit(P, colourOf(a.second_color ?? a.second_colour, '"second_color"', kind.second)), warm),
+    acc: accentOf(P, a.glow_color ?? a.glow_colour, '"glow_color"') ?? P.accent[0],
+    metal: hdRamp(lit(P, P.mat.metal[2]), warm),
+    dark: hdRamp(lit(P, mix(P.mat.metal[1], P.outline, 0.45)), warm),
+  });
+  const n = made0.size;
+  const pivot = { x: n / 2, y: made0.oy + 1 };
+  const box = { x: Math.round(n * 0.22), y: Math.round(n * 0.45), w: Math.round(n * 0.56), h: pivot.y - Math.round(n * 0.45) };
+  const names: Record<number, string> = {};
+  if (kindName === "crane_arm") Object.assign(names, { 0: "base", 1: "arm", 2: "magnet" });
+  const made = writeSheet(name, { frames: made0.frames, tags: made0.tags, durations: made0.durations, hitbox: box, pivot, names }, put);
+  return {
+    text: [
+      made.text,
+      `${kindName} in the detailed style: ${kind.what}; ${n}x${n} frames, palette "${P.name}"`,
+      `animations: ${made0.tags.map((t) => `${t.name} (${t.to - t.from + 1})`).join(", ")}. "tell" is the moment before it hurts (its edge lights up in the glow colour): show it 0.4 s before the attack. "hit" is the white copy for when it is hurt.`,
+      `In its entity: sprite = "${name}", anim = "${made0.tags[0]!.name}", pivot = { 0.5, ${Math.round((pivot.y / n) * 1000) / 1000} }, hitbox = { ${box.x - pivot.x}, ${box.y - pivot.y}, ${box.w}, ${box.h} }, sx = 1.5, sy = 1.5, tags = { "enemy" }.`,
     ].join("\n"),
     picture: made.picture,
   };

@@ -9,6 +9,8 @@
 import { colourOf, glow, Img, mix, ramp, shade, SHADOW, type Ramp, type Rgba } from "./paint";
 import { accentOf, lit, paletteOf, type Palette } from "./palettes";
 import { writeSheet, type Put } from "./sheet";
+import { makeCharacterHd } from "./character-hd";
+import { styleOf } from "./style";
 
 type Args = Record<string, any>;
 
@@ -735,6 +737,7 @@ const OUTFIT_COLOURS: Record<string, string> = { long_coat: "#3b3552", jacket: "
 
 /// `character_make`: see the tool's description in makers/index.ts.
 export function makeCharacter(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
+  if (styleOf(a) === "detailed") return makeCharacterHd(name, a, put, { hair: HAIR_STYLES, outfits: OUTFITS, hats: HATS, items: ITEMS, builds: BUILDS, skins: SKINS, colours: OUTFIT_COLOURS });
   const size = a.size === undefined ? "16x24" : String(a.size).toLowerCase().replace(/\s/g, "");
   if (!CHARACTER_SIZES.includes(size)) throw new Error(`"size" is the body's size: ${CHARACTER_SIZES.map((s) => `"${s}"`).join(" or ")} (the first is drawn in 32x32 frames, the second in 48x48, so a swing has room)`);
   const one = (v: unknown, all: string[], what: string, fallback: string): string => {

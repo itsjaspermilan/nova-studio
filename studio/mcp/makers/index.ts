@@ -13,6 +13,7 @@ import { makeSong, MOOD_NAMES, MOODS } from "./song";
 import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
 import { register3d } from "./index3d";
+import { STYLE_OPTION } from "./style";
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -45,6 +46,7 @@ export function registerMakers(h: Host): Record<string, Args> {
     {
       name: { type: "string", description: 'The tileset\'s name ("tiles").' },
       palette: PALETTE,
+      style: STYLE_OPTION,
       tile: { type: "number", description: `The tile size in pixels: ${TILE_SIZES.join(", ")} (16 when left out, which is the size the drawings are tuned for; draw it with "scale": 3).` },
       terrains: { type: "array", items: { type: "string" }, description: `Only these terrains (all when left out): ${TERRAIN_NAMES.join(", ")}.` },
       props: { type: "array", items: { type: "string" }, description: `Only these props (all when left out): ${PROP_NAMES.join(", ")}.` },
@@ -83,6 +85,7 @@ export function registerMakers(h: Host): Record<string, Args> {
       item: { type: "string", description: `What the swing is made with: ${ITEMS.join(", ")}. The city's are carried in every frame: baton (its shaft lit in glow_color; its swing leaves an arc in that colour), pipe (the same arc), pistol and rifle (aimed: their attack raises, fires with a flash at the muzzle, and kicks), shield (a riot shield held in front; the attack is a bash), bottle (thrown).` },
       glow_color: { type: "string", description: 'What glows on the city parts (a visor, a long coat\'s hem, a riot_armor\'s strip, a baton, a gas mask\'s lenses, a muzzle flash, the swing\'s arc): 1 or 2 for the palette\'s accents, or a colour ("#35e6ff", "cyan"). Accent 1 when left out.' },
       palette: PALETTE,
+      style: STYLE_OPTION,
     },
     ["name"],
     (a) => {
@@ -106,6 +109,7 @@ export function registerMakers(h: Host): Record<string, Args> {
       glow_color: { type: "string", description: "The city archetypes' lights and their tell: 1 or 2 for the palette's accents, or a colour. Accent 1 when left out." },
       size: { type: "number", description: "16 (when left out), 24 or 32; a city archetype is its own size when left out (16, 24 or 32) and may be made 48." },
       palette: PALETTE,
+      style: STYLE_OPTION,
     },
     ["name", "kind"],
     (a) => {
@@ -122,6 +126,7 @@ export function registerMakers(h: Host): Record<string, Args> {
     {
       name: { type: "string", description: 'The sheet\'s name ("items").' },
       palette: PALETTE,
+      style: STYLE_OPTION,
       items: { type: "array", items: { type: "string" }, description: `Only these icons, from all of both sets (the palette's set when left out: the city's for a city palette).` },
     },
     ["name"],
