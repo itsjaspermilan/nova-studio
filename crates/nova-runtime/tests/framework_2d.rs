@@ -154,3 +154,57 @@ end"#,
         bad.error
     );
 }
+
+/// A solid thing is never overlapped by a mover that stops at it, so its collide callback never runs: `near` is how the
+/// two notice each other. And asking for a kind where a tag is meant says so once.
+#[test]
+fn near_finds_what_a_solid_thing_stops_and_a_kind_given_as_a_tag_is_explained() {
+    let mut g = project(vec![
+        (
+            "entities/hero.lua",
+            r#"local H = nova.entity { tags = { "hero" }, hitbox = { 0, 0, 10, 10 } }
+function H:update(dt)
+  local x = self.x
+  self.x = self.x + 60 * dt
+  if self:touching("solid") then self.x = x end
+end
+function H:on_collide_solid() nova.log("never: the move was taken back") end
+return H"#,
+        ),
+        (
+            "entities/chest.lua",
+            r#"local C = nova.entity { tags = { "solid" }, hitbox = { 0, 0, 10, 10 } }
+function C:update()
+  if not self.opened and self:near("hero", 3) then self.opened = true nova.log("opened at " .. math.floor(nova.first("hero").x)) end
+end
+return C"#,
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  nova.spawn("hero", 0, 0)
+  self.chest = nova.spawn("chest", 40, 0)
+  nova.log(tostring(nova.first("chest")) .. " " .. #nova.all("chest") .. " " .. tostring(nova.first("ghost")))
+  nova.log(tostring(self.chest:near("hero")) .. " " .. tostring(self.chest:near("nobody")) .. " " .. tostring(self.chest:near("hero", 31) ~= nil))
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 60);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let log = g.take_log();
+    assert_eq!(
+        log[0],
+        "note: nova.first(\"chest\") looks for the tag \"chest\" and no entity has it. \"chest\" is a kind (entities/chest.lua), whose tags are: solid. Ask for a tag, or add tags = { \"chest\" } to it."
+    );
+    assert_eq!(log[1], "nil 0 nil"); // (said once, not again for nova.all; a name that is no kind either says nothing)
+    assert_eq!(log[2], "nil nil true");
+    // the hero stops with his box against the chest's (x = 30 - one step): within 3 units, never overlapping
+    assert_eq!(log.len(), 4, "{log:?}");
+    assert!(
+        log[3] == "opened at 27" || log[3] == "opened at 28",
+        "{log:?}"
+    );
+}

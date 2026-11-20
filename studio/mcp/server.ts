@@ -30,7 +30,7 @@ import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
 import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrack } from "../src/lib/song";
 import { analyse, describe, mixTable, spectrogram, stack, type Source } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
-import { drawScene, expandTileLayers, previewScene } from "./scenes";
+import { drawScene, expandTileLayers, previewScene, roomWarning } from "./scenes";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -460,7 +460,7 @@ tool(
 tool(
   "sprite_write",
   "Write a pixel-art sprite or tileset: `sprites/<name>.png` (a sheet of frames) and `sprites/<name>.sprite.json` (frame size and named animations). Draw it with text: `palette` maps one character to a colour (\"#rrggbb\" or \"#rrggbbaa\"); '.' and ' ' are always transparent. `frames` is a list of frames, each a list of rows of characters (one character per pixel). The frame size is the commonest row length and row count among the frames given (or `size`: [w, h]; or the sheet's when adding): a row that is shorter is filled with transparent on the right and the answer says which rows were; a row that is longer, or a frame with the wrong number of rows, is a mistake that is named with its frame (frames, rows and columns count from 0). " +
-    "A frame may also be { rows: [...], name } or a copy of a frame that exists: { copy: <frame number or name>, flip: \"x\"|\"y\", rotate: 90|180|270, recolor: { \"#from\": \"#to\" }, name }. " +
+    "A frame may also be { rows: [...], name } or a copy of a frame that exists: { copy: <frame number or name>, flip: \"x\"|\"y\", rotate: 90|180|270, recolor: { \"#from\": \"#to\" }, silhouette: true | \"#rrggbb\", name } (`silhouette` paints every drawn pixel one colour, white for true: the frame to show for a moment when a character is hit, since an entity's `tint` multiplies and cannot flash white). " +
     "Less typing: a frame object may add `shapes`, drawn over its rows in order (or on an empty frame): { \"rect\": [x, y, w, h] }, { \"line\": [x0, y0, x1, y1] }, { \"circle\": [cx, cy, r] }, { \"ellipse\": [cx, cy, rx, ry] }, each with \"color\" (a palette character or \"#rrggbb\"; \".\" erases) and \"fill\": false for the edge only; `mirror`: \"x\" then copies the left half onto the right (so the rows of a symmetric frame need only their left half; \"y\" copies the top onto the bottom); `outline`: \"k\" then gives every see-through pixel beside a drawn one that colour. For example a 16x16 round face from half the typing: { \"shapes\": [ { \"circle\": [7.5, 7.5, 6], \"color\": \"s\" }, { \"rect\": [5, 6, 1, 2], \"color\": \"k\" } ], \"mirror\": \"x\", \"outline\": \"k\" } with \"size\": [16, 16]. " +
     "Sheet layout: frames are packed left to right, 16 to a row, so with up to 16 frames the sheet is one row; frame n is tile n of a tilemap that uses the sheet (column n % 16, row floor(n / 16)). " +
     "Big sheets in several calls: `append: true` adds the frames to the end of the sheet that is there, `at: n` writes them from frame n (replacing those frames); the frame size, animations and names of the sheet are kept. " +
@@ -665,10 +665,42 @@ tool(
   },
 );
 
-tool("check", "Check the project the way the studio's Problems panel does: load it, run a few frames, and list every problem with its file and line. 'no errors' means it ran cleanly.", { frames: { type: "number" } }, [], (a) => {
-  const r = run(novaBin, ["check", projectRoot(a), "--frames", String(a.frames ?? 60)]);
-  return r.out || "no errors";
-});
+tool(
+  "check",
+  "Check the project the way the studio's Problems panel does: load it, run a few frames, and list every problem with its file and line. 'no errors' means it loaded and ran cleanly. " +
+    "It also reads the scripts for mistakes on lines those frames never reach, as warnings: a `nova.<name>` that the Lua API does not have (a call in a pickup's code would only fail when something is picked up), and an entity that moves itself by `self.vx`, `self.vy` or `self.vz`, which the engine also adds to its position every step. And it says which 2D rooms are smaller than the screen.",
+  { frames: { type: "number", description: "How many frames to run (60)." } },
+  [],
+  (a) => {
+    const root = projectRoot(a);
+    const r = run(novaBin, ["check", root, "--frames", String(a.frames ?? 60)]);
+    // rooms smaller than the screen, from the scene files themselves
+    const notes: string[] = [];
+    const visit = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) visit(full);
+        else if (e.name.endsWith(".scene.json")) {
+          try {
+            const parsed = parseScene(readFileSync(full, "utf8"));
+            const small = parsed.ok ? roomWarning(parsed.scene) : null;
+            if (small) notes.push(`warning: ${relative(root, full).split(sep).join("/")}: ${small}`);
+          } catch {
+            // (a scene that cannot be read is the check's own to report)
+          }
+        }
+      }
+    };
+    visit(join(root, "scenes"));
+    const out = r.out || "no errors";
+    if (!notes.length) return out;
+    // (the verdict stays the last line)
+    const lines = out.split("\n");
+    const verdict = /^(no errors|errors found)$/.test(lines[lines.length - 1] ?? "") ? lines.pop()! : null;
+    return [...lines, ...notes, ...(verdict ? [verdict] : [])].join("\n");
+  },
+);
 
 const playProperties = {
   route: { type: "array", items: { type: "object" }, description: ROUTE_HELP },

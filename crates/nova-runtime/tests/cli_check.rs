@@ -237,3 +237,85 @@ fn a_runtime_error_comes_with_its_call_stack() {
         "{d}"
     );
 }
+
+/// Mistakes on lines that the check's few frames never reach are read off the source: a `nova.<name>` the API does not
+/// have, and an entity that moves itself by the engine's own velocity fields.
+#[test]
+fn names_the_api_does_not_have_and_double_movement_are_found_without_running_the_line() {
+    let dir = scratch("read-off");
+    write(
+        &dir,
+        "nova.json",
+        r#"{"format":1,"name":"Lint","ignore":["tools"]}"#,
+    );
+    write(&dir, "main.lua", "nova.start('s')\nnova.score = 0\n");
+    write(
+        &dir,
+        "scenes/s.lua",
+        "local S = nova.scene {}\nfunction S:enter() nova.spawn('gem', 10, 10) nova.spawn('faller', 50, 10) nova.spawn('walker', 90, 10) end\nreturn S\n",
+    );
+    write(
+        &dir,
+        "entities/gem.lua",
+        r#"-- nova.not_a_call() in a comment is not code, nor is "nova.in_a_string()" or [[ nova.in_a_long_string() ]]
+local Gem = nova.entity { tags = { "gem" }, hitbox = { 0, 0, 8, 8 } }
+function Gem:on_collide_hero(hero)
+  nova.scene_nowx():gem_taken(self)   -- only runs when a gem is picked up
+  nova.cam.shake_it(4)
+  nova.sound.play("ding")
+  nova.score = nova.score + 1
+  local e = nova.cam3.eye.x + nova.world.time
+  mynova.thing()
+end
+return Gem
+"#,
+    );
+    write(
+        &dir,
+        "entities/faller.lua",
+        "local F = nova.entity { vy = 0 }\nfunction F:update(dt)\n  self.vy = self.vy + 600 * dt\n  self.y = self.y + self.vy * dt\n  self.x = self.x + 20 * dt\n  if self.vyx == self.vy then end\nend\nreturn F\n",
+    );
+    // (an entity that says it moves itself may use the names as its own)
+    write(
+        &dir,
+        "entities/walker.lua",
+        "local Wk = nova.entity { velocity = false, vx = 30 }\nfunction Wk:update(dt) self.x = self.x + self.vx * dt end\nreturn Wk\n",
+    );
+    write(&dir, "tools/gen.lua", "nova.nothing_here()\n");
+    let (ok, report, _) = check(&dir);
+    assert!(ok, "warnings are not errors: {report}");
+    let said: Vec<String> = report["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            format!(
+                "{} {}:{} {}",
+                d["severity"].as_str().unwrap(),
+                d["file"].as_str().unwrap_or("?"),
+                d["line"],
+                d["message"].as_str().unwrap()
+            )
+        })
+        .collect();
+    assert_eq!(said.len(), 3, "{said:#?}");
+    assert!(
+        said.iter().any(|s| s.starts_with(
+            "warning entities/faller.lua:4 self.y is moved by self.vy here, and the engine also adds vx, vy, vz"
+        ) && s.contains("velocity = false")),
+        "{said:#?}"
+    );
+    assert!(
+        said.iter()
+            .any(|s| s
+                .starts_with("warning entities/gem.lua:4 nova.scene_nowx is not in the Lua API")),
+        "{said:#?}"
+    );
+    assert!(
+        said.iter()
+            .any(|s| s
+                .starts_with("warning entities/gem.lua:5 nova.cam.shake_it is not in the Lua API")),
+        "{said:#?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

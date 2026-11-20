@@ -19,6 +19,170 @@ pub struct CheckReport {
     pub problems: Vec<Diagnostic>,
 }
 
+/// A Lua source with its comments and the insides of its strings blanked out (line breaks kept), so that what is
+/// left is code only and a word in a comment is not mistaken for a call.
+fn code_only(source: &str) -> String {
+    let b: Vec<char> = source.chars().collect();
+    let mut out = String::with_capacity(source.len());
+    let mut i = 0;
+    // (a long bracket's level at `at`: `[[` is 0, `[=[` is 1; none: not one)
+    let long_open = |at: usize| -> Option<usize> {
+        if b.get(at) != Some(&'[') {
+            return None;
+        }
+        let mut n = 0;
+        while b.get(at + 1 + n) == Some(&'=') {
+            n += 1;
+        }
+        (b.get(at + 1 + n) == Some(&'[')).then_some(n)
+    };
+    let blank = |c: char| if c == '\n' { '\n' } else { ' ' };
+    while i < b.len() {
+        let c = b[i];
+        let comment = c == '-' && b.get(i + 1) == Some(&'-');
+        let long = if comment {
+            long_open(i + 2)
+        } else {
+            long_open(i)
+        };
+        if let Some(level) = long {
+            // a long string or a block comment: to its closing bracket of the same level
+            let start = if comment { i + 2 } else { i };
+            let mut j = start + level + 2;
+            loop {
+                if j >= b.len() {
+                    break;
+                }
+                if b[j] == ']'
+                    && (0..level).all(|k| b.get(j + 1 + k) == Some(&'='))
+                    && b.get(j + 1 + level) == Some(&']')
+                {
+                    j += level + 2;
+                    break;
+                }
+                j += 1;
+            }
+            out.extend(b[i..j.min(b.len())].iter().map(|c| blank(*c)));
+            i = j;
+        } else if comment {
+            while i < b.len() && b[i] != '\n' {
+                out.push(' ');
+                i += 1;
+            }
+        } else if c == '"' || c == '\'' {
+            out.push(c);
+            i += 1;
+            while i < b.len() && b[i] != c && b[i] != '\n' {
+                if b[i] == '\\' && i + 1 < b.len() {
+                    out.push(' ');
+                    i += 1;
+                }
+                out.push(blank(b[i]));
+                i += 1;
+            }
+            if i < b.len() && b[i] == c {
+                out.push(c);
+                i += 1;
+            }
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Mistakes that can be read off the scripts without running the line they are on:
+/// - a `nova.<name>` that the API does not have (a call such as `nova.scene_nowx()` in a pickup's code only fails when
+///   something is picked up, long after `check`'s few frames);
+/// - `self.y = self.y + self.vy * dt`: the engine itself adds `vx`, `vy`, `vz` to the position every step, so an entity
+///   that keeps its own speed in `vy` and moves by it too goes twice as far (unless it says `velocity = false`).
+fn source_warnings(game: &Game) -> Vec<String> {
+    let vfs = game.vfs();
+    let ignore = &game.project.manifest.ignore;
+    let mut out = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    for entry in vfs.list().unwrap_or_default() {
+        if !entry.path.ends_with(".lua") || crate::project::ignored(ignore, &entry.path) {
+            continue;
+        }
+        let Ok(bytes) = vfs.read(&entry.path) else {
+            continue;
+        };
+        let code = code_only(&String::from_utf8_lossy(&bytes));
+        // (an entity with `velocity = false` moves itself: its vx, vy, vz are its own)
+        let own_velocity = code
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .contains("velocity=false");
+        for (n, line) in code.lines().enumerate() {
+            // names under `nova.`
+            let mut from = 0;
+            while let Some(found) = line[from..].find("nova.") {
+                let at = from + found;
+                from = at + 5;
+                let before = line[..at].chars().next_back();
+                if before.is_some_and(|c| ident(c) || c == '.' || c == ':') {
+                    continue; // (`self.nova.x`, `supernova.x`: not the API)
+                }
+                let mut parts: Vec<String> = Vec::new();
+                let mut rest = &line[at + 5..];
+                loop {
+                    let len = rest.chars().take_while(|c| ident(*c)).count();
+                    if len == 0 || rest.starts_with(|c: char| c.is_ascii_digit()) {
+                        break;
+                    }
+                    parts.push(rest[..len].to_string());
+                    rest = &rest[len..];
+                    match rest.strip_prefix('.') {
+                        Some(r) if !r.starts_with('.') => rest = r,
+                        _ => break,
+                    }
+                }
+                // (a name that the line itself gives a value is the game's own: `nova.score = 0`)
+                let assigned =
+                    rest.trim_start().starts_with('=') && !rest.trim_start().starts_with("==");
+                if parts.is_empty() || assigned {
+                    continue;
+                }
+                if let Some(missing) = game.api_missing(&parts)
+                    && seen.insert((entry.path.clone(), missing.clone()))
+                {
+                    out.push(format!(
+                        "{}:{}: {missing} is not in the Lua API, so this line will fail when it runs (look the name up with the api tool, or in docs/project-format.md)",
+                        entry.path,
+                        n + 1
+                    ));
+                }
+            }
+            // moving by the engine's own velocity fields
+            let tight: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+            for axis in ["x", "y", "z"] {
+                let moved = [
+                    format!("self.{axis}=self.{axis}+"),
+                    format!("self.{axis}=self.{axis}-"),
+                ]
+                .iter()
+                .any(|p| tight.contains(p.as_str()));
+                let by = format!("self.v{axis}");
+                let uses = tight
+                    .match_indices(by.as_str())
+                    .any(|(i, _)| !tight[i + by.len()..].starts_with(|c: char| ident(c)));
+                if moved && uses && !own_velocity {
+                    out.push(format!(
+                        "{}:{}: self.{axis} is moved by self.v{axis} here, and the engine also adds vx, vy, vz to every entity's position each step, so it moves twice as far: only set self.v{axis} and let the engine do the moving, or put `velocity = false` in the entity (nova.entity {{ velocity = false, ... }}) so that vx, vy, vz are your own, or keep your speed under another name",
+                        entry.path,
+                        n + 1
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Loads a project without a GPU, runs it for `frames` steps and lists every problem found.
 pub fn check_project(folder: &Path, frames: u32) -> CheckReport {
     let mut problems: Vec<Diagnostic> = Vec::new();
@@ -35,6 +199,7 @@ pub fn check_project(folder: &Path, frames: u32) -> CheckReport {
             for error in &game.shader_errors {
                 problems.push(diagnostics::parse(error, "error"));
             }
+            let read_off = source_warnings(&game);
             for frame in 0..frames {
                 if game.error.is_some() {
                     break;
@@ -50,6 +215,18 @@ pub fn check_project(folder: &Path, frames: u32) -> CheckReport {
             }
             if let Some(detail) = game.error_detail.take() {
                 problems.push(diagnostics::parse(&detail, "error"));
+            }
+            // (after the frames: a name the game's own code gives `nova` while it runs is then known)
+            for warning in read_off
+                .iter()
+                .filter(|w| !w.contains(" is not in the Lua API"))
+                .chain(
+                    source_warnings(&game)
+                        .iter()
+                        .filter(|w| w.contains(" is not in the Lua API")),
+                )
+            {
+                problems.push(diagnostics::parse(warning, "warning"));
             }
         }
     }

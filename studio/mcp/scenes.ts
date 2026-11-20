@@ -166,6 +166,25 @@ const niceStep = (min: number): number => {
   return 10000;
 };
 
+/// A 2D room that is smaller than the screen, in words (nothing for a 3D scene, a scene with no room of its own, or a
+/// room that fills the screen). The room is the scene's `width` and `height` and its tile layers.
+export function roomWarning(scene: Scene): string | null {
+  const maps = tilemaps(scene);
+  if (scene.camera && !maps.length) return null;
+  let w = typeof scene.width === "number" ? scene.width : 0, h = typeof scene.height === "number" ? scene.height : 0;
+  let tile = 0;
+  for (const m of maps) {
+    const s = m.tileset.scale ?? 1;
+    const cols = Math.max(0, ...m.tiles.map((r) => r.length));
+    w = Math.max(w, (m.x ?? 0) + cols * m.tileset.tile_width * s);
+    h = Math.max(h, (m.y ?? 0) + m.tiles.length * m.tileset.tile_height * s);
+    tile = Math.max(tile, m.tileset.tile_width * s);
+  }
+  if (!w || !h || (w >= 960 && h >= 540)) return null;
+  const need = tile ? ` (${Math.ceil(960 / tile)} x ${Math.ceil(540 / tile)} tiles of ${tile} units fill it)` : "";
+  return `the room is ${w} x ${h} units, smaller than the screen (960 x 540): it is drawn in the middle with the scene's background colour around it. That suits a small interior; to fill the screen make it at least 960 x 540${need}, or give the tile layer a bigger "scale".`;
+}
+
 /// `scene_preview`: draws a scene file as a map. Returns the picture and a description in words.
 export function previewScene(root: string, name: string, opts: { grid?: boolean; labels?: boolean; zoom?: number; area?: number[] } = {}): { text: string; picture: Raster | null } {
   const short = name.replace(/^scenes\//, "").replace(/\.scene\.json$/, "");
@@ -239,6 +258,8 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
   // tile layers, the furthest back first
   const order = [...mapInfo].sort((a, b) => (b.m.depth ?? 0) - (a.m.depth ?? 0));
   lines.push(`scenes/${short}.scene.json: world ${ww} x ${wh} units from (${x0}, ${y0}); the view is ${viewW} x ${worldHeight}; picture at x${Math.round(zoom * 100) / 100}`);
+  const small = roomWarning(scene);
+  if (small) lines.push(`warning: ${small}`);
   for (const { m, tw, th, cols, rows, s } of order) {
     const file = imageFile(root, m.tileset.image);
     let sheet: Raster | null = null;

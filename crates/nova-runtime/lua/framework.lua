@@ -482,6 +482,26 @@ function Entity:touching(tag)
   return nil
 end
 
+--- The first living entity with this tag whose hitbox is within `margin` units of this one's (4 when left out), or nil.
+--- It is how something solid is noticed: a mover that stops at a solid thing never overlaps it, so on_collide_<tag> and
+--- touching() never see the two together, but `self:near("hero", 6)` in a chest's update (or `self:near("chest")` in the
+--- hero's) does. Hitboxes are compared as boxes.
+function Entity:near(tag, margin)
+  local list = W.tags[tag]
+  if not list then return nil end
+  margin = margin or 4
+  local ax0, ay0, ax1, ay1 = bounds(self)
+  ax0, ay0, ax1, ay1 = ax0 - margin, ay0 - margin, ax1 + margin, ay1 + margin
+  for i = 1, #list do
+    local o = list[i]
+    if o ~= self and not o._dead then
+      local bx0, by0, bx1, by1 = bounds(o)
+      if ax0 < bx1 and bx0 < ax1 and ay0 < by1 and by0 < ay1 then return o end
+    end
+  end
+  return nil
+end
+
 -- ---- animation: sprite sheets (sprites/<name>.sprite.json) have frames and tags
 local sheet_cache = {}
 local function sheet_info(name)
@@ -2227,9 +2247,28 @@ function nova.each(tag, fn)
   end
 end
 
+-- nova.first("slime") when "slime" is the name of an entity file and not a tag finds nothing, silently: say so once in the log.
+local kind_hinted = {}
+local function kind_hint(fn, tag)
+  if type(tag) ~= "string" or kind_hinted[tag] then return end
+  kind_hinted[tag] = true
+  local ok, cls = pcall(require, "entities." .. tag)
+  if ok and type(cls) == "table" and rawget(cls, "__kind") == "entity" then
+    local known, tags = pcall(function() return finalize(cls).__tags end)
+    if known and not tags[tag] then
+      local have = {}
+      for t in pairs(tags) do have[#have + 1] = t end
+      table.sort(have)
+      nova.log(("note: nova.%s(\"%s\") looks for the tag \"%s\" and no entity has it. \"%s\" is a kind (entities/%s.lua), whose tags are: %s. Ask for a tag, or add tags = { \"%s\" } to it."):format(
+        fn, tag, tag, tag, (tag:gsub("%.", "/")), #have > 0 and table.concat(have, ", ") or "none", tag))
+    end
+  end
+end
+
 function nova.all(tag)
   local out = {}
   local list = W.tags[tag]
+  if not list then kind_hint("all", tag) end
   if list then
     for i = 1, #list do
       local e = list[i]
@@ -2241,6 +2280,7 @@ end
 
 function nova.first(tag)
   local list = W.tags[tag]
+  if not list then kind_hint("first", tag) end
   if list then
     for i = 1, #list do
       if not list[i]._dead then return list[i] end

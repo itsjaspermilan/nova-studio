@@ -503,7 +503,7 @@ fn car_with_events(events: &str) -> Vec<u8> {
     doc["animations"][0]["extras"] =
         serde_json::from_str(&format!(r#"{{ "nova": {{ "events": {events} }} }}"#)).unwrap();
     let mut json = serde_json::to_vec(&doc).unwrap();
-    while json.len() % 4 != 0 {
+    while !json.len().is_multiple_of(4) {
         json.push(b' ');
     }
     let rest = &CAR[20 + json_len..];
@@ -560,7 +560,10 @@ fn a_clip_carries_named_events_and_a_playing_entity_is_told_when_it_passes_one()
         .collect();
     // the event at 0 on the first frame, each as time passes it, and again after the clip wraps
     assert_eq!(names, ["a", "b", "c", "a", "b"], "{log:?}");
-    assert!(log[1].ends_with(" spin 0") || log[1].ends_with(" spin 1"), "{log:?}");
+    assert!(
+        log[1].ends_with(" spin 0") || log[1].ends_with(" spin 1"),
+        "{log:?}"
+    );
     let frame_of = |l: &String| l.rsplit(' ').next().unwrap().parse::<i32>().unwrap();
     assert!((frame_of(&log[2]) - 30).abs() <= 2, "{log:?}"); // 0.5 s
     assert!((frame_of(&log[3]) - 114).abs() <= 2, "{log:?}"); // 1.9 s
@@ -614,7 +617,10 @@ end
     assert_eq!(log[0], "f1 a");
     assert!(log[1] == "f30 b" || log[1] == "f31 b", "{log:?}");
     assert_eq!(log[2], "spin 1.00 0.50 0.50");
-    assert!(log[3].ends_with(" c") && log[4].ends_with(" a") && log[5].ends_with(" b"), "{log:?}");
+    assert!(
+        log[3].ends_with(" c") && log[4].ends_with(" a") && log[5].ends_with(" b"),
+        "{log:?}"
+    );
     assert_eq!(log[6], "a:spin b:spin c:spin a:spin b:spin");
 }
 

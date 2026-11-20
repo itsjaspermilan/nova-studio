@@ -38,7 +38,7 @@
   "name": "nova.sprite",
   "kind": "function",
   "signature": "nova.sprite(id, x, y [, opts])",
-  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame, and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left), and `shader = \"shine\"` with `params` and `textures` (a custom shader, shaders/shine.wgsl; see docs/shaders.md).",
+  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame, and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left), and `shader = \"shine\"` with `params` and `textures` (a custom shader, shaders/shine.wgsl; see docs/shaders.md). `color = { r, g, b [, a] }` multiplies the picture's colours (255 leaves them; it cannot brighten). `rotation` is in radians, positive clockwise on the screen.",
   "group": "Drawing"
  },
  {
@@ -836,7 +836,7 @@
   "name": "nova.entity",
   "kind": "function",
   "signature": "nova.entity([parent,] spec)",
-  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, settings, and default fields. settings = { speed = { 4, min = 0, max = 10, help = \"...\" }, paint = { \"#ff8800\", type = \"colour\" }, mood = { \"calm\", choices = { \"calm\", \"angry\" } } } declares what a scene may set: a default, a type (number, boolean, text, choice, colour, vector, object, sprite, sound, music, model), limits, a step and help; values are checked and colours arrive as { r, g, b }.",
+  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, settings, and default fields. settings = { speed = { 4, min = 0, max = 10, help = \"...\" }, paint = { \"#ff8800\", type = \"colour\" }, mood = { \"calm\", choices = { \"calm\", \"angry\" } } } declares what a scene may set: a default, a type (number, boolean, text, choice, colour, vector, object, sprite, sound, music, model), limits, a step and help; values are checked and colours arrive as { r, g, b }. The engine's own fields, which your code must not use for anything else: x, y, z; vx, vy, vz (the engine adds them to the position every step: keep your own speed there only if you do not also move the entity yourself, or say `velocity = false` in the spec and they are yours); sx, sy, angle, alpha, visible, tint, depth, frame, flip_x, flip_y, id, name; for a model rx, ry, rz, quat, parts, clip, clip_time, clip_loop, clip_speed; shader, shader_params, shader_textures, blend; and everything that starts with an underscore. `tint = { r, g, b }` MULTIPLIES the picture's colours (255, 255, 255 leaves them): it darkens or colours and can never make a sprite brighter or white, so for a hit flash blink `alpha` or `visible`, or show a white copy of the frame (sprite_write's { copy = n, silhouette = true }). `angle` is in radians and a positive angle turns the picture clockwise on the screen (y points down): 0 is as drawn, math.pi / 2 a quarter turn clockwise; the same goes for angle_to and set_velocity, where 0 is to the right and math.pi / 2 is down. A solid thing (one a mover stops at) is never overlapped, so its on_collide_<tag> never runs: notice it with self:near(tag, margin).",
   "group": "Scenes and entities"
  },
  {
@@ -948,28 +948,28 @@
   "name": "nova.each",
   "kind": "function",
   "signature": "nova.each(tag, fn)",
-  "doc": "Call fn for every living entity with the tag.",
+  "doc": "Call fn for every living entity with the tag (a tag from `tags = { ... }`, not a file name).",
   "group": "Scenes and entities"
  },
  {
   "name": "nova.all",
   "kind": "function",
   "signature": "nova.all(tag) -> list",
-  "doc": "A new list of the living entities with the tag.",
+  "doc": "A new list of the living entities with the tag (a tag from `tags = { ... }`, not a file name).",
   "group": "Scenes and entities"
  },
  {
   "name": "nova.first",
   "kind": "function",
   "signature": "nova.first(tag) -> entity",
-  "doc": "The first living entity with the tag.",
+  "doc": "The first living entity with the tag (nil when there is none). It takes a TAG (one of an entity's `tags = { ... }`), not the name of its file: nova.first(\"slime\") finds nothing if slimes are tagged \"enemy\" (the log says so once). For one particular thing use the name the scene file gave it: nova.named(\"hero\").",
   "group": "Scenes and entities"
  },
  {
   "name": "nova.count",
   "kind": "function",
   "signature": "nova.count(tag) -> number",
-  "doc": "How many living entities have the tag.",
+  "doc": "How many living entities have the tag (a tag from `tags = { ... }`, not a file name).",
   "group": "Scenes and entities"
  },
  {
@@ -1284,7 +1284,7 @@
   "name": "angle_to",
   "kind": "method",
   "signature": "self:angle_to(x, y | entity) -> radians",
-  "doc": "Angle to a point or entity.",
+  "doc": "Angle to a point or entity, in radians: 0 is to the right, math.pi / 2 is down the screen (y points down), so it grows clockwise. It is the angle to give `self.angle` to point a sprite drawn facing right at the target.",
   "group": "Entity methods"
  },
  {
@@ -1298,7 +1298,7 @@
   "name": "set_velocity",
   "kind": "method",
   "signature": "self:set_velocity(angle, speed)",
-  "doc": "Set vx and vy from an angle and speed.",
+  "doc": "Set vx and vy from an angle (radians: 0 is to the right, math.pi / 2 is down the screen, so positive turns clockwise) and a speed. The engine then moves the entity by them every step.",
   "group": "Entity methods"
  },
  {
@@ -1319,7 +1319,14 @@
   "name": "touching",
   "kind": "method",
   "signature": "self:touching(tag) -> entity",
-  "doc": "The first overlapping entity with the tag.",
+  "doc": "The first overlapping entity with the tag (nil when none). The usual way to stop at solid things: move, and if self:touching(\"solid\") take the move back. Because of that a solid thing is never overlapped by what it stops: use self:near(tag) to notice it.",
+  "group": "Entity methods"
+ },
+ {
+  "name": "near",
+  "kind": "method",
+  "signature": "self:near(tag [, margin = 4]) -> entity",
+  "doc": "The first living entity with the tag whose hitbox is within `margin` units of this one's (touching or not), or nil. For things a mover stops at, which never overlap and so never get on_collide_<tag>: a chest opens with `if self:near(\"hero\", 6) and nova.input.pressed(\"a\") then ... end`, a sign shows its text while `self:near(\"hero\", 8)`. Hitboxes are compared as boxes.",
   "group": "Entity methods"
  },
  {

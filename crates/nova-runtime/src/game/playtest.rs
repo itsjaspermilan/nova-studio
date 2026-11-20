@@ -230,6 +230,29 @@ impl Game {
         self.playtest_call("walker", (who, plane))
     }
 
+    /// The first part of `nova.<a>.<b>...` that does not exist, as text (`nova.scene_nowx`), or `None` when the whole name is
+    /// there or cannot be judged (it goes through a value that is not a table, or into the framework's internals).
+    pub fn api_missing(&self, parts: &[String]) -> Option<String> {
+        if matches!(parts.first().map(String::as_str), Some("world" | "raw")) {
+            return None;
+        }
+        let mut current: LuaValue = self.lua.globals().get("nova").ok()?;
+        let mut name = String::from("nova");
+        for part in parts {
+            let LuaValue::Table(table) = &current else {
+                return None;
+            };
+            name.push('.');
+            name.push_str(part);
+            let next: LuaValue = table.get(part.as_str()).ok()?;
+            if next.is_nil() {
+                return Some(name);
+            }
+            current = next;
+        }
+        None
+    }
+
     /// Every input action the game knows (`nova.input.actions()`).
     pub fn action_names(&self) -> Vec<String> {
         self.shared

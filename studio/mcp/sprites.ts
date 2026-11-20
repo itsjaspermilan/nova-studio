@@ -77,6 +77,17 @@ function transform(src: Raster, spec: Args, where: string, errors: string[]): Ra
     }
     r = out;
   }
+  if (spec.silhouette !== undefined && spec.silhouette !== false) {
+    // every drawn pixel in one colour: a white copy of a frame to show for a moment when it is hit
+    const c = hexColour(spec.silhouette === true ? "#ffffff" : spec.silhouette);
+    if (!c) errors.push(`${where}: "silhouette" is a colour ("#ffffff") or true for white, got ${JSON.stringify(spec.silhouette)}`);
+    else {
+      const out = newRaster(r.w, r.h);
+      out.data.set(r.data);
+      for (let i = 0; i < out.data.length; i += 4) if (out.data[i + 3]) out.data.set([c[0], c[1], c[2]], i);
+      r = out;
+    }
+  }
   return r;
 }
 
@@ -85,7 +96,7 @@ function transform(src: Raster, spec: Args, where: string, errors: string[]): Ra
 // left half is mirrored onto the right (`mirror: "x"`; "y" the top onto the bottom), then every see-through pixel beside a
 // drawn one gets the outline colour. Colours are palette characters ("." erases) or "#rrggbb".
 
-const FRAME_KEYS = ["rows", "name", "copy", "flip", "flip_x", "flip_y", "rotate", "recolor", "recolour", "shapes", "mirror", "outline"];
+const FRAME_KEYS = ["rows", "name", "copy", "flip", "flip_x", "flip_y", "rotate", "recolor", "recolour", "silhouette", "shapes", "mirror", "outline"];
 const SHAPE_HELP =
   'a list of { "rect": [x, y, w, h] }, { "line": [x0, y0, x1, y1] }, { "circle": [cx, cy, r] } or { "ellipse": [cx, cy, rx, ry] }, each with "color": a palette character or "#rrggbb" ("." erases) and, for all but the line, "fill": false for the edge only';
 

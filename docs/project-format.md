@@ -29,8 +29,28 @@ The questions a first 2D game asks, answered in one place (the sections further 
   them. Anything else (a bush, a sign, a chest): give its entity a hitbox and a tag (`tags = { "solid" }`), and after
   `slide` step back when `self:touching("solid")` is not nil (try the x move, undo it if it touches, then the y move:
   `examples/starter-topdown/entities/hero.lua` does this).
+  A solid thing is never overlapped by what stops at it, so **its `on_collide_<tag>` never runs** and `touching` never sees
+  the two together. Notice it with `self:near(tag, margin)`: the first entity with the tag whose hitbox is within `margin`
+  units (4) of this one's. A chest: `if self:near("hero", 6) and nova.input.pressed("a") then self:open() end`.
+- **Tags, kinds and names** are three things. `nova.first`, `nova.all`, `nova.each`, `nova.count`, `touching`, `near` and
+  `on_collide_<tag>` take a **tag** (`tags = { "enemy" }`); the **kind** is the entity's file (`entities/slime.lua` is
+  `"slime"`, what `nova.spawn` and scene objects use); a **name** is what one scene object was called (`nova.named("hero")`).
+  `nova.first("slime")` finds nothing when slimes are tagged `enemy` (the log says so once).
+- **The engine's own fields.** `x y z`, `vx vy vz`, `sx sy`, `angle`, `alpha`, `visible`, `tint`, `depth`, `frame`, `flip_x`,
+  `flip_y`, `id`, `name` (and for models `rx ry rz`, `quat`, `parts`, `clip`, `clip_time`, `clip_speed`; `shader`, `blend`;
+  anything starting with `_`) mean something to the engine: do not use them for something else. The engine adds `vx`, `vy`,
+  `vz` to the position every step, so `self.y = self.y + self.vy * dt` moves twice as far: set the velocity and let the engine
+  move, or put `velocity = false` in the entity and the three are yours (`nova check` warns about that line).
+- **`tint` multiplies.** `tint = { r, g, b }` (and `color` in `nova.sprite`) multiplies the picture's colours: `{ 255, 255, 255 }`
+  leaves them, lower values darken or colour. It can never brighten, so it cannot flash a sprite white: for a hit flash blink
+  `alpha` or `visible` for a few frames, or draw a white copy of the frame (`sprite_write` frame `{ "copy": 0, "silhouette": true }`)
+  and show that frame.
+- **Angles** are radians, and a positive `angle` turns the picture clockwise on the screen (y points down). 0 is as drawn;
+  for `angle_to` and `set_velocity` 0 is to the right and `math.pi / 2` is down. Draw a thing that aims (an arrow, a sword)
+  pointing right, and `self.angle = self:angle_to(target)` points it.
 - **The camera** is centred on `nova.cam.set(x, y)` or follows with `nova.cam.follow(entity, lerp, snap)`; a scene's `width`
-  and `height` keep the view inside the room, and a room smaller than the screen is centred. `set` after `follow` stops the
+  and `height` keep the view inside the room, and a room smaller than the screen (960 x 540) is centred with the scene's
+  background colour around it (`scene_preview` and the `check` tool say when a room is). `set` after `follow` stops the
   following.
 - **Names.** A scene object's `"name"` is a field of the scene (`self.hero`), is found with `nova.named("hero")`, and is the
   entity's own `self.name`.
@@ -746,7 +766,8 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
   a negative `sx` mirrors the hitbox's offsets too), `angle` (radians), `alpha`, `visible`, `tint` (`{r,g,b}`), `depth`, `id`,
   and `name` when a scene file named the object.
   Do not keep your own velocity in `vx`/`vy`/`vz` if your code also moves the entity: the engine adds it again
-  (use `velx`, `velz`...). A field with the same name as a method of the same class (`place = 3` and
+  (use `velx`, `velz`..., or say `velocity = false` in the spec and the three are your own). `tint` multiplies the
+  picture's colours (it cannot brighten); a positive `angle` turns clockwise on the screen. A field with the same name as a method of the same class (`place = 3` and
   `function Car:place()`) is an error, because the field would hide the method.
 - Sprites draw centred on `x, y`. A `model` draws at `x, y, z` (y up) turned by `ry`
   (or `angle`). `screen = true` draws a sprite in the UI layer, ignoring the camera.
@@ -765,7 +786,8 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 
 **Methods:** `destroy()`, `is_alive()`, `distance_to(x, y | entity)`, `angle_to(...)`,
 `move_toward(x, y, step | entity, step)` (true on arrival), `set_velocity(angle, speed)`,
-`speed()`, `overlaps(other)`, `touching(tag)` (first overlapping entity with the tag),
+`speed()`, `overlaps(other)`, `touching(tag)` (first overlapping entity with the tag), `near(tag, margin)` (first with
+its hitbox within `margin` units, 4 by default: for solid things, which are never overlapped),
 and the timer methods below.
 
 **World functions:** `nova.spawn(kind_or_class, x, y [, props])`, `nova.each(tag, fn)`,

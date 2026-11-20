@@ -278,6 +278,22 @@ describe("the Nova MCP server", () => {
     expect(existsSync(join(dir, "scenes/bad.scene.json"))).toBe(false);
   });
 
+  it("says when a room is smaller than the screen, in the preview and in check, and makes a white copy of a frame", () => {
+    use("sprite_write", { name: "tiles", palette: { a: "#ff0000", b: "#00ff0080" }, frames: [["ab", "a."], { copy: 0, silhouette: true }, { copy: 0, silhouette: "#102030" }] });
+    const sheet = decodePng(readFileSync(join(dir, "sprites/tiles.png")));
+    const px = (frame: number, x: number, y: number) => [...sheet.data.subarray((y * sheet.w + frame * 2 + x) * 4, (y * sheet.w + frame * 2 + x) * 4 + 4)];
+    expect([px(1, 0, 0), px(1, 1, 0), px(1, 1, 1), px(2, 0, 1)]).toEqual([[255, 255, 255, 255], [255, 255, 255, 128], [0, 0, 0, 0], [16, 32, 48, 255]]);
+    expect(() => use("sprite_write", { name: "tiles", palette: {}, append: true, frames: [{ copy: 0, silhouette: "white" }] })).toThrow(/"silhouette" is a colour \("#ffffff"\) or true for white/);
+    const layer = (cols: number, rows: number) => ({ tileset: { image: "sprites/tiles.png", tile_width: 2, tile_height: 2, scale: 24 }, tiles: Array.from({ length: rows }, () => "0".repeat(cols).split("").map(Number)) });
+    const small = text(use("scene_write", { name: "hut", scene: { version: 1, objects: [], tilemaps: [layer(10, 8)] } }));
+    expect(small).toContain('warning: the room is 480 x 384 units, smaller than the screen (960 x 540): it is drawn in the middle with the scene\'s background colour around it. That suits a small interior; to fill the screen make it at least 960 x 540 (20 x 12 tiles of 48 units fill it), or give the tile layer a bigger "scale".');
+    expect(text(use("scene_preview", { name: "hut" }))).toContain("warning: the room is 480 x 384 units");
+    const big = text(use("scene_write", { name: "field", scene: { version: 1, objects: [], tilemaps: [layer(20, 12)] } }));
+    expect(big).not.toContain("warning: the room");
+    // a scene with no room of its own (a title) and a 3D one say nothing
+    expect(text(use("scene_write", { name: "title", scene: { version: 1, objects: [] } }))).not.toContain("warning");
+  });
+
   it("draws a scene file as a map and says what is in it", () => {
     use("sprite_write", { name: "tiles", palette: { a: "#ff0000", b: "#00ff00" }, frames: [["aa", "aa"], ["bb", "bb"]], names: ["grass", "wall"] });
     use("sprite_write", { name: "hero", palette: { a: "#ffffff" }, frames: [["aa", "aa"]] });
@@ -598,6 +614,18 @@ describe.skipIf(!built)("playing the game", () => {
     // and the activity log names the files
     const lines = readFileSync(join(dir, ".nova/activity.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(lines[lines.length - 2].files).toEqual(["build/sound/short.wav"]);
+  });
+
+  it("checks a game: mistakes on lines that never ran, and rooms smaller than the screen, with the verdict last", () => {
+    game();
+    use("sprite_write", { name: "tiles", palette: { a: "#335533" }, frames: [["aa", "aa"]] });
+    use("scene_write", { name: "room", picture: false, scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 100, y: 100 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 2, tile_height: 2, scale: 24 }, tiles: [[0, 0, 0], [0, 0, 0]] }] } });
+    use("write_file", { path: "entities/hero.lua", text: "local H = nova.entity { sprite = 'hero' }\nfunction H:update(dt)\n  self.y = self.y + self.vy * dt\nend\nfunction H:on_collide_gem(gem)\n  nova.scene_object():took(gem)\nend\nreturn H\n" });
+    const said = text(use("check"));
+    expect(said).toMatch(/warning: entities\/hero\.lua:3: self\.y is moved by self\.vy here/);
+    expect(said).toMatch(/warning: entities\/hero\.lua:6: nova\.scene_object is not in the Lua API/);
+    expect(said).toMatch(/warning: scenes\/room\.scene\.json: the room is 144 x 96 units, smaller than the screen/);
+    expect(said.trim().split("\n").pop()).toBe("no errors");
   });
 
   it("shows a model at rest, posed by a clip, and as a strip of a clip with the joint heights", () => {
