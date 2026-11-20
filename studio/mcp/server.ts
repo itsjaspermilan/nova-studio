@@ -411,8 +411,9 @@ tool(
 
 tool(
   "sprite_write",
-  "Write a pixel-art sprite or tileset: `sprites/<name>.png` (a sheet of frames) and `sprites/<name>.sprite.json` (frame size and named animations). Draw it with text: `palette` maps one character to a colour (\"#rrggbb\" or \"#rrggbbaa\"); '.' and ' ' are always transparent. `frames` is a list of frames, each a list of equal-length rows of characters (one character per pixel). " +
+  "Write a pixel-art sprite or tileset: `sprites/<name>.png` (a sheet of frames) and `sprites/<name>.sprite.json` (frame size and named animations). Draw it with text: `palette` maps one character to a colour (\"#rrggbb\" or \"#rrggbbaa\"); '.' and ' ' are always transparent. `frames` is a list of frames, each a list of rows of characters (one character per pixel). The frame size is the commonest row length and row count among the frames given (or `size`: [w, h]; or the sheet's when adding): a row that is shorter is filled with transparent on the right and the answer says which rows were; a row that is longer, or a frame with the wrong number of rows, is a mistake that is named with its frame (frames, rows and columns count from 0). " +
     "A frame may also be { rows: [...], name } or a copy of a frame that exists: { copy: <frame number or name>, flip: \"x\"|\"y\", rotate: 90|180|270, recolor: { \"#from\": \"#to\" }, name }. " +
+    "Less typing: a frame object may add `shapes`, drawn over its rows in order (or on an empty frame): { \"rect\": [x, y, w, h] }, { \"line\": [x0, y0, x1, y1] }, { \"circle\": [cx, cy, r] }, { \"ellipse\": [cx, cy, rx, ry] }, each with \"color\" (a palette character or \"#rrggbb\"; \".\" erases) and \"fill\": false for the edge only; `mirror`: \"x\" then copies the left half onto the right (so the rows of a symmetric frame need only their left half; \"y\" copies the top onto the bottom); `outline`: \"k\" then gives every see-through pixel beside a drawn one that colour. For example a 16x16 round face from half the typing: { \"shapes\": [ { \"circle\": [7.5, 7.5, 6], \"color\": \"s\" }, { \"rect\": [5, 6, 1, 2], \"color\": \"k\" } ], \"mirror\": \"x\", \"outline\": \"k\" } with \"size\": [16, 16]. " +
     "Sheet layout: frames are packed left to right, 16 to a row, so with up to 16 frames the sheet is one row; frame n is tile n of a tilemap that uses the sheet (column n % 16, row floor(n / 16)). " +
     "Big sheets in several calls: `append: true` adds the frames to the end of the sheet that is there, `at: n` writes them from frame n (replacing those frames); the frame size, animations and names of the sheet are kept. " +
     "`names` (a list, one per frame given, or { frame number: name }) names frames; they are kept in `sprites/<name>.tileset.json` (with `solid`: the frames that block movement), and scene_write's tile `legend` can use the names. " +
@@ -428,6 +429,7 @@ tool(
     at: { type: "number", description: "Write the frames into the existing sheet from this frame number." },
     names: { type: ["array", "object"], description: "Names for frames (tiles)." },
     solid: { type: "array", description: "Frames (numbers or names) that block movement, for a tileset." },
+    size: { type: "array", items: { type: "number" }, description: "The frame size [width, height] in pixels, when the rows do not say it (frames made only of shapes, or rows given as halves)." },
   },
   ["name", "frames"],
   (a) => {
@@ -440,11 +442,12 @@ tool(
 
 tool(
   "sprite_preview",
-  "Look at a sprite of the project: returns a picture of `sprites/<name>.png` magnified on a checker background, every frame outlined with its number (and name) under it, and one strip per animation with its frames in the order they play and how long each shows. The text says the sheet's size, how many frames are across, the animations and the frame names.",
-  { name: { type: "string" } },
+  "Look at a sprite of the project: returns a picture of `sprites/<name>.png` magnified on a checker background, every frame outlined with its number (and name) under it, and one strip per animation with its frames in the order they play and how long each shows. The text says the sheet's size, how many frames are across, the animations and the frame names. " +
+    "`frame`: n (or a frame's name) is a close-up of that one frame instead: every pixel a big square (`zoom` times, as large as fits 640 pixels when left out) with a grid and the column and row numbers, and the frame as rows of characters with a palette, ready to change and write back with sprite_write's `at`.",
+  { name: { type: "string" }, frame: { type: ["number", "string"], description: "A close-up of this frame (its number, or its name)." }, zoom: { type: "number", description: "How many times bigger each pixel of the close-up is (2 to 48)." } },
   ["name"],
   (a) => {
-    const r = previewSprite(projectRoot(a), String(a.name));
+    const r = previewSprite(projectRoot(a), String(a.name), { frame: a.frame, zoom: a.zoom });
     return { text: r.text, images: [keepPicture(`sprite-${String(a.name).replace(/[^A-Za-z0-9_-]/g, "_")}`, r.picture)] };
   },
 );

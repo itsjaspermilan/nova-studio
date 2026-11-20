@@ -116,7 +116,13 @@ describe("the Nova MCP server", () => {
     const json = JSON.parse(readFileSync(join(dir, "sprites/dot.sprite.json"), "utf8"));
     expect(json).toMatchObject({ frame_width: 2, frame_height: 2, frames: 2, image: "dot.png" });
     expect(readFileSync(join(dir, "sprites/dot.png")).subarray(1, 4).toString()).toBe("PNG");
-    expect(() => use("sprite_write", { name: "r", palette: { a: "#fff000" }, frames: [["aa", "a"]] })).toThrow(/frame 0 row 1 has 1 characters, wanted 2: "a"/);
+    // a short row is filled with transparent and the answer says so; a long one is a mistake
+    const ragged = text(use("sprite_write", { name: "r", palette: { a: "#fff000" }, frames: [["aaa", "a", "aaa"], ["aaa", "aaa", "aa"]] }));
+    expect(ragged).toContain("2 frame(s) of 3x3");
+    expect(ragged).toContain("short rows were filled with transparent on the right, up to 3 wide: frame 0 row 1; frame 1 row 2");
+    const filled = decodePng(readFileSync(join(dir, "sprites/r.png")));
+    expect([...filled.data.subarray((1 * filled.w + 1) * 4, (1 * filled.w + 1) * 4 + 4)]).toEqual([0, 0, 0, 0]);
+    expect(() => use("sprite_write", { name: "r", palette: { a: "#fff000" }, frames: [["aa", "aa", "aaa"]] })).toThrow(/frame 0 row 2 has 3 characters, wanted 2: "aaa"/);
     expect(() => use("sprite_write", { name: "r", palette: {}, frames: [["z"]] })).toThrow(/palette/);
   });
 
@@ -127,13 +133,62 @@ describe("the Nova MCP server", () => {
     } catch (e) {
       said = (e as Error).message;
     }
-    expect(said).toContain('frame 1 row 1 has 3 characters, wanted 4: "kkk"');
     expect(said).toContain('frame 1 row 2 has 5 characters, wanted 4: "kkkkk"');
     expect(said).toContain("frame 2 has 2 rows, wanted 3");
     expect(said).toContain("frame 2 row 0 column 2: 'z' is not in the palette");
     expect(existsSync(join(dir, "sprites/bad.png"))).toBe(false);
+    // the frame that is a row short is the one named, also when it is the first (the size is the commonest, not the first's)
+    const k = "kkkk";
+    expect(() => use("sprite_write", { name: "bad", palette: { k: "#101010" }, frames: [[k, k, k], [k, k, k, k], [k, k, k, k]] })).toThrow(/^frame 0 has 3 rows, wanted 4 \(the commonest among the frames given; frames are numbered from 0\)$/);
+    expect(() => use("sprite_write", { name: "bad", palette: { k: "#101010" }, size: [4, 4], frames: [[k, k, k]] })).toThrow(/^frame 0 has 3 rows, wanted 4$/);
     expect(() => use("sprite_write", { name: "bad", frames: "x" })).toThrow(/A tiny example: \{ "name": "dot"/);
     expect(() => use("sprite_write", { name: "bad", palette: { k: "#101010" }, frames: [{ nope: 1 }] })).toThrow(/needs "rows".*or "copy"/);
+  });
+
+  it("draws shapes, mirrors a half and outlines inside a frame", () => {
+    const pal = { s: "#ffcc88", k: "#000000", r: "#ff0000" };
+    const r = text(use("sprite_write", {
+      name: "face", palette: pal, size: [8, 8],
+      frames: [
+        { shapes: [{ circle: [3.5, 3.5, 2], color: "s" }, { rect: [2, 3, 1, 1], color: "k" }], mirror: "x", outline: "k", name: "face" },
+        { rows: ["rr", "r", "", "", "", "", "", ""], mirror: "x" },
+        { shapes: [{ rect: [0, 0, 8, 8], color: "r", fill: false }, { line: [0, 0, 7, 7], color: "#00ff00" }, { ellipse: [4, 4, 2, 1], color: "." }] },
+      ],
+    }));
+    expect(r).toContain("3 frame(s) of 8x8");
+    expect(r).not.toContain("short rows"); // (the half rows of a mirrored frame are not short)
+    const sheet = decodePng(readFileSync(join(dir, "sprites/face.png")));
+    const px = (frame: number, x: number, y: number) => [...sheet.data.subarray((y * sheet.w + frame * 8 + x) * 4, (y * sheet.w + frame * 8 + x) * 4 + 4)];
+    const skin = [255, 204, 136, 255], black = [0, 0, 0, 255], red = [255, 0, 0, 255], clear = [0, 0, 0, 0];
+    expect(px(0, 3, 3)).toEqual(skin);
+    expect(px(0, 2, 3)).toEqual(black); // the eye
+    expect(px(0, 5, 3)).toEqual(black); // and its mirror image
+    expect(px(0, 1, 3)).toEqual(black); // the outline, one pixel outside the disc (which spans 2 to 5)
+    expect(px(0, 6, 3)).toEqual(black);
+    expect(px(0, 0, 0)).toEqual(clear);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(px(0, x, y)).toEqual(px(0, 7 - x, y));
+    expect([px(1, 0, 0), px(1, 1, 0), px(1, 6, 0), px(1, 7, 0), px(1, 7, 1), px(1, 6, 1), px(1, 3, 0)]).toEqual([red, red, red, red, red, clear, clear]);
+    expect(px(2, 7, 0)).toEqual(red); // the rectangle's edge only
+    expect(px(2, 1, 1)).toEqual([0, 255, 0, 255]); // the line
+    expect(px(2, 4, 4)).toEqual(clear); // erased by the ellipse
+    expect(px(2, 5, 2)).toEqual(clear); // not filled
+    expect(() => use("sprite_write", { name: "x", palette: pal, frames: [{ shapes: [{ rect: [0, 0, 2, 2], color: "s" }] }] })).toThrow(/the frame size is not known.*"size": \[width, height\]/);
+    expect(() => use("sprite_write", { name: "x", palette: pal, size: [4, 4], frames: [{ shapes: [{ rect: [0, 0, 2], color: "s" }, { blob: 1 }, { line: [0, 0, 1, 1] }], mirror: "z", shape: 1 }] })).toThrow(/frame 0 has "shape", which a frame does not have[\s\S]*shape 0: "rect" takes 4 numbers \(x, y, w, h\)[\s\S]*shape 1 is \{"blob":1\}[\s\S]*shape 2: give its "color"[\s\S]*"mirror" is "x"/);
+    expect(() => use("sprite_write", { name: "x", palette: pal, size: [4, 4], frames: [{ shapes: [{ rect: [0, 0, 2, 2], color: "q" }], outline: "z" }] })).toThrow(/frame 0 shape 0: "q" is not a palette character nor "#rrggbb"\nframe 0 outline: "z" is not/);
+  });
+
+  it("shows one frame close up with its pixels numbered, and gives it back as text", () => {
+    use("sprite_write", { name: "dot", palette: { a: "#ff0000", b: "#0000ff80" }, frames: [["aa.", "ab."], ["...", ".b."]], names: ["one", "two"], animations: [{ name: "spin", from: 0, to: 1 }] });
+    const r = use("sprite_preview", { name: "dot", frame: 0 });
+    expect(text(r)).toContain('sprites/dot.png frame 0 ("one") of 2: 3x2 pixels, enlarged x48; in the animation spin');
+    expect(text(r)).toContain('palette: {"a":"#ff0000","b":"#0000ff80"}\n  "aa.",\n  "ab."');
+    const big = decodePng(Buffer.from((r.content[1] as { data: string }).data, "base64"));
+    expect([big.w, big.h]).toEqual([22 + 3 * 48 + 6, 14 + 2 * 48 + 6]);
+    expect([...big.data.subarray(((14 + 24) * big.w + 22 + 24) * 4, ((14 + 24) * big.w + 22 + 24) * 4 + 3)]).toEqual([255, 0, 0]);
+    const named = use("sprite_preview", { name: "dot", frame: "two", zoom: 10 });
+    expect(text(named)).toContain("frame 1 (\"two\") of 2: 3x2 pixels, enlarged x10");
+    expect(decodePng(Buffer.from((named.content[1] as { data: string }).data, "base64")).w).toBe(22 + 30 + 6);
+    expect(() => use("sprite_preview", { name: "dot", frame: 2 })).toThrow(/"frame" is a frame number from 0 to 1, or a name \(one, two\), got 2/);
   });
 
   it("returns a picture of the sprite it wrote, and sprite_preview shows any sprite", () => {

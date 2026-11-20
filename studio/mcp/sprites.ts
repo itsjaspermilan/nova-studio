@@ -12,7 +12,7 @@ type Args = Record<string, any>;
 type Put = (rel: string, data: string | Uint8Array) => void;
 
 const ENVELOPE =
-  'frames is a list of frames; a frame is a list of rows, every row a string of the same length, one character per pixel. A tiny example: ' +
+  'frames is a list of frames; a frame is a list of rows, every row a string, one character per pixel (a row that is short is filled with transparent on the right). A tiny example: ' +
   '{ "name": "dot", "palette": { "r": "#ff0000", "w": "#ffffff" }, "frames": [ [".rr.", "rwwr", "rwwr", ".rr."], [".rr.", "rrrr", "rrrr", ".rr."] ], "animations": [ { "name": "blink", "from": 0, "to": 1 } ] }';
 
 const short = (s: string) => (s.length > 40 ? `${s.slice(0, 37)}...` : s);
@@ -80,6 +80,118 @@ function transform(src: Raster, spec: Args, where: string, errors: string[]): Ra
   return r;
 }
 
+// ---- shapes, mirroring and outlines inside a frame ---------------------------------------------------------------
+// A frame may be { rows?, shapes?, mirror?, outline?, name? }: the rows are drawn first, then the shapes in order, then the
+// left half is mirrored onto the right (`mirror: "x"`; "y" the top onto the bottom), then every see-through pixel beside a
+// drawn one gets the outline colour. Colours are palette characters ("." erases) or "#rrggbb".
+
+const FRAME_KEYS = ["rows", "name", "copy", "flip", "flip_x", "flip_y", "rotate", "recolor", "recolour", "shapes", "mirror", "outline"];
+const SHAPE_HELP =
+  'a list of { "rect": [x, y, w, h] }, { "line": [x0, y0, x1, y1] }, { "circle": [cx, cy, r] } or { "ellipse": [cx, cy, rx, ry] }, each with "color": a palette character or "#rrggbb" ("." erases) and, for all but the line, "fill": false for the edge only';
+
+interface Shape {
+  kind: "rect" | "line" | "circle" | "ellipse";
+  at: number[];
+  color: unknown;
+  fill: boolean;
+}
+interface Draw {
+  shapes: Shape[];
+  mirror: string;
+  outline?: unknown;
+}
+
+function drawOf(o: Args, where: string, errors: string[]): Draw {
+  const shapes: Shape[] = [];
+  if (o.shapes !== undefined && !Array.isArray(o.shapes)) errors.push(`${where}: "shapes" is ${SHAPE_HELP}`);
+  for (const [n, s] of (Array.isArray(o.shapes) ? o.shapes : []).entries()) {
+    const kinds = (["rect", "line", "circle", "ellipse"] as const).filter((k) => s && typeof s === "object" && s[k] !== undefined);
+    const need = { rect: 4, line: 4, circle: 3, ellipse: 4 };
+    const kind = kinds[0];
+    if (kinds.length !== 1 || !kind) {
+      errors.push(`${where} shape ${n} is ${short(JSON.stringify(s))}: a shape is one of ${SHAPE_HELP}`);
+      continue;
+    }
+    const at = s[kind];
+    if (!Array.isArray(at) || at.length !== need[kind] || !at.every((v: unknown) => typeof v === "number" && Number.isFinite(v))) {
+      errors.push(`${where} shape ${n}: "${kind}" takes ${need[kind]} numbers (${{ rect: "x, y, w, h", line: "x0, y0, x1, y1", circle: "cx, cy, r", ellipse: "cx, cy, rx, ry" }[kind]}), got ${short(JSON.stringify(at))}`);
+      continue;
+    }
+    if (s.color === undefined && s.colour === undefined) {
+      errors.push(`${where} shape ${n}: give its "color" (a palette character, or "#rrggbb")`);
+      continue;
+    }
+    shapes.push({ kind, at, color: s.color ?? s.colour, fill: s.fill !== false });
+  }
+  const mirror = o.mirror === true ? "x" : String(o.mirror ?? "");
+  if (o.mirror !== undefined && !/^(x|y|xy|yx)$/.test(mirror)) errors.push(`${where}: "mirror" is "x" (the left half onto the right), "y" (the top half onto the bottom) or "xy", got ${JSON.stringify(o.mirror)}`);
+  return { shapes, mirror: /^(x|y|xy|yx)$/.test(mirror) ? mirror : "", outline: o.outline };
+}
+
+/// The value that comes up most often (the bigger one when two tie); 0 for an empty list.
+function commonest(values: number[]): number {
+  const counts = new Map<number, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  let best = 0, bestCount = 0;
+  for (const [v, c] of counts) {
+    if (c > bestCount || (c === bestCount && v > best)) {
+      best = v;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
+function applyDraw(r: Raster, d: Draw, colourOf: (c: unknown) => Rgba | "clear" | null, where: string, errors: string[]) {
+  const set = (x: number, y: number, c: Rgba | "clear") => {
+    x = Math.round(x);
+    y = Math.round(y);
+    if (x < 0 || y < 0 || x >= r.w || y >= r.h) return;
+    r.data.set(c === "clear" ? [0, 0, 0, 0] : c, (y * r.w + x) * 4);
+  };
+  const colour = (given: unknown, what: string): Rgba | "clear" | null => {
+    const c = colourOf(given);
+    if (!c) errors.push(`${where} ${what}: ${JSON.stringify(given)} is not a palette character nor "#rrggbb"`);
+    return c;
+  };
+  d.shapes.forEach((s, n) => {
+    const c = colour(s.color, `shape ${n}`);
+    if (!c) return;
+    const [p, q, u, v] = s.at as [number, number, number, number];
+    if (s.kind === "rect") {
+      for (let y = q; y < q + v; y++) for (let x = p; x < p + u; x++) if (s.fill || x === p || y === q || x === p + u - 1 || y === q + v - 1) set(x, y, c);
+    } else if (s.kind === "line") {
+      const steps = Math.max(Math.abs(u - p), Math.abs(v - q), 1);
+      for (let i = 0; i <= steps; i++) set(p + ((u - p) * i) / steps, q + ((v - q) * i) / steps, c);
+    } else {
+      // a circle or an ellipse about (cx, cy), where a whole number is the middle of a pixel (so [4, 4, 2] is five pixels
+      // across) and a half is the line between two ([3.5, 3.5, 2] is four across); the edge is the pixels that are in and
+      // have a neighbour that is not
+      const rx = u, ry = s.kind === "circle" ? u : v;
+      const round = (centre: number) => 0.5 - Math.abs(centre - Math.round(centre));
+      const inside = (x: number, y: number) => ((x - p) / (rx + round(p))) ** 2 + ((y - q) / (ry + round(q))) ** 2 <= 1;
+      for (let y = Math.floor(q - ry); y <= Math.ceil(q + ry); y++) {
+        for (let x = Math.floor(p - rx); x <= Math.ceil(p + rx); x++) {
+          if (!inside(x, y)) continue;
+          if (s.fill || !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) set(x, y, c);
+        }
+      }
+    }
+  });
+  const copy = (fx: number, fy: number, tx: number, ty: number) => r.data.copyWithin((ty * r.w + tx) * 4, (fy * r.w + fx) * 4, (fy * r.w + fx) * 4 + 4);
+  if (d.mirror.includes("x")) for (let y = 0; y < r.h; y++) for (let x = 0; x < Math.floor(r.w / 2); x++) copy(x, y, r.w - 1 - x, y);
+  if (d.mirror.includes("y")) for (let y = 0; y < Math.floor(r.h / 2); y++) for (let x = 0; x < r.w; x++) copy(x, y, x, r.h - 1 - y);
+  if (d.outline !== undefined && d.outline !== false) {
+    const c = colour(d.outline, "outline");
+    if (c && c !== "clear") {
+      const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < r.w && y < r.h && r.data[(y * r.w + x) * 4 + 3]! > 0;
+      const edge: [number, number][] = [];
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) edge.push([x, y]);
+      for (const [x, y] of edge) set(x, y, c);
+    }
+  }
+}
+
 /// `sprite_write`: see the tool's description in server.ts.
 export function writeSprite(root: string, name: string, a: Args, put: Put): { text: string; picture: Raster } {
   const pngPath = join(root, `sprites/${name}.png`), jsonPath = join(root, `sprites/${name}.sprite.json`), setPath = join(root, `sprites/${name}.tileset.json`);
@@ -113,7 +225,7 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   const first = adding ? (a.at !== undefined ? Number(a.at) : old.length) : 0;
   if (!Number.isInteger(first) || first < 0 || first > old.length) throw new Error(`"at" is the frame number to write from, 0 to ${old.length} (the sheet has ${old.length} frames; ${old.length} adds to the end)`);
   const result: Raster[] = adding ? [...old] : [];
-  const given: { rows?: string[]; spec?: Args; name?: string }[] = [];
+  const given: { rows?: string[]; spec?: Args; name?: string; draw?: Draw }[] = [];
   a.frames.forEach((frame: unknown, i: number) => {
     const where = `frame ${first + i}`;
     if (typeof frame === "string") given.push({ rows: frame.split("\n") });
@@ -122,10 +234,14 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
       given.push({ rows: frame.map(String) });
     } else if (frame && typeof frame === "object") {
       const o = frame as Args;
-      if (o.rows !== undefined) given.push({ rows: Array.isArray(o.rows) ? o.rows.map(String) : String(o.rows).split("\n"), name: o.name });
-      else if (o.copy !== undefined) given.push({ spec: o, name: o.name });
+      const unknown = Object.keys(o).filter((k) => !FRAME_KEYS.includes(k));
+      if (unknown.length) errors.push(`${where} has "${unknown.join('", "')}", which a frame does not have (it has ${FRAME_KEYS.join(", ")})`);
+      const draw = drawOf(o, where, errors);
+      if (o.rows !== undefined) given.push({ rows: Array.isArray(o.rows) ? o.rows.map(String) : String(o.rows).split("\n"), name: o.name, draw });
+      else if (o.copy !== undefined) given.push({ spec: o, name: o.name, draw });
+      else if (draw.shapes.length) given.push({ name: o.name, draw });
       else {
-        errors.push(`${where}: a frame given as an object needs "rows" (a list of strings) or "copy" (a frame number or name to copy, with "flip": "x"|"y", "rotate": 90|180|270, "recolor": { "#from": "#to" })`);
+        errors.push(`${where}: a frame given as an object needs "rows" (a list of strings), "shapes" (${SHAPE_HELP}) or "copy" (a frame number or name to copy, with "flip": "x"|"y", "rotate": 90|180|270, "recolor": { "#from": "#to" })`);
         given.push({});
       }
     } else {
@@ -135,35 +251,55 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   });
   if (errors.length) throw new Error(`${errors.join("\n")}\n${ENVELOPE}`);
 
-  // the frame size: the sheet's when adding, else the first drawn frame's
+  // The frame size: the sheet's when adding, else `size`, else the commonest among the frames drawn (so one short row or
+  // one frame a row short is named as the odd one out, whichever frame it is). A frame that is mirrored may give only
+  // its left (or top) half, so it is counted only when no whole frame says the size.
   let fw = oldJson && adding ? oldJson.frame_width : 0, fh = oldJson && adding ? oldJson.frame_height : 0;
+  if (a.size !== undefined) {
+    const s = Array.isArray(a.size) ? a.size.map(Number) : [];
+    if (s.length !== 2 || !s.every((v: number) => Number.isInteger(v) && v >= 1 && v <= 512)) throw new Error(`"size" is the frame size [width, height] in pixels, like [16, 16] (got ${JSON.stringify(a.size)})`);
+    if (fw && (s[0] !== fw || s[1] !== fh)) throw new Error(`"size" is [${s.join(", ")}] but the sheet's frames are ${fw}x${fh}: frames added to a sheet have its size`);
+    [fw, fh] = s as [number, number];
+  }
   if (!fw) {
-    const drawn = given.find((g) => g.rows);
-    if (drawn) {
-      fh = drawn.rows!.length;
-      fw = [...(drawn.rows![0] ?? "")].length;
-    } else if (oldJson) {
+    const whole = given.filter((g) => g.rows);
+    const widths = whole.filter((g) => !g.draw?.mirror.includes("x")).flatMap((g) => g.rows!.map((r) => [...r].length));
+    const heights = whole.filter((g) => !g.draw?.mirror.includes("y")).map((g) => g.rows!.length);
+    const halfW = whole.filter((g) => g.draw?.mirror.includes("x")).flatMap((g) => g.rows!.map((r) => [...r].length));
+    const halfH = whole.filter((g) => g.draw?.mirror.includes("y")).map((g) => g.rows!.length);
+    fw = commonest(widths) || commonest(halfW) * 2;
+    fh = commonest(heights) || commonest(halfH) * 2;
+    if ((!fw || !fh) && oldJson) {
       fw = oldJson.frame_width;
       fh = oldJson.frame_height;
     }
   }
-  if (!fw || !fh) throw new Error(`a frame needs rows of at least one character. ${ENVELOPE}`);
+  if (!fw || !fh) throw new Error(`the frame size is not known: give rows of at least one character, or "size": [width, height] for frames made only of shapes. ${ENVELOPE}`);
 
   const byName = (n: string): number => {
     const hit = Object.entries(names).find(([, v]) => v === n);
     return hit ? Number(hit[0]) : -1;
   };
+  const colourOf = (ch: unknown): Rgba | "clear" | null => {
+    if (ch === "." || ch === " ") return "clear";
+    return hexColour(typeof ch === "string" && ch.startsWith("#") ? ch : palette[String(ch)]);
+  };
+  const padded: string[] = [];
   given.forEach((g, i) => {
     const index = first + i;
     const where = `frame ${index}${g.name ? ` ("${g.name}")` : ""}`;
     let picture: Raster | null = null;
     if (g.rows) {
       const rows = g.rows;
-      if (rows.length !== fh) errors.push(`${where} has ${rows.length} rows, wanted ${fh}`);
+      const halfRows = g.draw?.mirror.includes("y") && rows.length <= Math.ceil(fh / 2);
+      const halfCols = g.draw?.mirror.includes("x");
+      if (rows.length !== fh && !halfRows) errors.push(`${where} has ${rows.length} rows, wanted ${fh}${a.size || (oldJson && adding) ? "" : " (the commonest among the frames given; frames are numbered from 0)"}`);
       picture = newRaster(fw, fh);
+      const short: number[] = [];
       rows.forEach((row, y) => {
         const chars = [...row];
-        if (chars.length !== fw) errors.push(`${where} row ${y} has ${chars.length} characters, wanted ${fw}: "${row}"`);
+        if (chars.length > fw) errors.push(`${where} row ${y} has ${chars.length} characters, wanted ${fw}: "${row}"`);
+        else if (chars.length < fw && !(halfCols && chars.length <= Math.ceil(fw / 2))) short.push(y);
         chars.forEach((ch, x) => {
           if (ch === "." || ch === " ") return;
           const c = hexColour(palette[ch]);
@@ -171,12 +307,14 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
           else if (x < fw && y < fh) picture!.data.set(c, (y * fw + x) * 4);
         });
       });
+      if (short.length) padded.push(`frame ${index} row${short.length > 1 ? "s" : ""} ${short.join(", ")}`);
     } else if (g.spec) {
       const from = typeof g.spec.copy === "string" && !/^\d+$/.test(g.spec.copy) ? byName(g.spec.copy) : Number(g.spec.copy);
-      const src = from >= 0 && from < result.length ? result[from] : !adding && from >= 0 && from < old.length && from >= first + i ? undefined : undefined;
+      const src = from >= 0 && from < result.length ? result[from] : undefined;
       if (!src) errors.push(`${where}: "copy": ${JSON.stringify(g.spec.copy)} is not a frame that exists yet (frames 0 to ${result.length - 1}${Object.keys(names).length ? `, or a name: ${Object.values(names).join(", ")}` : ""})`);
       else picture = transform(src, g.spec, where, errors);
-    }
+    } else if (g.draw) picture = newRaster(fw, fh);
+    if (picture && g.draw) applyDraw(picture, g.draw, colourOf, where, errors);
     if (picture) result[index] = picture;
     else if (!result[index]) result[index] = newRaster(fw, fh);
     if (g.name !== undefined) names[index] = String(g.name);
@@ -229,8 +367,9 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
     put(`sprites/${name}.tileset.json`, serializeTileset({ ...newTileset(fw, fh), names, solid: [...new Set(solid)].sort((x, y) => x - y) }));
   }
   const named = Object.keys(names).length ? `\nnames: ${Object.entries(names).map(([k, v]) => `${k} ${v}`).join(", ")}` : "";
+  const filled = padded.length ? `\nshort rows were filled with transparent on the right, up to ${fw} wide: ${padded.slice(0, 12).join("; ")}${padded.length > 12 ? `; and ${padded.length - 12} more frames` : ""}` : "";
   return {
-    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}`,
+    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}${filled}`,
     picture: spritePicture(sheet, json, names),
   };
 }
@@ -286,8 +425,58 @@ export function spritePicture(sheet: Raster, json: SheetJson, names: Record<stri
   return out;
 }
 
+/// One frame of a sheet, big: every pixel a square with a grid between, the columns numbered along the top and the rows
+/// down the left (from 0, as `sprite_write` counts them), so a pixel can be named and fixed. The text gives the frame back
+/// as rows of characters with a palette, ready to edit and give to `sprite_write` with `at`.
+export function frameCloseUp(sheet: Raster, json: SheetJson, f: number, zoom?: number): { picture: Raster; rows: string[]; palette: Record<string, string>; zoom: number } {
+  const frames = cut(sheet, json);
+  const frame = frames[f];
+  if (!frame) throw new Error(`there is no frame ${f}: the sheet has frames 0 to ${frames.length - 1}`);
+  const fw = frame.w, fh = frame.h;
+  const z = Math.max(2, Math.min(48, Math.round(zoom ?? Math.floor(640 / Math.max(fw, fh)))));
+  const left = 22, top = 14, pad = 6;
+  const out = newRaster(left + fw * z + pad, top + fh * z + pad);
+  fill(out, 0, 0, out.w, out.h, PAPER);
+  checker(out, left, top, fw * z, fh * z, Math.max(2, Math.floor(z / 2)));
+  paste(out, frame, left, top, z);
+  if (z >= 6) {
+    for (let x = 0; x <= fw; x++) fill(out, left + x * z, top, 1, fh * z, [0, 0, 0, x % 8 === 0 ? 150 : 60]);
+    for (let y = 0; y <= fh; y++) fill(out, left, top + y * z, fw * z, 1, [0, 0, 0, y % 8 === 0 ? 150 : 60]);
+  }
+  const every = z >= 14 ? 1 : z >= 7 ? 2 : 4;
+  for (let x = 0; x < fw; x += every) label(out, left + x * z + Math.max(0, Math.floor((z - String(x).length * 6) / 2)), 3, String(x), x % 8 === 0 ? INK : DIM, 1, false);
+  for (let y = 0; y < fh; y += every) label(out, 2, top + y * z + Math.max(0, Math.floor((z - 8) / 2)), String(y), y % 8 === 0 ? INK : DIM, 1, false);
+  outline(out, left - 1, top - 1, fw * z + 2, fh * z + 2, [240, 200, 60, 255]);
+  // the frame as text: a letter per colour, by first appearance
+  const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const palette: Record<string, string> = {};
+  const letterOf = new Map<string, string>();
+  const rows: string[] = [];
+  for (let y = 0; y < fh; y++) {
+    let row = "";
+    for (let x = 0; x < fw; x++) {
+      const o = (y * fw + x) * 4;
+      const [r, g, b, al] = [frame.data[o]!, frame.data[o + 1]!, frame.data[o + 2]!, frame.data[o + 3]!];
+      if (!al) {
+        row += ".";
+        continue;
+      }
+      const hex = `#${[r, g, b, ...(al === 255 ? [] : [al])].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      let ch = letterOf.get(hex);
+      if (!ch) {
+        ch = letters[letterOf.size] ?? "?";
+        letterOf.set(hex, ch);
+        if (ch !== "?") palette[ch] = hex;
+      }
+      row += ch;
+    }
+    rows.push(row);
+  }
+  return { picture: out, rows, palette, zoom: z };
+}
+
 /// `sprite_preview`: the picture of a sprite of the project (a `.sprite.json` sheet, or a plain PNG).
-export function previewSprite(root: string, name: string): { text: string; picture: Raster } {
+export function previewSprite(root: string, name: string, opts: { frame?: unknown; zoom?: unknown } = {}): { text: string; picture: Raster } {
   const base = name.replace(/^sprites\//, "").replace(/\.(png|sprite\.json)$/i, "");
   const pngPath = join(root, `sprites/${base}.png`), jsonPath = join(root, `sprites/${base}.sprite.json`), setPath = join(root, `sprites/${base}.tileset.json`);
   let json: SheetJson | null = null;
@@ -312,6 +501,21 @@ export function previewSprite(root: string, name: string): { text: string; pictu
   const columns = Math.max(1, Math.min(json.columns ?? 9999, Math.floor(sheet.w / json.frame_width)));
   const count = Math.min(json.frames ?? 9999, columns * Math.floor(sheet.h / json.frame_height));
   const tags = (json.tags ?? []).map((t) => `${t.name} ${t.from}-${t.to}`).join(", ");
+  if (opts.frame !== undefined && opts.frame !== null) {
+    const byName = Object.entries(names).find(([, v]) => v === opts.frame);
+    const f = byName ? Number(byName[0]) : Number(opts.frame);
+    if (!Number.isInteger(f) || f < 0 || f >= count) throw new Error(`"frame" is a frame number from 0 to ${count - 1}${Object.keys(names).length ? `, or a name (${Object.values(names).join(", ")})` : ""}, got ${JSON.stringify(opts.frame)}`);
+    const close = frameCloseUp(sheet, { ...json, columns, frames: count }, f, opts.zoom === undefined ? undefined : Number(opts.zoom));
+    const uses = (json.tags ?? []).filter((t) => f >= t.from && f <= t.to).map((t) => t.name);
+    return {
+      text:
+        `sprites/${base}.png frame ${f}${names[f] ? ` ("${names[f]}")` : ""} of ${count}: ${json.frame_width}x${json.frame_height} pixels, enlarged x${close.zoom}${uses.length ? `; in the animation${uses.length > 1 ? "s" : ""} ${uses.join(", ")}` : ""}\n` +
+        `columns are numbered along the top and rows down the left, from 0, as sprite_write's messages count them; the checks are see-through\n` +
+        `as text, to edit and give back with sprite_write { "name": "${base}", "at": ${f}, "palette": ..., "frames": [rows] }:\n` +
+        `palette: ${JSON.stringify(close.palette)}\n${close.rows.map((r) => `  "${r}"`).join(",\n")}`,
+      picture: close.picture,
+    };
+  }
   return {
     text: `sprites/${base}.png: ${sheet.w}x${sheet.h} pixels, ${count} frame(s) of ${json.frame_width}x${json.frame_height}, ${columns} across${tags ? `; animations: ${tags}` : "; no animations"}${Object.keys(names).length ? `; names: ${Object.entries(names).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`,
     picture: spritePicture(sheet, { ...json, columns, frames: count }, names),
