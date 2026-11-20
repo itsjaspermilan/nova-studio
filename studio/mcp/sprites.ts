@@ -230,7 +230,7 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   }
   const named = Object.keys(names).length ? `\nnames: ${Object.entries(names).map(([k, v]) => `${k} ${v}`).join(", ")}` : "";
   return {
-    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}; the sheet is ${columns} across, so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})${named}`,
+    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}`,
     picture: spritePicture(sheet, json, names),
   };
 }

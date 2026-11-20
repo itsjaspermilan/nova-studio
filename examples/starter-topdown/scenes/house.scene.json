@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "background": [20, 16, 24],
+  "width": 480,
+  "height": 384,
+  "objects": [
+    { "kind": "hero", "name": "hero", "x": 264, "y": 288 },
+    { "kind": "rock", "x": 120, "y": 144 },
+    {
+      "kind": "door",
+      "name": "way_out",
+      "x": 264,
+      "y": 384,
+      "props": { "to": "meadow", "to_x": 744, "to_y": 288 }
+    }
+  ],
+  "tilemaps": [
+    {
+      "name": "ground",
+      "depth": 90,
+      "tileset": { "image": "sprites/tiles.png", "scale": 3, "tile_width": 16, "tile_height": 16 },
+      "solid": [8],
+      "tiles": [
+        [8, 8, 8, 8, 8, 8, 8, 8, 8, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 7, 7, 7, 7, 7, 7, 7, 7, 8],
+        [8, 8, 8, 8, 8, 9, 8, 8, 8, 8]
+      ]
+    }
+  ]
+}

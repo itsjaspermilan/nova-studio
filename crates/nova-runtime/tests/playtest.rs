@@ -341,3 +341,58 @@ fn the_command_line_plays_a_plan_takes_pictures_and_writes_the_sound() {
     assert!(samples.iter().any(|s| s.abs() > 3000));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The starter that `docs/agents.md` points at can be played from end to end by a plan: up the path, into the house,
+/// stopped by a rock, and out again. It keeps the example and what the docs say about it (solid things, doors, names) true.
+#[test]
+fn the_top_down_starter_plays_through() {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-topdown");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the starter loads");
+    g.upload(&mut FakeGpu);
+    let plan = r#"{
+      "steps": [
+        { "hold": ["up"], "until": "nova.named('hero').y <= 330", "max": 200 },
+        { "hold": ["right"], "until": "nova.named('hero').x >= 744", "max": 300 },
+        { "hold": ["up"], "until": "nova.current_scene() == 'house'", "max": 120, "capture": "inside" },
+        { "lua": "local h = nova.named('hero') h.x, h.y = 120, 220" },
+        { "hold": ["up"], "frames": 60, "capture": "under the rock" },
+        { "lua": "local h = nova.named('hero') h.x, h.y = 264, 300" },
+        { "hold": ["down"], "until": "nova.current_scene() == 'meadow'", "max": 200, "capture": "out" }
+      ],
+      "print": ["nova.named('hero').y", "nova.named('hero').depth", "nova.named('hero').flip_x"]
+    }"#;
+    let (report, pictures) = play(&mut g, plan, "starter");
+    assert_eq!(report["error"], Value::Null, "{report}");
+    assert_eq!(report["warnings"].as_array().unwrap().len(), 0, "{report}");
+    let captions: Vec<&str> = pictures.iter().map(|p| p.1.as_str()).collect();
+    assert_eq!(captions, ["inside", "under the rock", "out"]);
+    let log = texts(&report["log"]);
+    assert!(
+        log.iter()
+            .any(|l| l.ends_with("through house_door to house")),
+        "{log:?}"
+    );
+    assert!(
+        log.iter().any(|l| l.ends_with("through way_out to meadow")),
+        "{log:?}"
+    );
+    // the rock in the house is at 120, 144 with a box from 21 to 6 units above its feet: the hero's head stops under it
+    let under = &report["captures"][1];
+    let y: f64 = under["prints"][0]["value"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((152.0..156.0).contains(&y), "the hero stopped at y = {y}");
+    assert_eq!(
+        under["prints"][1]["value"],
+        format!("-{}", under["prints"][0]["value"].as_str().unwrap())
+    );
+    assert!(
+        texts(&report["sounds"])
+            .iter()
+            .any(|s| s.ends_with("sound door"))
+    );
+    assert_eq!(report["end"]["state"]["scene"], "meadow");
+}

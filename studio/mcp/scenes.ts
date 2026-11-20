@@ -116,6 +116,8 @@ interface KindLook {
   hitbox?: number[];
   sprite?: string;
   frame?: number;
+  sx?: number;
+  sy?: number;
 }
 
 /// What an entity kind looks like, as far as its file says without running it: `sprite = "name"`, `pivot = { a, b }` and a box `hitbox = { x, y, w, h }`.
@@ -133,6 +135,9 @@ function lookOf(root: string, kind: string, cache: Map<string, KindLook>): KindL
     if (box) look.hitbox = box.slice(1, 5).map(Number);
     const frame = /\bframe\s*=\s*(\d+)/.exec(src);
     if (frame) look.frame = Number(frame[1]);
+    const sx = /\bsx\s*=\s*(-?[\d.]+)/.exec(src), sy = /\bsy\s*=\s*(-?[\d.]+)/.exec(src);
+    if (sx) look.sx = Number(sx[1]);
+    if (sy) look.sy = Number(sy[1]);
     if (sprite) {
       look.sprite = sprite;
       const png = imageFile(root, sprite);
@@ -206,7 +211,7 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
   });
   const boxOf = (o: Args) => {
     const look = lookOf(root, String(o.kind), cache);
-    const sx = Math.abs(Number(o.props?.sx ?? 1)), sy = Math.abs(Number(o.props?.sy ?? 1));
+    const sx = Math.abs(Number(o.props?.sx ?? look.sx ?? 1)), sy = Math.abs(Number(o.props?.sy ?? look.sy ?? 1));
     const w = (look.sheet ? look.fw : (mapInfo[0]?.tw ?? 32)) * sx, h = (look.sheet ? look.fh : (mapInfo[0]?.th ?? 32)) * sy;
     const px = look.sheet ? look.px : 0.5, py = look.sheet ? look.py : 0.5;
     return { look, x: o.x - w * px, y: o.y - h * py, w, h, sx, sy };
@@ -300,7 +305,7 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
     if (b.look.sheet) {
       const frame = Number(o.props?.frame ?? b.look.frame ?? 0);
       const perRow = Math.max(1, Math.floor(b.look.sheet.w / b.look.fw));
-      paste(canvas, b.look.sheet, dx, dy, b.sx * zoom, { x: (frame % perRow) * b.look.fw, y: Math.floor(frame / perRow) * b.look.fh, w: b.look.fw, h: b.look.fh }, Number(o.props?.sx ?? 1) < 0);
+      paste(canvas, b.look.sheet, dx, dy, b.sx * zoom, { x: (frame % perRow) * b.look.fw, y: Math.floor(frame / perRow) * b.look.fh, w: b.look.fw, h: b.look.fh }, Number(o.props?.sx ?? b.look.sx ?? 1) < 0 || o.props?.flip_x === true);
       if (opts.grid !== false) outline(canvas, dx, dy, Math.ceil(dw), Math.ceil(dh), [255, 255, 255, 70]);
     } else {
       fill(canvas, dx, dy, dw, dh, [255, 170, 40, 70]);

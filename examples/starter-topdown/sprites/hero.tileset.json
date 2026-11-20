@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tile_width": 16,
+  "tile_height": 16,
+  "solid": [],
+  "names": {
+    "0": "stand",
+    "1": "step_wide",
+    "2": "step_close"
+  },
+  "terrains": []
+}

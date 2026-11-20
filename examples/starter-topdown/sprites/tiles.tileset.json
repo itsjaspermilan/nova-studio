@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "tile_width": 16,
+  "tile_height": 16,
+  "solid": [3, 4, 5, 8],
+  "names": {
+    "0": "grass",
+    "1": "flowers",
+    "2": "path",
+    "3": "hedge",
+    "4": "water",
+    "5": "trunk",
+    "6": "crown",
+    "7": "floor",
+    "8": "brick",
+    "9": "mat"
+  },
+  "terrains": []
+}
