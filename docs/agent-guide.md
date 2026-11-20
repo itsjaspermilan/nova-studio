@@ -26,9 +26,12 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | You want to | Tool | It shows you |
 | --- | --- | --- |
 | know a Lua call's name, arguments, options | `api` (`{"query": "camera follow"}`, `{"group": "Entity methods"}`) | signatures and descriptions, one call or a whole group; ask it before reading `docs/project-format.md` |
-| start a game | `project_create`, then `project_info` | the files, grouped |
+| start a game | `project_create` (`template: "topdown"` or `"platformer"` copies a working starter), then `project_info` | the files, grouped |
 | write Lua, `nova.json` | `write_file`, `read_file` | |
-| draw a sprite or a tileset | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
+| **get art fast: the makers** | `tileset_make`, `character_make`, `creature_make`, `items_make` (one `palette` for all) | the same picture as `sprite_preview`; ordinary sprites you can then change |
+| lay out a map from terrains | `scene_write` with `"paint"` | the map; edges and corners chosen for you |
+| get sound fast | `sfx_write { "purpose": "hit" }`, `song_make { "mood": "dungeon" }` | the `sound_report`, free of warnings |
+| draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
 | look at any sprite again | `sprite_preview` (`frame: n` for one frame close up) | the same; a frame with every pixel a numbered square, and as rows of text to edit |
 | lay out a level | `scene_write` (tile rows as characters with a `legend`) | the level as a map |
 | look at any level again | `scene_preview` | the map, and the layers as text to edit and give back |
@@ -43,12 +46,36 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 ## The shortest path to a checked 2D game
 
 `examples/starter-topdown` is this path done once, small enough to read whole: two rooms, a walking hero, solid tiles, a
-solid rock, a door each way. Read `entities/hero.lua` there before writing your own.
+solid rock, a door each way. Read `entities/hero.lua` there before writing your own. `examples/starter-platformer` is the
+same for a side view (coyote time, one-way planks, a hazard, a pickup), and `examples/maker-demo` is a game whose art,
+sound and maps all came from the makers: its `main.lua` lists the calls.
 
-1. **Project.** `project_create {"name": "My Game"}`. Add your own input actions to `nova.json` if the built-in ones
+**Reach for the makers first; type pixels only to customise.** Pick one palette (`"bright meadow"`, `"autumn"`,
+`"desert"`, `"snow"`, `"dungeon"`, `"night"`) and give it to every maker:
+
+```json
+tileset_make   { "name": "tiles", "palette": "autumn" }
+character_make { "name": "hero", "palette": "autumn", "hair": "long", "hair_color": "red", "outfit": "tunic", "outfit_color": "blue", "item": "sword" }
+creature_make  { "name": "slime", "palette": "autumn", "kind": "slime", "color": "purple" }
+items_make     { "name": "items", "palette": "autumn" }
+scene_write    { "name": "meadow", "scene": { "version": 1, "objects": [ { "kind": "hero", "name": "hero", "x": 120, "y": 120 } ],
+                 "tilemaps": [ { "tileset": "tiles", "scale": 3, "paint": { "g": "grass", "p": "path", "w": "water", "h": "hedge", "T": "tree" },
+                                 "scatter": { "flowers": 0.04 }, "tiles": ["hhhhhhh", "hgTgggh", "hgpppgh", "hgpwwgh", "hhhhhhh"] } ] } }
+sfx_write      { "name": "hit", "purpose": "hit" }
+song_make      { "name": "field", "mood": "adventure field" }
+```
+
+Each answer says what to put in the entity (`character_make`: `pivot = { 0.5, 0.875 }, hitbox = { -4, -5, 8, 5 }`, then
+`self:play("walk_" .. dir)`; the frame is bigger than the body, so the pivot is not the bottom edge). A room indoors is
+the same `paint` with `"#": "brick_wall", "w": "wood_floor", "D": "door"`. What the makers do not have, draw with
+`sprite_write` in the same palette (`sprite_preview { "frame": n }` gives any made frame back as rows to edit), or add
+tiles to the made tileset with `append`. To change a painted map, take the rows `scene_preview` prints and paint again.
+
+1. **Project.** `project_create {"name": "My Game"}` (or `"template": "topdown"` / `"platformer"` to start from a working
+   game). Add your own input actions to `nova.json` if the built-in ones
    (`left right up down a b x y l1 r1 l2 r2 start select`, axes `move_x move_y look_x look_y`) are not enough:
    `"input": { "attack": ["key:KeyZ", "pad:south"] }`.
-2. **Sprites.** `sprite_write` with a `palette` and `frames` as rows of characters. Look at the picture it returns. A big
+2. **Sprites by hand.** `sprite_write` with a `palette` and `frames` as rows of characters. Look at the picture it returns. A big
    tileset goes in several calls (`append: true`); name tiles with `names` so maps can say `"wall"` instead of `3`. Frames are
    packed 16 to a row, and frame n is tile n. Less typing: a row that is short is filled with transparent (the answer says
    which); a frame can be shapes, half a frame mirrored, and outlined:
