@@ -240,9 +240,9 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
 export function spritePicture(sheet: Raster, json: SheetJson, names: Record<string, string> = {}): Raster {
   const frames = cut(sheet, json);
   const fw = json.frame_width, fh = json.frame_height;
-  const tags = (json.tags ?? []) as Tag[];
+  const tags = json.tags ?? [];
   const perRow = Math.min(frames.length, fw <= 24 ? 16 : 8);
-  const longestStrip = Math.max(0, ...tags.map((t) => tagSequence({ direction: "forward", loop: true, ...t }).length));
+  const longestStrip = Math.max(0, ...tags.map((t) => tagSequence({ ...t, direction: t.direction ?? "forward", loop: t.loop ?? true }).length));
   const across = Math.max(perRow, Math.min(longestStrip, 16));
   const scale = Math.max(1, Math.min(12, Math.floor(1400 / (across * (fw + 2))), Math.floor(480 / fh) || 1));
   const cw = fw * scale + 2, chh = fh * scale + 2;
@@ -272,7 +272,7 @@ export function spritePicture(sheet: Raster, json: SheetJson, names: Record<stri
   });
   y += sheetRows * (chh + cap + gap);
   for (const t of tags) {
-    const seq = tagSequence({ direction: "forward", loop: true, ...t });
+    const seq = tagSequence({ ...t, direction: t.direction ?? "forward", loop: t.loop ?? true });
     const ms = (f: number) => json.durations_ms?.[f] ?? json.frame_duration_ms ?? 100;
     const total = seq.reduce((s, f) => s + ms(f), 0);
     label(out, gap, y, fit(`${t.name}: frames ${t.from}-${t.to}${t.direction && t.direction !== "forward" ? ` ${t.direction}` : ""}, ${total} ms${t.loop === false ? ", once" : ", loops"}`, out.w - gap * 2, textScale), [130, 210, 255, 255], textScale, false);
