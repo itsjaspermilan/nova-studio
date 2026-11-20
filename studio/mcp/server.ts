@@ -22,7 +22,9 @@ import { encodePng } from "../src/lib/png-encode";
 import { type Raster } from "../src/lib/pixels";
 import { searchApi } from "./api";
 import { pngOf } from "./draw";
-import { previewModel } from "./models";
+import { previewModel, previewModels } from "./models";
+import { expandModel, FEET_HELP, SHAPES_HELP } from "./modelkit";
+import { planScene } from "./plan3d";
 import { ignoredPlace, playGame, ROUTE_HELP } from "./play";
 import { MOVED, nearest, nestedWarnings, unknownKeys } from "./keys";
 import { previewSprite, writeSprite } from "./sprites";
@@ -183,6 +185,9 @@ tool(
     "A track is one property of one part: `part` is the chain of part names from the top of the tree down to the part (not just its name), `prop` is \"rotation\", \"position\" or \"scale\", and `keys` are in time order, each { \"t\": seconds from 0 to the duration, \"value\": [x, y, z], \"ease\"?: \"linear\" (default) | \"step\" | \"in\" | \"out\" | \"inout\" (how it moves on to the next key) }. " +
     "Key values are absolute, not offsets: a rotation key is the part's whole turn in degrees (x, then y, then z), replacing its `rotation`; a position key is where the part's origin is in its parent, in model units, replacing its `origin` (to lower the hips by 1 unit, key the hips' origin with y one less); a scale key is a factor per axis. What a clip does not key stays as authored; give a looping clip the same value at 0 and at its duration. " +
     "`events` are named moments (a foot landing): the game calls on_clip_event(name, clip) on an entity playing the clip (self:play_clip), or the animator's on_event, when the clip passes one, so sounds keep time with the motion. " +
+    SHAPES_HELP +
+    FEET_HELP +
+    'What the model blocks on the ground goes in the model too, as circles, capsules and boxes in world units: "colliders": [{ "x": 0, "z": 0, "r": 0.4 }] (a tree blocks with its trunk, not its crown), "capsules": [{ "ax", "az", "bx", "bz", "r" }], "boxes": [{ "x", "z", "hw", "hl", "turn" }]; nova.scenery and nova.model_shapes read them. ' +
     "Check a clip with model_preview { clip, strip: 8 }. See docs/project-format.md.",
   {
     name: { type: "string" },
@@ -193,7 +198,15 @@ tool(
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Model");
-    const parsed = parseModel(typeof a.model === "string" ? a.model : JSON.stringify(a.model));
+    let given: unknown;
+    try {
+      given = asJson(a.model);
+    } catch (e) {
+      throw new Error(`the model is not valid: not valid JSON: ${e instanceof Error ? e.message : e}`);
+    }
+    // tubes and lathes become meshes, and feet placed by `ik` or `walk` become rotation keys, before the editor's own check
+    const expanded = given && typeof given === "object" && !Array.isArray(given) ? expandModel(given as Args) : { model: given, notes: [] as string[] };
+    const parsed = parseModel(JSON.stringify(expanded.model));
     if (!parsed.ok) throw new Error(`the model is not valid: ${parsed.error}`);
     let doc = parsed.doc;
     let skinned = 0;
@@ -219,20 +232,22 @@ tool(
     put(root, `models/${name}.glb`, glb);
     let triangles = 0;
     for (const { part } of walk(doc)) for (const c of part.cubes) triangles += meshOf(evaluate(c, "render")).indices.length / 3;
-    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)`;
+    return `models/${name}.model.json and models/${name}.glb: ${walk(doc).length} parts, ${countCubes(doc)} shapes, ${triangles} triangles${skinned ? `, ${skinned} bending` : ""}, ${glb.length} bytes. In Lua: nova.model("${name}", x, y, z)${expanded.notes.map((n) => `\n${n}`).join("")}`;
   },
 );
 
 tool(
   "model_preview",
   "Render a picture of a model of this project (headless, in the game's own renderer) and return it. Use it to look at what you made: at rest, posed by an animation clip, or as a strip of a clip. Angles in degrees. " +
-    "At rest: `yaw`, `pitch`, `distance` place the camera (the default looks from the front right, a little above). The answer lists the model's clips. " +
+    "At rest: `yaw`, `pitch`, `distance` place the camera (the default looks from the front right, a little above, from as far as the whole model needs: a tall arch and a small rock both fill the picture). The answer gives the model's size in world units and lists its clips. `names`: [...] shows several models in one picture at one scale. " +
     "Posed: `clip` and `time` (seconds) show the model as that clip poses it at that moment. " +
     "A strip: `clip` and `strip: 8` return ONE picture with eight moments across the clip (2 to 16), a row from the front and a row from the side by default (`views`: front, side, left, back, top, quarter, or a yaw in degrees), the time under each, on a ground line at y = 0, so a walk can be read like a film strip and feet that float or sink can be seen. " +
     "With a clip the text also gives heights above the ground at every moment, and says what each row is: the lowest point of the whole model, and for each part (those that come lowest, the feet, first) the lowest point of its own shapes (a foot's sole: about 0 when it stands, above 0 when it swings, below 0 when it is sunk into the ground) and the height of its joint (the ankle), so \"the feet meet the ground\" can be checked in numbers. The clips are listed with their events. " +
     "Which way a turn goes (the model file's `rotation`, a clip's rotation keys, and rx, ry, rz in Lua; right-handed, y up, the model's front is +z): +x tips the top of a part towards the front (a leg hanging down swings back; an arm raised forward is a negative x turn); +y turns the part's front towards the model's +x side (to the viewer's right when seen from the front); +z tips the top of a part towards the model's -x side (a limb hanging down swings out towards +x).",
   {
     name: { type: "string" },
+    names: { type: "array", items: { type: "string" }, description: 'Several models in ONE picture instead (a contact sheet): ["tree", "rock", "arch"], up to 24, all at one scale (the largest fills its tile, so sizes can be compared), each with its name under it and its size in the text. `yaw`, `pitch`, `width`, `height` (of each tile; 320x240) and `columns` apply.' },
+    columns: { type: "number", description: "How many models across a sheet of `names`." },
     clip: { type: "string", description: "Pose the model by this animation clip." },
     time: { type: "number", description: "Seconds into the clip (0 when left out). With `strip`, every moment is at this time." },
     strip: { type: ["number", "boolean"], description: "Show this many moments across the clip in one picture (true is 8)." },
@@ -240,13 +255,21 @@ tool(
     yaw: { type: "number", description: "Turn around the model (0 = from the front, +z). Used when no `views` are given." },
     pitch: { type: "number" },
     distance: { type: "number", description: "World units from the model's middle." },
-    size: { type: "number", description: "Roughly the model's height in world units (for framing). 1.5 for a plain picture; with a clip or views it is guessed from the joints." },
+    size: { type: "number", description: "Roughly the model's height in world units, for framing a strip (guessed from the joints when left out). It never crops: the camera always stands back far enough for the whole model, whose real size is read from its file and given in the answer. A plain picture needs no size: the model fills it." },
     width: { type: "number", description: "Of each picture (640; 240 in a strip)." },
     height: { type: "number", description: "Of each picture (480; 300 in a strip)." },
     parts: { type: "string", description: '"all": list the joint height of every part, not just the eight lowest.' },
   },
-  ["name"],
-  (a) => previewModel(projectRoot(a), safeName(a.name, "Model"), a, (args, timeout) => run(novaBin, args, timeout), keepPicture),
+  [],
+  (a) => {
+    const runNova = (args: string[], timeout?: number) => run(novaBin, args, timeout);
+    if (a.names !== undefined) {
+      if (!Array.isArray(a.names)) throw new Error('names is a list of model names, like ["tree", "rock", "arch"]');
+      return previewModels(projectRoot(a), a.names.map((n: unknown) => safeName(n, "Model")), a, runNova, keepPicture);
+    }
+    if (a.name === undefined) throw new Error("say which model: `name`, or `names` for several in one picture");
+    return previewModel(projectRoot(a), safeName(a.name, "Model"), a, runNova, keepPicture);
+  },
 );
 
 tool(
@@ -796,6 +819,35 @@ const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
 const PICTURES = new Set(["play", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art"]);
 
+/// What answers a call before the tool's own handler does. A 3D scene (one with a "camera") has no flat map: scene_preview
+/// gives its plan from above instead (plan3d.ts): every object's footprint and name, the solid ones marked, a grid in metres.
+const EARLY: Record<string, (a: Args) => Result | undefined> = {
+  scene_preview: (a) => {
+    if (typeof a.name !== "string") return undefined;
+    const plan = planScene(projectRoot(a), a.name, { area: a.area, zoom: a.zoom, grid: a.grid, labels: a.labels });
+    return plan ? { text: plan.text, images: [keepPicture("plan", plan.picture)] } : undefined;
+  },
+};
+
+/// A remark under a sound's level line when its peak is within 1 dB of full scale: nothing clips yet, but there is no room
+/// left (the report itself only warns once samples are at full scale).
+export function peakRemarks(text: string): string {
+  return text
+    .split("\n")
+    .flatMap((l) => {
+      const m = /^(\s*)level: peak (-?\d+(?:\.\d+)?) dBFS/.exec(l);
+      if (!m || Number(m[2]) <= -1) return [l];
+      return [l, `${m[1]}remark: the peak, ${m[2]} dBFS, is within 1 dB of full scale: there is no room left, so anything played at the same moment (or a volume above 1) clips. Leave about 3 dB: lower the volumes the game plays its loudest sounds (or the music) at.`];
+    })
+    .join("\n");
+}
+
+/// What is added to a tool's answer after its own handler.
+const LATE: Record<string, (a: Args, r: Result) => Result> = {
+  // (of a recording: one effect alone may well fill the scale, since the game plays it under 1 and beside others)
+  sound_report: (a, r) => (!a.file ? r : typeof r === "string" ? peakRemarks(r) : { ...r, text: peakRemarks(r.text) }),
+};
+
 /// Keys some handlers read that their schema does not list (older spellings, kept working).
 const ALSO: Record<string, string[]> = { play: ["steps", "god"], screenshot: ["steps", "god"], model_preview: ["view"] };
 
@@ -837,11 +889,12 @@ function call(name: string, args: Args) {
   written = [];
   let r: Result;
   try {
-    r = t.handler(args);
+    r = EARLY[name]?.(args) ?? t.handler(args);
   } catch (e) {
     logActivity(args, name, e instanceof Error ? e.message : String(e), true);
     throw e;
   }
+  r = LATE[name]?.(args, r) ?? r;
   const images = typeof r === "string" ? [] : (r.images ?? []);
   const saved = saveImages(args, images);
   const text = [...(saved.length ? [`picture saved: ${saved.join(", ")}`] : []), ...warnings, typeof r === "string" ? r : r.text].join("\n");

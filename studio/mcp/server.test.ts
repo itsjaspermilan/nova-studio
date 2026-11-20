@@ -641,7 +641,7 @@ describe.skipIf(!built)("playing the game", () => {
     expect(readFileSync(join(dir, "models/post.glb")).toString("latin1")).toContain('"extras":{"nova":{"events":[{"t":1,"name":"half"},{"t":2,"name":"top"}]}}');
     expect(() => use("model_write", { name: "late", model: { ...model, clips: [{ ...model.clips[0], events: [{ t: 3, name: "late" }] }] } })).toThrow(/clips\[0\]\.events\[0\] needs "t" \(seconds, from 0 to the clip's duration 2\) and a "name"/);
     const rest = use("model_preview", { name: "post" });
-    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nclips: lift 2\.00s \(events: half at 1\.00; top at 2\.00\)/);
+    expect(text(rest)).toMatch(/preview of post, at rest; .* each picture 640x480\nsize at rest: 0\.75 wide \(x\), 1\.50 high \(y\), 0\.25 deep \(z\).*\nclips: lift 2\.00s \(events: half at 1\.00; top at 2\.00\)/);
     const one = decodePng(Buffer.from((rest.content[1] as { data: string }).data, "base64"));
     expect([one.w, one.h]).toEqual([640, 480]);
     const strip = use("model_preview", { name: "post", clip: "lift", strip: 3, size: 1.6 });

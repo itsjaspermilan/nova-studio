@@ -22,9 +22,107 @@ const VIEWS: Record<string, { yaw: number; pitch: number; says: string }> = {
 
 const lua = (v: unknown): string => (typeof v === "string" ? JSON.stringify(v) : String(v));
 
+export interface Bounds {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+/// The box round a model at rest, in world units, read from its .glb: every mesh's own box (glTF keeps the smallest and
+/// largest position of each) carried through the nodes above it. Nothing when the file cannot be read that way.
+export function glbBounds(bytes: Uint8Array): Bounds | null {
+  try {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (view.getUint32(0, true) !== 0x46546c67) return null;
+    const length = view.getUint32(12, true);
+    const gltf = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + length)));
+    type M = number[]; // (4x4, column-major, as glTF has them)
+    const identity: M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const times = (a: M, b: M): M => {
+      const out = new Array(16).fill(0);
+      for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r]! * b[c * 4 + k]!;
+      return out;
+    };
+    const local = (n: any): M => {
+      if (Array.isArray(n.matrix)) return n.matrix;
+      const [x, y, z, w] = n.rotation ?? [0, 0, 0, 1];
+      const [sx, sy, sz] = n.scale ?? [1, 1, 1];
+      const [tx, ty, tz] = n.translation ?? [0, 0, 0];
+      return [
+        (1 - 2 * (y * y + z * z)) * sx, 2 * (x * y + z * w) * sx, 2 * (x * z - y * w) * sx, 0,
+        2 * (x * y - z * w) * sy, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z + x * w) * sy, 0,
+        2 * (x * z + y * w) * sz, 2 * (y * z - x * w) * sz, (1 - 2 * (x * x + y * y)) * sz, 0,
+        tx, ty, tz, 1,
+      ];
+    };
+    const out: Bounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+    const visit = (index: number, above: M) => {
+      const node = gltf.nodes?.[index];
+      if (!node) return;
+      const world = times(above, local(node));
+      const mesh = node.mesh !== undefined ? gltf.meshes?.[node.mesh] : undefined;
+      // (a skinned mesh's points are in the model's own space: its node's place does not move them)
+      const m = node.skin !== undefined ? identity : world;
+      for (const prim of mesh?.primitives ?? []) {
+        const acc = gltf.accessors?.[prim.attributes?.POSITION];
+        if (!acc?.min || !acc?.max) continue;
+        for (let corner = 0; corner < 8; corner++) {
+          const p = [0, 1, 2].map((k) => ((corner >> k) & 1 ? acc.max[k] : acc.min[k]) as number);
+          for (let k = 0; k < 3; k++) {
+            const v = m[k]! * p[0]! + m[4 + k]! * p[1]! + m[8 + k]! * p[2]! + m[12 + k]!;
+            out.min[k] = Math.min(out.min[k]!, v);
+            out.max[k] = Math.max(out.max[k]!, v);
+          }
+        }
+      }
+      for (const child of node.children ?? []) visit(child, world);
+    };
+    for (const root of gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? []) visit(root, identity);
+    return Number.isFinite(out.min[0]) ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+const sizeText = (b: Bounds) => `${(b.max[0] - b.min[0]).toFixed(2)} wide (x), ${(b.max[1] - b.min[1]).toFixed(2)} high (y), ${(b.max[2] - b.min[2]).toFixed(2)} deep (z), from y ${b.min[1].toFixed(2)} to ${b.max[1].toFixed(2)}`;
+
+/// Several models in one picture, all at one scale (that of the largest), each from the same side, with its name and size.
+export function previewModels(root: string, names: string[], a: Args, run: Run, keep: (label: string, picture: Raster) => string): { text: string; images: string[] } {
+  if (!names.length) throw new Error('names is a list of model names, like ["tree", "rock", "arch"]');
+  if (names.length > 24) throw new Error(`names has ${names.length} models; one sheet shows up to 24`);
+  for (const key of ["clip", "strip", "time"]) if (a[key] !== undefined) throw new Error(`\`${key}\` is for one model (name), not for a sheet of several (names)`);
+  const bounds = names.map((n) => {
+    const file = join(root, `models/${n}.glb`);
+    if (!existsSync(file)) throw new Error(`there is no models/${n}.glb (model_write makes it)`);
+    return glbBounds(readFileSync(file));
+  });
+  // one scale: the camera as far from each as the largest needs
+  const radius = Math.max(...bounds.map((b) => (b ? Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) / 2 : 1)), 0.05);
+  const tw = Number(a.width ?? 320), th = Number(a.height ?? 240);
+  const tiles: { picture: Raster; caption: string }[] = [];
+  const lines: string[] = [];
+  let scratch: string[] = [];
+  const hold = (_: string, picture: Raster) => {
+    tiles.push({ picture, caption: "" });
+    return "";
+  };
+  names.forEach((n, i) => {
+    const r = previewModel(root, n, { ...a, names: undefined, width: tw, height: th, fit_radius: radius }, run, hold);
+    tiles[tiles.length - 1]!.caption = n;
+    scratch = r.text.split("\n");
+    lines.push(`  ${n}: ${bounds[i] ? sizeText(bounds[i]!) : "size unknown"}; ${scratch.find((l) => l.startsWith("clips: ")) ?? "clips: none"}`);
+  });
+  const sheet = contactSheet(tiles, { columns: a.columns, maxWidth: 1920 });
+  const file = keep("models", sheet);
+  return {
+    text: [`${names.length} models at one scale (the largest, ${(radius * 2).toFixed(2)} world units corner to corner, fills its picture), each ${tw}x${th}, from yaw ${Number(a.yaw ?? 35)}, pitch ${Number(a.pitch ?? 22)}; sizes in world units:`, ...lines, `saved at ${file}`].join("\n"),
+    images: [file],
+  };
+}
+
 export function previewModel(root: string, name: string, a: Args, run: Run, keep: (label: string, picture: Raster) => string): { text: string; images: string[] } {
   const glb = join(root, `models/${name}.glb`);
   if (!existsSync(glb)) throw new Error(`there is no models/${name}.glb (model_write makes it)`);
+  const bounds = glbBounds(readFileSync(glb));
   const dir = mkdtempSync(join(tmpdir(), "nova-preview-"));
   try {
     mkdirSync(join(dir, "models"));
@@ -71,6 +169,22 @@ local size, distance = ${a.size === undefined ? "nil" : Number(a.size)}, ${a.dis
 local views = { ${views.map((v) => `{ ${v.yaw}, ${v.pitch} }`).join(", ")} }
 local moments = { ${moments.map((m) => `{ ${m.view + 1}, ${m.i} }`).join(", ")} }
 local fov, close = ${fov}, ${close}
+-- the box round the model at rest: the camera never comes so near that a corner of it leaves the picture
+local bmin, bmax = ${bounds ? `{ ${bounds.min.join(", ")} }, { ${bounds.max.join(", ")} }` : "nil, nil"}
+local half = math.atan(math.tan(math.rad(fov) / 2) * math.min(1, ${tw} / ${th}))
+local forced, sized, grow = ${a.fit_radius === undefined ? "nil" : Number(a.fit_radius)}, ${a.size !== undefined || close}, ${posed ? 1.2 : 1.06}
+local function fit_distance(tx, ty, tz)
+  if forced then return forced * 1.06 / math.sin(half) end
+  if not bmin then return 0 end
+  local r = 0
+  for i = 0, 7 do
+    local x = (i % 2 == 0) and bmin[1] or bmax[1]
+    local y = ((i // 2) % 2 == 0) and bmin[2] or bmax[2]
+    local z = ((i // 4) % 2 == 0) and bmin[3] or bmax[3]
+    r = math.max(r, math.sqrt((x - tx) ^ 2 + (y - ty) ^ 2 + (z - tz) ^ 2))
+  end
+  return r * grow / math.sin(half)
+end
 local f, duration = 0, 0
 local clips = nova.model_clips(name)
 local listed = {}
@@ -100,11 +214,12 @@ function update(dt)
   f = f + 1
   local m = moments[math.min(#moments, (f + 1) // 2)]
   local yaw, pitch = math.rad(views[m[1]][1]), math.rad(views[m[1]][2])
-  local mid = size / 2
-  local d = distance or (close and size * 3.6 or 4)
+  local tx, mid, tz = 0, size / 2, 0
+  if bmin and not close then tx, mid, tz = (bmin[1] + bmax[1]) / 2, (bmin[2] + bmax[2]) / 2, (bmin[3] + bmax[3]) / 2 end
+  local d = distance or math.max(fit_distance(tx, mid, tz), (sized or not bmin) and (close and size * 3.6 or 4) or 0)
   nova.clear(120, 150, 190)
   nova.light { dir = { -0.5, -1, -0.4 }, ambient = { 110, 115, 130 } }
-  nova.camera(d * math.sin(yaw) * math.cos(pitch), mid + d * math.sin(pitch), d * math.cos(yaw) * math.cos(pitch), 0, mid, 0, fov)
+  nova.camera(tx + d * math.sin(yaw) * math.cos(pitch), mid + d * math.sin(pitch), tz + d * math.cos(yaw) * math.cos(pitch), tx, mid, tz, fov)
   if close then
     -- the ground: a line across the picture under the feet, and one from front to back
     local l = size * 2
@@ -159,7 +274,8 @@ end
     if (!tiles.length) throw new Error(`no picture was made:\n${r.out}`);
     const lines: string[] = [];
     const what = posed ? `clip ${a.clip}${strip ? `, ${strip} moments from 0 to ${poses.at(-1)?.t.toFixed(2)} s` : ` at ${(poses[0]?.t ?? 0).toFixed(2)} s`}` : "at rest";
-    lines.push(`preview of ${name}, ${what}; framed for a height of ${size.toFixed(2)} world units${a.size === undefined ? " (guessed from its joints: pass `size` if it is cut off or small)" : ""}; each picture ${tw}x${th}`);
+    lines.push(`preview of ${name}, ${what}; framed for a height of ${size.toFixed(2)} world units${a.size === undefined ? " (guessed from its joints)" : ""}; each picture ${tw}x${th}`);
+    if (bounds) lines.push(`size at rest: ${sizeText(bounds)} (world units); the camera stands back as far as the whole of it needs, so nothing is cut off`);
     lines.push(`clips: ${clips || "none"}`);
     for (const v of views) if (v.says) lines.push(`${v.name}: ${v.says}`);
     if (close) lines.push("the dark lines are the ground (y = 0): one across the picture, one from front to back. Feet that float or sink show against them.");
