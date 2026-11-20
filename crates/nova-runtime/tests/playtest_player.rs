@@ -385,6 +385,133 @@ fn the_starter_is_walked_by_path_and_through_its_door() {
     assert_eq!(report["end"]["render"]["three_d"], false);
 }
 
+/// Props with `on_ground = true` (as `prop3d_make` writes them) placed on a hill of `ground3d_make`'s rolling grass stand
+/// with their base on the ground under their x, z: a tree, a rock and a crate on the slope, at y 0 in the scene file.
+#[test]
+fn props_on_ground_stand_on_a_sloping_hill() {
+    let starter = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-3d");
+    let dir = std::env::temp_dir().join(format!("nova-on-ground-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for sub in ["models", "entities", "scenes"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    for m in ["ground", "tree", "rock", "crate"] {
+        std::fs::copy(
+            starter.join(format!("models/{m}.glb")),
+            dir.join(format!("models/{m}.glb")),
+        )
+        .unwrap();
+    }
+    let write = |rel: &str, text: &str| std::fs::write(dir.join(rel), text).unwrap();
+    write("nova.json", r#"{"format":1,"name":"Hill"}"#);
+    write("main.lua", "nova.start(\"probe\")\n");
+    write(
+        "entities/ground.lua",
+        "return nova.entity { model = \"ground\", solid = true }\n",
+    );
+    write(
+        "entities/tree.lua",
+        "return nova.entity { model = \"tree\", static = true, sway = 0.2, on_ground = true }\n",
+    );
+    write(
+        "entities/rock.lua",
+        "return nova.entity { model = \"rock\", static = true, solid = true, on_ground = true }\n",
+    );
+    write(
+        "entities/crate.lua",
+        "return nova.entity { model = \"crate\", static = true, solid = true, on_ground = true }\n",
+    );
+    for s in ["probe", "hill"] {
+        write(&format!("scenes/{s}.lua"), "return nova.scene {}\n");
+    }
+    let camera = r#""camera": { "eye": [0, 4, 14], "target": [0, 0, 0], "fov": 55 }"#;
+    write(
+        "scenes/probe.scene.json",
+        &format!(
+            r#"{{ "version": 1, {camera}, "objects": [ {{ "kind": "ground", "x": 0, "y": 0, "z": 0 }} ] }}"#
+        ),
+    );
+    let load = || {
+        let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&dir).unwrap());
+        let mut g = Game::load(vfs).expect("the hill loads");
+        g.upload(&mut FakeGpu);
+        g
+    };
+    let frame =
+        |g: &mut Game| g.update_input(1.0 / 60.0, 0.0, [960.0, 540.0], &InputFrame::default());
+    // the ground alone: find three places on the slope of the grass (high, and not level)
+    let mut g = load();
+    frame(&mut g);
+    frame(&mut g);
+    let probe = r#"(function()
+      local best = {}
+      for ix = -10, 10 do for iz = -8, 8 do
+        local x, z = ix * 1.1 + 0.3, iz * 1.1 + 0.2
+        local y, nx, ny, nz = nova.solid.floor_below(x, 1000, z, 2000)
+        if y and ny < 0.995 then best[#best + 1] = { x = x, z = z, y = y } end
+      end end
+      table.sort(best, function(a, b) return a.y > b.y end)
+      local out, used = {}, {}
+      for _, p in ipairs(best) do
+        local far = true
+        for _, q in ipairs(used) do if math.abs(p.x - q.x) + math.abs(p.z - q.z) < 4 then far = false end end
+        if far then used[#used + 1] = p; out[#out + 1] = string.format("%.3f %.3f %.4f", p.x, p.z, p.y) end
+        if #used == 3 then break end
+      end
+      return table.concat(out, ";")
+    end)()"#;
+    let text = g.lua_text(probe).unwrap();
+    let spots: Vec<(f64, f64, f64)> = text
+        .split(';')
+        .map(|s| {
+            let v: Vec<f64> = s.split(' ').map(|n| n.parse().unwrap()).collect();
+            (v[0], v[1], v[2])
+        })
+        .collect();
+    assert_eq!(spots.len(), 3, "{text}");
+    assert!(
+        spots.iter().all(|s| s.2 > 0.05),
+        "the places are up the hill: {spots:?}"
+    );
+    let objects: Vec<String> = ["tree", "rock", "crate"]
+        .iter()
+        .zip(&spots)
+        .map(|(k, (x, z, _))| {
+            format!(r#"{{ "kind": "{k}", "name": "{k}", "x": {x}, "y": 0, "z": {z} }}"#)
+        })
+        .collect();
+    write(
+        "scenes/hill.scene.json",
+        &format!(
+            r#"{{ "version": 1, {camera}, "objects": [ {{ "kind": "ground", "x": 0, "y": 0, "z": 0 }}, {} ] }}"#,
+            objects.join(", ")
+        ),
+    );
+    // the props: each one's base (its y plus its model's lowest point) is on the ground the probe measured
+    let mut g = load();
+    g.start_in_scene("hill").unwrap();
+    frame(&mut g);
+    frame(&mut g);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    for (kind, (_, _, ground)) in ["tree", "rock", "crate"].iter().zip(&spots) {
+        let expr = format!(
+            "(function() local low = math.huge for _, p in pairs(nova.model_pose(\"{kind}\")) do low = math.min(low, p.low) end return nova.scene_now().{kind}.y + low end)()"
+        );
+        let base: f64 = g.lua_text(&expr).unwrap().parse().unwrap();
+        assert!(
+            (base - ground).abs() <= 0.02,
+            "{kind}: base at {base}, ground at {ground}"
+        );
+        let y: f64 = g
+            .lua_text(&format!("nova.scene_now().{kind}.y"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(y > 0.05, "{kind} was lifted off y 0: {y}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A walk to a tag ("door": both rooms have one) that goes through a door ends in the next room as a success, and does
 /// not walk on to the next room's door and out again.
 #[test]

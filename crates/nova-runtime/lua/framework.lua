@@ -1890,7 +1890,14 @@ function physics.raycast3(x, y, z, dx, dy, dz, length, opts)
   if hit then return bodies[hit.body], hit end
 end
 
-local function spawn(what, x, y, props)
+-- The height of the ground under x, z: the first surface of nova.solid below a point high above it (nil: none there).
+local function ground_under(x, z)
+  return (nova.solid.floor_below(x, 1000, z, 2000))
+end
+
+-- `ground` (internal, from build_scene): the ground's height under the entity, measured before the scene's other
+-- on_ground things were placed, so that a prop never lands on another's top.
+local function spawn(what, x, y, props, ground)
   local cls = finalize(resolve(what, "entity"))
   local e = setmetatable({}, cls)
   for k, v in pairs(cls.__defaults) do e[k] = copy_value(v) end
@@ -1904,6 +1911,11 @@ local function spawn(what, x, y, props)
         if s then e[k] = check_setting(cls, k, s, v) end
       end
     end
+  end
+  -- on_ground = true: y is the height above the ground under x, z (0 stands its base on the ground), nothing is tilted
+  if e.on_ground == true then
+    local g = ground or ground_under(e.x, rawget(e, "z") or 0)
+    if g then e.y = g + e.y end
   end
   if cls.__static then
     -- a piece of scenery: it goes into the static scenery, not into the list of live entities
@@ -2771,16 +2783,28 @@ local function build_scene(scene, data, file)
     end
     scene[name] = e
   end
+  -- Objects that stand on the ground (on_ground = true in their kind or their props) come last, and the ground under
+  -- each is measured before any of them is placed: the ground and the other objects are there, and no such prop can
+  -- land on another one's top.
+  local later = {}
   for _, o in ipairs(data.objects) do
     local props = o.props or {}
     if o.z ~= 0 and props.z == nil then props.z = o.z end
+    local cls = finalize(resolve(o.kind, "entity"))
     -- the object's name is the entity's `name` too (self.name, from create on), unless its kind has a `name` of its own
     if o.name and props.name == nil then
-      local cls = finalize(resolve(o.kind, "entity"))
       if cls.__defaults.name == nil and cls.name == nil then props.name = o.name end
     end
-    named(o, spawn(o.kind, o.x, o.y, props))
+    local grounded = props.on_ground
+    if grounded == nil then grounded = cls.__defaults.on_ground end
+    if grounded == true then
+      later[#later + 1] = { o = o, props = props }
+    else
+      named(o, spawn(o.kind, o.x, o.y, props))
+    end
   end
+  for _, l in ipairs(later) do l.ground = ground_under(l.o.x, l.props.z or 0) end
+  for _, l in ipairs(later) do named(l.o, spawn(l.o.kind, l.o.x, l.o.y, l.props, l.ground)) end
   for _, im in ipairs(data.images) do
     named(im, spawn(Picture, im.x, im.y, {
       image = im.image, sx = im.scale, sy = im.scale, depth = im.depth, screen = im.layer == "ui", tint = im.color,

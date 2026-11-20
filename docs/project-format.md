@@ -367,7 +367,17 @@ entities: give the entity class `static = true` and a model, and a scene file's 
 return nova.entity { model = "pine", static = true }
 ```
 
-A scene object can set `ry` (turn, radians) and `sx` (size) as usual. The collision circles made for the model in the model
+A scene object can set `ry` (turn, radians) and `sx` (size) as usual.
+
+**Standing on the ground.** `on_ground = true` on an entity class (or in a scene object's `props`; `false` there turns it
+off for one object) puts the entity on the ground under its x, z when it is made: its `y` becomes the height of the first
+`nova.solid` surface below (`nova.solid.floor_below`) plus the `y` it was given, so `y = 0` stands the model's base (its
+origin) on rolling grass, and `y = 0.85` holds a gem that far above it. Nothing is tilted. A scene places such objects after
+all the others, each on the ground as it was before any of them was placed (so one never lands on another's top); a ground
+must be `solid = true` (as `ground3d_make`'s is). Where nothing solid is below, `y` is kept. `prop3d_make` writes it into
+every prop's entity file.
+
+The collision circles made for the model in the model
 editor (the Collision section, green rings in the view) stop whatever asks `nova.scenery.push(x, z, radius)`, which
 returns how far to move out of them (or nothing):
 

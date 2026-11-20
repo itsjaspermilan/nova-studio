@@ -162,6 +162,8 @@ song_make        { "name": "garden", "mood": "calm village" }
 3. **Props.** `prop3d_make` with `kinds`: models and their entity files in one call, in the same palette as everything
    else. The answer says how each blocks: scenery is `static = true`; what you bump into is `solid = true` as well (its
    own shape blocks); a tree blocks with its trunk; `steps` and `dais` are walked up; a `lantern` says where its light goes.
+   Each has `on_ground = true`: placed by a scene it stands on the ground under its x, z, so its `y` there is the height
+   above the grass (0 for a tree, 0.85 for a gem that floats); `"props": { "on_ground": false }` keeps one at its `y`.
 4. **Ground.** `ground3d_make` from rows of characters (each a square of `cell` metres, the first row furthest away). Its
    middle is the origin; paths and paved places are at height 0, grass rolls up to `hills` around them.
 5. **Scene.** `scene_write` with a `camera` (that makes it a 3D scene) and objects by kind at `x`, `y` (up), `z`; turn

@@ -584,8 +584,8 @@ export function makeProp(a: Args): Prop {
 export function propEntity(name: string, prop: Prop): string {
   const e = prop.entity;
   if (e.spins) {
-    return `-- ${prop.says}. It turns and bobs; the hero's own code collects it (see the comment).
-local Thing = nova.entity { model = "${name}", tags = { "${name}", "pickup" }, velocity = false }
+    return `-- ${prop.says}. It turns and bobs (on_ground = true: a scene's y is its height above the ground under it); the hero's own code collects it (see the comment).
+local Thing = nova.entity { model = "${name}", tags = { "${name}", "pickup" }, velocity = false, on_ground = true }
 
 function Thing:create()
   self.base_y = self.y
@@ -609,5 +609,6 @@ return Thing
   const keys = [`model = "${name}"`, "static = true"];
   if (e.solid) keys.push("solid = true");
   if (e.sway) keys.push(`sway = ${e.sway}`);
-  return `-- ${prop.says}.\n-- Scenery: it never moves, and is drawn only near the camera.${e.solid ? " solid = true: its own shape blocks bodies (nova.solid.move) and the camera." : prop.model.colliders ? " Its model's collision circle blocks bodies moved with nova.solid.move, and its whole shape the camera." : ""}\nreturn nova.entity { ${keys.join(", ")} }\n`;
+  keys.push("on_ground = true");
+  return `-- ${prop.says}.\n-- Scenery: it never moves, and is drawn only near the camera. on_ground = true: it stands on the ground under its x, z (a scene's y is the height above it).${e.solid ? " solid = true: its own shape blocks bodies (nova.solid.move) and the camera." : prop.model.colliders ? " Its model's collision circle blocks bodies moved with nova.solid.move, and its whole shape the camera." : ""}\nreturn nova.entity { ${keys.join(", ")} }\n`;
 }

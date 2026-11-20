@@ -83,8 +83,8 @@ describe("prop3d_make", () => {
       expect(existsSync(join(dir, `models/${n}.glb`)), n).toBe(true);
       expect(parseModel(bytes(`models/${n}.model.json`).toString()).ok, n).toBe(true);
     }
-    expect(bytes("entities/tree.lua").toString()).toContain('return nova.entity { model = "tree", static = true, sway = 0.2 }');
-    expect(bytes("entities/arch.lua").toString()).toContain('return nova.entity { model = "arch", static = true, solid = true }');
+    expect(bytes("entities/tree.lua").toString()).toContain('return nova.entity { model = "tree", static = true, sway = 0.2, on_ground = true }');
+    expect(bytes("entities/arch.lua").toString()).toContain('return nova.entity { model = "arch", static = true, solid = true, on_ground = true }');
     expect(bytes("entities/gem.lua").toString()).toContain('tags = { "gem", "pickup" }');
     expect(said).toContain("arch (arch): models/arch.glb and entities/arch.lua");
     expect(said).toMatch(/Colliders: box 1\.04 x 1\.04 at -1\.65, 0; box 1\.04 x 1\.04 at 1\.65, 0/);
