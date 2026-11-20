@@ -13,28 +13,15 @@
 
 import { BLOB_MASKS, E, N, NE, NW, S, SE, SW, W, type Terrain } from "../../src/lib/autotile";
 import { hash2, Img, mix, rngOf, seedOf, shade, SHADOW, type Ramp, type Rgba } from "./paint";
-import { describePalette, paletteOf, type Palette } from "./palettes";
+import { describePalette, paletteOf } from "./palettes";
+import { CITY_EDGES, CITY_PROP_NAMES, CITY_PROPS, CITY_TERRAIN_NAMES, CITY_TERRAINS } from "./city-tiles";
+import { faceEnds, ground, lightSide, lump, speckle, times, type Ctx, type EdgeKind, type Probe, type PropKind, type Shape, type TerrainKind } from "./tilekit";
 import { writeSheet, type Put } from "./sheet";
 
 type Args = Record<string, any>;
 
 // ---- the shape of a terrain's edge ---------------------------------------------------------------------------------------
-interface Shape {
-  /// How far inside the cell the terrain starts at an open side (what lies beside it shows in that rim), pixels.
-  inset: number;
-  /// How round an outer corner is.
-  round: number;
-  /// How far the edge wanders in and out, pixels (0 is a straight edge).
-  wobble: number;
-}
 
-interface Probe {
-  /// How deep inside the terrain this pixel is: 0 is the outermost pixel, below 0 is outside.
-  d: number;
-  /// Which way the nearest open edge faces (-1, 0 or 1 each).
-  nx: number;
-  ny: number;
-}
 
 /// An edge that wanders by a pixel: the same along every tile, and 0 at both ends so that corners meet.
 function wobbleOf(t: number, amount: number, seed: number): number[] {
@@ -85,45 +72,14 @@ function probe(mask: number, x: number, y: number, t: number, s: Shape, wob: num
 }
 
 // ---- what a recipe can ask for ----------------------------------------------------------------------------------------------
-interface TerrainKind {
-  name: string;
-  what: string;
-  solid: boolean;
-  shape: Shape;
-  variants: number;
-  /// The ground texture of variant v (a whole tile).
-  texture: (c: Ctx, v: number) => Img;
-  /// One pixel of a joining tile: the texture's colour there, or what the edge makes of it; null is see-through.
-  edge: (c: Ctx, p: Probe, mask: number, x: number, y: number, tex: Rgba) => Rgba | null;
-}
 
-interface Ctx {
-  t: number;
-  /// How many times bigger than 16 the tile is.
-  k: number;
-  P: Palette;
-  seed: number;
-}
 
-const lightSide = (p: Probe) => p.ny < 0 || (p.ny === 0 && p.nx < 0); // an edge that faces up or left
 
 /// The outermost pixel of bare ground (a path, sand) where grass begins: earth in the grass's shade along the top and
 /// left, where the higher ground throws its shadow, and only a little darker than the ground along the bottom and right.
 const lip = (c: Ctx, r: Ramp, shaded: boolean): Rgba => (shaded ? mix(r[0], c.P.mat.grass[0], 0.45) : mix(r[1], c.P.mat.grass[1], 0.25));
 
-function speckle(c: Ctx, name: string, v: number, base: Rgba, marks: (img: Img, rng: () => number, at: () => [number, number]) => void): Img {
-  const img = new Img(c.t, c.t);
-  img.rect(0, 0, c.t, c.t, base);
-  const rng = rngOf(seedOf(`${name}/${v}`) + c.seed);
-  // marks stay a pixel inside the tile, so nothing is cut at a seam
-  const at = (): [number, number] => [1 + Math.floor(rng() * (c.t - 3)), 2 + Math.floor(rng() * (c.t - 4))];
-  marks(img, rng, at);
-  return img;
-}
 
-const times = (n: number, fn: (i: number) => void) => {
-  for (let i = 0; i < Math.round(n); i++) fn(i);
-};
 
 function grassTexture(c: Ctx, v: number, g: Ramp = c.P.mat.grass): Img {
   return speckle(c, "grass", v, g[2], (img, rng, at) => {
@@ -420,8 +376,6 @@ const TERRAINS: TerrainKind[] = [
   },
 ];
 
-/// On a face (a wall's, a cliff's): the column where the face stops because the ground beside it carries on towards us.
-const faceEnds = (mask: number, x: number, t: number): boolean => (x === 0 && !!(mask & W) && !!(mask & SW)) || (x === t - 1 && !!(mask & E) && !!(mask & SE));
 
 function wall(name: string, what: string, material: "brick" | "stone", course: number): TerrainKind {
   return {
@@ -459,31 +413,8 @@ function wall(name: string, what: string, material: "brick" | "stone", course: n
 }
 
 // ---- props: things that stand on the ground ------------------------------------------------------------------------------
-interface PropKind {
-  name: string;
-  what: string;
-  /// Size in tiles; the cell a map names is the bottom row's `anchor` column.
-  w: number;
-  h: number;
-  anchor: number;
-  solid: boolean;
-  variants: number;
-  draw: (c: Ctx, v: number) => Img;
-}
 
-/// A lump with light from the top left: a base colour, lighter towards the top left and darker towards the bottom right,
-/// in steps, with a broken edge between the steps so it does not look like rings.
-function lump(img: Img, cx: number, cy: number, rx: number, ry: number, r: Ramp, seed: number) {
-  img.ellipse(cx, cy, rx, ry, (x, y) => {
-    const u = (x - cx) / rx, v = (y - cy) / ry;
-    const lightness = -(u * 0.55 + v * 0.8) + (hash2(x, y, seed) - 0.5) * 0.35;
-    return lightness > 0.62 ? r[4] : lightness > 0.22 ? r[3] : lightness > -0.3 ? r[2] : lightness > -0.68 ? r[1] : r[0];
-  });
-}
 
-function ground(img: Img, cx: number, y: number, rx: number) {
-  img.ellipse(cx, y, rx, 1.6, SHADOW);
-}
 
 const PROPS: PropKind[] = [
   {
@@ -787,12 +718,20 @@ const sideName = (mask: number): string => {
   return `${open ? `_edge_${open}` : ""}${bites.length ? `_in_${bites.join("_")}` : ""}`;
 };
 
-export const TERRAIN_NAMES = [...TERRAINS.map((t) => t.name), "fence"];
-export const PROP_NAMES = PROPS.map((p) => p.name);
+const EDGES: EdgeKind[] = [{ name: "fence", what: "a wooden fence that joins along its length; it stands on the ground beside it", solid: true, tile: fenceTile }, ...CITY_EDGES];
+const ALL_TERRAINS = [...TERRAINS, ...CITY_TERRAINS];
+const ALL_PROPS = [...PROPS, ...CITY_PROPS];
+
+/// What a tileset has when it names none: the countryside's terrains and props, or for a city palette the city's.
+export const CLASSIC_TERRAIN_NAMES = [...TERRAINS.map((t) => t.name), "fence"];
+export const CLASSIC_PROP_NAMES = PROPS.map((p) => p.name);
+export { CITY_PROP_NAMES, CITY_TERRAIN_NAMES };
+export const TERRAIN_NAMES = [...ALL_TERRAINS.map((t) => t.name), ...EDGES.map((e) => e.name)];
+export const PROP_NAMES = ALL_PROPS.map((p) => p.name);
 export const TILE_SIZES = [16, 24, 32];
 
-const pick = (given: unknown, all: string[], what: string): string[] => {
-  if (given === undefined || given === null) return all;
+const pick = (given: unknown, all: string[], what: string, fallback: string[]): string[] => {
+  if (given === undefined || given === null) return all.filter((n) => fallback.includes(n));
   if (!Array.isArray(given)) throw new Error(`"${what}" is a list of names from: ${all.join(", ")}`);
   const wanted = given.map((n) => String(n).trim().toLowerCase().replace(/[ -]/g, "_"));
   const bad = wanted.filter((n) => !all.includes(n));
@@ -807,8 +746,8 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
   if (!TILE_SIZES.includes(t)) throw new Error(`"tile" is the tile size in pixels: ${TILE_SIZES.join(", ")} (16 is the one the art is tuned for; the others are the same drawings made larger)`);
   const P = paletteOf(a.palette);
   const c: Ctx = { t, k: t / 16, P, seed: Math.floor(Number(a.seed ?? 1)) || 0 };
-  const terrains = pick(a.terrains, TERRAIN_NAMES, "terrains");
-  const props = pick(a.props, PROP_NAMES, "props");
+  const terrains = pick(a.terrains, TERRAIN_NAMES, "terrains", P.city ? CITY_TERRAIN_NAMES : CLASSIC_TERRAIN_NAMES);
+  const props = pick(a.props, PROP_NAMES, "props", P.city ? CITY_PROP_NAMES : CLASSIC_PROP_NAMES);
 
   const frames: Img[] = [];
   const names: Record<number, string> = {};
@@ -821,7 +760,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     return frames.length - 1;
   };
 
-  for (const kind of TERRAINS.filter((k) => terrains.includes(k.name))) {
+  for (const kind of ALL_TERRAINS.filter((k) => terrains.includes(k.name))) {
     const wob = [0, 1, 2, 3].map((side) => wobbleOf(t, kind.shape.wobble, seedOf(`${kind.name}/${side}`) + c.seed));
     const textures = Array.from({ length: kind.variants }, (_, v) => kind.texture(c, v));
     const tiles: number[] = [];
@@ -837,12 +776,12 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     for (let v = 1; v < kind.variants; v++) add(textures[v]!, `${kind.name}_${v + 1}`, kind.solid);
     docTerrains.push({ name: kind.name, mode: "blob", tiles });
   }
-  if (terrains.includes("fence")) {
+  for (const kind of EDGES.filter((k) => terrains.includes(k.name))) {
     const tiles: number[] = [];
-    for (let mask = 0; mask < 16; mask++) tiles.push(add(fenceTile(c, mask), mask === 15 ? "fence" : `fence_${["n", "e", "s", "w"].filter((_, i) => mask & (1 << i)).join("") || "post"}`, true));
-    docTerrains.push({ name: "fence", mode: "edges", tiles });
+    for (let mask = 0; mask < 16; mask++) tiles.push(add(kind.tile(c, mask), mask === 15 ? kind.name : `${kind.name}_${["n", "e", "s", "w"].filter((_, i) => mask & (1 << i)).join("") || "post"}`, kind.solid));
+    docTerrains.push({ name: kind.name, mode: "edges", tiles });
   }
-  for (const kind of PROPS.filter((p) => props.includes(p.name))) {
+  for (const kind of ALL_PROPS.filter((p) => props.includes(p.name))) {
     for (let v = 0; v < kind.variants; v++) {
       const img = kind.draw(c, v);
       const base = v ? `${kind.name}_${v + 1}` : kind.name;
@@ -853,7 +792,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
         const tile = img.part(col * t, r * t, t, t);
         if (tile.empty()) continue;
         const dx = col - kind.anchor, dy = r - (kind.h - 1);
-        add(tile, dx || dy ? `${base}@${dx},${dy}` : base, kind.solid && dx === 0 && dy === 0);
+        add(tile, dx || dy ? `${base}@${dx},${dy}` : base, kind.solid && dy === 0 && (dx === 0 || !!kind.solidRow));
       }
     }
   }
@@ -862,10 +801,10 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
   const said = [
     `sprites/${name}.png: a tileset of ${frames.length} tiles of ${t}x${t}, ${describePalette(P)}, seed ${c.seed}`,
     `terrains (later ones lie over earlier ones; each has the joining tiles for every edge and corner, and scene_write's "paint" picks them):`,
-    ...TERRAINS.filter((k) => terrains.includes(k.name)).map((k) => `  ${k.name}${k.solid ? " (solid)" : ""}: ${k.what}${k.variants > 1 ? `; ${k.variants} variants scattered` : ""}`),
-    ...(terrains.includes("fence") ? ["  fence (solid): a wooden fence that joins along its length; it stands on the ground beside it"] : []),
+    ...ALL_TERRAINS.filter((k) => terrains.includes(k.name)).map((k) => `  ${k.name}${k.solid ? " (solid)" : ""}: ${k.what}${k.variants > 1 ? `; ${k.variants} variants scattered` : ""}`),
+    ...EDGES.filter((k) => terrains.includes(k.name)).map((k) => `  ${k.name}${k.solid ? " (solid)" : ""}: ${k.what}`),
     `props (one character in a painted map places the whole thing):`,
-    ...PROPS.filter((p) => props.includes(p.name)).map((p) => `  ${p.name}${p.solid ? " (solid)" : ""}: ${p.what}${p.variants > 1 ? `; ${p.variants} variants` : ""}`),
+    ...ALL_PROPS.filter((p) => props.includes(p.name)).map((p) => `  ${p.name}${p.solid ? " (solid)" : ""}: ${p.what}${p.variants > 1 ? `; ${p.variants} variants` : ""}`),
     `Paint a map: scene_write { "name": "meadow", "scene": { "version": 1, "tilemaps": [ { "tileset": "${name}", "scale": 3, "paint": { "g": "grass", "p": "path", "w": "water", "T": "tree", "f": "flowers" }, "tiles": ["gggTgg", "gppppg", "gpwwfg", "gggggg"] } ] } }`,
     `Every tile has a name (the whole tile of a terrain is its name, e.g. "grass"; variants "grass_2"; an edge "path_edge_n"); redraw one with sprite_preview { "frame": "<name>" } and sprite_write { "at": n }, or add your own with "append": true.`,
   ];
