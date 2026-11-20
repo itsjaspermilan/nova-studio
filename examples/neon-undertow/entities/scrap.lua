@@ -1,6 +1,7 @@
 -- A bit of scrap: pops out of a dead enemy, slides to a stop, and is counted when the runner walks over it.
 local P = require("data.player")
 local J = require("lib.juice")
+local Run = require("lib.run")
 local E = require("data.enemies").scrap
 
 local Scrap = nova.entity {
@@ -20,7 +21,7 @@ function Scrap:update(dt)
   self.depth = -self.y
   local p = nova.first("player")
   if p and self.t >= E.pickup_delay and self:overlaps(p) then
-    J.scrap = J.scrap + 1
+    Run.add_scrap(1)       -- (through the run's multiplier: Deep Pockets)
     nova.sound.play("scrap", { volume = P.sfx.scrap, pitch = 1 + 0.06 * (J.scrap % 5) })
     nova.log("scrap " .. J.scrap)
     nova.spawn("fx", self.x, self.y, { sprite = "fx_spark", anim = "spark", scale = 2 })

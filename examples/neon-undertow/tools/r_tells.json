@@ -1,0 +1,15 @@
+{
+ "start_scene": "test_lab",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "require('data.enemies').scrapper.tell",
+  "require('data.enemies').bottle_thrower.tell",
+  "require('data.enemies').rat_drone.tell",
+  "require('data.enemies').mimic_vendor.tell",
+  "require('data.enemies').tout.pulse_tell"
+ ]
+}

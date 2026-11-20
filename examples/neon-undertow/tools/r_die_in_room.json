@@ -1,0 +1,36 @@
+{
+ "start_scene": "market_b",
+ "lua": "require('lib.run').begin(77); require('lib.run').add_card('plating', nova.named('runner')); nova.named('runner').hp = 1",
+ "route": [
+  {
+   "wait": 10
+  },
+  {
+   "lua": "HP_BEFORE = nova.named('runner').hp; MAX_BEFORE = nova.named('runner').max_hp; nova.named('runner'):take_damage(2); STATE = nova.named('runner').state"
+  },
+  {
+   "wait": 40,
+   "capture": "printed again"
+  },
+  {
+   "until": "nova.current_scene() == 'market_a' and nova.named('runner') ~= nil",
+   "max": 120
+  },
+  {
+   "wait": 5,
+   "capture": "back at the start"
+  },
+  {
+   "lua": "HP_AFTER = nova.named('runner').hp; MAX_AFTER = nova.named('runner').max_hp; CARDS_AFTER = #require('lib.run').cards; SCENE = nova.current_scene()"
+  }
+ ],
+ "print": [
+  "HP_BEFORE",
+  "MAX_BEFORE",
+  "STATE",
+  "SCENE",
+  "HP_AFTER",
+  "MAX_AFTER",
+  "CARDS_AFTER"
+ ]
+}

@@ -1,0 +1,48 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 150, 600, 'right'; local d = nova.spawn('rat_drone', 380, 600)",
+ "route": [
+  {
+   "until": "nova.first('rat_drone').state == 'tell'",
+   "max": 60,
+   "capture": "rev-up: the lane"
+  },
+  {
+   "wait": 20,
+   "capture": "rev-up, later"
+  },
+  {
+   "until": "nova.first('rat_drone').state == 'charge'",
+   "max": 60,
+   "capture": "charge"
+  },
+  {
+   "until": "nova.first('rat_drone').state == 'stunned'",
+   "max": 90,
+   "capture": "hits the wall"
+  },
+  {
+   "lua": "HP_AT_CRASH = nova.first('rat_drone').hp; RUNNER_HP = nova.named('runner').hp; X_CRASH = nova.first('rat_drone').x; Y_CRASH = nova.first('rat_drone').y"
+  },
+  {
+   "wait": 30,
+   "capture": "stunned"
+  },
+  {
+   "until": "nova.first('rat_drone').state ~= 'stunned'",
+   "max": 90,
+   "capture": "recovers"
+  },
+  {
+   "lua": "CRASHES = nova.first('rat_drone').crashes; CHARGES = nova.first('rat_drone').charges"
+  }
+ ],
+ "print": [
+  "HP_AT_CRASH",
+  "RUNNER_HP",
+  "string.format('%.0f', X_CRASH)",
+  "string.format('%.0f', Y_CRASH)",
+  "CRASHES",
+  "CHARGES"
+ ]
+}

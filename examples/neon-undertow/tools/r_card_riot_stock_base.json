@@ -1,0 +1,65 @@
+{
+ "start_scene": "test_lab",
+ "invincible": true,
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 324, 420, 'right'; local s = nova.spawn('scrapper', 400, 420); s.hp = 60; ",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 2",
+   "max": 60
+  },
+  {
+   "lua": "X2 = nova.first('scrapper').x"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 3",
+   "max": 60
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "STUN = string.format('%.2f', nova.first('scrapper').stun_t or 0); X3 = nova.first('scrapper').x"
+  },
+  {
+   "wait": 10
+  },
+  {
+   "lua": "PUSH10 = nova.first('scrapper').x - X2"
+  },
+  {
+   "wait": 14,
+   "capture": "pushed"
+  },
+  {
+   "lua": "ST_AT_25 = nova.first('scrapper').state; STUN_AT_25 = string.format('%.2f', nova.first('scrapper').stun_t or 0)"
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "ST_LATE = nova.first('scrapper').state"
+  }
+ ],
+ "print": [
+  "string.format('%.1f', PUSH10)",
+  "STUN",
+  "ST_AT_25",
+  "STUN_AT_25",
+  "ST_LATE"
+ ]
+}

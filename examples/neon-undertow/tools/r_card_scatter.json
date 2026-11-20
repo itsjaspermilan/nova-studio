@@ -1,0 +1,50 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 600, 'right'; do local d = nova.named('d1'); d.x, d.y = 700, 508 end; do local d = nova.named('d2'); d.x, d.y = 700, 593 end; do local d = nova.named('d3'); d.x, d.y = 700, 677 end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "B1, B2, B3 = nova.named('d1').total, nova.named('d2').total, nova.named('d3').total; BASE_PELLETS = nova.named('runner').stats.pellets; nova.named('runner').charge = 3; require('lib.run').add_card('scatter', nova.named('runner')); PELLETS_PER = require('lib.run').mods.pellets; CH0 = nova.named('runner').charge"
+  },
+  {
+   "wait": 10
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6,
+   "capture": "aim"
+  },
+  {
+   "wait": 40,
+   "capture": "pellets land"
+  },
+  {
+   "lua": "W1, W2, W3 = nova.named('d1').total, nova.named('d2').total, nova.named('d3').total; PELLETS = nova.named('runner').stats.pellets - BASE_PELLETS; CH1 = nova.named('runner').charge"
+  }
+ ],
+ "print": [
+  "B1",
+  "B2",
+  "B3",
+  "W1",
+  "W2",
+  "W3",
+  "PELLETS",
+  "PELLETS_PER",
+  "CH0",
+  "CH1"
+ ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "image": "can.png",
+  "frame_width": 8,
+  "frame_height": 8,
+  "columns": 2,
+  "frames": 2,
+  "frame_duration_ms": 80,
+  "tags": [
+    {
+      "name": "spin",
+      "from": 0,
+      "to": 1
+    }
+  ]
+}

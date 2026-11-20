@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "image": "bottle.png",
+  "frame_width": 8,
+  "frame_height": 8,
+  "columns": 4,
+  "frames": 4,
+  "frame_duration_ms": 70,
+  "tags": [
+    {
+      "name": "spin",
+      "from": 0,
+      "to": 3
+    }
+  ]
+}

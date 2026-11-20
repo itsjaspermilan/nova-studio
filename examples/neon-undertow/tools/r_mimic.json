@@ -1,0 +1,86 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 600, 540, 'right'; local m = nova.spawn('mimic_vendor', 900, 540); M_X, M_Y = m.x, m.y",
+ "route": [
+  {
+   "wait": 60
+  },
+  {
+   "lua": "FAR_STATE = nova.first('mimic_vendor').state; FAR_DIST = nova.first('mimic_vendor'):distance_to(nova.named('runner'))"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 40,
+   "capture": "shot from afar"
+  },
+  {
+   "lua": "SHOT_HP = nova.first('mimic_vendor').hp; SHOT_STATE = nova.first('mimic_vendor').state"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.first('mimic_vendor'):distance_to(nova.named('runner')) < 152",
+   "max": 200
+  },
+  {
+   "lua": "EDGE_STATE = nova.first('mimic_vendor').state; EDGE_DIST = nova.first('mimic_vendor'):distance_to(nova.named('runner'))"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.first('mimic_vendor').state == 'flicker'",
+   "max": 60,
+   "capture": "flicker: the lanes"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.first('mimic_vendor'):distance_to(nova.named('runner')) < 88",
+   "max": 40
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.named('runner').stats.baton_hits == 1",
+   "max": 30,
+   "capture": "baton while it flickers"
+  },
+  {
+   "lua": "BATON_HP = nova.first('mimic_vendor').hp; BATON_STATE = nova.first('mimic_vendor').state"
+  },
+  {
+   "until": "nova.count('can') >= 3",
+   "max": 60,
+   "capture": "cans"
+  },
+  {
+   "lua": "local a = {}; for _, c in ipairs(nova.all('can')) do a[#a+1] = string.format('%.2f,%.2f', c.dx, c.dy) end; table.sort(a); CANS = table.concat(a, ' '); NCANS = #a; M_MOVED = string.format('%.1f', math.abs(nova.first('mimic_vendor').x - M_X) + math.abs(nova.first('mimic_vendor').y - M_Y))"
+  },
+  {
+   "wait": 40,
+   "capture": "recovering"
+  }
+ ],
+ "print": [
+  "FAR_STATE",
+  "string.format('%.0f', FAR_DIST)",
+  "SHOT_HP",
+  "SHOT_STATE",
+  "EDGE_STATE",
+  "string.format('%.0f', EDGE_DIST)",
+  "BATON_HP",
+  "BATON_STATE",
+  "NCANS",
+  "CANS",
+  "M_MOVED"
+ ]
+}

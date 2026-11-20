@@ -48,17 +48,17 @@ function Room:draw_ui()
   local r = self.runner
   if not r then return end
   -- hearts: 6 hearts, 12 points, in halves
-  for i = 1, 6 do
+  for i = 1, math.ceil((r.max_hp or P.health) / 2) do
     local frame = 2
     if r.hp >= i * 2 then frame = 0 elseif r.hp == i * 2 - 1 then frame = 1 end
     nova.ui.sprite("hud_hearts", 28 + (i - 1) * 38, 30, { frame = frame, scale = 2.4 })
   end
   -- charge pips and the fraction of the next one
-  for i = 1, P.charge.pips do
+  for i = 1, (r.max_charge or P.charge.pips) do
     nova.ui.sprite("hud_pips", 28 + (i - 1) * 30, 66, { frame = (r.charge + 1e-6 >= i) and 0 or 1, scale = 2 })
   end
   local frac = r.charge - math.floor(r.charge + 1e-6)
-  if r.charge < P.charge.pips and frac > 0.01 then
+  if r.charge < (r.max_charge or P.charge.pips) and frac > 0.01 then
     local i = math.floor(r.charge + 1e-6) + 1
     nova.ui.rect(14 + (i - 1) * 30, 86, 28 * frac, 3, { 6, 240, 255, 255 })
   end

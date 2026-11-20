@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "tile_width": 16,
+  "tile_height": 16,
+  "solid": [],
+  "names": {
+    "0": "buff",
+    "1": "burn",
+    "2": "marked",
+    "3": "stun"
+  },
+  "terrains": []
+}

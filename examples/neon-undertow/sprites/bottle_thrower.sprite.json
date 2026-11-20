@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "image": "bottle_thrower.png",
+  "frame_width": 32,
+  "frame_height": 32,
+  "columns": 16,
+  "frames": 40,
+  "durations_ms": [
+    480,
+    480,
+    120,
+    120,
+    120,
+    120,
+    70,
+    60,
+    130,
+    260,
+    480,
+    480,
+    120,
+    120,
+    120,
+    120,
+    70,
+    60,
+    130,
+    260,
+    480,
+    480,
+    120,
+    120,
+    120,
+    120,
+    70,
+    60,
+    130,
+    260,
+    480,
+    480,
+    120,
+    120,
+    120,
+    120,
+    70,
+    60,
+    130,
+    260
+  ],
+  "tags": [
+    {
+      "name": "idle_down",
+      "from": 0,
+      "to": 1
+    },
+    {
+      "name": "walk_down",
+      "from": 2,
+      "to": 5
+    },
+    {
+      "name": "attack_down",
+      "from": 6,
+      "to": 8,
+      "loop": false
+    },
+    {
+      "name": "hurt_down",
+      "from": 9,
+      "to": 9,
+      "loop": false
+    },
+    {
+      "name": "idle_left",
+      "from": 10,
+      "to": 11
+    },
+    {
+      "name": "walk_left",
+      "from": 12,
+      "to": 15
+    },
+    {
+      "name": "attack_left",
+      "from": 16,
+      "to": 18,
+      "loop": false
+    },
+    {
+      "name": "hurt_left",
+      "from": 19,
+      "to": 19,
+      "loop": false
+    },
+    {
+      "name": "idle_right",
+      "from": 20,
+      "to": 21
+    },
+    {
+      "name": "walk_right",
+      "from": 22,
+      "to": 25
+    },
+    {
+      "name": "attack_right",
+      "from": 26,
+      "to": 28,
+      "loop": false
+    },
+    {
+      "name": "hurt_right",
+      "from": 29,
+      "to": 29,
+      "loop": false
+    },
+    {
+      "name": "idle_up",
+      "from": 30,
+      "to": 31
+    },
+    {
+      "name": "walk_up",
+      "from": 32,
+      "to": 35
+    },
+    {
+      "name": "attack_up",
+      "from": 36,
+      "to": 38,
+      "loop": false
+    },
+    {
+      "name": "hurt_up",
+      "from": 39,
+      "to": 39,
+      "loop": false
+    }
+  ],
+  "hitbox": {
+    "x": 13,
+    "y": 23,
+    "w": 6,
+    "h": 5
+  },
+  "pivot": {
+    "x": 16,
+    "y": 28
+  }
+}

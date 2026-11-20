@@ -1,0 +1,140 @@
+{
+ "start_scene": "market_a",
+ "invincible": true,
+ "route": [
+  {
+   "repeat": 150,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 60,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1200,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "A: cleared, the cards"
+  },
+  {
+   "lua": "A_DOORS = nova.named('door_w').state .. ',' .. nova.named('door_e').state; A_PAID = nova.scene_now().paid; A_WAVES = nova.scene_now().wave_i; A_SCRAP = require('lib.juice').scrap; A_OFFER = nova.scene_now().state"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 600
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8,
+   "capture": "A: a card taken"
+  },
+  {
+   "lua": "A_CARDS = table.concat(require('lib.run').cards, ','); A_HP = nova.named('runner').hp; A_SCRAP_EXIT = require('lib.juice').scrap; A_EXIT_DOOR = nova.named('door_e').state"
+  },
+  {
+   "walk_to": "door_e",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 3,
+   "capture": "B: the long street"
+  },
+  {
+   "lua": "B_SCENE = nova.current_scene(); B_CARDS = table.concat(require('lib.run').cards, ','); B_SCRAP_ENTER = require('lib.juice').scrap"
+  },
+  {
+   "repeat": 150,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 60,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1200,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "B: cleared"
+  },
+  {
+   "lua": "B_PAID = nova.scene_now().paid; B_WAVES = nova.scene_now().wave_i; B_DOORS = nova.named('door_w').state .. ',' .. nova.named('door_e').state"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 600
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "walk_to": [
+    2010,
+    528
+   ],
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.current_scene() == 'slice_end'",
+   "max": 120
+  },
+  {
+   "wait": 20,
+   "capture": "the end banner"
+  },
+  {
+   "lua": "END_SCENE = nova.current_scene(); END_CARDS = #require('lib.run').cards; END_SCRAP = require('lib.juice').scrap"
+  }
+ ],
+ "print": [
+  "A_DOORS",
+  "A_PAID",
+  "A_WAVES",
+  "A_SCRAP",
+  "A_OFFER",
+  "A_CARDS",
+  "A_HP",
+  "A_SCRAP_EXIT",
+  "A_EXIT_DOOR",
+  "B_SCENE",
+  "B_CARDS",
+  "B_SCRAP_ENTER",
+  "B_PAID",
+  "B_WAVES",
+  "B_DOORS",
+  "END_SCENE",
+  "END_CARDS",
+  "END_SCRAP"
+ ]
+}

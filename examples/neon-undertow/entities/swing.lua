@@ -3,6 +3,7 @@
 local J = require("lib.juice")
 local P = require("data.player")
 local C = require("lib.combat")
+local Hits = require("lib.hits")
 
 local Swing = nova.entity {
   sprite = "fx_arc", anim = "swing", tags = { "swing" }, pivot = { 6 / 32, 0.5 }, sx = 3, sy = 3, velocity = false,
@@ -16,6 +17,7 @@ function Swing:create()
   self.hitbox = C.box(dir, self.area)
   self.depth = -self.y - 5
   self.hit = {}
+  if self.scale_arc and self.scale_arc ~= 1 then self.sx, self.sy = 3 * self.scale_arc, 3 * self.scale_arc end -- (Long Reach: the arc is drawn as long as its box)
   self:play(self.arc or "swing", { restart = true })
   self:strike()
 end
@@ -25,8 +27,9 @@ function Swing:strike()
     if not self.hit[e] and self:overlaps(e) then
       self.hit[e] = true
       local v = C.vec[self.dir]
-      local took = e:take_hit(self.damage, v[1], v[2], self.knockback or 0)
-      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, self.damage) end
+      local damage = Hits.baton_damage(e, self.damage)   -- (more when a shot marked it: Tracer)
+      local took = e:take_hit(damage, v[1], v[2], self.knockback or 0)
+      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, damage, self.chain) end
     end
   end
 end

@@ -1,0 +1,57 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 500, 420, 'right'; local t = nova.spawn('bottle_thrower', 800, 420); local s = nova.spawn('scrapper', 520, 430); s.hp = 30; require('lib.status').stun(s, 9)",
+ "route": [
+  {
+   "wait": 6,
+   "capture": "tell begins"
+  },
+  {
+   "until": "nova.first('bottle_thrower').state == 'tell'",
+   "max": 5
+  },
+  {
+   "wait": 16,
+   "capture": "tell, arm up"
+  },
+  {
+   "until": "nova.count('bottle') > 0",
+   "max": 80,
+   "capture": "thrown"
+  },
+  {
+   "wait": 22,
+   "capture": "flying, the landing marked"
+  },
+  {
+   "wait": 22,
+   "capture": "about to land"
+  },
+  {
+   "until": "nova.count('fire') > 0",
+   "max": 80,
+   "capture": "landed: fire"
+  },
+  {
+   "lua": "nova.first('bottle_thrower'):take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 30,
+   "capture": "burning"
+  }
+ ],
+ "print": [
+  "SCRAPPER_HP",
+  "RUNNER_HP",
+  "FIRE_SCALE"
+ ],
+ "out": "build/look_thrower",
+ "columns": 3,
+ "zoom": 2,
+ "crop": [
+  330,
+  120,
+  480,
+  250
+ ]
+}

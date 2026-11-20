@@ -1,0 +1,27 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; nova.named('runner').hp = 5",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "BASE_MAX = nova.named('runner').max_hp; BASE_HP = nova.named('runner').hp; require('lib.run').add_card('plating', nova.named('runner'))"
+  },
+  {
+   "wait": 3,
+   "capture": "7 hearts"
+  },
+  {
+   "lua": "MAX = nova.named('runner').max_hp; HP = nova.named('runner').hp; HEARTS = math.ceil(MAX / 2); RUN_HP = require('lib.run').hp"
+  }
+ ],
+ "print": [
+  "BASE_MAX",
+  "BASE_HP",
+  "MAX",
+  "HP",
+  "HEARTS",
+  "RUN_HP"
+ ]
+}

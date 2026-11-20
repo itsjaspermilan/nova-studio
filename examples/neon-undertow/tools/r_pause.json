@@ -1,0 +1,60 @@
+{
+ "start_scene": "market_a",
+ "lua": "require('lib.run').begin(5); require('lib.run').add_card('plating', nova.named('runner')); require('lib.run').add_card('long_reach', nova.named('runner')); require('lib.run').add_card('long_reach', nova.named('runner')); require('lib.run').add_card('hot_solder', nova.named('runner'))",
+ "route": [
+  {
+   "wait": 30
+  },
+  {
+   "lua": "X0 = nova.named('runner').x"
+  },
+  {
+   "press": "start"
+  },
+  {
+   "wait": 4,
+   "capture": "paused: the cards held"
+  },
+  {
+   "lua": "PAUSED = tostring(nova.scene_now().paused)"
+  },
+  {
+   "lua": "CD0 = nova.scene_now().countdown; T0 = nova.scene_now().t"
+  },
+  {
+   "wait": 30,
+   "capture": "still paused"
+  },
+  {
+   "lua": "CD1 = nova.scene_now().countdown; T1 = nova.scene_now().t"
+  },
+  {
+   "press": "start"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "PAUSED_AFTER = tostring(nova.scene_now().paused)"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 20
+  },
+  {
+   "lua": "MOVED_FREE = nova.named('runner').x - X0"
+  }
+ ],
+ "print": [
+  "PAUSED",
+  "string.format('%.3f', CD0)",
+  "string.format('%.3f', CD1)",
+  "string.format('%.3f', T0)",
+  "string.format('%.3f', T1)",
+  "PAUSED_AFTER",
+  "string.format('%.1f', MOVED_FREE)",
+  "#require('lib.run').cards"
+ ]
+}

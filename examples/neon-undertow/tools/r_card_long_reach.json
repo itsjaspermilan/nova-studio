@@ -1,0 +1,36 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 405, 420 end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 30
+  },
+  {
+   "lua": "BASE = nova.named('d1').total; require('lib.run').add_card('long_reach', nova.named('runner')); REACH = require('lib.run').mods.reach"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 30,
+   "capture": "reaches"
+  },
+  {
+   "lua": "WITH = nova.named('d1').total"
+  }
+ ],
+ "print": [
+  "BASE",
+  "WITH",
+  "string.format('%.2f', REACH)"
+ ]
+}

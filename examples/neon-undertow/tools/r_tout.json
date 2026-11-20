@@ -1,0 +1,62 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 520, 540, 'right'; local s = nova.spawn('scrapper', 900, 540); s.hp = 99; local f = nova.spawn('scrapper', 1300, 140); f.hp = 99",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "S = nova.all('scrapper')[1]; X0 = S.x"
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "A = X0 - S.x; ST_A = S.state"
+  },
+  {
+   "lua": "TOUT = nova.spawn('tout', S.x + 60, S.y + 90)"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "X0 = S.x; BUFF_NEAR = tostring((S.buff_t or 0) > 0); BUFF_FAR = tostring((nova.all('scrapper')[2].buff_t or 0) > 0)"
+  },
+  {
+   "wait": 40,
+   "capture": "buffed: the mark over its head"
+  },
+  {
+   "lua": "B = X0 - S.x; ST_B = S.state; TOUT_HP_HIT = tostring(TOUT:take_hit(1, 1, 0, 0)); TOUT_ALIVE = tostring(TOUT:is_alive())"
+  },
+  {
+   "wait": 6
+  },
+  {
+   "lua": "X0 = S.x; BUFF_AFTER = tostring((S.buff_t or 0) > 0)"
+  },
+  {
+   "wait": 40,
+   "capture": "back to normal"
+  },
+  {
+   "lua": "C = X0 - S.x; ST_C = S.state"
+  }
+ ],
+ "print": [
+  "string.format('%.2f', A)",
+  "string.format('%.2f', B)",
+  "string.format('%.2f', C)",
+  "string.format('%.3f', B / A)",
+  "string.format('%.3f', C / A)",
+  "ST_A",
+  "ST_B",
+  "ST_C",
+  "BUFF_NEAR",
+  "BUFF_FAR",
+  "BUFF_AFTER",
+  "TOUT_HP_HIT",
+  "TOUT_ALIVE"
+ ]
+}

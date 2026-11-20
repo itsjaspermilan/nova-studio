@@ -1,0 +1,24 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 400, 560, 'right'; local t = nova.spawn('bottle_thrower', 560, 560)",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "lua": "G0 = nova.first('bottle_thrower'):distance_to(nova.named('runner'))"
+  },
+  {
+   "wait": 30,
+   "capture": "backing away"
+  },
+  {
+   "lua": "G1 = nova.first('bottle_thrower'):distance_to(nova.named('runner')); ST1 = nova.first('bottle_thrower').state"
+  }
+ ],
+ "print": [
+  "string.format('%.0f', G0)",
+  "string.format('%.0f', G1)",
+  "ST1"
+ ]
+}

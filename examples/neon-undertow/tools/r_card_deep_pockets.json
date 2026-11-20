@@ -1,0 +1,30 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'",
+ "route": [
+  {
+   "lua": "for i = 1, 8 do nova.spawn('scrap', nova.named('runner').x, nova.named('runner').y - 6, {}) end"
+  },
+  {
+   "wait": 30
+  },
+  {
+   "lua": "BASE = require('lib.juice').scrap; require('lib.run').add_card('deep_pockets', nova.named('runner'))"
+  },
+  {
+   "lua": "for i = 1, 8 do nova.spawn('scrap', nova.named('runner').x, nova.named('runner').y - 6, {}) end"
+  },
+  {
+   "wait": 30
+  },
+  {
+   "lua": "WITH = require('lib.juice').scrap - BASE; LEFT = nova.count('scrap'); MULT = require('lib.run').mods.scrap"
+  }
+ ],
+ "print": [
+  "BASE",
+  "WITH",
+  "LEFT",
+  "MULT"
+ ]
+}

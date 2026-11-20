@@ -1,0 +1,75 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 600, 420 end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "BASE_MAX = nova.named('runner').max_charge; require('lib.run').add_card('capacitor', nova.named('runner'))"
+  },
+  {
+   "wait": 3,
+   "capture": "4 pips"
+  },
+  {
+   "lua": "MAX = nova.named('runner').max_charge; CH = string.format('%.2f', nova.named('runner').charge)"
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "SHOTS = nova.named('runner').stats.shots; CLICKS = nova.named('runner').stats.clicks; D = nova.named('d1').total"
+  }
+ ],
+ "print": [
+  "BASE_MAX",
+  "MAX",
+  "CH",
+  "SHOTS",
+  "CLICKS",
+  "D"
+ ]
+}

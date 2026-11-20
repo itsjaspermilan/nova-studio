@@ -5,6 +5,7 @@ local E = require("data.enemies").scrapper
 local P = require("data.player")
 local J = require("lib.juice")
 local C = require("lib.combat")
+local Status = require("lib.status")
 
 local Scrapper = nova.entity {
   sprite = "scrapper", anim = "idle_down", tags = { "hurtable", "enemy", "scrapper" },
@@ -14,6 +15,7 @@ local Scrapper = nova.entity {
 function Scrapper:create()
   self.hp = E.health
   self.state = "idle"      -- idle | walk | tell | swing | recover | stagger | dead
+  self.kind_name = "scrapper"
   self.t = 0
   self.facing = "down"
   self.flash = 0
@@ -49,7 +51,7 @@ end
 function Scrapper:die()
   self.state = "dead"
   nova.log("scrapper dies")
-  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die })
+  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2 })
   nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 4 })
   for i = 1, E.drops do
     local a = (i / E.drops) * math.pi * 2 + 0.5
@@ -69,6 +71,7 @@ function Scrapper:update(dt)
   if J.frozen() then return end
   self.t = self.t + dt
   self.flash = math.max(0, self.flash - dt)
+  if Status.tick(self, dt) and self.state ~= "stagger" then return end  -- (stunned: the knock-back below still slides it)
   local p = nova.first("player")
   local dx, dy, dist = 0, 0, 1e9
   if p then dx, dy = p.x - self.x, p.y - self.y; dist = math.sqrt(dx * dx + dy * dy) end
@@ -90,7 +93,8 @@ function Scrapper:update(dt)
         nova.log("scrapper tell")
       else
         local len = math.max(dist, 1)
-        self:move(dx / len * E.speed * dt, dy / len * E.speed * dt)
+        local sp = E.speed * Status.speed(self)   -- (a Tout's buff)
+        self:move(dx / len * sp * dt, dy / len * sp * dt)
       end
     end
   elseif s == "tell" then
@@ -107,7 +111,7 @@ function Scrapper:update(dt)
     self:move(self.kx * dt, self.ky * dt)
     local k = math.max(0, 1 - 7 * dt)
     self.kx, self.ky = self.kx * k, self.ky * k
-    if self.t >= E.stagger then self.state, self.t = "walk", 0 end
+    if self.t >= E.stagger and (self.stun_t or 0) <= 0 then self.state, self.t = "walk", 0 end
   end
 
   -- look
@@ -142,6 +146,7 @@ function Scrapper:hud()
   local x, y = nova.cam.to_screen(self.x, self.y - 82)
   nova.ui.rect(x - 20, y, 40, 5, { 5, 6, 15, 220 })
   nova.ui.rect(x - 19, y + 1, 38 * math.max(0, self.hp) / E.health, 3, { 255, 43, 214, 255 })
+  Status.hud(self, x, y - 14)
 end
 
 return Scrapper
