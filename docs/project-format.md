@@ -1255,7 +1255,8 @@ nova.sound.stop(id, 0.25)            -- optional fade-out in seconds
 nova.sound.stop_all()
 nova.sound.volume(0.8)               -- master volume for effects (0 to 2)
 
-nova.music.play("theme", { volume = 0.4, fade = 1.0 })   -- loops by default; one track at a time
+nova.music.play("theme", { volume = 0.4, fade = 1.0 })   -- loops by default; one track at a time; the same song again carries on
+nova.music.play("theme", { restart = true })              -- start the song that plays again from the top
 nova.music.stop(0.5)                 -- optional fade-out
 nova.music.volume(0.5)               -- master volume for music (0 to 2)
 nova.sound.room { size = 0.5, damping = 0.4, mix = 1 }   -- one shared reverb room; nova.sound.room() takes it away

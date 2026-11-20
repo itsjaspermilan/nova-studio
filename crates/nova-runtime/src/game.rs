@@ -111,6 +111,8 @@ struct Shared {
     current_music: Option<(Option<StreamSource>, bool)>,
     /// The stems of adaptive music that plays now: their names and voice ids (see `nova.music.layers`).
     music_layers: Vec<(String, u64)>,
+    /// The name and voice id of the one music track that plays (`nova.music.play` of the same name carries on).
+    music_playing: Option<(String, u64)>,
     /// Seconds into that track as last reported by the audio thread.
     music_position: Option<f64>,
     audio: Vec<mixer::Command>,
@@ -1097,6 +1099,16 @@ fn find_sound<'a>(sounds: &'a HashMap<String, Arc<Sample>>, id: &str) -> Option<
                 .find_map(|ext| sounds.get(&format!("{folder}/{id}.{ext}")))
         })
     })
+}
+
+/// A music name with its folder and extension taken off, so `music/theme.ogg` and `theme` are the same song.
+fn music_key(name: &str) -> String {
+    let short = name.strip_prefix("music/").or_else(|| name.strip_prefix("sounds/")).unwrap_or(name);
+    [".ogg", ".wav"]
+        .iter()
+        .find_map(|ext| short.strip_suffix(ext))
+        .unwrap_or(short)
+        .to_string()
 }
 
 /// Streamed music by full id (`music/theme.ogg`) or short name (`theme`).
@@ -2910,6 +2922,25 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(is_music),
                     None => is_music,
                 };
+                // The song that already plays carries on (a door between two rooms with one song does not restart it),
+                // unless `restart = true`. A track that does not loop is playing only while the audio thread reports it.
+                if is_music {
+                    let restart = match &opts {
+                        Some(t) => t.get::<Option<bool>>("restart")?.unwrap_or(false),
+                        None => false,
+                    };
+                    let key = music_key(&name);
+                    if let Some((playing, id)) = sh.music_playing.clone() {
+                        let still = sh.current_music.as_ref().is_some_and(|(_, l)| *l) || sh.music_position.is_some();
+                        if !restart && playing == key && still {
+                            if let Some(v) = number_option(&opts, "volume")? {
+                                let volume = Some(v.clamp(0.0, 4.0) as f32);
+                                sh.audio.push(mixer::Command::Set { id, volume, pan: None, pitch: None });
+                            }
+                            return Ok(id);
+                        }
+                    }
+                }
                 // Ogg files in music/ are streamed when played as music.
                 let streamed = if is_music { find_stream(&sh.streams, &name).cloned() } else { None };
                 if streamed.is_none() && !is_music && find_stream(&sh.streams, &name).is_some() {
@@ -2951,6 +2982,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 if is_music {
                     sh.current_music = Some((streamed.clone(), looping));
                     sh.music_position = None;
+                    sh.music_playing = Some((music_key(&name), id));
                 }
                 if sh.sound_log.len() < 4096 {
                     let kind = if is_music { "music" } else { "sound" };
@@ -3168,6 +3200,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 ));
             }
             sh.current_music = None; // layered music cannot be seeked (the stems would fall out of step)
+            sh.music_playing = None;
             sh.music_position = None;
             sh.music_layers = ids;
             if sh.sound_log.len() < 4096 {
@@ -3237,6 +3270,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         lua.create_function(move |_, fade: Option<f64>| {
             let mut sh = s.borrow_mut();
             sh.current_music = None;
+            sh.music_playing = None;
             sh.music_layers.clear();
             sh.music_position = None;
             sh.audio.push(mixer::Command::StopMusic {
@@ -4138,6 +4172,7 @@ impl Game {
             streams,
             current_music: None,
             music_layers: Vec::new(),
+            music_playing: None,
             music_position: None,
             audio: Vec::new(),
             rumble: Vec::new(),

@@ -780,7 +780,7 @@
   "name": "nova.music.play",
   "kind": "function",
   "signature": "nova.music.play(name [, opts])",
-  "doc": "Play music. Loops by default. Options: volume, fade, loop.",
+  "doc": "Play music. Loops by default. Options: volume, fade, loop, restart. Playing the song that is already playing carries on where it is (a door between two rooms with one song does not restart it; a given `volume` is applied) and returns the same id; `restart = true` starts it again from the top.",
   "group": "Sound"
  },
  {

@@ -151,3 +151,48 @@ nova.music.layer("song_lead", 1)
     );
     assert!(format!("{:?}", g.error).contains("nova.music.layers"));
 }
+
+fn music_plays(g: &Game) -> Vec<u64> {
+    g.take_audio()
+        .iter()
+        .filter_map(|c| match c {
+            Command::Play(p) if p.music => Some(p.id),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn playing_the_song_that_already_plays_carries_on_unless_asked_to_restart() {
+    // A door between two rooms that share a song: the second play keeps the song going, by short or full name.
+    let g = game(
+        r#"
+first = nova.music.play("song_lead")
+again = nova.music.play("music/song_lead.wav")
+assert(first == again, "the same voice carries on")
+"#,
+    );
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(music_plays(&g).len(), 1, "one start, not two");
+    // restart = true starts it from the top; another song replaces it; after stop it starts again
+    let g = game(
+        r#"
+nova.music.play("song_lead")
+nova.music.play("song_lead", { restart = true })
+nova.music.play("song_bass")
+nova.music.play("song_bass")
+nova.music.stop()
+nova.music.play("song_bass")
+"#,
+    );
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(music_plays(&g).len(), 4);
+    // a track that does not loop and is not reported playing any more starts again
+    let g = game(
+        r#"
+nova.music.play("short", { loop = false })
+nova.music.play("short", { loop = false })
+"#,
+    );
+    assert_eq!(music_plays(&g).len(), 2);
+}

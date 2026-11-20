@@ -149,3 +149,12 @@ fn every_entry_has_a_signature_a_doc_line_and_a_group() {
         }
     }
 }
+
+/// Options the runtime reads are documented where an agent looks them up (`api music play`).
+#[test]
+fn music_play_documents_that_the_same_song_carries_on_and_restart() {
+    let docs = documented();
+    let play = docs.iter().find(|e| e["name"] == "nova.music.play").expect("nova.music.play is documented");
+    let doc = play["doc"].as_str().unwrap();
+    assert!(doc.contains("restart") && doc.contains("carries on"), "{doc}");
+}
