@@ -337,6 +337,7 @@ local TAIL = {
   car_suvl = { z = -2.33, y = 0.86, x = 0.64 }, car_taxi = { z = -2.33, y = 0.56, x = 0.61 },
   car_police = { z = -2.33, y = 0.56, x = 0.61 }, car_van = { z = -2.39, y = 0.84, x = 0.6 },
   car_pickup = { z = -2.46, y = 0.8, x = 0.61 },
+  car_offroad = { z = -1.84, y = 0.81, x = 0.84 }, car_gt = { z = -2.31, y = 0.8, x = 0.65 },
   ambulance = { z = -2.02, y = 0.6, x = 0.7 }, firetruck = { z = -2.09, y = 0.67, x = 0.61 },
   garbage_truck = { z = -2.12, y = 0.67, x = 0.61 }, delivery = { z = -2.19, y = 0.53, x = 0.7 },
   tractor = { z = -1.14, y = 0.8, x = 0.4 },

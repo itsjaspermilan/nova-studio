@@ -67,3 +67,41 @@ reads it so each model keeps its reference's silhouette.
 Archetypes to build, each from its ratios: wagon, sedan, hatchback, minivan, big sedan, vintage tourer, step van (plus the muscle
 coupes from the Challenger and Mustang). Switch-class means the same shapes, with smooth subdivided panels, real wheel arches, PBR
 paint and baked contact shadows, and a texture only where it earns its place (trim lines, lamps, grilles).
+
+## The blueprint cars, second pass (2026-11-19): `scripts/rally/carkit.mjs` and `blueprint-cars.mjs`
+
+`car_gt` (the modern coupe, 4768 x 1852 x 1383 mm) and `car_offroad` (the short 4x4 wagon, 4060 x 1690 x 1885 mm) were made again from nothing, because the
+first pass (next section) came out faceted with its details laid on top. What changed:
+
+- **One smooth surface.** `buildBody` makes a cage with the topology of a box: two flanks (rows from the sill to the shoulder), the top from shoulder to
+  shoulder (eight columns that are a crowned sheet over a bonnet or boot and become side glass, roof rail and roof over the cabin), and a real front and
+  rear face whose columns and rows continue the top's and the flank's (no end caps). Mirror, then one level of Subdivision, makes the body.
+- **Every curve is measured.** Each view of each drawing was calibrated to its own dimension lines (they are not drawn to one scale: the 4x4's front view is
+  6% larger than its side view, and its side view is 3% taller than the stated height) and its outline taken by flood fill: the top line and underside by
+  length, the nose and tail by height, the half-width by length from the plan view, the section from the front view. Windows, lamps, grilles, door and boot
+  lines were read off gridded enlargements.
+- **Details are cut in, not laid on.** The new Cut-out modifier (`docs/project-format.md`) presses each outline onto the finished surface from the view it
+  was drawn in: glass with its rubber, the lamps (flush lenses with their own glowing elements), the twin grille and intakes as pockets with a mesh behind,
+  door, bonnet and boot gaps as thin matt grooves, the wheel openings with a rolled-in lip. The wheels' spokes are what is left of a lathe-turned rim after
+  its windows are cut out. Only what is a separate piece on the real car is a separate shape: mirrors, bumpers, the spare, wipers, arch flares, mud flaps.
+- **Paint.** The body has a clear coat (`coat`, new: `KHR_materials_clearcoat`), so it shows the sun and sky as car paint does.
+- Budget: about 31,000 triangles for the coupe and 35,000 for the 4x4 (hero-car range; the cuts and the wheels are most of it). No badges or lettering.
+- Not done: a numeric check against the drawings like the first pass had (the curves are the traced ones, and side renders were compared by eye), the cars
+  have not been driven in the game or seen on the Retroid, and nobody has opened them in the studio's Model editor.
+
+## The blueprint cars, first pass (2026-11-19): `scripts/rally/blueprint-car.mjs` (now only `car_coupe`)
+
+Three cars made straight from the owner's blueprints, by a generator of their own (it shares nothing with `bodies.mjs`): `car_coupe` (a 1990s coupe),
+`car_offroad` (a short 4x4 wagon) and `car_gt` (a modern coupe). Every table in a spec is traced from the drawing: the top line, nose and tail
+and underside from the side view, the width by z from the plan view and the width by height from the front view (the widest point is low and the cabin
+tucks in: `shoulder`, `tuck`); the wheel is as drawn (the Apex GT's six wide spokes, the 4x4's plain steel disc). Each wheel is a real arch cut through the
+body (inner wall, roof, no flare: none of the drawings has one). Budget: about 10,000 to 12,500 triangles a car (the older cars are 14,000), the body drawn
+from its dense cage without further smoothing (`renderLevels` 0; smoothing it once would double the cost and look the same).
+
+**The check.** `scripts/rally/blueprint-check.mjs` compares each blueprint car with its drawing: the top line, the half-width from the plan view and the edges of
+the side glass against the nearest line the draftsman drew, with pictures (the model's lines on the blueprint) in `build/blueprint-check/`. It exits 1 when
+a car is off by more than 0.9 units (about 5 cm) over 95% of the points. Convert the blueprints to PNGs first (`sips -s format png drawing.gif --out coupe.png`
+into one folder, `--bp folder`; the images are not in the repository). Lamps, grilles and trim lie on the body's own skin (`frontPatch`, `sidePatch`, `lamp`
+in `blueprint-car.mjs`) instead of boxes pushed into it. The cars' suspension (`entities/car.lua`) takes each model's real wheel positions from
+`nova.model_pose`, so the ground is sampled under each tyre and the body tips by the car's own wheelbase and track, and a model is drawn `rigid = true`
+(one hill height for the whole model, not per vertex, which shears a car).

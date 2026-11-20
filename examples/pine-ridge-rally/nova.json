@@ -3,7 +3,7 @@
   "name": "Pine Ridge Rally",
   "world_height": 720,
   "graphics": { "msaa": 4, "anisotropy": 16 },
-  "materials": ["car", "car_blue", "car_green", "car_pickup", "car_police", "car_sedan", "car_suv", "car_suvl", "car_taxi", "car_van", "car_yellow", "racecar_green", "racecar_orange", "racecar_red", "racecar_white", "firetruck", "garbage_truck"],
+  "materials": ["car", "car_blue", "car_green", "car_pickup", "car_police", "car_sedan", "car_suv", "car_suvl", "car_taxi", "car_van", "car_yellow", "car_offroad", "car_gt", "racecar_green", "racecar_orange", "racecar_red", "racecar_white", "firetruck", "garbage_truck"],
   "version": "0.1.0",
   "input": {
     "throttle": [

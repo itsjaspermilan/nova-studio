@@ -13,7 +13,9 @@ import { toMesh } from "./mesh-edit";
 import { BOOLEAN_OPS, CUTTER_SHAPES, booleanPieces, cutterPieces, meshOf, piecesOf, type BooleanOp, type CutterShape } from "./csg";
 import { ZERO_LATTICE, curveDeform, edgeSplit, lattice, remeshBlocks, shrinkwrap, wireframe, type LatticeCorners, type WrapKind } from "./modifier-more";
 import { DEFORMS, decimate as decimateCube, displace as displaceCube, simpleDeform, smoothVerts, triangulate as triangulateCube, type DeformKind } from "./mesh-ops";
+import { applyCut, checkCuts, type Cut } from "./mesh-cutout";
 export { DEFORMS, type DeformKind };
+export type { Cut };
 
 export type ModAxis = "x" | "y" | "z";
 export const MOD_AXES: ModAxis[] = ["x", "y", "z"];
@@ -171,10 +173,16 @@ export interface EdgeSplitMod extends Common {
   type: "edgesplit";
   angle?: number;
 }
-export type Modifier = EdgeSplitMod | CurveMod | RemeshMod | BooleanMod | WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
+/// Presses outlines drawn in the standard views onto the surface (Blender's knife project): windows, lamps, grilles, panel gaps and wheel openings cut into a
+/// smooth body. Put it after Mirror and Subdivision. See `mesh-cutout.ts` for what an outline can do.
+export interface CutoutMod extends Common {
+  type: "cutout";
+  cuts?: Cut[];
+}
+export type Modifier = CutoutMod | EdgeSplitMod | CurveMod | RemeshMod | BooleanMod | WireframeMod | ShrinkwrapMod | LatticeMod | MirrorMod | SubsurfMod | BevelMod | SolidifyMod | ArrayMod | RevolveMod | WeldMod | TriangulateMod | DecimateMod | DisplaceMod | DeformMod | SmoothMod;
 export type ModifierType = Modifier["type"];
-export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice", "boolean", "remesh", "curve", "edgesplit"];
-export const MODIFIER_LABELS: Record<ModifierType, string> = { mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice", boolean: "Boolean", remesh: "Remesh (blocks)", curve: "Curve", edgesplit: "Edge split" };
+export const MODIFIER_TYPES: ModifierType[] = ["mirror", "subsurf", "bevel", "solidify", "array", "revolve", "weld", "triangulate", "decimate", "displace", "deform", "smooth", "wireframe", "shrinkwrap", "lattice", "boolean", "remesh", "curve", "edgesplit", "cutout"];
+export const MODIFIER_LABELS: Record<ModifierType, string> = { cutout: "Cut-out", mirror: "Mirror", subsurf: "Subdivision", bevel: "Bevel", solidify: "Solidify", array: "Array", revolve: "Revolve", weld: "Weld", triangulate: "Triangulate", decimate: "Decimate", displace: "Displace", deform: "Simple deform", smooth: "Smooth", wireframe: "Wireframe", shrinkwrap: "Shrinkwrap", lattice: "Lattice", boolean: "Boolean", remesh: "Remesh (blocks)", curve: "Curve", edgesplit: "Edge split" };
 export const MAX_REVOLVE = 128;
 /// A crease weight of 1 stays sharp through this many subdivision levels (the most a modifier does).
 export const CREASE_LEVELS = 4;
@@ -204,6 +212,7 @@ export function newModifier(type: ModifierType): Modifier {
     case "remesh": return { type, voxel: 2 };
     case "curve": return { type, axis: "x", points: [[0, 0, 0], [8, 0, 0], [16, 8, 0], [16, 16, 0]] };
     case "boolean": return { type, operation: "difference", shape: "box", at: [0, 0, 0], size: [8, 8, 8] };
+    case "cutout": return { type, cuts: [{ name: "window", view: "side", points: [[-4, 2], [4, 2], [4, 6], [-4, 6]], color: "#2f4f78", depth: 0.25 }] };
   }
 }
 
@@ -247,6 +256,7 @@ const copyPoly = (f: MeshFace, v: number[]): MeshFace => {
   const out: MeshFace = { v };
   if (f.color) out.color = f.color;
   if (f.smooth) out.smooth = true;
+  if (f.mat) out.mat = f.mat;
   return out;
 };
 const soupOf = (c: Cube): Soup => {
@@ -817,6 +827,11 @@ export type Stage = "view" | "render";
 
 export function applyModifier(s: Soup, m: Modifier, stage: Stage): Soup {
   switch (m.type) {
+    case "cutout": {
+      let verts = s.verts.map((p) => [...p] as Vec3), polys = s.polys;
+      for (const cut of m.cuts ?? []) ({ verts, polys } = applyCut(verts, polys, cut));
+      return compactSoup({ verts, polys, ...(s.creases ? { creases: s.creases } : {}) });
+    }
     case "mirror": return mirror(s, m);
     case "subsurf": return subsurf(s, stage === "render" ? m.renderLevels ?? 2 : m.levels ?? 1, m.smooth !== false);
     case "bevel": return bevel(s, m);
@@ -866,10 +881,37 @@ export function evaluate(c: Cube, stage: Stage = "view"): Cube {
   if (c.emissive !== undefined) out.emissive = c.emissive;
   if (c.metallic !== undefined) out.metallic = c.metallic;
   if (c.roughness !== undefined) out.roughness = c.roughness;
+  if (c.coat !== undefined) out.coat = c.coat;
   const kept = [...(soup.creases ?? [])].filter(([, w]) => Number.isFinite(w) && w > 0);
   if (kept.length) out.creases = kept.map(([k, w]) => { const [a, b] = k.split(",").map(Number) as [number, number]; return [a, b, Math.min(1, w / CREASE_LEVELS)] as [number, number, number]; });
   fitBounds(out);
   return out;
+}
+
+/// The finished mesh as the shapes the exporter writes: the faces a Cut-out gave a surface of their own (glass, a glowing lamp) come back as separate shapes
+/// with that surface, the rest as one shape with the element's own. An element whose faces all share its surface comes back alone.
+export function evaluateSurfaces(c: Cube, stage: Stage = "render"): Cube[] {
+  const done = evaluate(c, stage);
+  if (!done.polys?.some((f) => f.mat)) return [done];
+  const groups = new Map<string, { mat: MeshFace["mat"]; polys: MeshFace[] }>();
+  for (const f of done.polys) {
+    const k = f.mat ? `${f.mat.metallic ?? ""}/${f.mat.roughness ?? ""}/${f.mat.emissive ?? ""}/${f.mat.coat ?? ""}` : "";
+    const g = groups.get(k) ?? { mat: f.mat, polys: [] };
+    const { mat: _mat, ...plain } = f;
+    g.polys.push(plain);
+    groups.set(k, g);
+  }
+  return [...groups.values()].map(({ mat, polys }) => {
+    const part = compactSoup({ verts: done.verts!, polys });
+    const out: Cube = { ...done, verts: part.verts, polys: part.polys };
+    delete out.creases;
+    if (mat?.metallic !== undefined) out.metallic = mat.metallic;
+    if (mat?.roughness !== undefined) out.roughness = mat.roughness;
+    if (mat?.emissive !== undefined) out.emissive = mat.emissive;
+    if (mat) { if (mat.coat !== undefined) out.coat = mat.coat; else delete out.coat; } // (a surface of its own is not lacquered unless it says so)
+    fitBounds(out);
+    return out;
+  });
 }
 
 /// Bakes the modifiers into the cage itself (Blender's "Apply"): `upTo` is how many modifiers from the top of the stack to bake
@@ -945,6 +987,9 @@ export function checkModifier(m: unknown, at: string): string | null {
       if (o.kind !== undefined && !["sphere", "cylinder", "plane"].includes(o.kind as string)) return `${at}.kind must be sphere, cylinder or plane`;
       if (o.axis !== undefined && !MOD_AXES.includes(o.axis as ModAxis)) return `${at}.axis must be x, y or z`;
       problems.push(num("factor", 0, 1), num("radius", 0, 1e6));
+      break;
+    case "cutout":
+      problems.push(checkCuts(o.cuts, at));
       break;
     case "edgesplit":
       problems.push(num("angle", 0, 180));

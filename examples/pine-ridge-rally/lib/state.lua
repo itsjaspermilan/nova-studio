@@ -62,6 +62,8 @@ state.cars = {
   { id = "car_police", price = 7500, grip = 1, brake = 1.05, class = "sport", name = "Patrol", oversteer = 0.55, wheel = 0.375, power = 9.5, top = 46, idle_rpm = 700, max_rpm = 6800 },
   { id = "car_van", price = 2000, grip = 0.8, brake = 0.8, class = "everyday", name = "Delivery Van", oversteer = 0.3, wheel = 0.4, power = 7, top = 38, idle_rpm = 800, max_rpm = 4800 },
   { id = "car_pickup", price = 2500, grip = 0.85, brake = 0.85, class = "everyday", name = "Hauler", oversteer = 0.45, wheel = 0.425, power = 8.5, top = 40, idle_rpm = 700, max_rpm = 5500 },
+  { id = "car_offroad", price = 4500, grip = 0.9, brake = 0.9, class = "everyday", name = "Outback", oversteer = 0.35, wheel = 0.406, power = 8.6, top = 40, idle_rpm = 650, max_rpm = 4800 },
+  { id = "car_gt", price = 18000, grip = 1.12, brake = 1.15, class = "sport", name = "Apex GT", oversteer = 0.5, wheel = 0.338, power = 10.2, top = 49, idle_rpm = 800, max_rpm = 7600 },
   -- (added 2026-11-07) the racing kit's four classic racers, five karts from the car kit (each with its own driver aboard) and, once the player has
   -- won three races, the car kit's service vehicles
   { id = "racecar_green", price = 14000, grip = 1.18, brake = 1.2, class = "formula", name = "Verde GP", oversteer = 0.3, wheel = 0.375, power = 11, top = 48.5, idle_rpm = 3000, max_rpm = 11000 },

@@ -1,5 +1,6 @@
 <script lang="ts">
   // The list of modifiers on a mesh: add, show/hide, reorder, remove, apply and edit each one's settings.
+  import { CUT_VIEWS, MAX_CUTS, MAX_CUT_POINTS, type Cut, type CutView } from "../lib/mesh-cutout";
   import { DEFORMS, MAX_MODIFIERS, MODIFIER_LABELS, MODIFIER_TYPES, MOD_AXES, newModifier, type DeformKind, type ModAxis, type Modifier, type ModifierType } from "../lib/modifiers";
 
   let { mods, onchange, onapply }: { mods: Modifier[]; onchange: (next: Modifier[]) => void; onapply: (index: number) => void } = $props();
@@ -22,6 +23,16 @@
     onchange([...mods, newModifier(adding)]);
     adding = "";
   }
+  // Cut-out: the outlines of one modifier. Points are typed as "a,b a,b ..." in the view's own plane.
+  const setCut = (i: number, k: number, change: Partial<Cut>) => { const m = mods[i]!; if (m.type !== "cutout") return; set(i, { cuts: (m.cuts ?? []).map((c, j) => (j === k ? { ...c, ...change } : c)) }); };
+  const dropCut = (i: number, k: number) => { const m = mods[i]!; if (m.type !== "cutout") return; set(i, { cuts: (m.cuts ?? []).filter((_, j) => j !== k) }); };
+  const addCut = (i: number) => { const m = mods[i]!; if (m.type !== "cutout" || (m.cuts ?? []).length >= MAX_CUTS) return; set(i, { cuts: [...(m.cuts ?? []), { name: "outline", view: "side", points: [[-2, 2], [2, 2], [2, 5], [-2, 5]], color: "#2f4f78" }] }); };
+  const pointsText = (c: Cut) => c.points.map((p) => `${p[0]},${p[1]}`).join(" ");
+  const parsePoints = (raw: string): [number, number][] | null => {
+    const pts = raw.trim().split(/\s+/).map((s) => s.split(",").map(Number));
+    return pts.length >= 3 && pts.length <= MAX_CUT_POINTS && pts.every((p) => p.length === 2 && p.every((n) => Number.isFinite(n))) ? (pts as [number, number][]) : null;
+  };
+  const PLANES: Record<CutView, string> = { side: "z, y", front: "x, y", back: "x, y", top: "x, z", bottom: "x, z" };
   const vec = (m: { offset?: [number, number, number]; relative?: [number, number, number] }, key: "offset" | "relative") => m[key] ?? [0, 0, 0];
 </script>
 
@@ -184,6 +195,30 @@
           <span class="dim small" title="Extra gap as a fraction of the mesh's own size">× size</span>
           {#each [0, 1, 2] as a (a)}<input type="number" step="0.1" aria-label={`relative ${"xyz"[a]}`} value={vec(m, "relative")[a]} onchange={(e) => { const v = [...vec(m, "relative")] as [number, number, number]; v[a] = num(e.currentTarget.value, 0); set(i, { relative: v }); }} />{/each}
         </div>
+      {:else if m.type === "cutout"}
+        <p class="dim small">Outlines drawn in a view are pressed onto the surface facing it and cut into it: a window, a lamp, a grille, a panel gap, a wheel opening. Keep this after Mirror and Subdivision.</p>
+        {#each m.cuts ?? [] as c, k (k)}
+          <details class="cut">
+            <summary><span class="swatch" style:background={c.color ?? "transparent"}></span> {c.name ?? "outline"} <span class="dim small">· {c.view}{c.remove ? " · opening" : c.depth ? ` · sunk ${c.depth}` : ""}</span></summary>
+            <div class="grid">
+              <label>Name <input type="text" value={c.name ?? ""} onchange={(e) => setCut(i, k, { name: e.currentTarget.value || undefined })} /></label>
+              <label title="Which way the outline is pressed onto the mesh">View
+                <select value={c.view} onchange={(e) => setCut(i, k, { view: e.currentTarget.value as CutView })}>{#each CUT_VIEWS as v (v)}<option value={v}>{v}</option>{/each}</select>
+              </label>
+              <label title="Colour of the area inside the outline">Colour <input type="color" value={(c.color ?? "#888888").slice(0, 7)} onchange={(e) => setCut(i, k, { color: e.currentTarget.value })} /></label>
+              <label title="How far the inside sinks into the body (0 is flush); walls are made round it">Depth <input type="number" min="0" step="0.05" value={c.depth ?? 0} onchange={(e) => setCut(i, k, { depth: Math.max(0, num(e.currentTarget.value, 0)) || undefined })} /></label>
+              <label title="How much the inside lights itself (a lamp)">Glow <input type="number" min="0" max="1" step="0.05" value={c.emissive ?? 0} onchange={(e) => setCut(i, k, { emissive: Math.max(0, Math.min(1, num(e.currentTarget.value, 0))) || undefined })} /></label>
+              <label title="How squarely a face must look at the view to be cut: 1 is facing it exactly, 0 edge on">Facing <input type="number" min="-1" max="1" step="0.05" value={c.facing ?? 0.2} onchange={(e) => setCut(i, k, { facing: Math.max(-1, Math.min(1, num(e.currentTarget.value, 0.2))) })} /></label>
+              <label class="check" title="Take the inside away, leaving an opening (with a lip if it has depth)"><input type="checkbox" checked={c.remove === true} onchange={(e) => setCut(i, k, { remove: e.currentTarget.checked || undefined })} /> Opening</label>
+              {#if c.view !== "side"}<label class="check" title="Cut the mirror image across the middle too"><input type="checkbox" checked={c.mirror === true} onchange={(e) => setCut(i, k, { mirror: e.currentTarget.checked || undefined })} /> Both sides</label>{/if}
+            </div>
+            <label class="points" title="The outline's corners in the view's plane, as pairs separated by spaces">Points ({PLANES[c.view]})
+              <textarea rows="2" spellcheck="false" value={pointsText(c)} onchange={(e) => { const p = parsePoints(e.currentTarget.value); if (p) setCut(i, k, { points: p }); else e.currentTarget.value = pointsText(c); }}></textarea>
+            </label>
+            <button class="danger" onclick={() => dropCut(i, k)}>Remove this outline</button>
+          </details>
+        {/each}
+        <button onclick={() => addCut(i)} disabled={(m.cuts ?? []).length >= MAX_CUTS}>＋ Add an outline</button>
       {/if}
     </section>
   {/each}
@@ -214,4 +249,9 @@
   .row select { flex: 1; min-width: 0; }
   select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
   .small { font-size: 11px; }
+  .cut { border-top: 1px solid var(--line, #2a2f3a); padding: 2px 0; }
+  .cut summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .cut .swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #0006; display: inline-block; }
+  .cut .points { display: grid; gap: 2px; margin: 4px 0; }
+  .cut textarea { width: 100%; font: inherit; font-size: 11px; resize: vertical; }
 </style>

@@ -2,10 +2,10 @@
 // (so a later bone animation can move them), one mesh per part with flat-coloured cubes baked in
 // as COLOR_0 vertex colours and per-face normals.
 
-import { dropBakeSources, settleKeyEdits, glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
+import { dropBakeSources, settleKeyEdits, coatOf, glowOf, metallicOf, namesOf, roughnessOf, walk, type Clip, type Cube, type Ease, type ModelDoc, type Part, type Track, type Vec3 } from "./model-doc";
 import { BAKE_STEPS, applyEase, lerp3, slerp } from "./model-ease";
 import { FACE_CORNERS, hasVolume, meshOf as solidMesh, solidOf, type Mesh } from "./model-mesh";
-import { evaluate } from "./modifiers";
+import { evaluate, evaluateSurfaces } from "./modifiers";
 import { boneKey, invertAffine, transformDirection, transformPoint, worldMatrices } from "./model-skin";
 import { bakeAll, bakeSurface, uvsOf } from "./model-uv";
 import { partShapeNames, shapeDeltas } from "./shape-keys";
@@ -166,13 +166,14 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
   // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
-  const mats: { glow: number; metal: number; rough: number }[] = [];
+  const mats: { glow: number; metal: number; rough: number; coat: number }[] = [];
   const materialFor = (c: Cube) => {
     const painted = !!surfaceImage && !!c.texture && hasVolume(c);
     const glow = glowOf(c), metal = painted ? 1 : metallicOf(c), rough = painted ? 1 : roughnessOf(c);
-    if (glow === 0 && metal === 0 && rough === 1) return 0;
-    let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough);
-    if (at < 0) at = mats.push({ glow, metal, rough }) - 1;
+    const coat = coatOf(c); // (car paint: a glossy lacquer over the colour)
+    if (glow === 0 && metal === 0 && rough === 1 && coat === 0) return 0;
+    let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough && m.coat === coat);
+    if (at < 0) at = mats.push({ glow, metal, rough, coat }) - 1;
     return at + 1;
   };
   let drawn = 0;
@@ -189,7 +190,8 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
     }
     // Shapes that glow get a material of their own (one per strength), so a part may have several primitives.
     const groups = new Map<number, Cube[]>();
-    for (const c of part.cubes) {
+    // (a shape whose Cut-out modifier gave some faces their own surface is written as one shape for each surface)
+    for (const c of part.cubes.flatMap((c) => (c.modifiers?.some((m) => m.type === "cutout" && m.render !== false) && !c.skin ? evaluateSurfaces(c, "render") : [c]))) {
       const key = materialFor(c);
       groups.set(key, [...(groups.get(key) ?? []), c]);
     }
@@ -359,6 +361,7 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
   const hasShapes = Object.keys(shapeExtras).length > 0;
   const json = {
     asset: { version: "2.0", generator: "Nova Studio" },
+    ...(mats.some((m) => m.coat) ? { extensionsUsed: ["KHR_materials_clearcoat"] } : {}),
     scene: 0,
     scenes: [{ nodes: [...doc.parts.map((_, i) => nodeOf.get(String(i))!), ...skinNodes], ...(hasShapes ? { extras: { nova: shapeExtras } } : {}) }],
     nodes: gltfNodes,
@@ -366,7 +369,7 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
     ...(skins.length ? { skins } : {}),
     materials: [
       { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}) },
-      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}) })),
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : "", m.coat ? `coat ${m.coat}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}), ...(m.coat ? { extensions: { KHR_materials_clearcoat: { clearcoatFactor: m.coat, clearcoatRoughnessFactor: 0.05 } } } : {}) })),
     ],
     ...(tex && image
       ? {

@@ -1096,7 +1096,10 @@ pub fn import_glb(bytes: &[u8]) -> Result<MeshData, String> {
         out.notes.push("skins/bones are ignored".into());
     }
     for name in document.extensions_used() {
-        out.notes.push(format!("extension {name} is ignored"));
+        // (the clear coat is read with each material, above)
+        if name != "KHR_materials_clearcoat" {
+            out.notes.push(format!("extension {name} is ignored"));
+        }
     }
     let scene = document
         .default_scene()
