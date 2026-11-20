@@ -1041,7 +1041,7 @@ fn sound_calls_queue_mixer_commands_with_options_and_short_names() {
         (
             "main.lua",
             lua(
-                "local id = nova.sound.play('jump', { volume = 0.5, pan = -2, pitch = 2 })\nlocal full = nova.sound.play('sounds/jump.wav', { loop = true })\nnova.music.play('theme', { fade = 1.5, volume = 0.3 })\nnova.music.play('music/theme.wav', { loop = false })\nnova.sound.stop(id, 0.25)\nnova.sound.stop_all()\nnova.music.stop(2)\nnova.sound.volume(0.5)\nnova.music.volume(0.25)\nnova.log(id .. ' ' .. full)",
+                "local id = nova.sound.play('jump', { volume = 0.5, pan = -2, pitch = 2 })\nlocal full = nova.sound.play('sounds/jump.wav', { loop = true })\nnova.music.play('theme', { fade = 1.5, volume = 0.3 })\nnova.music.play('music/theme.wav', { loop = false, restart = true })\nnova.sound.stop(id, 0.25)\nnova.sound.stop_all()\nnova.music.stop(2)\nnova.sound.volume(0.5)\nnova.music.volume(0.25)\nnova.log(id .. ' ' .. full)",
             ),
         ),
     ]);
