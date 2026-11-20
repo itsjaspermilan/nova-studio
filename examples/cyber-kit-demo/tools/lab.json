@@ -1,0 +1,88 @@
+{
+  "name": "lab",
+  "image_out": "build/kit/lab-map.png",
+  "scene": {
+    "version": 1,
+    "background": [
+      6,
+      12,
+      12
+    ],
+    "width": 1152,
+    "height": 672,
+    "objects": [
+      {
+        "kind": "runner",
+        "name": "runner",
+        "x": 936,
+        "y": 160
+      },
+      {
+        "kind": "door",
+        "name": "to_street",
+        "x": 936,
+        "y": 96,
+        "props": {
+          "to": "street",
+          "to_x": 648,
+          "to_y": 160
+        }
+      },
+      {
+        "kind": "hover_drone",
+        "name": "lab_drone",
+        "x": 560,
+        "y": 330
+      },
+      {
+        "kind": "scrapper",
+        "name": "lab_scrapper",
+        "x": 330,
+        "y": 520
+      }
+    ],
+    "tilemaps": [
+      {
+        "name": "ground",
+        "tileset": "labs",
+        "scale": 1.5,
+        "seed": 2,
+        "paint": {
+          "t": "lab_tile",
+          "g": "grating",
+          "u": "puddle",
+          "C": "concrete_wall",
+          "G": "glass_wall",
+          "n": "neon_strip",
+          "N": "neon_strip2",
+          "T": "specimen_tank",
+          "S": "server_stack",
+          "d": "desk",
+          "m": "terminal",
+          "v": "vent",
+          "V": "vent_puff",
+          "P": "potted_plant",
+          "k": "cables",
+          "H": "shutter",
+          "h": "shutter_open"
+        },
+        "tiles": [
+          "CCCCCCCCCCCCCCCCCCCCCCCC",
+          "CCHCCCCCCCCCCCCCCCChCCCC",
+          "tttttttttttttttttttttttt",
+          "tTtTtttSSttttttttSttTtTt",
+          "tttttttttttttttttttttttt",
+          "ttGGGGGGttttttttGGGGGGtt",
+          "tttttttttttttttttttttttt",
+          "ttdtmtttvttnnnnnnttttdtt",
+          "tttttttttttgggggtttttttt",
+          "ttPttttttttgggggttttVttt",
+          "tttttuuutttttttttttktttt",
+          "tttttuuuuttttttttttttttt",
+          "tttttttttttttttttttttttt",
+          "CCCCCCCCCCCCCCCCCCCCCCCC"
+        ]
+      }
+    ]
+  }
+}

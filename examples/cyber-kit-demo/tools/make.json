@@ -1,0 +1,98 @@
+{
+ "about": "Every maker call that made this demo, in order, all in the detailed style (scripts/nova-tool --project examples/cyber-kit-demo <tool> <args>; @file is a file of arguments).",
+ "calls": [
+  {
+   "tool": "tileset_make",
+   "args": {
+    "name": "market",
+    "palette": "gutter market",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "tileset_make",
+   "args": {
+    "name": "labs",
+    "palette": "bloom labs",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "character_make",
+   "args": {
+    "name": "runner",
+    "palette": "gutter market",
+    "outfit": "long_coat",
+    "outfit_color": "#6c6488",
+    "trim_color": "#2c2a3a",
+    "hat": "visor",
+    "hair": "short",
+    "hair_color": "#4a3a5c",
+    "skin": "tan",
+    "item": "baton",
+    "glow_color": "2",
+    "shoe_color": "#2a2630",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "character_make",
+   "args": {
+    "name": "scrapper",
+    "palette": "gutter market",
+    "outfit": "hoodie",
+    "outfit_color": "#8a3040",
+    "trim_color": "#34323a",
+    "hair": "mohawk",
+    "hair_color": "#ff7a2e",
+    "skin": "light",
+    "item": "pipe",
+    "glow_color": "1",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "creature_make",
+   "args": {
+    "name": "rat_drone",
+    "kind": "rat_drone",
+    "palette": "gutter market",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "creature_make",
+   "args": {
+    "name": "hover_drone",
+    "kind": "hover_drone",
+    "palette": "gutter market",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "creature_make",
+   "args": {
+    "name": "vending_mimic",
+    "kind": "vending_mimic",
+    "palette": "gutter market",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "items_make",
+   "args": {
+    "name": "icons",
+    "palette": "gutter market",
+    "style": "detailed"
+   }
+  },
+  {
+   "tool": "scene_write",
+   "args": "@tools/street.json"
+  },
+  {
+   "tool": "scene_write",
+   "args": "@tools/lab.json"
+  }
+ ]
+}

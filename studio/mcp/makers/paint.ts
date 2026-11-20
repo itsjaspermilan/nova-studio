@@ -226,3 +226,48 @@ export class Img {
 
 /// A soft shadow on the ground under something that stands on it.
 export const SHADOW: Rgba = [20, 18, 40, 70];
+
+const WHITE: Rgba = [255, 255, 255, 255];
+
+/// Light, not paint: the pixels `core` says are the lit tube or lamp become a bright core (the accent near white), the
+/// pixels beside them the accent itself (unless `ring` is false), and one pixel further out a soft halo dithered over what
+/// is there (every other pixel, the accent's dark shade mixed in, or half see-through where nothing is drawn). `ring`
+/// thin strokes skip the solid ring so a 1-pixel line stays a line with a glow, not a 3-pixel bar.
+export function glow(img: Img, core: (x: number, y: number) => boolean, acc: Ramp, o: { ring?: boolean; halo?: boolean; hot?: number; keep?: boolean } = {}) {
+  const ring = o.ring ?? true, halo = o.halo ?? true;
+  const w = img.w, h = img.h;
+  const at = new Uint8Array(w * h); // 1 core, 2 ring, 3 halo
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (core(x, y)) at[y * w + x] = 1;
+  const grow = (from: number, to: number, diagonal: boolean) => {
+    const add: number[] = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (at[y * w + x]) continue;
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if ((!dx && !dy) || (!diagonal && dx && dy)) continue;
+        const xx = x + dx, yy = y + dy;
+        if (xx >= 0 && yy >= 0 && xx < w && yy < h && at[yy * w + xx] === from) {
+          near = true;
+          break;
+        }
+      }
+      if (near) add.push(y * w + x);
+    }
+    for (const i of add) at[i] = to;
+  };
+  if (ring) grow(1, 2, false);
+  if (halo) grow(ring ? 2 : 1, 3, true);
+  const hot = mix(acc[2], WHITE, o.hot ?? 0.62);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const k = at[y * w + x];
+    if (k === 1) {
+      if (!o.keep) img.set(x, y, hot);
+    }
+    else if (k === 2) img.set(x, y, acc[2]);
+    else if (k === 3 && (x + y) % 2 === 0) {
+      const now = img.get(x, y);
+      if (now && now[3] > 200) img.set(x, y, mix(now, acc[1], 0.55));
+      else img.set(x, y, [acc[1][0], acc[1][1], acc[1][2], 150]);
+    }
+  }
+}

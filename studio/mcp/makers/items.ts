@@ -5,6 +5,9 @@
 import { Img, mix, ramp, type Ramp, type Rgba } from "./paint";
 import { lit, paletteOf, type Palette } from "./palettes";
 import { writeSheet, type Put } from "./sheet";
+import { HD_ITEMS, hdItemLook } from "./items-hd";
+import { styleOf } from "./style";
+import { CARD_FAMILIES, CITY_ITEM_NAMES, CITY_ITEMS, RARITIES, type CityLook } from "./city-items";
 
 type Args = Record<string, any>;
 
@@ -176,7 +179,9 @@ const ALL: { name: string; draw: (L: Look) => Img }[] = [
   { name: "sword", draw: sword },
 ];
 
-export const ITEM_NAMES = ALL.map((i) => i.name);
+export const CLASSIC_ITEM_NAMES = ALL.map((i) => i.name);
+export const ITEM_NAMES = [...CLASSIC_ITEM_NAMES, ...CITY_ITEM_NAMES];
+export { CITY_ITEM_NAMES };
 
 /// `items_make`: see the tool's description in makers/index.ts.
 export function makeItems(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
@@ -193,22 +198,53 @@ export function makeItems(name: string, a: Args, put: Put): { text: string; pict
     empty: ramp(mix(P.outline, P.mat.flower[0], 0.35)),
     glass: ramp(t([200, 222, 236, 255])),
   };
-  const frames = ALL.map((i) => i.draw(L));
+  const C: CityLook = { P, metal: L.metal, gold: L.gold, dark: P.outline };
+  const every = [...ALL.map((i) => ({ name: i.name, draw: () => i.draw(L) })), ...CITY_ITEMS.map((i) => ({ name: i.name, draw: () => i.draw(C) }))];
+  const hd = styleOf(a) === "detailed";
+  let wanted: string[] = P.city || hd ? CITY_ITEM_NAMES : CLASSIC_ITEM_NAMES;
+  if (a.items !== undefined) {
+    if (!Array.isArray(a.items)) throw new Error(`"items" is a list of names from: ${ITEM_NAMES.join(", ")}`);
+    wanted = a.items.map((n: unknown) => String(n).trim().toLowerCase().replace(/[ -]/g, "_"));
+    const bad = wanted.filter((n) => !ITEM_NAMES.includes(n));
+    if (bad.length) throw new Error(`"items" names ${bad.map((b) => `'${b}'`).join(", ")}, which the maker does not have. It has: ${ITEM_NAMES.join(", ")}`);
+  }
+  if (hd) {
+    const missing = wanted.filter((n) => !HD_ITEMS[n]);
+    if (missing.length) throw new Error(`the detailed style is drawn for the city's icons: ${missing.map((m) => `'${m}'`).join(", ")} ${missing.length > 1 ? "have" : "has"} no detailed drawing (it has ${CITY_ITEM_NAMES.join(", ")})`);
+    const HL = hdItemLook(P, P.mat.metal[2], P.mat.gold[2]);
+    for (const e of every) if (HD_ITEMS[e.name]) e.draw = () => HD_ITEMS[e.name]!(HL);
+  }
+  const list = every.filter((i) => wanted.includes(i.name));
+  const frames = list.map((i) => i.draw());
   const names: Record<number, string> = {};
-  ALL.forEach((i, n) => (names[n] = i.name));
-  const at = (n: string) => ITEM_NAMES.indexOf(n);
-  const durations = ALL.map((i) => (i.name.startsWith("coin") ? 110 : 200));
-  const made = writeSheet(name, {
-    frames, names, durations,
-    tags: [{ name: "coin", from: at("coin"), to: at("coin_4") }, { name: "chest", from: at("chest_closed"), to: at("chest_open"), loop: false }],
-  }, put);
+  list.forEach((i, n) => (names[n] = i.name));
+  const at = (n: string) => list.findIndex((i) => i.name === n);
+  const durations = list.map((i) => (i.name.startsWith("coin") ? 110 : i.name.startsWith("prompt") ? 300 : 200));
+  const tags: { name: string; from: number; to: number; loop?: boolean }[] = [];
+  const tag = (tn: string, from: string, to: string, loop?: boolean) => {
+    if (at(from) >= 0 && at(to) - at(from) === CHAIN[to]!) tags.push({ name: tn, from: at(from), to: at(to), ...(loop === false ? { loop } : {}) });
+  };
+  tag("coin", "coin", "coin_4");
+  tag("chest", "chest_closed", "chest_open", false);
+  tag("prompt", "prompt_ring", "prompt_ring_2");
+  const made = writeSheet(name, { frames, names, durations, tags }, put);
+  const classic = at("heart_full") >= 0;
   return {
     text: [
       made.text,
-      `palette "${P.name}". Draw one by its frame number: nova.sprite("${name}", x, y, { frame = ${at("heart_full")}, sx = 3, sy = 3 }) is a full heart (in draw_ui, screen coordinates; in an entity's own draw() use nova.cam.to_screen).`,
-      `An entity that is one of them: sprite = "${name}", frame = ${at("key")} (the key); a coin that spins: sprite = "${name}", anim = "coin"; a chest: frame = ${at("chest_closed")}, then self:play("chest") when it is opened.`,
-      `Change one afterwards with sprite_preview { "name": "${name}", "frame": "gem" } and sprite_write { "at": n }; add your own with "append": true.`,
+      ...(classic
+        ? [
+            `palette "${P.name}". Draw one by its frame number: nova.sprite("${name}", x, y, { frame = ${at("heart_full")}, sx = 3, sy = 3 }) is a full heart (in draw_ui, screen coordinates; in an entity's own draw() use nova.cam.to_screen).`,
+            `An entity that is one of them: sprite = "${name}", frame = ${at("key")} (the key); a coin that spins: sprite = "${name}", anim = "coin"; a chest: frame = ${at("chest_closed")}, then self:play("chest") when it is opened.`,
+          ]
+        : [
+            `palette "${P.name}". Draw one by its frame number or name: nova.ui.sprite("${name}", x, y, { frame = ${Math.max(0, at(list[0]!.name))}, sx = ${hd ? 1.5 : 3}, sy = ${hd ? 1.5 : 3} }) is ${list[0]!.name}. ${hd ? "Every icon is 32x32 (the detailed style). " : ""}Cards are ${hd ? "22 wide in their 32x32" : "12 wide in their 16x16"} frame: card_<family>_<rarity> for the families ${CARD_FAMILIES.join(", ")} and the rarities ${RARITIES.join(", ")}.${at("prompt_ring") >= 0 ? ` The interact prompt pulses: anim = "prompt".` : ""}`,
+          ]),
+      `Change one afterwards with sprite_preview { "name": "${name}", "frame": "${list[Math.min(8, list.length - 1)]!.name}" } and sprite_write { "at": n }; add your own with "append": true.`,
     ].join("\n"),
     picture: made.picture,
   };
 }
+
+/// How many frames from an animation's first to its last.
+const CHAIN: Record<string, number> = { coin_4: 3, chest_open: 1, prompt_ring_2: 1 };

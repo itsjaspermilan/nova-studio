@@ -1,0 +1,25 @@
+{
+  "route": [
+    { "wait": 20, "capture": "the street at night" },
+    { "hold": ["down"], "frames": 24, "capture": "walking down" },
+    { "hold": ["left"], "frames": 40, "capture": "walking left" },
+    { "hold": ["right"], "frames": 30, "capture": "walking right" },
+    { "hold": ["up"], "frames": 12, "capture": "walking up" },
+    { "lua": "local r, s = nova.named('runner'), nova.named('scrapper') if s then r.x, r.y = s.x + 70, s.y; r.facing = 'left' end" },
+    { "wait": 20, "capture": "the Scrapper's wind-up" },
+    { "press": "attack" },
+    { "wait": 4, "capture": "the baton's arc" },
+    { "lua": "local r = nova.named('runner') r.x, r.y = 940, 700" },
+    { "wait": 30, "capture": "the mimic wakes" },
+    { "wait": 20, "capture": "the mimic open" },
+    { "lua": "local r = nova.named('runner') r.x, r.y = 1000, 470" },
+    { "wait": 40, "capture": "the drones" },
+    { "lua": "local r = nova.named('runner') r.x, r.y = 648, 130" },
+    { "hold": ["up"], "until": "nova.current_scene() == 'lab'", "max": 60 },
+    { "wait": 10, "capture": "Bloom Labs" },
+    { "hold": ["down"], "frames": 60, "capture": "in the lab" }
+  ],
+  "print": ["nova.current_scene()", "nova.count('enemy')"],
+  "out": "build/play",
+  "columns": 3
+}

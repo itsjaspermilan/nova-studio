@@ -4,7 +4,11 @@
 // Same rules as the other makers: light from the top left, the palette's outline, a soft shadow on the ground.
 
 import { colourOf, Img, mix, ramp, shade, SHADOW, type Ramp, type Rgba } from "./paint";
-import { lit, paletteOf } from "./palettes";
+import { accentOf, lit, paletteOf } from "./palettes";
+import { CITY_CREATURE_NAMES, CITY_CREATURES, cityCtx, cityFrames, up } from "./city-creatures";
+import { HD_CREATURE_NAMES, hdFrames } from "./creatures-hd";
+import { hdRamp } from "./pix3d";
+import { styleOf } from "./style";
 import { writeSheet, type Put } from "./sheet";
 
 type Args = Record<string, any>;
@@ -214,12 +218,16 @@ const KINDS: Record<string, Kind> = {
   },
 };
 
-export const CREATURES = Object.keys(KINDS);
+export const CLASSIC_CREATURES = Object.keys(KINDS);
+export const CREATURES = [...CLASSIC_CREATURES, ...CITY_CREATURE_NAMES];
 export const CREATURE_SIZES = [16, 24, 32];
+export { CITY_CREATURE_NAMES };
 
 /// `creature_make`: see the tool's description in makers/index.ts.
 export function makeCreature(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
-  const kindName = String(a.kind ?? "").trim().toLowerCase();
+  const kindName = String(a.kind ?? "").trim().toLowerCase().replace(/[ -]/g, "_");
+  if (styleOf(a) === "detailed") return makeHdCreature(name, kindName, a, put);
+  if (CITY_CREATURES[kindName]) return makeCityCreature(name, kindName, a, put);
   const kind = KINDS[kindName];
   if (!kind) throw new Error(`"kind" is one of ${CREATURES.join(", ")} (got '${a.kind ?? ""}')`);
   const n = a.size === undefined ? 16 : Number(a.size);
@@ -263,6 +271,72 @@ export function makeCreature(name: string, a: Args, put: Put): { text: string; p
       `animations: idle (2 frames), move (4), hit (1: the white copy to show for a moment when it is hurt, then go back to "idle")`,
       `In its entity: sprite = "${name}", anim = "idle", pivot = { 0.5, ${Math.round(((n - 2 * c.k) / n) * 1000) / 1000} }, hitbox = { ${box.x - n / 2}, ${box.y - (n - 2 * c.k)}, ${box.w}, ${box.h} }, sx = 3, sy = 3, tags = { "enemy" }; self.flip_x = true faces it the other way.`,
       `Another colour: "color" and "second_color"; change a frame afterwards with sprite_write { "at": n }.`,
+    ].join("\n"),
+    picture: made.picture,
+  };
+}
+
+/// A city archetype (city-creatures.ts): drawn at its own size, its states tagged by name, a tell and a hit frame.
+function makeCityCreature(name: string, kindName: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
+  const kind = CITY_CREATURES[kindName]!;
+  const D = kind.size;
+  const n = a.size === undefined ? D : Number(a.size);
+  if (![16, 24, 32, 48].includes(n)) throw new Error(`"size" is the frame's size in pixels: 16, 24, 32 or 48 (a ${kindName} is drawn at ${D}, which is what it is when left out)`);
+  const P = paletteOf(a.palette);
+  const c = cityCtx(
+    D, P,
+    ramp(lit(P, colourOf(a.color ?? a.colour, '"color"', kind.colour))),
+    ramp(lit(P, colourOf(a.second_color ?? a.second_colour, '"second_color"', kind.second))),
+    accentOf(P, a.glow_color ?? a.glow_colour, '"glow_color"') ?? P.accent[0],
+  );
+  const made0 = cityFrames(kind, c);
+  const frames = made0.frames.map((f) => up(f, n / D));
+  const k = n / D;
+  const [px, py] = kind.pivot?.(D) ?? [D / 2, D - Math.round(D / 8)];
+  const pivot = { x: Math.round(px * k), y: Math.round(py * k) };
+  const box = { x: Math.round(D * 0.2 * k), y: Math.round(D * 0.35 * k), w: Math.round(D * 0.6 * k), h: pivot.y - Math.round(D * 0.35 * k) };
+  const names: Record<number, string> = {};
+  for (const [nm, f] of Object.entries(kind.names ?? {})) names[f] = nm;
+  const made = writeSheet(name, { frames, tags: made0.tags, durations: made0.durations, hitbox: box, pivot, names }, put);
+  const states = made0.tags.map((t) => `${t.name} (${t.to - t.from + 1})`).join(", ");
+  return {
+    text: [
+      made.text,
+      `${kindName}: ${kind.what}; drawn at ${D}x${D}${n !== D ? `, made ${n}x${n}` : ""}; palette "${P.name}"`,
+      `animations: ${states}. "tell" is the moment before it hurts (its outline and lights flash in the glow colour): show it 0.4 s before the attack. "hit" is the white copy to show for a moment when it is hurt.`,
+      `In its entity: sprite = "${name}", anim = "${made0.tags[0]!.name}", pivot = { ${Math.round((pivot.x / n) * 1000) / 1000}, ${Math.round((pivot.y / n) * 1000) / 1000} }, hitbox = { ${box.x - pivot.x}, ${box.y - pivot.y}, ${box.w}, ${box.h} }, sx = 3, sy = 3, tags = { "enemy" }; self.flip_x = true faces it the other way.`,
+    ].join("\n"),
+    picture: made.picture,
+  };
+}
+
+/// A city archetype in the detailed style (creatures-hd.ts): twice the pixels, drawn with sx = 1.5.
+function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
+  if (!HD_CREATURE_NAMES.includes(kindName)) throw new Error(`"kind": the detailed style is drawn for the city's archetypes: ${HD_CREATURE_NAMES.join(", ")} (got '${a.kind ?? ""}')`);
+  if (a.size !== undefined) throw new Error(`"size": a detailed archetype has its own size (leave "size" out)`);
+  const kind = CITY_CREATURES[kindName]!;
+  const P = paletteOf(a.palette);
+  const warm = mix(P.accent[0][2], [255, 255, 255, 255], 0.65);
+  const made0 = hdFrames(kindName, {
+    P,
+    r: hdRamp(lit(P, colourOf(a.color ?? a.colour, '"color"', kind.colour)), warm),
+    r2: hdRamp(lit(P, colourOf(a.second_color ?? a.second_colour, '"second_color"', kind.second)), warm),
+    acc: accentOf(P, a.glow_color ?? a.glow_colour, '"glow_color"') ?? P.accent[0],
+    metal: hdRamp(lit(P, P.mat.metal[2]), warm),
+    dark: hdRamp(lit(P, mix(P.mat.metal[1], P.outline, 0.45)), warm),
+  });
+  const n = made0.size;
+  const pivot = { x: n / 2, y: made0.oy + 1 };
+  const box = { x: Math.round(n * 0.22), y: Math.round(n * 0.45), w: Math.round(n * 0.56), h: pivot.y - Math.round(n * 0.45) };
+  const names: Record<number, string> = {};
+  if (kindName === "crane_arm") Object.assign(names, { 0: "base", 1: "arm", 2: "magnet" });
+  const made = writeSheet(name, { frames: made0.frames, tags: made0.tags, durations: made0.durations, hitbox: box, pivot, names }, put);
+  return {
+    text: [
+      made.text,
+      `${kindName} in the detailed style: ${kind.what}; ${n}x${n} frames, palette "${P.name}"`,
+      `animations: ${made0.tags.map((t) => `${t.name} (${t.to - t.from + 1})`).join(", ")}. "tell" is the moment before it hurts (its edge lights up in the glow colour): show it 0.4 s before the attack. "hit" is the white copy for when it is hurt.`,
+      `In its entity: sprite = "${name}", anim = "${made0.tags[0]!.name}", pivot = { 0.5, ${Math.round((pivot.y / n) * 1000) / 1000} }, hitbox = { ${box.x - pivot.x}, ${box.y - pivot.y}, ${box.w}, ${box.h} }, sx = 1.5, sy = 1.5, tags = { "enemy" }.`,
     ].join("\n"),
     picture: made.picture,
   };

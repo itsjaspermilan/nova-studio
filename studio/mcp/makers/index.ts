@@ -6,13 +6,14 @@
 
 import type { Raster } from "../../src/lib/pixels";
 import { BUILDS, CHARACTER_SIZES, HAIR_STYLES, HATS, ITEMS, makeCharacter, OUTFITS, SKINS } from "./character";
-import { CREATURES, makeCreature } from "./creature";
-import { ITEM_NAMES, makeItems } from "./items";
+import { CITY_CREATURE_NAMES, CREATURES, makeCreature } from "./creature";
+import { CITY_ITEM_NAMES, CLASSIC_ITEM_NAMES, makeItems } from "./items";
 import { DYES } from "./paint";
 import { makeSong, MOOD_NAMES, MOODS } from "./song";
 import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
 import { register3d } from "./index3d";
+import { STYLE_OPTION } from "./style";
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -45,6 +46,7 @@ export function registerMakers(h: Host): Record<string, Args> {
     {
       name: { type: "string", description: 'The tileset\'s name ("tiles").' },
       palette: PALETTE,
+      style: STYLE_OPTION,
       tile: { type: "number", description: `The tile size in pixels: ${TILE_SIZES.join(", ")} (16 when left out, which is the size the drawings are tuned for; draw it with "scale": 3).` },
       terrains: { type: "array", items: { type: "string" }, description: `Only these terrains (all when left out): ${TERRAIN_NAMES.join(", ")}.` },
       props: { type: "array", items: { type: "string" }, description: `Only these props (all when left out): ${PROP_NAMES.join(", ")}.` },
@@ -79,9 +81,11 @@ export function registerMakers(h: Host): Record<string, Args> {
       outfit_color: { type: "string" },
       trim_color: { type: "string", description: "The belt and trousers, a robe's hem, a cap." },
       shoe_color: { type: "string" },
-      hat: { type: "string", description: HATS.join(", ") },
-      item: { type: "string", description: `What the swing is made with: ${ITEMS.join(", ")}.` },
+      hat: { type: "string", description: `${HATS.join(", ")}. The city's: visor (a lit band across the eyes), mohawk (the haircut), riot_helmet (a dark dome with a lit strip and a face shield), gas_mask, cyber_eye (one lit eye).` },
+      item: { type: "string", description: `What the swing is made with: ${ITEMS.join(", ")}. The city's are carried in every frame: baton (its shaft lit in glow_color; its swing leaves an arc in that colour), pipe (the same arc), pistol and rifle (aimed: their attack raises, fires with a flash at the muzzle, and kicks), shield (a riot shield held in front; the attack is a bash), bottle (thrown).` },
+      glow_color: { type: "string", description: 'What glows on the city parts (a visor, a long coat\'s hem, a riot_armor\'s strip, a baton, a gas mask\'s lenses, a muzzle flash, the swing\'s arc): 1 or 2 for the palette\'s accents, or a colour ("#35e6ff", "cyan"). Accent 1 when left out.' },
       palette: PALETTE,
+      style: STYLE_OPTION,
     },
     ["name"],
     (a) => {
@@ -95,14 +99,17 @@ export function registerMakers(h: Host): Record<string, Args> {
     "creature_make",
     `Make a creature's sprite sheet from an archetype: ${CREATURES.join(", ")}. \`sprites/<name>.png\` and \`.sprite.json\` with "idle" (2 frames), "move" (4) and "hit" (a white copy to show for a moment when it is hurt). ` +
       "`color` and `second_color` (eyes, markings) recolour it: the same slime in green, blue and red is three enemies. `size` is the frame in pixels (16, 24 or 32). " +
+      `The city's archetypes (${CITY_CREATURE_NAMES.join(", ")}) are drawn at their own size with the states their job needs (turret: idle, turn, fire; bloom_pod and vending_mimic: closed, open; mine: idle, armed; spore_hound: leap; crane_arm: base, arm, then its magnet's idle and move), and each has a "tell" frame, its outline and lights flashing in \`glow_color\`, to show just before it attacks. The vending_mimic shut is exactly tileset_make's vending_machine in the same palette. ` +
       "The answer gives the pivot and hitbox for its entity. It returns the same picture as sprite_preview; the sheet is an ordinary sprite afterwards.",
     {
       name: { type: "string" },
       kind: { type: "string", description: CREATURES.join(", ") },
       color: { type: "string", description: '"#rrggbb" or a colour word (red, blue, purple, bone, ...). Each kind has its own when left out.' },
       second_color: { type: "string" },
-      size: { type: "number", description: "16 (when left out), 24 or 32." },
+      glow_color: { type: "string", description: "The city archetypes' lights and their tell: 1 or 2 for the palette's accents, or a colour. Accent 1 when left out." },
+      size: { type: "number", description: "16 (when left out), 24 or 32; a city archetype is its own size when left out (16, 24 or 32) and may be made 48." },
       palette: PALETTE,
+      style: STYLE_OPTION,
     },
     ["name", "kind"],
     (a) => {
@@ -114,9 +121,14 @@ export function registerMakers(h: Host): Record<string, Args> {
 
   h.tool(
     "items_make",
-    `Make the item icons of an adventure as one sheet of 16x16 frames, \`sprites/<name>.png\`: ${ITEM_NAMES.join(", ")}. Every frame is named; "coin" is tagged as a spinning animation and "chest" as the chest opening. ` +
+    `Make the item icons of an adventure as one sheet of 16x16 frames, \`sprites/<name>.png\`: ${CLASSIC_ITEM_NAMES.join(", ")}; with a city palette (or named in \`items\`) the city's: ${CITY_ITEM_NAMES.join(", ")}. Every frame is named; "coin" is tagged as a spinning animation, "chest" as the chest opening, "prompt" as the interact ring's pulse. ` +
       "Draw one by its frame number, or make an entity of one (the answer shows how). It returns the same picture as sprite_preview; add your own icons afterwards with sprite_write `append`.",
-    { name: { type: "string", description: 'The sheet\'s name ("items").' }, palette: PALETTE },
+    {
+      name: { type: "string", description: 'The sheet\'s name ("items").' },
+      palette: PALETTE,
+      style: STYLE_OPTION,
+      items: { type: "array", items: { type: "string" }, description: `Only these icons, from all of both sets (the palette's set when left out: the city's for a city palette).` },
+    },
     ["name"],
     (a) => {
       const root = h.root(a);

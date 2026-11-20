@@ -1,0 +1,110 @@
+{
+  "name": "street",
+  "image_out": "build/kit/street-map.png",
+  "scene": {
+    "version": 1,
+    "background": [
+      8,
+      9,
+      16
+    ],
+    "width": 1440,
+    "height": 864,
+    "objects": [
+      {
+        "kind": "runner",
+        "name": "runner",
+        "x": 648,
+        "y": 160
+      },
+      {
+        "kind": "door",
+        "name": "to_lab",
+        "x": 648,
+        "y": 90,
+        "props": {
+          "to": "lab",
+          "to_x": 936,
+          "to_y": 160
+        }
+      },
+      {
+        "kind": "scrapper",
+        "name": "scrapper",
+        "x": 430,
+        "y": 380
+      },
+      {
+        "kind": "rat_drone",
+        "name": "rat",
+        "x": 900,
+        "y": 560
+      },
+      {
+        "kind": "hover_drone",
+        "name": "drone",
+        "x": 1150,
+        "y": 330
+      },
+      {
+        "kind": "vending_mimic",
+        "name": "mimic",
+        "x": 984,
+        "y": 759
+      }
+    ],
+    "tilemaps": [
+      {
+        "name": "ground",
+        "tileset": "market",
+        "scale": 1.5,
+        "seed": 4,
+        "paint": {
+          "a": "asphalt",
+          "p": "pavement",
+          "u": "puddle",
+          "C": "concrete_wall",
+          "M": "metal_wall",
+          "r": "tram_rail",
+          "n": "neon_strip",
+          "N": "neon_strip2",
+          "S": "stall",
+          "V": "vending_machine",
+          "L": "street_lamp",
+          "b": "bin",
+          "c": "cargo_crate",
+          "x": "explosive_barrel",
+          "o": "sign_bowl",
+          "e": "sign_eye",
+          ">": "sign_arrow",
+          "+": "sign_cross",
+          "=": "sign_bars",
+          "H": "shutter",
+          "h": "shutter_open",
+          "m": "manhole",
+          "B": "bench"
+        },
+        "tiles": [
+          "CCCCCCCCCMMMMMMMMMCCCCCCCCCCCC",
+          "CCCHCCCCCMMMMhMMMMCCCCCHCCCCCC",
+          "pppppppppppppppppppppppppppppp",
+          "pVpSpppLpbpcVpppSppppLpppbpcxp",
+          "pppppppppppppppppppppppppppppp",
+          "aaoaaaaaeaaaaa=aaaaaa>aaaaa+aa",
+          "aaauaaaaaaaaaaaaaaaaaaaaaauaaa",
+          "aauuuaaaaaaaaaaaauuaaaaaauuuaa",
+          "aaauuuaaaaaaaaaauuuuaaaaaauaaa",
+          "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "aaaaaaaauuaaaaaaaaaaaaauuaaaaa",
+          "aaamaaauuuuaaaaaaaaaaauuuuaaaa",
+          "aaaaaaaauuaaaaaaaaaaaaaaaaaaaa",
+          "pppppppppppppppppppppppppppppp",
+          "ppLppBppppnnnnnnnnnppppLppbppp",
+          "MMMMMMMMMMCCCCCCCCCCMMMMMMMMMM",
+          "MMMMMMMMMMCCCCCCCCCCMMMMMMMMMM"
+        ]
+      }
+    ]
+  }
+}
