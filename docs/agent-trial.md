@@ -112,3 +112,38 @@ What still costs, for batch 3:
    the third time, no top-down plan of a 3D scene, no contact sheet of several models.
 4. **Art:** textured fills, cutting one drawing into tiles, two-tile trees: the makers batch.
 5. **Hearing:** the numbers are trusted now; whether a tune is pleasant is not answerable by a tool.
+
+### Round 4 (after batch 3 and the first makers, 2026-11-20)
+
+| Brief, model | Folder | Stalls | Tool calls | Minutes | Notes |
+|---|---|---|---|---|---|
+| 2D, Sonnet 5.5 | `sonnet-r4` ("Emberwood Key") | 14 | 49 | 5 | All art from the makers, sounds by purpose, the song by mood. One route plays the whole game with no extra hearts. Read `examples/maker-demo` (which resembles the brief) for the API; copied no assets. |
+| 2D, Fable 5.2 | `fable-r4` ("Emberwick") | 12 | 40 | 6 | Makers in the autumn palette plus one hand-drawn sprite; two endings; the test player loses two half-hearts of six. |
+| 3D, Fable 5.2 | `fable3d-r4` ("Ruin Garden") | 20 | 72 | 17 | 21 models, clip events, a walked six-gem route. Seven runs lost to `walk_to` stopping in the open or driving into bases; the `walk` maker crouches; the camera's collision ignores scene scenery; the guide has no 3D path. |
+
+Across four rounds: 2D Sonnet 92 -> 83 -> 60 -> 49 calls and 13 -> 10 -> 9 -> 5 minutes; 2D Fable 86 -> 59 -> 48 -> 40 calls and
+26 -> 14 -> 11 -> 6 minutes; 3D Fable 70 -> 70 -> 130 -> 72 calls and 19 -> 14 -> 18 -> 17 minutes. 2D is where it should be: about five
+minutes for a complete, good-looking game, most of it made by the makers. 3D has not moved, because it has had tools for checking but no
+makers, no starter and no path in the guide: that is batch 4. One run each, and round 4's 2D brief resembles the makers' demo, which
+both agents could read: a direction, not a measurement.
+
+What 2D still costs (small, for a later pass): `check` passes when Lua names a sound, sprite or scene that does not exist; nothing says
+a scene is rebuilt when re-entered; an entity's own `draw()` replaces its sprite in silence; `walk_to` by tag follows on to the next
+match after a scene change; text width in the pixel font is a guess; `nova.music.play` restarts the song that is playing; tool answers
+are long with the picture path at the end; the `topdown` template cannot be used under a "no copied assets" rule.
+
+### Round 5, 3D only (after batch 4: 3D fixes, makers, starter and guide path, 2026-11-20)
+
+| Brief, model | Folder | Stalls | Notes |
+|---|---|---|---|
+| 3D, Sonnet 5.5 | `sonnet3d-r5` ("Lantern Hollow") | 12 | The first Sonnet run of the 3D brief, so nothing earlier to compare with; interrupted once by a usage limit, so its calls and minutes are not comparable either. Finished: a 15-part hero with idle, walk (the `walk` option), jump (`ik`), wave; nine hand-made props; a walked route to all five crystals with footsteps on the clip's events; soles at 0.000. It took "model and rig yourself" literally and used only `ground3d_make` of the makers. |
+
+The Fable run of this round was stopped to save usage (trials run on Sonnet from here on). What it shows: the walking, camera and
+clip fixes hold (no lost runs to `walk_to`), and a Sonnet agent can finish the 3D brief. What it does not show: whether agents reach for
+`character3d_make` and `prop3d_make`, because the brief's wording ("a character you model and rig yourself", "props you model
+yourself") steers away from them. The next 3D probe should be a short one that allows the makers. Still costing: the `ik` clip's
+warnings do not give the leg's reach or say planted feet need unchanged x and z; no tool turns a clip's no-slide speed and a playback
+rate into a movement speed; a capture cannot follow an entity or look at it from the side; which side `_l` is goes unstated.
+
+From here on (decided with the owner, 2026-11-20): Sonnet builds and runs trials, Opus changes Nova itself and reviews once per batch,
+and trials are small probes of one thing rather than whole games.
