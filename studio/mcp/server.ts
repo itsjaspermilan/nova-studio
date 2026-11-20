@@ -32,6 +32,7 @@ import { analyse, describe, mixTable, spectrogram, stack, type Source } from "./
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene, roomWarning } from "./scenes";
 import { expandPaint } from "./makers/terrain-paint";
+import { PURPOSE_NAMES, purposeParams } from "./makers/sound";
 import { registerMakers } from "./makers";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
@@ -252,18 +253,24 @@ tool(
 
 tool(
   "sfx_write",
-  `Write a sound effect: \`sounds/<name>.sfx.json\` (the sound editor's settings) and \`sounds/<name>.wav\`. Start from a preset (${Object.keys(PRESETS).join(", ")}) and/or give parameters: ` +
+  `Write a sound effect: \`sounds/<name>.sfx.json\` (the sound editor's settings) and \`sounds/<name>.wav\`. The quickest way is a \`purpose\` (${PURPOSE_NAMES.join(", ")}): an effect tuned for that job, with \`seed\` for variants. Or start from a preset (${Object.keys(PRESETS).join(", ")}) and/or give parameters: ` +
     Object.entries(RANGES).map(([k, r]) => `${k} ${r.min}..${r.max}`).join(", ") + `, wave (${WAVES.join("|")}), seed. ` +
     "What they mean: the sound lasts attack + sustain + decay seconds (at most 4). `freq` is the pitch in Hz at the start (440 is the A above middle C; 880 an octave up); `slide` bends it by octaves per second (negative falls: a laser, a fall), `freqLimit` cuts the sound off when the pitch falls below it. " +
     "For the `noise` wave `freq` is how often the noise takes a new random value, so it sets the colour, not a pitch, and most of the energy lies below about half of it: 3000 (the top) is a bright crunch (a hit, an explosion, steps on gravel), 800 to 1500 a duller rattle, and below about 200 a rumble of slow thuds that small speakers cannot play (a footstep at freq 30 to 70 is nearly inaudible on a handheld: use 1500 to 3000 with a short decay, and a `highpass` of 500 or more for a hiss). " +
     "`arpSemitones` jumps the pitch once after `arpTime` seconds (a coin: 12). For a little tune give `arpNotes`, semitones from `freq`, one every `arpTime` seconds after the first note: { \"freq\": 523, \"arpTime\": 0.11, \"arpNotes\": [4, 7, 12], \"sustain\": 0.4 } is a four-note rising fanfare (one envelope over the whole tune; for separate notes with their own attack write a short song with song_write and play it as a sound). " +
     "`punch` adds a loud start, `lowpass` and `highpass` (Hz) soften or thin it, `duty` is the square wave's width (0.5 hollow, 0.1 thin and nasal). It returns the sound_report of what it made (level, where the energy sits, warnings). In Lua: nova.sound.play(\"<name>\", { volume = 0.8, pitch = 1.1 }).",
-  { name: { type: "string" }, preset: { type: "string" }, params: { type: "object" } },
+  {
+    name: { type: "string" },
+    purpose: { type: "string", description: `What the sound is for: ${PURPOSE_NAMES.join(", ")}. A tuned effect that passes sound_report as it is; \`params\` still change it.` },
+    seed: { type: "number", description: "With a purpose: another seed is a variant of the same effect (a little higher or lower, shorter or longer), so three footsteps need not sound alike." },
+    preset: { type: "string" },
+    params: { type: "object" },
+  },
   ["name"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Sound");
-    const base = a.preset ? PRESETS[String(a.preset)] : DEFAULTS;
+    const base = a.purpose !== undefined ? purposeParams(a.purpose, a.seed) : a.preset ? PRESETS[String(a.preset)] : DEFAULTS;
     if (!base) throw new Error(`unknown preset '${a.preset}' (${Object.keys(PRESETS).join(", ")})`);
     const known = new Set([...Object.keys(RANGES), "wave", "seed", "arpNotes"]);
     const unknown = Object.keys(a.params ?? {}).filter((k) => !known.has(k));

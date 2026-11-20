@@ -5,6 +5,11 @@
 // tools: sprite_write (`at`, `append`), scene_write, sfx_write, song_write.
 
 import type { Raster } from "../../src/lib/pixels";
+import { BUILDS, CHARACTER_SIZES, HAIR_STYLES, HATS, ITEMS, makeCharacter, OUTFITS, SKINS } from "./character";
+import { CREATURES, makeCreature } from "./creature";
+import { ITEM_NAMES, makeItems } from "./items";
+import { DYES } from "./paint";
+import { makeSong, MOOD_NAMES, MOODS } from "./song";
 import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
 
@@ -53,7 +58,101 @@ export function registerMakers(h: Host): Record<string, Args> {
     },
   );
 
+  const picture = (label: string, r: { text: string; picture: Raster }): Result => ({ text: r.text, images: [h.keepPicture(label, r.picture)] });
+
+  h.tool(
+    "character_make",
+    "Make a top-down character sheet from parts, instead of drawing forty frames: `sprites/<name>.png` and `.sprite.json`. " +
+      `Parts: build (${BUILDS.join(", ")}), skin (${Object.keys(SKINS).join(", ")}, or a colour), hair (${HAIR_STYLES.join(", ")}) and hair_color, outfit (${OUTFITS.join(", ")}) with outfit_color and trim_color (belt, trousers, hem), hat (${HATS.join(", ")}), item (${ITEMS.join(", ")}: what it swings). Colours are "#rrggbb" or a word (${Object.keys(DYES).slice(0, 12).join(", ")}, ...). ` +
+      'It draws idle (2 frames), a 4-frame walk, a 3-frame swing with the item and a hurt frame, each facing down, left, right and up, tagged "idle_down", "walk_left", "attack_right", "hurt_up" and so on, so an entity plays them by name: self:play("walk_" .. dir). ' +
+      `The body is ${CHARACTER_SIZES.join(" or ")} pixels (\`size\`), drawn in the middle of a 32x32 or 48x48 frame so the swing has room: the answer gives the pivot (the feet) and the feet's hitbox to put in the entity, and both are in the .sprite.json. ` +
+      "It returns the same picture as sprite_preview (every frame, and a strip per animation). The sheet is an ordinary sprite afterwards: fix a frame with sprite_write `at`.",
+    {
+      name: { type: "string", description: 'The sprite\'s name ("hero").' },
+      size: { type: "string", description: `The body's size: ${CHARACTER_SIZES.map((s) => `"${s}"`).join(" or ")} ("16x24" when left out; at "sx": 3 that is 72 units of the 540 the screen is high).` },
+      build: { type: "string", description: BUILDS.join(", ") },
+      skin: { type: "string", description: `${Object.keys(SKINS).join(", ")}, or "#rrggbb".` },
+      hair: { type: "string", description: HAIR_STYLES.join(", ") },
+      hair_color: { type: "string" },
+      outfit: { type: "string", description: OUTFITS.join(", ") },
+      outfit_color: { type: "string" },
+      trim_color: { type: "string", description: "The belt and trousers, a robe's hem, a cap." },
+      shoe_color: { type: "string" },
+      hat: { type: "string", description: HATS.join(", ") },
+      item: { type: "string", description: `What the swing is made with: ${ITEMS.join(", ")}.` },
+      palette: PALETTE,
+    },
+    ["name"],
+    (a) => {
+      const root = h.root(a);
+      const name = h.safeName(a.name, "Sprite");
+      return picture(`character-${name}`, makeCharacter(name, a, (rel, data) => h.put(root, rel, data)));
+    },
+  );
+
+  h.tool(
+    "creature_make",
+    `Make a creature's sprite sheet from an archetype: ${CREATURES.join(", ")}. \`sprites/<name>.png\` and \`.sprite.json\` with "idle" (2 frames), "move" (4) and "hit" (a white copy to show for a moment when it is hurt). ` +
+      "`color` and `second_color` (eyes, markings) recolour it: the same slime in green, blue and red is three enemies. `size` is the frame in pixels (16, 24 or 32). " +
+      "The answer gives the pivot and hitbox for its entity. It returns the same picture as sprite_preview; the sheet is an ordinary sprite afterwards.",
+    {
+      name: { type: "string" },
+      kind: { type: "string", description: CREATURES.join(", ") },
+      color: { type: "string", description: '"#rrggbb" or a colour word (red, blue, purple, bone, ...). Each kind has its own when left out.' },
+      second_color: { type: "string" },
+      size: { type: "number", description: "16 (when left out), 24 or 32." },
+      palette: PALETTE,
+    },
+    ["name", "kind"],
+    (a) => {
+      const root = h.root(a);
+      const name = h.safeName(a.name, "Sprite");
+      return picture(`creature-${name}`, makeCreature(name, a, (rel, data) => h.put(root, rel, data)));
+    },
+  );
+
+  h.tool(
+    "items_make",
+    `Make the item icons of an adventure as one sheet of 16x16 frames, \`sprites/<name>.png\`: ${ITEM_NAMES.join(", ")}. Every frame is named; "coin" is tagged as a spinning animation and "chest" as the chest opening. ` +
+      "Draw one by its frame number, or make an entity of one (the answer shows how). It returns the same picture as sprite_preview; add your own icons afterwards with sprite_write `append`.",
+    { name: { type: "string", description: 'The sheet\'s name ("items").' }, palette: PALETTE },
+    ["name"],
+    (a) => {
+      const root = h.root(a);
+      const name = h.safeName(a.name, "Sprite");
+      return picture(`items-${name}`, makeItems(name, a, (rel, data) => h.put(root, rel, data)));
+    },
+  );
+
+  h.tool(
+    "song_make",
+    `Make a short looping song from a mood: ${MOOD_NAMES.map((n) => `"${n}" (${MOODS[n]!.what})`).join("; ")}. ` +
+      "It writes `music/<name>.song.json` and the `.ogg` the game streams, exactly as song_write does: a melody, a bass, a harmony part and drums that follow one chord progression and come round to the start. " +
+      "`key` (\"C\", \"A minor\") and `tempo` (beats a minute) change it; `seed` gives another tune in the same mood. It returns the song's sound_report (level, loop seam, warnings) and its picture. " +
+      'The song is an ordinary one afterwards: read_file the .song.json, change notes or instruments, and give it to song_write. In Lua: nova.music.play("<name>", { volume = 0.35 }).',
+    {
+      name: { type: "string", description: 'The song\'s name ("village").' },
+      mood: { type: "string", description: MOOD_NAMES.join(", ") },
+      key: { type: "string", description: 'The key note, with "minor" or "major" to go against the mood\'s own: "C", "A minor", "F# major".' },
+      tempo: { type: "number", description: "Beats a minute, 40 to 240 (each mood has its own when left out)." },
+      seed: SEED,
+    },
+    ["name", "mood"],
+    (a) => {
+      const name = h.safeName(a.name, "Song");
+      const made = makeSong(a);
+      const wrote = h.call("song_write", { project: a.project, name, song: made.song });
+      const report = h.call("sound_report", { project: a.project, sound: `music/${name}`, loop: true });
+      const text = `${typeof wrote === "string" ? wrote : wrote.text}\n${made.said.replace("<name>", name)}\n${typeof report === "string" ? report : report.text}`;
+      return { text, images: typeof report === "string" ? [] : report.images };
+    },
+  );
+
   return {
+    song_make: { name: "village", mood: "calm village" },
     tileset_make: { name: "tiles", palette: "bright meadow" },
+    character_make: { name: "hero", hair: "short", hair_color: "brown", outfit: "tunic", outfit_color: "green", item: "sword" },
+    creature_make: { name: "slime", kind: "slime", color: "green" },
+    items_make: { name: "items" },
   };
 }
