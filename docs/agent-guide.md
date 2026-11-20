@@ -42,7 +42,7 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | make a 3D model by hand | `model_write` (`"shape": "tube"` and `"lathe"` for round limbs and turned shapes; a clip's `walk` or `ik` places the feet and says the speed at which they do not slide; `bend: true` skins tubes and meshes, not lathes) | check it with `model_preview` |
 | look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`; `names: [...]` for several at one scale, or `fit: "each"`) | the model whole (never cropped) with its size, a film strip of the clip on a ground line, or a contact sheet |
 | plan a 3D level | `scene_preview` on a scene with a `camera` | the scene from above: every object's footprint and name, what blocks in red, a grid in metres |
-| find mistakes | `check` | every problem with file and line; "no errors" means it loaded and ran. Also, as warnings: a `nova.<name>` that does not exist or a common call given the wrong kind of argument (`nova.music.stop({ fade = 1 })`) on a line that never ran, an entity moved twice, a room smaller than the screen |
+| find mistakes | `check` | every problem with file and line; "no errors" means it loaded and ran. Also, as warnings: a `nova.<name>` that does not exist or a common call given the wrong kind of argument (`nova.music.stop({ fade = 1 })`) on a line that never ran, a sound, song, scene, sprite or model named by a literal that matches no file (with the nearest name), an entity whose own `draw()` hides its sprite, an entity moved twice, a room smaller than the screen |
 | play the game | `play` (a `route`) | a film strip, where everything is, the log, the sounds started; with `out`, each picture as a file |
 
 ## The shortest path to a checked 2D game
@@ -212,6 +212,8 @@ What the makers do not have, make with `model_write` in the same style (flat fac
   rendered with.
 - **Your own `draw()` is in screen coordinates.** The framework applies the camera to an entity's own sprite, not to what you
   draw: `nova.sprite("sword", nova.cam.to_screen(self.x + 8, self.y))`. Forget it and the thing is off the screen.
+  A `draw()` of your own replaces the drawing of the entity's `sprite` or `model`: put `nova.Entity.draw(self)` in it
+  where the picture should go, or the entity vanishes (`check` warns).
 - **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox.
 - **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`.
 - **Depth:** bigger is further back. For top-down sorting set `self.depth = -self.y`. A tile layer drawn in front of the

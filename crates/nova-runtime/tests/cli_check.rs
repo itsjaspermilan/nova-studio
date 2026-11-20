@@ -182,6 +182,20 @@ fn the_shipped_examples_all_check_clean() {
             "{example}: {report}"
         );
     }
+    // every example: no name of a file that is not there, and no draw() that hides an entity's picture
+    let examples = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    for entry in std::fs::read_dir(&examples).unwrap() {
+        let dir = entry.unwrap().path();
+        if !dir.join("nova.json").exists() {
+            continue;
+        }
+        let (_, report, _) = check(&dir);
+        let bad: Vec<String> = diagnostics(&report)
+            .into_iter()
+            .filter(|s| s.contains(" names the ") || s.contains("its own draw()"))
+            .collect();
+        assert!(bad.is_empty(), "{}: {bad:#?}", dir.display());
+    }
 }
 
 #[test]
@@ -298,7 +312,13 @@ return Gem
             )
         })
         .collect();
-    assert_eq!(said.len(), 3, "{said:#?}");
+    assert_eq!(said.len(), 4, "{said:#?}");
+    assert!(
+        said.iter()
+            .any(|s| s
+                .starts_with("warning entities/gem.lua:6 nova.sound.play names the sound 'ding'")),
+        "{said:#?}"
+    );
     assert!(
         said.iter().any(|s| s.starts_with(
             "warning entities/faller.lua:4 self.y is moved by self.vy here, and the engine also adds vx, vy, vz"
@@ -315,6 +335,151 @@ return Gem
         said.iter()
             .any(|s| s
                 .starts_with("warning entities/gem.lua:5 nova.cam.shake_it is not in the Lua API")),
+        "{said:#?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn copy_from(example: &str, rel: &str, dir: &Path, to: &str) {
+    let from = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples")
+        .join(example)
+        .join(rel);
+    let path = dir.join(to);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::copy(&from, path).unwrap_or_else(|e| panic!("{}: {e}", from.display()));
+}
+
+fn diagnostics(report: &Value) -> Vec<String> {
+    report["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            format!(
+                "{} {}:{} {}",
+                d["severity"].as_str().unwrap(),
+                d["file"].as_str().unwrap_or("?"),
+                d["line"],
+                d["message"].as_str().unwrap()
+            )
+        })
+        .collect()
+}
+
+/// A misspelt sound, song, scene, sprite or model on a line that never runs (a pickup's code) is a warning with the file,
+/// the line and the nearest name there is; a name built at run time ("walk_" .. dir) is not judged.
+#[test]
+fn names_of_files_that_do_not_exist_are_found_without_running_the_line() {
+    let dir = scratch("assets");
+    write(&dir, "nova.json", r#"{"format":1,"name":"Names"}"#);
+    copy_from(
+        "starter-topdown",
+        "sounds/step.wav",
+        &dir,
+        "sounds/step.wav",
+    );
+    copy_from(
+        "starter-topdown",
+        "sounds/door.wav",
+        &dir,
+        "sounds/door.wav",
+    );
+    copy_from("starter-3d", "music/garden.ogg", &dir, "music/garden.ogg");
+    copy_from(
+        "starter-topdown",
+        "sprites/rock.png",
+        &dir,
+        "sprites/rock.png",
+    );
+    copy_from(
+        "starter-topdown",
+        "sprites/rock.sprite.json",
+        &dir,
+        "sprites/rock.sprite.json",
+    );
+    copy_from("starter-3d", "models/crate.glb", &dir, "models/crate.glb");
+    write(&dir, "main.lua", "nova.start(\"meadow\")\n");
+    write(&dir, "scenes/meadow.lua", "return nova.scene {}\n");
+    write(
+        &dir,
+        "entities/thing.lua",
+        r#"local Thing = nova.entity { sprite = "rok", tags = { "thing" } }
+function Thing:on_collide_hero(hero)
+  nova.sound.play("stepp")
+  nova.music.play("gardn", { fade = 1 })
+  nova.goto_scene("medow", 10, 20)
+  nova.model("crat", self.x, 0, self.y)
+  nova.sound.play("step") nova.music.play("garden") nova.goto_scene("meadow") nova.model("crate", 0, 0, 0)
+  nova.sound.play("step_" .. self.ground) nova.sprite(self.name, 0, 0) nova.sprite("rock", 0, 0)
+end
+function Thing:draw() nova.Entity.draw(self) end
+return Thing
+"#,
+    );
+    let (ok, report, _) = check(&dir);
+    assert!(ok, "warnings are not errors: {report}");
+    let said = diagnostics(&report);
+    assert_eq!(said.len(), 5, "one each: {said:#?}");
+    for (line, call, nearest) in [
+        (1, "sprite = names the sprite 'rok'", "rock"),
+        (3, "nova.sound.play names the sound 'stepp'", "step"),
+        (4, "nova.music.play names the music 'gardn'", "garden"),
+        (5, "nova.goto_scene names the scene 'medow'", "meadow"),
+        (6, "nova.model names the model 'crat'", "crate"),
+    ] {
+        let start = format!("warning entities/thing.lua:{line} {call}");
+        assert!(
+            said.iter().any(
+                |s| s.starts_with(&start) && s.contains(&format!("the nearest is '{nearest}'"))
+            ),
+            "{start}: {said:#?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An entity with a sprite whose own draw() never draws it is said; one that calls nova.Entity.draw(self), or draws a
+/// sprite or model of its own, is not.
+#[test]
+fn a_draw_that_hides_the_entitys_picture_is_found() {
+    let dir = scratch("draw");
+    write(&dir, "nova.json", r#"{"format":1,"name":"Draw"}"#);
+    copy_from(
+        "starter-topdown",
+        "sprites/rock.png",
+        &dir,
+        "sprites/rock.png",
+    );
+    write(&dir, "main.lua", "nova.start(\"room\")\n");
+    write(&dir, "scenes/room.lua", "return nova.scene {}\n");
+    write(
+        &dir,
+        "entities/chest.lua",
+        "local Chest = nova.entity { sprite = \"rock\" }\n\nfunction Chest:draw()\n  nova.ui.text(0, 0, \"open me\")\nend\n\nreturn Chest\n",
+    );
+    write(
+        &dir,
+        "entities/fine.lua",
+        "local Fine = nova.entity { sprite = \"rock\" }\nfunction Fine:draw()\n  nova.Entity.draw(self)\n  nova.ui.text(0, 0, \"hi\")\nend\nreturn Fine\n",
+    );
+    write(
+        &dir,
+        "entities/own.lua",
+        "local Own = nova.entity { sprite = \"rock\" }\nfunction Own:draw()\n  nova.sprite(\"rock\", nova.cam.to_screen(self.x, self.y))\nend\nreturn Own\n",
+    );
+    write(
+        &dir,
+        "entities/plain.lua",
+        "local Plain = nova.entity {}\nfunction Plain:draw()\n  nova.rect(0, 0, 4, 4)\nend\nreturn Plain\n",
+    );
+    let (_, report, _) = check(&dir);
+    let said = diagnostics(&report);
+    assert_eq!(said.len(), 1, "{said:#?}");
+    assert!(
+        said[0].starts_with(
+            "warning entities/chest.lua:3 this entity has a sprite or a model, and its own draw()"
+        ) && said[0].contains("nova.Entity.draw(self)"),
         "{said:#?}"
     );
     let _ = std::fs::remove_dir_all(&dir);

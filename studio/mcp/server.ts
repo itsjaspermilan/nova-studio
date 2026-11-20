@@ -750,7 +750,7 @@ tool(
 tool(
   "check",
   "Check the project the way the studio's Problems panel does: load it, run a few frames, and list every problem with its file and line. 'no errors' means it loaded and ran cleanly. " +
-    "It also reads the scripts for mistakes on lines those frames never reach, as warnings: a `nova.<name>` that the Lua API does not have (a call in a pickup's code would only fail when something is picked up), and an entity that moves itself by `self.vx`, `self.vy` or `self.vz`, which the engine also adds to its position every step. And it says which 2D rooms are smaller than the screen.",
+    "It also reads the scripts for mistakes on lines those frames never reach, as warnings: a `nova.<name>` that the Lua API does not have (a call in a pickup's code would only fail when something is picked up), and an entity that moves itself by `self.vx`, `self.vy` or `self.vz`, which the engine also adds to its position every step; a sound, song, scene, sprite or model named by a literal in `nova.sound.play`, `nova.music.play`, `nova.goto_scene`, `nova.start`, `nova.sprite`, `nova.model` or an entity's `sprite =` / `model =` that matches no file (with the nearest name there is); and an entity with a sprite or model whose own `draw()` never draws it (the fix: `nova.Entity.draw(self)` inside it). And it says which 2D rooms are smaller than the screen.",
   { frames: { type: "number", description: "How many frames to run (60)." } },
   [],
   (a) => {

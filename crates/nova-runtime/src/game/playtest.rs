@@ -962,7 +962,9 @@ impl Game {
 
     /// The scene that runs now, as a token that changes whenever a scene is built (entered again too) and its name.
     pub fn scene_now(&self) -> Option<(String, String)> {
-        let (token, name) = self.playtest_call::<(Option<String>, Option<String>)>("scene_now", ()).ok()?;
+        let (token, name) = self
+            .playtest_call::<(Option<String>, Option<String>)>("scene_now", ())
+            .ok()?;
         Some((token?, name.unwrap_or_default()))
     }
 
@@ -1046,6 +1048,81 @@ impl Game {
             "shadows": l.shadows.as_ref().map(|s| serde_json::json!({ "radius": r(s.radius), "strength": r(s.strength), "casters": casters })),
             "fog": l.fog.as_ref().map(|f| serde_json::json!({ "near": r(f.near), "far": r(f.far), "color": v3(f.color) })),
         })
+    }
+
+    /// Whether a name given to a common call resolves as the call itself would resolve it: `kind` is "sound" (effects and
+    /// music files, as `nova.sound.play` finds them), "music", "sprite", "model" or "scene" (`scenes/<name>.lua`).
+    /// Unknown kinds count as found.
+    pub fn asset_exists(&self, kind: &str, name: &str) -> bool {
+        let sh = self.shared.borrow();
+        match kind {
+            "sound" | "music" => {
+                super::find_sound(&sh.sounds, name).is_some()
+                    || super::find_stream(&sh.streams, name).is_some()
+            }
+            "sprite" => {
+                name == crate::assets::WHITE
+                    || super::resolve_sprite(&sh.layout, &sh.sheets, name).is_some()
+            }
+            "model" => super::find_model(&sh.known_models, name).is_some(),
+            "scene" => {
+                let short = name
+                    .strip_prefix("scenes.")
+                    .unwrap_or(name)
+                    .replace('.', "/");
+                self.vfs().read(&format!("scenes/{short}.lua")).is_ok()
+            }
+            _ => true,
+        }
+    }
+
+    /// The short names of what a call of that kind can be given (`hit`, `items/bomb`, `levels.one`), for a nearest match.
+    pub fn asset_names(&self, kind: &str) -> Vec<String> {
+        let sh = self.shared.borrow();
+        let strip = |id: &str, folders: &[&str], exts: &[&str]| -> Option<String> {
+            let rest = folders
+                .iter()
+                .find_map(|f| id.strip_prefix(&format!("{f}/")))?;
+            exts.iter()
+                .find_map(|e| rest.strip_suffix(e))
+                .map(str::to_string)
+        };
+        let mut names: Vec<String> = match kind {
+            "sound" | "music" => sh
+                .sounds
+                .keys()
+                .chain(sh.streams.keys())
+                .filter_map(|id| strip(id, &["sounds", "music"], &[".wav", ".ogg"]))
+                .collect(),
+            "sprite" => sh
+                .sheets
+                .keys()
+                .filter_map(|id| strip(id, &["sprites"], &[".sprite.json"]))
+                .chain(
+                    sh.layout
+                        .rects
+                        .keys()
+                        .filter_map(|id| strip(id, &["sprites"], &[".png"])),
+                )
+                .collect(),
+            "model" => sh
+                .known_models
+                .iter()
+                .filter_map(|id| strip(id, &["models"], &[".glb"]))
+                .collect(),
+            "scene" => self
+                .vfs()
+                .list()
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|e| strip(&e.path, &["scenes"], &[".lua"]))
+                .map(|s| s.replace('/', "."))
+                .collect(),
+            _ => Vec::new(),
+        };
+        names.sort();
+        names.dedup();
+        names
     }
 
     /// The first part of `nova.<a>.<b>...` that does not exist, as text (`nova.scene_nowx`), or `None` when the whole name is

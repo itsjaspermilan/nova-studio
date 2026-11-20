@@ -1103,7 +1103,10 @@ fn find_sound<'a>(sounds: &'a HashMap<String, Arc<Sample>>, id: &str) -> Option<
 
 /// A music name with its folder and extension taken off, so `music/theme.ogg` and `theme` are the same song.
 fn music_key(name: &str) -> String {
-    let short = name.strip_prefix("music/").or_else(|| name.strip_prefix("sounds/")).unwrap_or(name);
+    let short = name
+        .strip_prefix("music/")
+        .or_else(|| name.strip_prefix("sounds/"))
+        .unwrap_or(name);
     [".ogg", ".wav"]
         .iter()
         .find_map(|ext| short.strip_suffix(ext))

@@ -377,7 +377,10 @@ fn the_starter_is_walked_by_path_and_through_its_door() {
     let route = strings(&report["route"]);
     assert_eq!(route.len(), 3, "{route:?}");
     assert!(route[1].contains("stopped against it"), "{route:?}");
-    assert!(route[2].contains("the scene changed to 'house'"), "{route:?}");
+    assert!(
+        route[2].contains("the scene changed to 'house'"),
+        "{route:?}"
+    );
     assert!(report["render"].is_null());
     assert_eq!(report["end"]["render"]["three_d"], false);
 }
@@ -398,10 +401,14 @@ fn walk_to_a_tag_ends_when_the_scene_changes() {
     assert_eq!(report["end"]["prints"][0]["value"], "house", "{report}");
     let route = strings(&report["route"]);
     assert!(
-        route[0].contains("the scene changed to 'house'") && route[0].contains("the step ends there"),
+        route[0].contains("the scene changed to 'house'")
+            && route[0].contains("the step ends there"),
         "{route:?}"
     );
-    let through: Vec<String> = log(&report).into_iter().filter(|l| l.starts_with("through")).collect();
+    let through: Vec<String> = log(&report)
+        .into_iter()
+        .filter(|l| l.starts_with("through"))
+        .collect();
     assert_eq!(through.len(), 1, "one door, not two: {through:?}");
 }
 

@@ -176,6 +176,110 @@ fn wrong_first_argument(name: &str, rest: &str) -> Option<String> {
     ))
 }
 
+/// The calls whose first argument names a file of the project, and the kind of file (see `Game::asset_exists`).
+fn asset_call(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "sound.play" => "sound",
+        "music.play" => "music",
+        "goto_scene" | "start" => "scene",
+        "sprite" => "sprite",
+        "model" => "model",
+        _ => return None,
+    })
+}
+
+/// The text of a string literal at the start of `rest` (after an optional `(`), when it is the whole argument: not
+/// `"walk_" .. dir` or a text with escapes, which cannot be judged.
+fn first_literal(rest: &str) -> Option<String> {
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix('(').unwrap_or(rest).trim_start();
+    let quote = rest.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    let inside = &rest[1..];
+    let end = inside.find(quote)?;
+    let text = &inside[..end];
+    if text.is_empty() || text.contains('\\') || inside[end + 1..].trim_start().starts_with("..") {
+        return None;
+    }
+    Some(text.to_string())
+}
+
+/// How many single-letter edits turn one name into the other.
+fn edits(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let here = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != cb)).min(row[j] + 1).min(here + 1);
+            prev = here;
+        }
+    }
+    row[b.len()]
+}
+
+/// A name given to a common call that matches no file: the warning, with the nearest name there is.
+fn missing_asset(game: &Game, kind: &str, call: &str, name: &str) -> Option<String> {
+    if game.asset_exists(kind, name) {
+        return None;
+    }
+    let names = game.asset_names(kind);
+    let short = name.rsplit('/').next().unwrap_or(name);
+    let nearest = names
+        .iter()
+        .min_by_key(|n| edits(n, name).min(edits(n, short) + 1));
+    let folder = match kind {
+        "sound" => "sounds/ or music/",
+        "music" => "music/",
+        "sprite" => "sprites/",
+        "model" => "models/",
+        _ => "scenes/",
+    };
+    Some(format!(
+        "{call} names the {kind} '{name}', which is not in {folder}{}, so this line will fail when it runs",
+        match nearest {
+            Some(n) => format!(" (the nearest is '{n}')"),
+            None => format!(" (there is no {kind} in this project yet)"),
+        }
+    ))
+}
+
+/// An entity whose class has a `sprite` or `model` and that defines its own `draw()` which draws nothing of its own
+/// (no `nova.Entity.draw(self)`, and no other call that draws a sprite, a model or anything with a `draw`): its picture is never drawn. Returns
+/// the line of the `draw` function.
+fn draw_hides_picture(code: &str) -> Option<usize> {
+    let lines: Vec<&str> = code.lines().collect();
+    let start = lines.iter().position(|l| {
+        let t = l.trim_start();
+        t.starts_with("function ") && (t.contains(":draw(") || t.contains(".draw(self"))
+    })?;
+    if lines[start].starts_with(|c: char| c.is_whitespace()) {
+        return None; // (a draw defined inside something else: not judged)
+    }
+    let end = lines[start + 1..]
+        .iter()
+        .position(|l| l.trim_end() == "end")
+        .map(|i| start + 1 + i)?;
+    let body: String = lines[start + 1..end].concat();
+    let draws = ["draw(", "sprite(", "model(", "mesh(", "billboard("]
+        .iter()
+        .any(|d| body.contains(d));
+    let outside: String = lines[..start]
+        .iter()
+        .chain(&lines[end..])
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let tight: String = outside.chars().filter(|c| !c.is_whitespace()).collect();
+    let has_picture = (tight.contains("sprite=\"")
+        || tight.contains("model=\"")
+        || tight.contains("sprite='")
+        || tight.contains("model='"))
+        && (code.contains("nova.entity") || code.contains("require("));
+    (!draws && has_picture).then_some(start + 1)
+}
+
 /// Mistakes that can be read off the scripts without running the line they are on:
 /// - a common call given a literal of the wrong kind (`nova.music.stop({ fade = 1 })` takes a number);
 /// - a `nova.<name>` that the API does not have (a call such as `nova.scene_nowx()` in a pickup's code only fails when
@@ -195,7 +299,25 @@ fn source_warnings(game: &Game) -> Vec<String> {
         let Ok(bytes) = vfs.read(&entry.path) else {
             continue;
         };
-        let code = code_only(&String::from_utf8_lossy(&bytes));
+        let source = String::from_utf8_lossy(&bytes);
+        let source_lines: Vec<&str> = source.lines().collect();
+        let code = code_only(&source);
+        // the text of the source from the place `rest` (a tail of the code's line `n`) starts, string literals intact
+        let original = |n: usize, line: &str, rest: &str| -> String {
+            let col = line[..line.len() - rest.len()].chars().count();
+            source_lines
+                .get(n)
+                .map(|l| l.chars().skip(col).collect())
+                .unwrap_or_default()
+        };
+        if entry.path.starts_with("entities/")
+            && let Some(line) = draw_hides_picture(&code)
+        {
+            out.push(format!(
+                "{}:{line}: this entity has a sprite or a model, and its own draw() replaces the drawing of it, so it is never drawn: call nova.Entity.draw(self) in draw() where the picture should be drawn (or draw it yourself with nova.sprite or nova.model)",
+                entry.path
+            ));
+        }
         // (an entity with `velocity = false` moves itself: its vx, vy, vz are its own)
         let own_velocity = code
             .chars()
@@ -232,7 +354,14 @@ fn source_warnings(game: &Game) -> Vec<String> {
                 if parts.is_empty() || assigned {
                     continue;
                 }
-                if let Some(text) = wrong_first_argument(&parts.join("."), rest) {
+                let joined = parts.join(".");
+                if let Some(kind) = asset_call(&joined)
+                    && let Some(name) = first_literal(&original(n, line, rest))
+                    && let Some(text) = missing_asset(game, kind, &format!("nova.{joined}"), &name)
+                {
+                    out.push(format!("{}:{}: {text}", entry.path, n + 1));
+                }
+                if let Some(text) = wrong_first_argument(&joined, rest) {
                     out.push(format!(
                         "{}:{}: {text}, so this line will fail when it runs",
                         entry.path,
@@ -247,6 +376,30 @@ fn source_warnings(game: &Game) -> Vec<String> {
                         entry.path,
                         n + 1
                     ));
+                }
+            }
+            // an entity's picture: `sprite = "hero"`, `model = "tree"` (in nova.entity { ... }, or self.sprite = "...")
+            for (field, kind) in [("sprite", "sprite"), ("model", "model")] {
+                for (at, _) in line.match_indices(field) {
+                    if line[..at]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| ident(c) || c == ':')
+                        || line[at + field.len()..].starts_with(|c: char| ident(c))
+                    {
+                        continue;
+                    }
+                    let after = line[at + field.len()..].trim_start();
+                    let Some(value) = after.strip_prefix('=').filter(|v| !v.starts_with('='))
+                    else {
+                        continue;
+                    };
+                    if let Some(name) = first_literal(&original(n, line, value))
+                        && !value.trim_start().starts_with('(')
+                        && let Some(text) = missing_asset(game, kind, &format!("{field} ="), &name)
+                    {
+                        out.push(format!("{}:{}: {text}", entry.path, n + 1));
+                    }
                 }
             }
             // moving by the engine's own velocity fields
