@@ -662,12 +662,64 @@ fn the_top_down_starter_plays_through() {
     assert_eq!(report["end"]["state"]["scene"], "meadow");
 }
 
+/// The game made with only the makers (`examples/maker-demo`) plays: the sword beats the slime, a coin is taken, the
+/// door leads into the room and the chest opens. It keeps the makers' output (tags by name, pivots, painted layers,
+/// solid terrains) working in the game itself.
+#[test]
+fn the_maker_demo_plays_through() {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/maker-demo");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the demo loads");
+    g.upload(&mut FakeGpu);
+    let plan = r#"{
+      "steps": [
+        { "repeat": 6, "until": "nova.count('enemy') < 4", "steps": [{ "lua": "local h, s = nova.named('hero'), nova.named('slime') if s then h.x, h.y = s.x - 44, s.y; h.facing = 'right' end" }, { "press": "attack" }, { "wait": 24 }] },
+        { "walk_to": [504, 408], "who": "hero", "max": 200 },
+        { "lua": "local h = nova.named('hero') h.x, h.y = 264, 300" },
+        { "hold": ["up"], "until": "nova.current_scene() == 'room'", "max": 200, "capture": "inside" },
+        { "walk_to": [640, 200], "who": "hero", "max": 300 },
+        { "walk_to": [716, 190], "who": "hero", "max": 200, "may_time_out": true },
+        { "press": "attack" },
+        { "wait": 30, "capture": "the chest" }
+      ],
+      "print": ["require('lib.game').coins", "nova.named('chest').frame"]
+    }"#;
+    let (report, _) = play(&mut g, plan, "maker-demo");
+    assert_eq!(report["error"], Value::Null, "{report}");
+    let log = texts(&report["log"]);
+    for wanted in [
+        "slime hit, hp 0",
+        "through house_door to room",
+        "chest opened",
+    ] {
+        assert!(log.iter().any(|l| l.contains(wanted)), "{wanted}: {log:?}");
+    }
+    assert_eq!(report["captures"][1]["prints"][1]["value"], "10");
+    let sounds = texts(&report["sounds"]);
+    for wanted in [
+        "sound sword_swing",
+        "sound hit",
+        "sound enemy_die",
+        "sound coin",
+        "sound door",
+        "sound chest_open",
+        "music village",
+        "music cellar",
+    ] {
+        assert!(
+            sounds.iter().any(|s| s.contains(wanted)),
+            "{wanted}: {sounds:?}"
+        );
+    }
+}
+
 /// The platformer starter (`project_create`'s "platformer" template) plays from its first screen to its second: up the
 /// steps, over the gap by the planks, over the slime, and through the door. It keeps the example and what it shows
 /// (coyote time, one-way planks, a pickup, a hazard, a door) true.
 #[test]
 fn the_platformer_starter_plays_through() {
-    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-platformer");
+    let folder =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-platformer");
     let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
     let mut g = Game::load(vfs).expect("the starter loads");
     g.upload(&mut FakeGpu);
@@ -699,13 +751,21 @@ fn the_platformer_starter_plays_through() {
     assert!(log.iter().any(|l| l.ends_with("gem 2")), "{log:?}");
     assert!(!log.iter().any(|l| l.contains("hurt")), "{log:?}");
     assert!(
-        log.iter()
-            .any(|l| l.ends_with("through cave_door to cave")),
+        log.iter().any(|l| l.ends_with("through cave_door to cave")),
         "{log:?}"
     );
     let sounds = texts(&report["sounds"]);
-    for wanted in ["sound jump", "sound land", "sound pickup", "sound door", "music field"] {
-        assert!(sounds.iter().any(|s| s.contains(wanted)), "{wanted}: {sounds:?}");
+    for wanted in [
+        "sound jump",
+        "sound land",
+        "sound pickup",
+        "sound door",
+        "music field",
+    ] {
+        assert!(
+            sounds.iter().any(|s| s.contains(wanted)),
+            "{wanted}: {sounds:?}"
+        );
     }
     assert_eq!(report["end"]["state"]["scene"], "cave");
 }

@@ -1,0 +1,50 @@
+{
+  "name": "meadow",
+  "scene": {
+    "version": 1,
+    "background": [20, 22, 28],
+    "width": 1440,
+    "height": 816,
+    "objects": [
+      { "kind": "hero", "name": "hero", "x": 264, "y": 330 },
+      { "kind": "door", "name": "house_door", "x": 264, "y": 226, "props": { "to": "room", "to_x": 456, "to_y": 500 } },
+      { "kind": "slime", "name": "slime", "x": 420, "y": 330 },
+      { "kind": "slime", "x": 700, "y": 640 },
+      { "kind": "bat", "name": "bat", "x": 560, "y": 200 },
+      { "kind": "bat", "x": 1150, "y": 620 },
+      { "kind": "coin", "x": 504, "y": 408 },
+      { "kind": "coin", "x": 504, "y": 600 },
+      { "kind": "coin", "x": 1000, "y": 504 },
+      { "kind": "coin", "x": 312, "y": 696 }
+    ],
+    "tilemaps": [
+      {
+        "name": "ground",
+        "tileset": "tiles",
+        "scale": 3,
+        "seed": 3,
+        "paint": { "g": "grass", "p": "path", "s": "sand", "w": "water", "h": "hedge", "c": "cliff", "T": "tree", "P": "pine", "O": "big_tree", "b": "bush", "r": "rock", "f": "flowers", "F": "fence", "R": "roof", "H": "house_wall", "D": "door", "W": "window", "t": "tall_grass", "S": "sign", "B": "barrel", "u": "stump" },
+        "scatter": { "flowers": 0.03, "tall_grass": 0.03 },
+        "tiles": [
+          "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+          "hgggggggggggTgggggggcccccccggh",
+          "hggRRRRRgggggggTggggcccccccggh",
+          "hggRRRRRggggggggggggcccccccggh",
+          "hggHWDWHgBgggggwwwwgggcccccggh",
+          "hggggpgggggggwwwwwwwwggggggTgh",
+          "hgTggpgggggggwwwwwwwwwgggggggh",
+          "hggggppppppgggwwwwwwwssgggPggh",
+          "hgggggggggpggggwwwwwsssggPgPgh",
+          "hggfgggOggpgggggsssssssgggPggh",
+          "hggggggggSpppppppppssggggggggh",
+          "hgbgggggggpgggggggpggggrggbggh",
+          "hgggFFFFFgpgggTgggpgggggrggggh",
+          "hgggFtttFgpggggggupppppppppggh",
+          "hgggFtttFgpgggggggggggggfggggh",
+          "hgggFFFFFgpgggTgggbgggTggggggh",
+          "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"
+        ]
+      }
+    ]
+  }
+}

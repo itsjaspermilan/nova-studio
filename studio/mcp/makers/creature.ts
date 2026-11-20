@@ -15,6 +15,8 @@ interface Ctx {
   r: Ramp; // the creature's colour
   r2: Ramp; // its second colour (eyes, markings)
   outline: Rgba;
+  /// Thin things (legs) drawn under the body in the outline's own colour: an outline round each would make one dark lump.
+  under: Img;
 }
 
 interface Kind {
@@ -147,8 +149,8 @@ const KINDS: Record<string, Kind> = {
         const sy = cy - 2 * k + i * 1.4 * k;
         const kx = cx + side * (4.5 + (i === 1 || i === 2 ? 1 : 0)) * k, ky = sy - (2.2 - i * 0.9) * k - lifted * k;
         const fx = cx + side * (6.5 + (i === 1 || i === 2 ? 0.5 : -0.5)) * k, fy = sy + (i - 1) * 1.6 * k + (i < 2 ? -0.5 : 2.5) * k - lifted * 1.5 * k;
-        body.line(cx + side * 2 * k, sy, kx, ky, c.r[lifted ? 3 : 2]);
-        body.line(kx, ky, fx, fy, c.r[1]);
+        c.under.line(cx + side * 2 * k, sy, kx, ky, lifted ? c.r[1] : c.outline);
+        c.under.line(kx, ky, fx, fy, c.outline);
       }
       blob(body, cx, cy + 1.5 * k, 3.6 * k, 3.4 * k, c.r);
       blob(body, cx, cy - 2.6 * k, 2.3 * k, 2 * k, c.r);
@@ -194,8 +196,8 @@ const KINDS: Record<string, Kind> = {
       for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
         const fwd = set >= 0 && (i + (side < 0 ? 0 : 1)) % 2 === set ? -k : set >= 0 ? k * 0.5 : 0;
         const sy = cy - 2 * k + i * 2.4 * k;
-        body.line(cx + side * 3 * k, sy, cx + side * 5.5 * k, sy + fwd + (i - 1) * k, dark);
-        body.set(Math.round(cx + side * 6.2 * k), Math.round(sy + fwd + (i - 1) * 1.6 * k), dark);
+        c.under.line(cx + side * 3 * k, sy, cx + side * 5.5 * k, sy + fwd + (i - 1) * k, dark);
+        c.under.set(Math.round(cx + side * 6.2 * k), Math.round(sy + fwd + (i - 1) * 1.6 * k), dark);
       }
       // head and horn
       blob(body, cx, cy - 4.4 * k, 2.2 * k, 1.8 * k, c.r.map((x) => shade(x, -1)) as Ramp);
@@ -228,20 +230,24 @@ export function makeCreature(name: string, a: Args, put: Put): { text: string; p
     r: ramp(lit(P, colourOf(a.color ?? a.colour, '"color"', kind.colour))),
     r2: ramp(lit(P, colourOf(a.second_color ?? a.second_colour, '"second_color"', kind.second))),
     outline: P.outline,
+    under: new Img(n, n),
   };
   const frame = (move: number, rest: number): Img => {
     const img = new Img(n, n), body = new Img(n, n);
+    c.under = new Img(n, n);
     let shade_: [number, number] = [n / 2, 4 * c.k];
     kind.draw(c, body, (cx, rx) => (shade_ = [cx, rx]), move, rest);
     img.ellipse(shade_[0], n - 1.5 * c.k, shade_[1], 1.2 * c.k, SHADOW);
+    img.draw(c.under);
     img.draw(body.outline(c.outline));
     return img;
   };
   const frames = [frame(-1, 0), frame(-1, 1), frame(0, 0), frame(1, 0), frame(2, 0), frame(3, 0)];
   // the frame to show for a moment when it is hit: the first frame, all white (a tint can only darken)
   const body = new Img(n, n);
+  c.under = new Img(n, n);
   kind.draw(c, body, () => {}, -1, 0);
-  frames.push(body.outline(c.outline).silhouette(WHITE));
+  frames.push(new Img(n, n).draw(c.under).draw(body.outline(c.outline)).silhouette(WHITE));
   const box = { x: Math.round(3 * c.k), y: Math.round(5 * c.k), w: n - Math.round(6 * c.k), h: n - Math.round(7 * c.k) };
   const made = writeSheet(name, {
     frames,

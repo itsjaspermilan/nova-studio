@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "image": "slime.png",
+  "frame_width": 16,
+  "frame_height": 16,
+  "columns": 7,
+  "frames": 7,
+  "durations_ms": [
+    420,
+    420,
+    110,
+    110,
+    110,
+    110,
+    120
+  ],
+  "tags": [
+    {
+      "name": "idle",
+      "from": 0,
+      "to": 1
+    },
+    {
+      "name": "move",
+      "from": 2,
+      "to": 5
+    },
+    {
+      "name": "hit",
+      "from": 6,
+      "to": 6,
+      "loop": false
+    }
+  ],
+  "hitbox": {
+    "x": 3,
+    "y": 5,
+    "w": 10,
+    "h": 9
+  },
+  "pivot": {
+    "x": 8,
+    "y": 14
+  }
+}

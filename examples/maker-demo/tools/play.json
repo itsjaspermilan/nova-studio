@@ -1,0 +1,24 @@
+{
+  "route": [
+    { "wait": 30, "capture": "the meadow" },
+    { "hold": ["right"], "until": "nova.named('slime') and nova.named('slime').x - nova.named('hero').x < 60", "max": 120, "capture": "walking right" },
+    { "press": "attack" },
+    { "wait": 5, "capture": "the swing" },
+    { "wait": 4, "capture": "the slime hit" },
+    { "repeat": 6, "until": "nova.count('enemy') < 4", "steps": [{ "walk_to": [0, 0], "who": "hero", "max": 1, "may_time_out": true }, { "lua": "local h, s = nova.named('hero'), nova.named('slime') if s then h.x, h.y = s.x - 44, s.y; h.facing = 'right' end" }, { "press": "attack" }, { "wait": 24 }] },
+    { "wait": 10, "capture": "a coin where it fell" },
+    { "walk_to": [504, 408], "who": "hero", "max": 200, "capture": "a coin taken" },
+    { "hold": ["down"], "frames": 30, "capture": "walking down" },
+    { "hold": ["left"], "frames": 30, "capture": "walking left" },
+    { "lua": "local h = nova.named('hero') h.x, h.y = 264, 300" },
+    { "hold": ["up"], "until": "nova.current_scene() == 'room'", "max": 200, "capture": "through the door" },
+    { "walk_to": [640, 200], "who": "hero", "max": 300 },
+    { "walk_to": [716, 190], "who": "hero", "max": 200, "may_time_out": true, "capture": "at the chest" },
+    { "press": "attack" },
+    { "wait": 30, "capture": "the chest open" }
+  ],
+  "print": ["nova.current_scene()", "require('lib.game').coins", "require('lib.game').hearts", "nova.count('enemy')"],
+  "out": "build/play",
+  "audio": true,
+  "columns": 4
+}

@@ -1,0 +1,36 @@
+{
+  "name": "room",
+  "scene": {
+    "version": 1,
+    "background": [20, 16, 24],
+    "width": 960,
+    "height": 576,
+    "objects": [
+      { "kind": "hero", "name": "hero", "x": 456, "y": 500 },
+      { "kind": "chest", "name": "chest", "x": 744, "y": 190 },
+      { "kind": "door", "name": "way_out", "x": 456, "y": 566, "props": { "to": "meadow", "to_x": 264, "to_y": 300 } }
+    ],
+    "tilemaps": [
+      {
+        "name": "room",
+        "tileset": "tiles",
+        "scale": 3,
+        "paint": { "#": "brick_wall", "S": "stone_wall", "w": "wood_floor", "s": "stone_floor", "D": "door", "c": "crate", "b": "barrel" },
+        "tiles": [
+          "####################",
+          "#wwwwwwwwwwwwwwwwww#",
+          "#wbwwwwwwwwwwwwwwcw#",
+          "#wwwwwwwwwwwwwwwwww#",
+          "#wwwwsssssssswwwwww#",
+          "#wwwwsssssssswwSSww#",
+          "#wwwwsssssssswwSSww#",
+          "#wwwwsssssssswwwwww#",
+          "#wwwwwwwwwwwwwwwwww#",
+          "#bbwwwwwwwwwwwwwwcw#",
+          "#cbwwwwwwwwwwwwwwww#",
+          "#########D##########"
+        ]
+      }
+    ]
+  }
+}

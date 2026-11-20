@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "name": "Maker Demo",
+  "version": "0.1.0",
+  "ignore": ["tools"],
+  "input": {
+    "attack": ["key:KeyZ", "key:Space", "pad:south"]
+  }
+}
