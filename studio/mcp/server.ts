@@ -31,6 +31,8 @@ import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrac
 import { analyse, describe, mixTable, spectrogram, stack, type Source } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene, roomWarning } from "./scenes";
+import { expandPaint } from "./makers/terrain-paint";
+import { registerMakers } from "./makers";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -517,11 +519,15 @@ tool(
     } catch (e) {
       throw new Error(`the scene is not valid: not valid JSON: ${e instanceof Error ? e.message : e}`);
     }
-    if (given && typeof given === "object" && !Array.isArray(given)) expandTileLayers(root, given as Args);
+    let painted: string[] = [];
+    if (given && typeof given === "object" && !Array.isArray(given)) {
+      painted = expandPaint(root, given as Args);
+      expandTileLayers(root, given as Args);
+    }
     const parsed = parseScene(JSON.stringify(given));
     if (!parsed.ok) throw new Error(`the scene is not valid: ${parsed.error}. A scene is { "version": 1, "objects": [ { "kind": "player", "name": "hero", "x": 100, "y": 80 } ], "tilemaps": [...] }`);
     put(root, `scenes/${name}.scene.json`, serializeScene(parsed.scene));
-    const said = `scenes/${name}.scene.json: ${parsed.scene.objects?.length ?? 0} objects${tilemaps(parsed.scene).length ? `, ${tilemaps(parsed.scene).length} tile layer(s)` : ""}`;
+    const said = `scenes/${name}.scene.json: ${parsed.scene.objects?.length ?? 0} objects${tilemaps(parsed.scene).length ? `, ${tilemaps(parsed.scene).length} tile layer(s)` : ""}${painted.length ? `\n${painted.join("\n")}` : ""}`;
     if (a.picture === false) return said;
     const view = drawScene(root, name, parsed.scene);
     return view.picture ? { text: `${said}\n${view.text}`, images: [keepPicture(`scene-${name}`, view.picture)] } : said;
@@ -747,9 +753,24 @@ tool(
   playHandler,
 );
 
+// The makers (studio/mcp/makers/): whole tilesets, characters, creatures, icons, tuned sounds and songs from short recipes.
+const MAKER_EXAMPLES = registerMakers({
+  tool,
+  root: projectRoot,
+  safeName,
+  put: (root, rel, data) => void put(root, rel, data),
+  keepPicture,
+  call: (name, args) => {
+    const t = tools.find((x) => x.name === name);
+    if (!t) throw new Error(`unknown tool '${name}'`);
+    return t.handler(args);
+  },
+});
+
 // One call that works for every tool: `tools/list` gives it as the schema's example, and `scripts/nova-mcp-call.mjs --help <tool>`
 // prints it. A test keeps each to the tool's own parameters.
 export const EXAMPLES: Record<string, Args> = {
+  ...MAKER_EXAMPLES,
   api: { query: "camera follow" },
   project_create: { name: "My Game" },
   project_info: {},

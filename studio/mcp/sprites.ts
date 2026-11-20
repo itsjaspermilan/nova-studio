@@ -6,6 +6,7 @@ import { encodePng } from "../src/lib/png-encode";
 import { newRaster, type Raster, type Rgba } from "../src/lib/pixels";
 import { parseSheetJson, SHEET_COLUMNS, tagSequence, type SheetJson, type Tag } from "../src/lib/sprite-doc";
 import { parseTileset, serializeTileset, newTileset } from "../src/lib/tileset";
+import { tileFor, type Terrain } from "../src/lib/autotile";
 import { checker, DIM, fill, fit, INK, label, outline, PAPER, paste, readPng } from "./draw";
 
 type Args = Record<string, any>;
@@ -224,11 +225,13 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   if (adding && !oldJson) throw new Error(`there is no sprites/${name}.sprite.json to add frames to: write the first frames without "append" or "at"`);
   const names: Record<string, string> = {};
   let solid: number[] = [];
+  let terrains: Terrain[] = [];
   if (adding && existsSync(setPath)) {
     const t = parseTileset(readFileSync(setPath, "utf8"));
     if (t.ok) {
       Object.assign(names, t.doc.names);
       solid = t.doc.solid;
+      terrains = t.doc.terrains; // (a made tileset's terrains stay when tiles are added or redrawn)
     }
   }
 
@@ -375,23 +378,38 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   put(`sprites/${name}.png`, encodePng(sheet));
   put(`sprites/${name}.sprite.json`, text);
   if (Object.keys(names).length || solid.length || existsSync(setPath)) {
-    put(`sprites/${name}.tileset.json`, serializeTileset({ ...newTileset(fw, fh), names, solid: [...new Set(solid)].sort((x, y) => x - y) }));
+    put(`sprites/${name}.tileset.json`, serializeTileset({ ...newTileset(fw, fh), names, solid: [...new Set(solid)].sort((x, y) => x - y), terrains }));
   }
-  const named = Object.keys(names).length ? `\nnames: ${Object.entries(names).map(([k, v]) => `${k} ${v}`).join(", ")}` : "";
+  const named = namesText(names, terrains).replace(/^; /, "\n");
   const filled = padded.length ? `\nshort rows were filled with transparent on the right, up to ${fw} wide: ${padded.slice(0, 12).join("; ")}${padded.length > 12 ? `; and ${padded.length - 12} more frames` : ""}` : "";
   return {
     text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}${filled}`,
-    picture: spritePicture(sheet, json, names),
+    picture: spritePicture(sheet, json, names, terrains),
   };
+}
+
+/// The names of a sheet's frames in words; a terrain's joining tiles are given as one range.
+export function namesText(names: Record<string, string>, terrains: Terrain[] = []): string {
+  const inTerrain = new Set(terrains.flatMap((t) => t.tiles));
+  const plain = Object.entries(names).filter(([k]) => !inTerrain.has(Number(k)));
+  const parts: string[] = [];
+  if (plain.length) parts.push(`names: ${plain.map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  if (terrains.length) parts.push(`terrains: ${terrains.map((t) => `${t.name} (tiles ${Math.min(...t.tiles.filter((x) => x >= 0))}-${Math.max(...t.tiles)})`).join(", ")}`);
+  return parts.length ? `; ${parts.join("; ")}` : "";
 }
 
 /// The picture `sprite_write` and `sprite_preview` return: every frame enlarged on a checker background, outlined, with its number (and name) under it,
 /// and one strip per animation with its frames in the order they play and how long each shows.
-export function spritePicture(sheet: Raster, json: SheetJson, names: Record<string, string> = {}): Raster {
+export function spritePicture(sheet: Raster, json: SheetJson, names: Record<string, string> = {}, terrains: Terrain[] = []): Raster {
   const frames = cut(sheet, json);
   const fw = json.frame_width, fh = json.frame_height;
   const tags = json.tags ?? [];
-  const perRow = Math.min(frames.length, fw <= 24 ? 16 : 8);
+  // A terrain's 16 or 47 joining tiles are shown as one painted sample instead of one by one (the grid keeps the rest,
+  // each under its own tile number).
+  const inTerrain = new Set(terrains.flatMap((t) => t.tiles));
+  const shown = frames.map((_, f) => f).filter((f) => !inTerrain.has(f));
+  if (!shown.length) shown.push(...frames.map((_, f) => f));
+  const perRow = Math.min(shown.length, fw <= 24 ? 16 : 8);
   const longestStrip = Math.max(0, ...tags.map((t) => tagSequence({ ...t, direction: t.direction ?? "forward", loop: t.loop ?? true }).length));
   const across = Math.max(perRow, Math.min(longestStrip, 16));
   const scale = Math.max(1, Math.min(12, Math.floor(1400 / (across * (fw + 2))), Math.floor(480 / fh) || 1));
@@ -401,10 +419,15 @@ export function spritePicture(sheet: Raster, json: SheetJson, names: Record<stri
   const cap = (hasNames ? 2 : 1) * (9 * textScale) + 4;
   const gap = 6;
   const cellW = Math.max(cw, 6 * textScale * 3) + gap;
-  const sheetRows = Math.ceil(frames.length / perRow);
+  const sheetRows = Math.ceil(shown.length / perRow);
   const stripH = 9 * textScale + 4 + chh + 9 * textScale + 6;
   const width = gap + Math.max(perRow, Math.min(longestStrip, 16)) * cellW;
-  const height = gap + 9 * textScale + 4 + sheetRows * (chh + cap + gap) + tags.length * (stripH + gap);
+  const SAMPLE = ["......", ".XXX..", "XXXXX.", "XX.XXX", "XXXXXX", ".XX.X.", "......"];
+  const sampleScale = Math.max(1, Math.min(scale, 3));
+  const sampleW = SAMPLE[0]!.length * fw * sampleScale + gap * 2, sampleH = SAMPLE.length * fh * sampleScale + 9 * 2 + 10;
+  const samplesPerRow = Math.max(1, Math.floor(Math.max(width, 260) / sampleW));
+  const sampleRows = Math.ceil(terrains.length / samplesPerRow);
+  const height = gap + 9 * textScale + 4 + sheetRows * (chh + cap + gap) + tags.length * (stripH + gap) + (terrains.length ? 9 * 2 + 6 + sampleRows * sampleH : 0);
   const out = newRaster(Math.max(width, 260), height);
   fill(out, 0, 0, out.w, out.h, PAPER);
   label(out, gap, gap, fit(`${json.image ?? "sheet"}: ${frames.length} frames of ${fw}x${fh}, x${scale}`, out.w - gap * 2, textScale), INK, textScale, false);
@@ -414,8 +437,8 @@ export function spritePicture(sheet: Raster, json: SheetJson, names: Record<stri
     outline(out, x, y, cw, chh, [240, 200, 60, 255]);
   };
   let y = gap + 9 * textScale + 4;
-  frames.forEach((_, f) => {
-    const x = gap + (f % perRow) * cellW, fy = y + Math.floor(f / perRow) * (chh + cap + gap);
+  shown.forEach((f, i) => {
+    const x = gap + (i % perRow) * cellW, fy = y + Math.floor(i / perRow) * (chh + cap + gap);
     drawFrame(f, x, fy);
     label(out, x, fy + chh + 2, String(f), INK, textScale, false);
     if (names[f]) label(out, x, fy + chh + 2 + 9 * textScale, fit(names[f]!, cellW - 2, textScale), DIM, textScale, false);
@@ -432,6 +455,22 @@ export function spritePicture(sheet: Raster, json: SheetJson, names: Record<stri
       label(out, x, y + 9 * textScale + 4 + chh + 2, fit(`${f} ${ms(f)}ms`, cellW - 2, textScale), DIM, textScale, false);
     });
     y += stripH + gap;
+  }
+  if (terrains.length) {
+    label(out, gap, y, fit("terrains: scene_write paints with them (each shown as a sample; its joining tiles are not in the grid above)", out.w - gap * 2, 2), [130, 210, 255, 255], 2, false);
+    y += 9 * 2 + 6;
+    terrains.forEach((t, n) => {
+      const sx = gap + (n % samplesPerRow) * sampleW, sy = y + Math.floor(n / samplesPerRow) * sampleH;
+      const member = (c: number, r: number) => SAMPLE[r]?.[c] === "X";
+      checker(out, sx, sy, SAMPLE[0]!.length * fw * sampleScale, SAMPLE.length * fh * sampleScale, 4);
+      for (let r = 0; r < SAMPLE.length; r++) for (let c = 0; c < SAMPLE[0]!.length; c++) {
+        if (!member(c, r)) continue;
+        const tile = tileFor(t, member, c, r);
+        if (frames[tile]) paste(out, frames[tile]!, sx + c * fw * sampleScale, sy + r * fh * sampleScale, sampleScale);
+      }
+      const used = t.tiles.filter((x) => x >= 0);
+      label(out, sx, sy + SAMPLE.length * fh * sampleScale + 3, fit(`${t.name} ${Math.min(...used)}-${Math.max(...used)}`, sampleW - gap, 2), INK, 2, false);
+    });
   }
   return out;
 }
@@ -500,11 +539,13 @@ export function previewSprite(root: string, name: string, opts: { frame?: unknow
   if (!existsSync(image)) throw new Error(`there is no sprites/${base}.png`);
   const sheet = readPng(image);
   let names: Record<string, string> = {};
+  let terrains: Terrain[] = [];
   let tile: { w: number; h: number } | null = null;
   if (existsSync(setPath)) {
     const t = parseTileset(readFileSync(setPath, "utf8"));
     if (t.ok) {
       names = t.doc.names;
+      terrains = t.doc.terrains;
       tile = { w: t.doc.tile_width, h: t.doc.tile_height };
     }
   }
@@ -528,7 +569,7 @@ export function previewSprite(root: string, name: string, opts: { frame?: unknow
     };
   }
   return {
-    text: `sprites/${base}.png: ${sheet.w}x${sheet.h} pixels, ${count} frame(s) of ${json.frame_width}x${json.frame_height}, ${columns} across${tags ? `; animations: ${tags}` : "; no animations"}${Object.keys(names).length ? `; names: ${Object.entries(names).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}`,
-    picture: spritePicture(sheet, { ...json, columns, frames: count }, names),
+    text: `sprites/${base}.png: ${sheet.w}x${sheet.h} pixels, ${count} frame(s) of ${json.frame_width}x${json.frame_height}, ${columns} across${tags ? `; animations: ${tags}` : "; no animations"}${namesText(names, terrains)}`,
+    picture: spritePicture(sheet, { ...json, columns, frames: count }, names, terrains),
   };
 }

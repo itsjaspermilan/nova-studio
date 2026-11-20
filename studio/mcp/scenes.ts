@@ -7,6 +7,7 @@ import { parseScene, tilemaps, type Scene, type Tilemap } from "../src/lib/scene
 import { parseSheetJson } from "../src/lib/sprite-doc";
 import { parseTileset } from "../src/lib/tileset";
 import { DIM, fill, fit, INK, label, outline, PAPER, paste, readPng, textSize } from "./draw";
+import { paintedText } from "./makers/terrain-paint";
 
 type Args = Record<string, any>;
 
@@ -305,6 +306,8 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
       m.tiles.forEach((row, r) => lines.push(`  ${String(r).padStart(3)} ${row.map((t) => charOf.get(t) ?? "?").join("")}`));
     }
   }
+
+  lines.push(...paintedText(root, maps as Args[]));
 
   // world pictures, then objects (the furthest back first; the same depth in file order)
   for (const im of images.filter((i) => i.layer !== "ui")) {
