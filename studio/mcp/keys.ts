@@ -78,7 +78,7 @@ export const MOVED: Record<string, Moved> = {
 // misplacement (`scale` beside `tileset`) or a near miss of a key the structure has (`tile_widht`); the call still runs.
 const SCENE = ["version", "background", "width", "height", "camera", "objects", "images", "texts", "tilemaps", "sky", "fog", "look", "wind"];
 const OBJECT = ["kind", "name", "x", "y", "z", "props", "layer"];
-const TILEMAP = ["name", "tileset", "x", "y", "depth", "solid", "tiles", "legend", "layer"];
+const TILEMAP = ["name", "tileset", "x", "y", "depth", "solid", "tiles", "legend", "layer", "paint", "seed", "scatter"];
 const TILESET = ["image", "tile_width", "tile_height", "scale"];
 const FRAME = ["rows", "name", "copy", "flip", "rotate", "recolor", "silhouette", "shapes", "mirror", "outline"];
 const SHAPE = ["rect", "line", "circle", "ellipse", "color", "fill"];
@@ -100,7 +100,9 @@ export function nestedWarnings(tool: string, args: Args): string[] {
     );
     list(scene.tilemaps).forEach((t, i) => {
       const what = `tile layer ${i}${t.name ? ` ("${t.name}")` : ""}`;
-      add(t, TILEMAP, what, { scale: "tileset.scale", image: "tileset.image", tile_width: "tileset.tile_width", tile_height: "tileset.tile_height", tile_size: "tileset.tile_width", z: "depth", rows: "tiles", data: "tiles" });
+      // (the makers' short form, `"tileset": "tiles"` by name, takes `scale` beside it)
+      const short = typeof t.tileset === "string";
+      add(t, short ? [...TILEMAP, "scale"] : TILEMAP, what, short ? { z: "depth", rows: "tiles", data: "tiles" } : { scale: "tileset.scale", image: "tileset.image", tile_width: "tileset.tile_width", tile_height: "tileset.tile_height", tile_size: "tileset.tile_width", z: "depth", rows: "tiles", data: "tiles" });
       add(t.tileset, TILESET, `the tileset of ${what}`, { solid: "`solid` beside `tileset`, on the layer", depth: "`depth` beside `tileset`, on the layer", legend: "`legend` beside `tileset`, on the layer", tile_size: "`tile_width` and `tile_height`", width: "tile_width", height: "tile_height", sprite: "image", name: "image" });
     });
   } else if (tool === "sprite_write") {

@@ -89,3 +89,26 @@ jump twice as high as meant). One run each, so the numbers are a direction, not 
    names only; Node fails outside the repository folder and scripts run with the repository as their folder.
 7. **Semantics nobody states:** `tint` multiplies, `nova.first` takes a tag, a solid thing never fires its collide callback, `self.vy`
    is the engine's own field, which way `angle` turns, a room smaller than the screen floats in black.
+
+### Round 3 (after batch 2, 2026-11-20)
+
+| Brief, model | Folder | Stalls | Tool calls | Minutes | Notes |
+|---|---|---|---|---|---|
+| 2D, Sonnet 5.5 | `sonnet-r3` ("Emberwood") | 12 | 60 | 9 | Title to ending in one route with audio. Top cost: options ignored in silence (`scale` beside `tileset`, as the tool's own example showed it). |
+| 2D, Fable 5.2 | `fable-r3` ("Moss Hollow") | 16 | 48 | 11 | Beaten enemies stay beaten across doors; music 7.5 dB under effects. The route only finishes with 12 hearts: `walk_to` clipped a one-tile gap and the bot cannot aim. |
+| 3D, Fable 5.2 | `fable3d-r3` ("Ruin Garden") | 10 | 130 | 18 | A walked run collects all six gems (no teleports); footsteps from clip events; soles at 0.000 in the strip. A third of the session went on not knowing whether shadows were drawn. |
+
+Across the three rounds (baseline -> batch 1 -> batch 2): 2D Sonnet 92 -> 83 -> 60 calls and 13 -> 10 -> 9 minutes; 2D Fable 86 -> 59 -> 48
+calls and 26 -> 14 -> 11 minutes; 3D Fable 70 -> 70 -> 130 calls and 19 -> 14 -> 18 minutes (the 3D run went up because of the shadow hunt, and
+because it now walks its whole route and checks far more). One run each: a direction, not a measurement.
+
+What still costs, for batch 3:
+
+1. **The test player is too simple:** `walk_to` goes straight (no path finding, stops short of things), a route cannot fight, cannot be
+   made unkillable, and carries on from the wrong place after a failed step. All three finished their route only with help (extra hearts).
+2. **Silence:** unknown keys accepted and ignored, pictures dropped from a strip without saying so, a wrong argument reported with no
+   file or line on a line `check` never ran.
+3. **3D:** no facts about what was rendered (shadows, light), the `mesh` shape undocumented, feet placed by a hand-written solver for
+   the third time, no top-down plan of a 3D scene, no contact sheet of several models.
+4. **Art:** textured fills, cutting one drawing into tiles, two-tile trees: the makers batch.
+5. **Hearing:** the numbers are trusted now; whether a tune is pleasant is not answerable by a tool.
