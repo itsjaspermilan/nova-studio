@@ -1,0 +1,18 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local C = require('data.cards'); C.list[#C.list + 1] = { id = 'extra', name = 'Extra', family = 'body', rarity = 'common', tags = {}, max = 3, text = '', apply = function() end, index = #C.list + 1 }; C.by_id.extra = C.list[#C.list]\nlocal function seen(t) require('lib.meta').upgrades.deeper_deck = t; local n = 0; for s = 1, 150 do require('lib.run').begin(s); for _, id in ipairs(require('lib.run').offer(3)) do if id == 'extra' then n = n + 1 end end end; return n end\nPOOL0 = require('lib.workbench').pool_size(); SEEN0 = seen(0); require('lib.meta').upgrades.deeper_deck = 1; POOL1 = require('lib.workbench').pool_size(); SEEN1 = seen(1); require('lib.meta').upgrades.deeper_deck = 4; POOL4 = require('lib.workbench').pool_size()\nBUY, WHY = require('lib.workbench').can_buy('deeper_deck'); require('lib.meta').upgrades.deeper_deck = 0; require('lib.run').begin(1)",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "POOL0",
+  "SEEN0",
+  "POOL1",
+  "SEEN1",
+  "POOL4",
+  "BUY",
+  "WHY"
+ ]
+}

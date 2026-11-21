@@ -1,0 +1,18 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local W, M = require('lib.workbench'), require('lib.meta')\nM.keys = 50; local o1 = W.buy('thicker_print'); B1 = tostring(o1) .. ' ' .. M.keys .. ' ' .. W.tier('thicker_print')\nlocal o2 = W.buy('thicker_print'); B2 = tostring(o2) .. ' ' .. M.keys .. ' ' .. W.tier('thicker_print')\nlocal o3, t3 = W.buy('thicker_print'); B3 = tostring(o3) .. ' ' .. M.keys .. ' ' .. W.tier('thicker_print') .. ' ' .. t3\nM.keys = 100; local o4 = W.buy('thicker_print'); B4 = tostring(o4) .. ' ' .. M.keys .. ' ' .. W.tier('thicker_print')\nlocal o5, t5 = W.buy('thicker_print'); B5 = tostring(o5) .. ' ' .. M.keys .. ' ' .. W.tier('thicker_print') .. ' ' .. t5\nM.keys = 0; local o6, t6 = W.buy('good_solder'); B6 = tostring(o6) .. ' ' .. M.keys .. ' ' .. W.tier('good_solder') .. ' ' .. t6\nCOSTS = ''; for _, u in ipairs(W.list) do COSTS = COSTS .. u.id .. '=' .. table.concat(u.costs, '/') .. ' ' end",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "B1",
+  "B2",
+  "B3",
+  "B4",
+  "B5",
+  "B6",
+  "COSTS"
+ ]
+}

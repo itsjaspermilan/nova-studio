@@ -121,6 +121,8 @@ function H.draw(scene)
       centered(52, "ELITE: " .. m.name .. ". " .. m.text, 13, { 255, 228, 94, 255 })
     end
   end
+  local eye = require("lib.workbench").eye_text(Run)      -- LULLABY's Eye (a Workbench upgrade)
+  if eye then nova.ui.text(560, 52, eye, { font = "pixel", size = 12, color = { 6, 240, 255, 255 }, align = "right", width = 380, shadow = true }) end
   if scene.banner_t and scene.banner_t > 0 then
     local a = math.min(1, scene.banner_t / 0.5) * 255
     centered(64, "ROOM CLEARED", 32, { 6, 240, 255, a })
@@ -133,6 +135,9 @@ function H.draw(scene)
   x = H.prompt(x, 506, "interact", "use")
   H.prompt(x, 506, "start", "cards")
   if scene.near_card then card_panel(scene.near_card) end
+  if scene.state == "cards" and (Run.rerolls or 0) > 0 then
+    H.prompt(700, 478, "ranged", "reroll (" .. Run.rerolls .. " left)")
+  end
   if r.state == "dead" then
     local a = math.min(1, r.dead_t / 0.4) * 255
     nova.ui.rect(0, 0, W, HH, { 5, 6, 15, a * 0.8 })

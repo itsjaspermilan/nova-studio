@@ -1,0 +1,70 @@
+{
+ "start_scene": "den",
+ "lua": "require('lib.meta').keys = 63; require('lib.meta').last = 'win'; require('lib.meta').runs = 6; require('lib.meta').wins = 1; require('lib.meta').met.patch = 3; require('lib.meta').moved_in.patch = true; require('lib.meta').seen_in.patch = true; require('lib.meta').met.old_sal = 3; require('lib.meta').moved_in.old_sal = true; require('lib.meta').seen_in.old_sal = true; nova.goto_scene('den')",
+ "route": [
+  {
+   "wait": 40,
+   "capture": "a win: LULLABY's line"
+  },
+  {
+   "wait": 90,
+   "capture": "waking"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'free' or nova.scene_now().state == 'movein'",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "wait": 20,
+   "capture": "free: the Den with two residents"
+  },
+  {
+   "walk_to": "stall_old_sal",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 4,
+   "capture": "Old Sal's stall"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4,
+   "capture": "Old Sal's line"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "walk_to": "screen",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 4
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4,
+   "capture": "the screen after a win"
+  }
+ ],
+ "out": "build/look_den_won",
+ "columns": 3
+}

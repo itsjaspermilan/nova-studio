@@ -1,0 +1,127 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 324, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 400, 420 end; do local d = nova.named('d2'); d.x, d.y = 400, 100 end; do local d = nova.named('d3'); d.x, d.y = 400, 700 end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "lua": "BASE = nova.named('d1').total; require('lib.meta').upgrades.good_solder = 3; require('lib.run').begin_chain(5); nova.named('d1').total = 0"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 17
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 50
+  },
+  {
+   "lua": "SOLDER = nova.named('d1').total"
+  }
+ ],
+ "print": [
+  "BASE",
+  "SOLDER"
+ ]
+}

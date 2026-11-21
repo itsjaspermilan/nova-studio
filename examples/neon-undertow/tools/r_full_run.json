@@ -1,0 +1,584 @@
+{
+ "start_scene": "title",
+ "seed": 3,
+ "invincible": true,
+ "lua": "require('lib.meta').keys = 40",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'free' or nova.scene_now().state == 'movein'",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "DEN0 = nova.scene_now().line_kind; WINS0 = require('lib.meta').wins"
+  },
+  {
+   "walk_to": "bench",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 6,
+   "capture": "Thicker Print bought"
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "BOUGHT = require('lib.meta').tier('thicker_print'); KEYS_SPENT = 40 - require('lib.meta').keys"
+  },
+  {
+   "walk_to": "rundoor",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.named('runner') ~= nil and require('lib.run').chain ~= nil and nova.current_scene() == require('lib.run').chain[1].scene",
+   "max": 60
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "CHAIN = ''; for i = 1, #require('lib.run').chain do CHAIN = CHAIN .. require('lib.run').chain[i].scene .. (i < #require('lib.run').chain and ' ' or '') end; MAX_START = nova.named('runner').max_hp; WHO = require('lib.run').chain[6].who"
+  },
+  {
+   "lua": "ROOM1 = nova.current_scene(); KIND1 = require('lib.run').chain[1].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 1: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID1 = nova.scene_now().paid; CARDS1 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS1_AFTER = #require('lib.run').cards; SCRAP1 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM2 = nova.current_scene(); KIND2 = require('lib.run').chain[2].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 2: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID2 = nova.scene_now().paid; CARDS2 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS2_AFTER = #require('lib.run').cards; SCRAP2 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM3 = nova.current_scene(); KIND3 = require('lib.run').chain[3].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 3: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID3 = nova.scene_now().paid; CARDS3 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS3_AFTER = #require('lib.run').cards; SCRAP3 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM4 = nova.current_scene(); KIND4 = require('lib.run').chain[4].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 4: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID4 = nova.scene_now().paid; CARDS4 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS4_AFTER = #require('lib.run').cards; SCRAP4 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM5 = nova.current_scene(); KIND5 = require('lib.run').chain[5].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 5: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID5 = nova.scene_now().paid; CARDS5 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS5_AFTER = #require('lib.run').cards; SCRAP5 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM6 = nova.current_scene()"
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3,
+   "capture": "a stranger's talk"
+  },
+  {
+   "repeat": 10,
+   "until": "require('lib.talk').stage == 'done'",
+   "steps": [
+    {
+     "press": "interact"
+    },
+    {
+     "wait": 3
+    }
+   ]
+  },
+  {
+   "wait": 5
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM7 = nova.current_scene(); KIND7 = require('lib.run').chain[7].kind"
+  },
+  {
+   "repeat": 200,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 80,
+     "may_time_out": true
+    },
+    {
+     "fight": "enemy",
+     "attack": "attack",
+     "max": 1500,
+     "may_time_out": true
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48,
+   "capture": "room 7: cleared, the cards risen"
+  },
+  {
+   "lua": "PAID7 = nova.scene_now().paid; CARDS7 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS7_AFTER = #require('lib.run').cards; SCRAP7 = require('lib.juice').scrap"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM8 = nova.current_scene()\n-- The test player's eyes for the Mother Coil fight (inlined into the routes by tools/routes.mjs). A route calls BRAIN() between its `walk_to`\n-- steps: it looks at what is dangerous RIGHT NOW (a car shadow, the magnet's locked ring, a lit lane, a Rat-drone's charge lane), scores the places\n-- within reach, and moves the `spot` entity to the best one. MODE says what to do there: 'strike' (the drum is open and he stands at her cab:\n-- swing) or 'dodge'. It uses only what a person sees on the screen; it is as good as the tells let it be.\nBOSS = nova.named('coil'); RUNNER = nova.named('runner')\nSPOT = nova.spawn('spot', RUNNER.x, RUNNER.y)\nMODE = 'dodge'; HITS = 0; STRIKES = 0\nlocal function dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end\nlocal function seg_dist(px, py, x1, y1, x2, y2)\n  local dx, dy = x2 - x1, y2 - y1\n  local l2 = dx * dx + dy * dy\n  local t = l2 > 0 and math.max(0, math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) or 0\n  return dist(px, py, x1 + t * dx, y1 + t * dy)\nend\nfunction DANGER(x, y)\n  local d = 0\n  for _, c in ipairs(nova.all('coil_car')) do if c.started and dist(x, y, c.x, c.y) < 72 + 16 then d = d + 1000 end end\n  for _, m in ipairs(nova.all('coil_magnet')) do\n    if m.state == 'lock' and dist(x, y, m.x, m.y) < 72 + 16 then d = d + 1000 end\n    if m.state == 'track' and dist(x, y, m.x, m.y) < 72 + 16 then d = d + 40 end   -- (it follows: do not stand where it is going)\n  end\n  for _, l in ipairs(nova.all('coil_lane')) do if math.abs(y - l.y) < 42 + 16 then d = d + 1000 end end\n  for _, w in ipairs(nova.all('wreckage')) do if math.abs(x - w.x) < w.w / 2 + 24 and math.abs(y - w.y) < w.h / 2 + 24 then d = d + 1000 end end\n  for _, e in ipairs(nova.all('rat_drone')) do\n    if e.state == 'tell' or e.state == 'charge' then\n      local len = 430 * 0.85\n      if seg_dist(x, y, e.x, e.y, e.x + e.dir_x * len, e.y + e.dir_y * len) < 24 + 16 then d = d + 1000 end\n    end\n  end\n  return d\nend\nfunction BRAIN()\n  local b, r = BOSS, RUNNER\n  if not b:is_alive() or r.state == 'dead' then MODE = 'dodge'; return end\n  local f = b.floor\n  local goal_x, goal_y\n  if b.open then\n    goal_x, goal_y = b.x + math.max(-70, math.min(70, r.x - b.x)), b.y + 34\n  else\n    goal_x, goal_y = b.x + math.max(-100, math.min(100, r.x - b.x)), b.y + 130\n  end\n  local best, bx, by = 1e9, r.x, r.y\n  local here = DANGER(r.x, r.y)\n  -- in danger: keep running for the safe place already chosen (a person does not change their mind every tenth of a second)\n  if here >= 1000 and LAST and DANGER(LAST.x, LAST.y) < 1000 and dist(r.x, r.y, LAST.x, LAST.y) > 12 then SPOT.x, SPOT.y = LAST.x, LAST.y; MODE = 'dodge'; return end\n  for _, rad in ipairs({ 0, 50, 100, 150 }) do\n    for k = 0, (rad == 0 and 0 or 15) do\n      local a = k / 16 * math.pi * 2\n      local x, y = r.x + math.cos(a) * rad, r.y + math.sin(a) * rad\n      if x > f.x0 + 40 and x < f.x1 - 40 and y > f.y0 + 30 and y < f.y1 - 30 then\n        -- the worst danger along the way there (a third, two thirds, the place itself), then how far it is from where he would like to stand\n        local worst = DANGER(x, y)\n        if here < 1000 then worst = math.max(worst, DANGER(r.x + (x - r.x) / 3, r.y + (y - r.y) / 3), DANGER(r.x + (x - r.x) * 2 / 3, r.y + (y - r.y) * 2 / 3)) end   -- (already in danger: the way out may cross it)\n        local sc = worst + dist(x, y, goal_x, goal_y) * 1.0 + rad * 0.05\n        if sc < best then best, bx, by = sc, x, y end\n      end\n    end\n  end\n  SPOT.x, SPOT.y = bx, by\n  LAST = { x = bx, y = by }\n  MODE = (b.open and math.abs(r.x - b.x) < B_W and r.y - b.y < 90 and r.y - b.y > 10 and DANGER(r.x, r.y) < 1000) and 'strike' or 'dodge'\nend\nB_W = 150\n"
+  },
+  {
+   "wait": 20,
+   "capture": "Mother Coil's arena"
+  },
+  {
+   "repeat": 1500,
+   "may_time_out": true,
+   "until": "nova.scene_now().state ~= 'boss' and nova.scene_now().state ~= 'boss_intro'",
+   "steps": [
+    {
+     "lua": "BRAIN()"
+    },
+    {
+     "walk_to": "spot",
+     "who": "runner",
+     "max": 8,
+     "may_time_out": true
+    },
+    {
+     "repeat": 1,
+     "may_time_out": true,
+     "until": "MODE ~= 'strike'",
+     "steps": [
+      {
+       "press": "attack"
+      },
+      {
+       "wait": 2
+      }
+     ]
+    },
+    {
+     "wait": 1
+    }
+   ]
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 800,
+   "capture": "she is down"
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "RARE_OFFER = 0; for _, c in ipairs(nova.all('card')) do if c.def.rarity == 'rare' then RARE_OFFER = RARE_OFFER + 1 end end; BOSS_PAID = nova.scene_now().paid"
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "lua": "CARDS8 = #require('lib.run').cards"
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "ROOM9 = nova.current_scene(); WON9 = tostring(require('lib.run').won); WINS1 = require('lib.meta').wins; SCRAP_BEFORE_BANK = require('lib.juice').scrap; KEYS0 = require('lib.meta').keys"
+  },
+  {
+   "walk_to": "bank",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 6,
+   "capture": "the bank"
+  },
+  {
+   "lua": "KEYS1 = require('lib.meta').keys"
+  },
+  {
+   "walk_to": [
+    2010,
+    424
+   ],
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "until": "nova.current_scene() == 'summary'",
+   "max": 160
+  },
+  {
+   "wait": 40,
+   "capture": "district cleared"
+  },
+  {
+   "lua": "local s = require('lib.run').summary; END_SCENE = nova.current_scene(); SUM = s.result .. ' ' .. s.cleared .. ' ' .. s.keys .. ' ' .. s.cards; BEST = require('lib.meta').best"
+  },
+  {
+   "wait": 40
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 80
+  },
+  {
+   "wait": 40,
+   "capture": "back in the Den: a win counted"
+  },
+  {
+   "lua": "BACK = nova.current_scene(); DEN1 = nova.scene_now().line_kind; WINS2 = require('lib.meta').wins; LAST = require('lib.meta').last; KEYS_END = require('lib.meta').keys"
+  }
+ ],
+ "print": [
+  "DEN0",
+  "WINS0",
+  "BOUGHT",
+  "KEYS_SPENT",
+  "CHAIN",
+  "MAX_START",
+  "ROOM8",
+  "RARE_OFFER",
+  "BOSS_PAID",
+  "CARDS8",
+  "ROOM9",
+  "WON9",
+  "WINS1",
+  "SCRAP_BEFORE_BANK",
+  "KEYS0",
+  "KEYS1",
+  "END_SCENE",
+  "SUM",
+  "BEST",
+  "BACK",
+  "DEN1",
+  "WINS2",
+  "LAST",
+  "KEYS_END"
+ ]
+}

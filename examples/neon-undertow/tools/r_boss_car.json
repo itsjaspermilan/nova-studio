@@ -1,0 +1,95 @@
+{
+ "start_scene": "gutter.boss",
+ "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 800, 700",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "lua": "HP0 = nova.named('runner').hp; nova.spawn('coil_car', 900, 700, { delay = 0 })"
+  },
+  {
+   "wait": 30,
+   "capture": "the shadow grows (a car 100 away)"
+  },
+  {
+   "until": "nova.count('coil_car') == 0",
+   "max": 200
+  },
+  {
+   "wait": 4,
+   "capture": "wreckage"
+  },
+  {
+   "lua": "HP1 = nova.named('runner').hp; WR1 = nova.count('wreckage'); WR1_SETTLED = tostring(nova.all('wreckage')[1].settled)"
+  },
+  {
+   "lua": "nova.spawn('coil_car', nova.named('runner').x + 50, nova.named('runner').y, { delay = 0 })"
+  },
+  {
+   "wait": 40,
+   "capture": "the shadow on him"
+  },
+  {
+   "until": "nova.count('coil_car') == 0",
+   "max": 200
+  },
+  {
+   "wait": 4,
+   "capture": "hurt"
+  },
+  {
+   "lua": "HP2 = nova.named('runner').hp; WR2 = nova.count('wreckage')"
+  },
+  {
+   "walk_to": [
+    600,
+    820
+   ],
+   "who": "runner",
+   "max": 200
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "WR2_SOLID = 0; for _, w in ipairs(nova.all('wreckage')) do if w.settled then WR2_SOLID = WR2_SOLID + 1 end end"
+  },
+  {
+   "lua": "nova.spawn('coil_lane', 48, 700, { dir = 1, x0 = 48, x1 = 2064, first = true })"
+  },
+  {
+   "wait": 60,
+   "capture": "the lane is lit over the wrecks"
+  },
+  {
+   "until": "nova.count('coil_lane') == 0",
+   "max": 400,
+   "capture": "the junk has gone through"
+  },
+  {
+   "lua": "WR3 = nova.count('wreckage'); HP3 = nova.named('runner').hp"
+  },
+  {
+   "lua": "for i = 1, 5 do nova.spawn('coil_car', 300 + i * 140, 400, { delay = 0 }) end"
+  },
+  {
+   "wait": 90
+  },
+  {
+   "lua": "WR4 = nova.count('wreckage')"
+  }
+ ],
+ "print": [
+  "HP0",
+  "HP1",
+  "WR1",
+  "WR1_SETTLED",
+  "HP2",
+  "WR2",
+  "WR2_SOLID",
+  "WR3",
+  "HP3",
+  "WR4"
+ ]
+}

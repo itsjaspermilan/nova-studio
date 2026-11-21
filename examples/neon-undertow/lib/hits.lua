@@ -12,9 +12,19 @@ H.from = nil
 local CHAIN_RANGE = 144 -- Live Wire jumps to enemies within 3 tiles of the one hit
 
 -- The damage a baton hit does to `e`: more when a shot marked it (Tracer).
+-- Good Solder (a Workbench upgrade) adds its share on top; the fractions of a point are carried to the next hit, so over many hits the
+-- share is exactly what it says.
 function H.baton_damage(e, base)
-  if (e.mark_t or 0) > 0 and (e.mark_bonus or 0) > 0 then return math.floor(base * (1 + e.mark_bonus) + 0.5) end
-  return base
+  local d = base
+  if (e.mark_t or 0) > 0 and (e.mark_bonus or 0) > 0 then d = math.floor(base * (1 + e.mark_bonus) + 0.5) end
+  local s = Run.mods.solder or 0
+  if s > 0 then
+    local total = d * (1 + s) + (Run.solder_frac or 0)
+    local whole = math.floor(total + 1e-9)
+    Run.solder_frac = total - whole
+    d = whole
+  end
+  return d
 end
 
 -- Live Wire: lightning from the enemy that was hit to the nearest others, 2 damage each.

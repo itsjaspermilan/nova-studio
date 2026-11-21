@@ -379,12 +379,12 @@ const spawns = (m, pts) => pts.forEach(([x, y], i) => m.marker(`sp_${i + 1}`, x,
   m.puddle(7, 12); m.puddle(30, 6);
   done(m);
 }
-{ // the boss arena, empty for now: a wide hall with a ring of pillars
-  const m = room("boss", 30, 22, E("W", 10), E("E", 10), "quiet");
-  m.open(1, 1, 28, 20); m.paved(5, 4, 24, 17); m.paved(1, 10, 3, 11); m.paved(26, 10, 28, 11);
-  for (const [x, y] of [[9, 7], [19, 7], [9, 13], [19, 13]]) m.wall(x, y, x + 1, y + 1);
-  m.crates([2, 2], [27, 2], [2, 19], [27, 19]);
-  m.barrels([14, 2], [14, 19]);
+{ // Mother Coil's arena: a wide yard, her crane cab over the north wall (the floor starts under it), doors at both ends.
+  // Nothing stands in the yard: the junk lanes, the car shadows and the magnet need the whole floor; her wrecks are the only cover.
+  const m = room("boss", 44, 22, E("W", 11), E("E", 11), "quiet");
+  m.open(1, 5, 42, 20); m.paved(1, 11, 4, 12); m.paved(39, 11, 42, 12);
+  m.marker("sp_1", 3, 18); m.marker("sp_2", 40, 18); m.marker("cards", 22, 16);
+  m.obj({ kind: "mother_coil", name: "coil", x: 22 * T, y: 5 * T });
   done(m);
 }
 
@@ -433,9 +433,12 @@ const spawns = (m, pts) => pts.forEach(([x, y], i) => m.marker(`sp_${i + 1}`, x,
 }
 
 // every scene gets its one-line script (the fight room base, or the quiet room's)
-const QUIET = new Set(["stranger", "walk", "boss"]);
+const QUIET = new Set(["stranger", "walk"]);
+const HAND = new Set(["boss"]);   // (scenes/gutter/boss.lua is written by hand: lib/bossroom.lua)
+const only = (process.argv.find((a) => a.startsWith("--only=")) || "").slice(7);
 fs.mkdirSync(`${root}scenes/gutter`, { recursive: true });
 for (const name of written) {
+  if (HAND.has(name) || (only && name !== only)) continue;
   const base = QUIET.has(name) ? "lib.quietroom" : "lib.fightroom";
   fs.writeFileSync(`${root}scenes/gutter/${name}.lua`,
     `-- ${name}: the room's shape, doors and spawn points are in ${name}.scene.json; everything else is ${base.replace(".", "/")}.lua.\nreturn nova.scene(require("${base}"), { room = "gutter.${name}" })\n`);
@@ -444,6 +447,7 @@ for (const name of written) {
 // scenes/gutter/ (the folder is the district; the scene's name is then `gutter.<name>`).
 if (process.argv.includes("--write")) {
   for (const name of written) {
+    if (only && name !== only) continue;
     const res = execFileSync("scripts/nova-tool", ["--project", root.replace(/\/$/, ""), "scene_write", `@${outdir}/${name}.json`], { encoding: "utf8", cwd: root + "../.." });
     fs.renameSync(`${root}scenes/tmp_gutter_${name}.scene.json`, `${root}scenes/gutter/${name}.scene.json`);
     console.log(name + ": " + res.split("\n").filter((l) => /warning|error/i.test(l)).slice(0, 4).join(" "));

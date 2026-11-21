@@ -1,0 +1,45 @@
+{
+ "start_scene": "gutter.boss",
+ "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1900, 700",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "lua": "nova.named('coil').hp = 49; nova.named('coil').open = true; nova.named('coil').state = 'window'; nova.named('coil'):take_hit(2, 0, 0, 0)"
+  },
+  {
+   "wait": 20,
+   "capture": "the floor charges"
+  },
+  {
+   "until": "require('lib.field').armed",
+   "max": 200
+  },
+  {
+   "wait": 6,
+   "capture": "armed"
+  },
+  {
+   "lua": "local c = require('lib.field').stripes; nova.named('runner').x, nova.named('runner').y = c[1].cx, 520; nova.named('runner').aim_dx, nova.named('runner').aim_dy = 0, 1; nova.named('runner').shot_cd = 0; nova.named('runner'):fire(); nova.spawn('rat_drone', c[2].cx, 600); nova.spawn('rat_drone', c[3].cx, 800)"
+  },
+  {
+   "wait": 8,
+   "capture": "a shot in a stripe"
+  },
+  {
+   "wait": 10,
+   "capture": "it bends"
+  },
+  {
+   "wait": 30,
+   "capture": "drones are pulled"
+  },
+  {
+   "wait": 40,
+   "capture": "further"
+  }
+ ],
+ "out": "build/look_boss_stripes",
+ "columns": 3
+}

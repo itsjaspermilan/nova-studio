@@ -1,0 +1,16 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local D = require('data.den'); local seen, dup, total = {}, 0, 0; KINDS = ''\nfor _, k in ipairs({ 'first', 'dead', 'win' }) do KINDS = KINDS .. k .. '=' .. #D.wake_lines[k] .. ' '; for _, l in ipairs(D.wake_lines[k]) do total = total + 1; if seen[l] then dup = dup + 1 end; seen[l] = true end end\nTOTAL, DUP = total, dup; SCREEN = ''; for _, s in ipairs(D.screen) do SCREEN = SCREEN .. s.when .. '=' .. #s.lines .. ' ' end\nlocal Den = require('lib.lullaby'); local d0 = Den.wake_line('dead'); local d1 = Den.wake_line('dead'); local d2 = Den.wake_line('dead'); NEXT_DIFFERENT = tostring(d0 ~= d1 and d1 ~= d2)",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "KINDS",
+  "TOTAL",
+  "DUP",
+  "SCREEN",
+  "NEXT_DIFFERENT"
+ ]
+}

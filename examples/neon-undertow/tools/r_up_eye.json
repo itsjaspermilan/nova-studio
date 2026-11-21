@@ -1,0 +1,16 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local function at(t) require('lib.meta').upgrades.lullaby_eye = t; require('lib.run').begin_chain(5); require('lib.run').room = 2; return tostring(require('lib.workbench').eye_text(require('lib.run'))) end\nE0, E1, E2 = at(0), at(1), at(2); MARK = require('lib.run').chain[4].mark; require('lib.run').room = 7; E_BOSS = require('lib.workbench').eye_text(require('lib.run')); require('lib.meta').upgrades.lullaby_eye = 0",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "E0",
+  "E1",
+  "E2",
+  "MARK",
+  "E_BOSS"
+ ]
+}

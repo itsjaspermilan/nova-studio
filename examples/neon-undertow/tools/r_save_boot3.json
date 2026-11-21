@@ -1,0 +1,17 @@
+{
+ "start_scene": "title",
+ "route": [
+  {
+   "wait": 5
+  },
+  {
+   "lua": "N_KEYS = require('lib.meta').keys; N_TIER = require('lib.meta').tier('thicker_print'); N_IN = tostring(require('lib.meta').moved_in.patch); N_RUNS = require('lib.meta').runs"
+  }
+ ],
+ "print": [
+  "N_KEYS",
+  "N_TIER",
+  "N_IN",
+  "N_RUNS"
+ ]
+}

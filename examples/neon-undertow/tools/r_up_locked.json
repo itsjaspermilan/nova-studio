@@ -1,0 +1,17 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').keys = 500; local W = require('lib.workbench'); local a, ta = W.buy('fast_print'); local b, tb = W.buy('deeper_deck'); FAST = tostring(a) .. ' ' .. ta; DEEP = tostring(b) .. ' ' .. tb; KEYS = require('lib.meta').keys\nTIER_F, TIER_D = W.tier('fast_print'), W.tier('deeper_deck'); NAMES = ''; for _, u in ipairs(W.list) do NAMES = NAMES .. u.name .. '/' .. #u.costs .. ' ' end",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "FAST",
+  "DEEP",
+  "KEYS",
+  "TIER_F",
+  "TIER_D",
+  "NAMES"
+ ]
+}

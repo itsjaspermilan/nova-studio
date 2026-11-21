@@ -2,6 +2,7 @@
 local P = require("data.player")
 local J = require("lib.juice")
 local Hits = require("lib.hits")
+local Field = require("lib.field")
 
 local Shot = nova.entity {
   sprite = "fx_shot", anim = "fly", tags = { "shot" }, hitbox = { r = 3 }, sx = 3, sy = 3, velocity = false, travelled = 0, bounces = 0, damage = P.aim.shot_damage,
@@ -19,6 +20,14 @@ end
 
 function Shot:update(dt)
   if J.frozen() then return end
+  -- Mother Coil's magnetised stripes bend a shot's path while it is inside one
+  local w = Field.omega(self.x, self.y)
+  if w ~= 0 then
+    local c, s = math.cos(w * dt), math.sin(w * dt)
+    self.dx, self.dy = self.dx * c - self.dy * s, self.dx * s + self.dy * c
+    self.angle = math.atan(self.dy, self.dx)
+    self.curved = (self.curved or 0) + math.abs(w * dt)
+  end
   local step = P.aim.shot_speed * dt
   local bx, by = self:slide(self.dx * step, self.dy * step)
   self.travelled = self.travelled + step

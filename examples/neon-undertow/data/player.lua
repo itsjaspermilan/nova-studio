@@ -70,6 +70,10 @@ return {
     card_rise = 0.6, card_take = 0.55, zap = 0.6, ricochet = 0.5, stun = 0.6,
     -- slice 3a
     blast = 0.8, tram_bell = 0.7, tram_pass = 0.6, sign_drop = 0.7, buy = 0.6,
+    -- slice 3b: Mother Coil, the Den, the Workbench
+    tell_lanes = 0.7, junk_drag = 0.6, tell_car = 0.7, car_slam = 0.9, tell_magnet = 0.7, magnet_slam = 0.9,
+    drum_open = 0.8, drum_clang = 0.5, stripes_on = 0.7, boss_burst = 0.8, boss_die = 0.9, boss_bark = 0.4,
+    printed = 0.7, lullaby_blip = 0.4, menu_move = 0.4, menu_select = 0.6, move_in = 0.7, revive = 0.8, reroll = 0.6, wreck_break = 0.6,
   },
-  music = { track = "undertow", volume = 0.3 },
+  music = { track = "undertow", volume = 0.3, boss = "mother_coil", boss_volume = 0.55, den = "den", den_volume = 0.5 },
 }

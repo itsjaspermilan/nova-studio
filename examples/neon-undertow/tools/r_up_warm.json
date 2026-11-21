@@ -1,0 +1,17 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local C = require('data.cards'); local function held() local out = {}; for _, id in ipairs(require('lib.run').cards) do out[#out + 1] = id .. ':' .. C.by_id[id].rarity end; return table.concat(out, ',') end\nrequire('lib.meta').upgrades.warm_start = 0; require('lib.run').begin_chain(7); W0 = held()\nrequire('lib.meta').upgrades.warm_start = 1; require('lib.run').begin_chain(7); W1 = held()\nrequire('lib.meta').upgrades.warm_start = 2; require('lib.run').begin_chain(7); W2 = held()\nrequire('lib.meta').upgrades.warm_start = 3; require('lib.meta').warm_pick = 'plating'; require('lib.run').begin_chain(7); W3 = held(); MAXHP3 = require('lib.run').max_hp()\nrequire('lib.meta').upgrades.warm_start = 1; require('lib.run').begin_chain(8); W1B = held()\nrequire('lib.meta').upgrades.warm_start = 0",
+ "route": [
+  {
+   "wait": 2
+  }
+ ],
+ "print": [
+  "W0",
+  "W1",
+  "W2",
+  "W3",
+  "MAXHP3",
+  "W1B"
+ ]
+}

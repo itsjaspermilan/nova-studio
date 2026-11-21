@@ -1,0 +1,329 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').met.old_sal = 0; for s = 1, 400 do if require('lib.run').build_chain(s)[6].who == 'old_sal' then SEED_OLD_SAL = s; break end end",
+ "route": [
+  {
+   "lua": "SP = SEED_OLD_SAL"
+  },
+  {
+   "lua": "require('lib.run').begin_chain(SP); nova.goto_scene('gutter.stranger')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 3
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "V1_SET = require('lib.talk').set; V1_LINE = require('lib.talk').lines[1]; V1_MET = require('lib.meta').met[require('lib.talk').who]; V1_WHO = require('lib.talk').who; V1_STAGE0 = require('lib.talk').stage"
+  },
+  {
+   "wait": 2,
+   "capture": "meeting 1: the first line"
+  },
+  {
+   "repeat": 8,
+   "until": "require('lib.talk').stage == 'choice'",
+   "steps": [
+    {
+     "press": "interact"
+    },
+    {
+     "wait": 3
+    }
+   ]
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "until": "not require('lib.talk').active",
+   "max": 60
+  },
+  {
+   "wait": 6,
+   "capture": "meeting 1: the choice made"
+  },
+  {
+   "lua": "V1_CHOSEN = require('lib.talk').chosen.label; V1_MAXHP = nova.named('runner').max_hp; V1_HP = nova.named('runner').hp; V1_STAGE = require('lib.talk').stage"
+  },
+  {
+   "lua": "IN1 = tostring(require('lib.meta').moved_in.old_sal); MET1 = require('lib.meta').met.old_sal"
+  },
+  {
+   "lua": " nova.goto_scene('gutter.stranger')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 3
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "V2_SET = require('lib.talk').set; V2_LINE = require('lib.talk').lines[1]; V2_MET = require('lib.meta').met[require('lib.talk').who]; V2_WHO = require('lib.talk').who; V2_STAGE0 = require('lib.talk').stage"
+  },
+  {
+   "wait": 2,
+   "capture": "meeting 2: the first line"
+  },
+  {
+   "repeat": 8,
+   "until": "require('lib.talk').stage == 'choice'",
+   "steps": [
+    {
+     "press": "interact"
+    },
+    {
+     "wait": 3
+    }
+   ]
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "until": "not require('lib.talk').active",
+   "max": 60
+  },
+  {
+   "wait": 6,
+   "capture": "meeting 2: the choice made"
+  },
+  {
+   "lua": "V2_CHOSEN = require('lib.talk').chosen.label; V2_MAXHP = nova.named('runner').max_hp; V2_HP = nova.named('runner').hp; V2_STAGE = require('lib.talk').stage"
+  },
+  {
+   "lua": "IN2 = tostring(require('lib.meta').moved_in.old_sal); MET2 = require('lib.meta').met.old_sal"
+  },
+  {
+   "lua": " nova.goto_scene('gutter.stranger')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil",
+   "max": 30
+  },
+  {
+   "wait": 3
+  },
+  {
+   "walk_to": "stranger",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "V3_SET = require('lib.talk').set; V3_LINE = require('lib.talk').lines[1]; V3_MET = require('lib.meta').met[require('lib.talk').who]; V3_WHO = require('lib.talk').who; V3_STAGE0 = require('lib.talk').stage"
+  },
+  {
+   "wait": 2,
+   "capture": "meeting 3: the first line"
+  },
+  {
+   "repeat": 8,
+   "until": "require('lib.talk').stage == 'choice'",
+   "steps": [
+    {
+     "press": "interact"
+    },
+    {
+     "wait": 3
+    }
+   ]
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "until": "not require('lib.talk').active",
+   "max": 60
+  },
+  {
+   "wait": 6,
+   "capture": "meeting 3: the choice made"
+  },
+  {
+   "lua": "V3_CHOSEN = require('lib.talk').chosen.label; V3_MAXHP = nova.named('runner').max_hp; V3_HP = nova.named('runner').hp; V3_STAGE = require('lib.talk').stage"
+  },
+  {
+   "lua": "IN3 = tostring(require('lib.meta').moved_in.old_sal); MET3 = require('lib.meta').met.old_sal; MOVED = table.concat(require('lib.run').moved, ','); nova.goto_scene('den')"
+  },
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'movein' or nova.scene_now().state == 'free'",
+   "max": 200
+  },
+  {
+   "wait": 3,
+   "capture": "they have moved in: the announcement"
+  },
+  {
+   "lua": "ANN = nova.scene_now().state; ANN_WHO = nova.scene_now().panel and nova.scene_now().panel.who; SEEN = tostring(require('lib.meta').seen_in.old_sal)"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 6
+  },
+  {
+   "walk_to": "stall_old_sal",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 4,
+   "capture": "their stall"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4,
+   "capture": "their line"
+  },
+  {
+   "lua": "LINE = nova.scene_now().panel.line; STATE_R = nova.scene_now().state; LINE_1 = require('data.den').movers.old_sal.den_lines[1]"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "walk_to": "rundoor",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 5,
+   "capture": "room 1"
+  },
+  {
+   "lua": "MAX1 = nova.named('runner').max_hp; HP1 = nova.named('runner').hp; NOTES = table.concat(require('lib.run').den_notes, ';'); H0 = nova.named('runner').hp; nova.named('runner'):take_damage(2); H1 = nova.named('runner').hp"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "nova.named('runner'):take_damage(2); H2 = nova.named('runner').hp"
+  },
+  {
+   "lua": "require('lib.run').take_from(nova.named('runner')); require('lib.run').room = 1; nova.goto_scene(require('lib.run').chain[2].scene)"
+  },
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[2].scene and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "G0 = nova.named('runner').hp; nova.named('runner'):take_damage(2); G1 = nova.named('runner').hp"
+  }
+ ],
+ "print": [
+  "IN1",
+  "MET1",
+  "IN2",
+  "MET2",
+  "IN3",
+  "MET3",
+  "MOVED",
+  "ANN",
+  "ANN_WHO",
+  "SEEN",
+  "LINE",
+  "LINE_1",
+  "STATE_R",
+  "MAX1",
+  "HP1",
+  "NOTES",
+  "H0",
+  "H1",
+  "H2",
+  "G0",
+  "G1"
+ ]
+}

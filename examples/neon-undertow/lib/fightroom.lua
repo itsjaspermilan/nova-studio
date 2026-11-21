@@ -66,7 +66,7 @@ end
 function Room:shut_doors()
   for _, d in ipairs(self.doors) do d:shut(true) end
   nova.sound.play("door_shut", { volume = P.sfx.door_shut })
-  nova.log("doors shut")
+  nova.log(self.shut_text or "doors shut")
 end
 
 function Room:next_wave()
@@ -98,7 +98,7 @@ end
 
 function Room:clear()
   self.state, self.t = "cleared", 0
-  nova.log("room cleared")
+  nova.log(self.clear_text or "room cleared")
   for _, d in ipairs(self.doors) do
     if d.exit then d:unlock(true) else d:open(true) end
   end
@@ -138,7 +138,23 @@ function Room:take(card)
   nova.log("exit door opens")
 end
 
+-- Familiar Streets (a Workbench upgrade): Y on the card floor draws the offer again, as often as the run has rerolls.
+function Room:reroll_cards()
+  Run.rerolls = Run.rerolls - 1
+  for _, c in ipairs(nova.all("card")) do c:destroy() end
+  Run.reroll_next = true
+  nova.log("cards rerolled (" .. Run.rerolls .. " left)")
+  nova.sound.play("reroll", { volume = P.sfx.reroll })
+  self:rise_cards()
+end
+
 function Room:pick()
+  local r = self.runner
+  if (Run.rerolls or 0) > 0 and nova.input.pressed("ranged") and #nova.all("card") > 0 then
+    r.aiming, r.shot_cd = false, 0.4           -- (the same button aims: it must not also fire)
+    self:reroll_cards()
+    return
+  end
   local r = self.runner
   local near, nd = nil, R.card_reach
   for _, c in ipairs(nova.all("card")) do

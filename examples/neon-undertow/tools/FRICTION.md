@@ -161,3 +161,47 @@ Same form. Most costly first.
    enemies (Shieldbearer, Mirror Drone) rather than reading `knock == 0`.
 
 Top five by cost: 1, 3, 7, 2, 5 (then 4, 6).
+
+# Friction log, slice 3b (Mother Coil, the Den, the Workbench, saving)
+
+Same form. Most costly first.
+
+1. **A step cannot be conditional, so a test player that reacts to the game needs a Lua "brain" and a dummy entity to walk to.** The fair-fight
+   route has to dodge three kinds of attack and strike only when the drum is open. `walk_to` takes a literal point or an entity; `press` is
+   unconditional; `until` ends a group, never gates a step. Worked round (4 attempts, the first two bots died or oscillated): a `spot`
+   entity (`entities/spot.lua`) that a `lua` step moves to the best place each tenth of a second (`tools/bossbot.lua`), `walk_to: "spot"`,
+   and `{ repeat: 1, until: "MODE ~= 'strike'", steps: [press] }` as an "if". One step: `{ "walk_to": { "lua": "return x, y" } }` and
+   `{ "press": "attack", "if": "<lua>" }`; or expose `lua_each_frame` and let a route drive input from Lua (`nova.testing.press`).
+
+2. **A `repeat` with `until` that is already true at its start (or never true) warns, so "skip this unless" needs `may_time_out` on a group that
+   is meant to be skipped.** It reads like a mistake in the answer ("`MODE ~= 'strike'` never held in 1 rounds of the group") and buried the
+   one real warning in 400 identical lines until I added `may_time_out` everywhere. One step: `"if"`/`"unless"` on a step (see 1), or no
+   warning for a one-round group.
+
+3. **`play`'s plan has no save folder, but the runtime has `--save-dir`**; the brief said `play` takes one. The "run twice on one save" proof is
+   therefore a Rust test (`play_saved`, `Game::load_with`) and not a `play` call. 1 attempt to find out, 0 to work round. One step: `"save_dir"`
+   in the `play` tool (the Plan already runs against a `Game`).
+
+4. **The `lua` of a plan runs after the start scene is built, so a route that sets what a scene's `enter` reads (the save, the run) must send
+   the scene on again** (`... nova.goto_scene('den')`). My first look at "the Den after a win" showed the first-boot line because `Meta.last` was
+   set one frame too late (2 attempts, found in the picture). Same family as slice 3a #3. One step: `"start_lua"`, run before the start scene.
+
+5. **A scene's own text is always over rectangles, so labels drawn in the world layer's `draw_ui` show through every panel** (the stalls' name
+   plates through the Workbench). Second time (slice 2 #6). Fixed by drawing the labels only in the state with no panel; one step:
+   `over_text = true` on `nova.ui.rect`, as asked then.
+
+6. **No `entity:tag()`: an entity cannot become solid or stop being solid**, so every Den fixture is tagged `solid` and the ones you can walk over
+   (the bed, the door) have an empty hitbox. Same as slice 2 #8; the wreckage that is soft until nobody stands in it needs the same trick
+   (and a box test of its own, because `touching` would not say which of several things is inside).
+
+7. **A shot stops at a solid tile before it can touch a hitbox that ends at the tile's edge**: Mother Coil's box ended at the floor's top
+   edge, and every shot died in the wall above it (3 attempts; the baton was fine, which hid it). I let her box reach 28 units below her base.
+   A line in the guide ("a target against a wall: let its box overlap the wall's first tile") would have saved the hunt.
+
+8. `nova.save.get` returns numbers that may come back as floats (`12.0`): `lib/meta.lua` turns them back with `math.tointeger`. A note under
+   `save.get` would do.
+
+9. `scene_write`'s `paint` made the stone floor look like wall bricks in the boss arena (a large `=` block): not a bug, but a "paved" terrain
+   that is visibly floor would help a map read at a glance. (Left: the art is being replaced.)
+
+Top five by cost: 1, 2, 4, 7, 5 (then 3, 6).

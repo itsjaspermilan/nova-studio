@@ -2221,3 +2221,799 @@ fn the_new_sounds_exist() {
         assert!(played.contains(s), "no route plays {s}: {played:?}");
     }
 }
+
+// =====================================================================================================================
+// Slice 3b: Mother Coil, the Den, the Workbench and saving. Routes are in tools/routes.mjs ("SLICE 3b"); each test asserts what its
+// route printed. The fight is proven twice: the attacks one at a time (boss_*), then `boss_fair`, a whole fight WITHOUT invincibility
+// won by a test player that waits for each tell, walks to the safe place and hits the drum in its window.
+// =====================================================================================================================
+
+/// The frame a sound started at (the n-th time, counting from 0).
+fn sound_frame(r: &Value, name: &str, n: usize) -> u64 {
+    let hits: Vec<u64> = r["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| {
+            s["text"]
+                .as_str()
+                .unwrap_or("")
+                .contains(&format!("sound {name} "))
+        })
+        .map(|s| s["frame"].as_u64().unwrap())
+        .collect();
+    *hits
+        .get(n)
+        .unwrap_or_else(|| panic!("sound {name} #{n} never started: {:?}", report_sounds(r)))
+}
+
+fn s(r: &Value, k: &str) -> String {
+    printed(r, k)
+}
+
+/// Plays a plan with its save data in `save` (a folder): the save is opened before the game's scripts run, as `nova run --save-dir` does.
+fn play_saved(name: &str, plan: String, save: &Path) -> Value {
+    let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder()).unwrap());
+    let save = save.to_path_buf();
+    let mut g = Game::load_with(vfs, &move |_| Some(save.clone())).expect("Neon Undertow loads");
+    g.upload(&mut FakeGpu);
+    let dir = scratch(name);
+    std::fs::write(dir.join("plan.json"), plan).unwrap();
+    let plan = Plan::from_file(&dir.join("plan.json")).unwrap_or_else(|e| panic!("{name}: {e}"));
+    let mut run = Playtest::new(plan, &dir.join("out")).unwrap();
+    g.reseed(run.seed().unwrap_or(1));
+    if let Some(scene) = run.start_scene() {
+        g.start_in_scene(scene).unwrap();
+    }
+    let mut frame = 0;
+    while !run.finished(frame) {
+        let mut input = InputFrame::default();
+        run.before_frame(frame, &mut g, &mut input);
+        g.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &input);
+        for caption in run.after_frame(frame, &mut g) {
+            let _ = run.picture(frame, &caption, &mut g);
+        }
+        frame += 1;
+    }
+    let report = run.finish(frame, &mut g).unwrap();
+    g.flush_save();
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(report["error"], Value::Null, "{name}: {report}");
+    assert_eq!(
+        report["step_errors"].as_array().map_or(0, |a| a.len()),
+        0,
+        "{name}: {}",
+        report["step_errors"]
+    );
+    assert_eq!(
+        report["warnings"].as_array().map_or(0, |a| a.len()),
+        0,
+        "{name}: {}",
+        report["warnings"]
+    );
+    report
+}
+
+#[test]
+fn junk_lanes_are_lit_0_8_s_ahead_and_hurt_in_the_lane_and_not_between() {
+    let hit = run("boss_lane_hit");
+    assert_eq!(
+        s(&hit, "ROWS").trim(),
+        "348 624 900",
+        "three lanes across the floor"
+    );
+    assert_eq!(
+        (s(&hit, "HP0"), s(&hit, "HP1")),
+        ("12".into(), "10".into()),
+        "standing in a lane: 2 damage"
+    );
+    let l = log(&hit);
+    let lit = frame_of(&l, "lane lit at");
+    let drag = sound_frame(&hit, "junk_drag", 0);
+    assert!(
+        (47..=49).contains(&(drag - lit)),
+        "the lanes are lit 0.8 s before the junk moves: {} frames",
+        drag - lit
+    );
+    assert_eq!(
+        sound_frame(&hit, "tell_lanes", 0),
+        lit,
+        "the tell has its own sound, at the moment the lanes light"
+    );
+    assert_eq!(count_lines(&l, "boss hit lands: lane"), 1, "hit once");
+    let gap = run("boss_lane_gap");
+    assert_eq!(
+        (s(&gap, "HP0"), s(&gap, "HP1")),
+        ("12".into(), "12".into()),
+        "between the lanes: nothing"
+    );
+}
+
+#[test]
+fn a_car_drops_after_a_1_s_shadow_hurts_within_1_5_tiles_leaves_wreckage_and_later_attacks_break_it()
+ {
+    let r = run("boss_car");
+    let l = log(&r);
+    let shadow = frames_between(&l, "car shadow at", "car slams at");
+    assert!(
+        (59..=61).contains(&shadow),
+        "the shadow grows for 1 s: {shadow} frames"
+    );
+    assert!(has_sound(&r, "tell_car") && has_sound(&r, "car_slam"));
+    assert_eq!(
+        s(&r, "HP1"),
+        "12",
+        "a car 100 units away (radius 72) hurts no one"
+    );
+    assert_eq!(s(&r, "WR1"), "1", "it left a wreck");
+    assert_eq!(s(&r, "WR1_SETTLED"), "true");
+    assert_eq!(s(&r, "HP2"), "9", "a car 50 units away hurts for 3");
+    assert_eq!(
+        s(&r, "WR2"),
+        "1",
+        "the second car broke the first wreck and left its own"
+    );
+    assert_eq!(
+        s(&r, "WR2_SOLID"),
+        "1",
+        "the wreck is solid cover once he has walked out of it"
+    );
+    assert_eq!(
+        s(&r, "WR3"),
+        "0",
+        "a junk lane through the wrecks broke them"
+    );
+    assert_eq!(s(&r, "HP3"), "9", "(he stood between the lanes)");
+    assert_eq!(
+        s(&r, "WR4"),
+        "4",
+        "five cars in a row: at most four wrecks stand"
+    );
+    assert!(count_lines(&l, "wreckage breaks") >= 3);
+}
+
+#[test]
+fn the_drum_takes_no_damage_while_shut_and_for_2_5_s_after_each_slam_it_takes_2_2_4() {
+    let r = run("boss_drum");
+    assert_eq!(s(&r, "C0"), "96");
+    assert_eq!(
+        (s(&r, "OPEN_BEFORE"), s(&r, "C1"), s(&r, "CLANGS")),
+        ("false".into(), "96".into(), "3".into()),
+        "three baton hits on a shut drum: three clangs, no damage"
+    );
+    assert_eq!(
+        (s(&r, "HP0"), s(&r, "HP1")),
+        ("12".into(), "9".into()),
+        "the slam landed where he stood: 3 damage"
+    );
+    assert_eq!(s(&r, "C2"), "88", "in the window the chain does 2 + 2 + 4");
+    assert_eq!(
+        (s(&r, "OPEN_AFTER"), s(&r, "C3"), s(&r, "CLANGS2")),
+        ("false".into(), "88".into(), "6".into()),
+        "shut again: three more clangs, no damage"
+    );
+    let l = log(&r);
+    let window = frames_between(&l, "drum opens", "drum closes");
+    assert!(
+        (150..=165).contains(&window),
+        "the window is 2.5 s (150 frames; the hit-stops of his three hits freeze it too): {window}"
+    );
+    let lock = frames_between(&l, "magnet locks", "magnet slams");
+    assert_eq!(
+        lock, 54,
+        "the ring is locked for 0.9 s before the slam (at least 0.6)"
+    );
+    assert_eq!(
+        sound_frame(&r, "tell_magnet", 0),
+        frame_of(&l, "magnet locks"),
+        "its own tell sound, when the ring locks"
+    );
+    assert!(
+        has_sound(&r, "magnet_slam") && has_sound(&r, "drum_open") && has_sound(&r, "drum_clang"),
+        "the drum has a sound when it opens"
+    );
+    let shot = run("boss_drum_shot");
+    assert_eq!(
+        (s(&shot, "C1"), s(&shot, "CLANGS"), s(&shot, "C2")),
+        ("96".into(), "1".into(), "93".into()),
+        "a shot: nothing while shut, 3 when open"
+    );
+}
+
+#[test]
+fn at_half_health_the_floor_is_magnetised_shots_curve_in_a_stripe_and_drones_are_pulled_along_it() {
+    let r = run("boss_phase2");
+    assert_eq!(
+        (s(&r, "PH0"), s(&r, "ARMED0")),
+        ("false".into(), "false".into())
+    );
+    assert_eq!(
+        (s(&r, "PH1"), s(&r, "HP_BOSS")),
+        ("true".into(), "47".into()),
+        "49 health, a hit of 2: 47 is under half of 96 and the phase starts"
+    );
+    assert_eq!(
+        (num(&r, "PAUSE0"), num(&r, "PAUSE1")),
+        (1.2, 0.6),
+        "her attacks come faster"
+    );
+    let (x0, x1) = (num(&r, "IN_X0"), num(&r, "IN_X1"));
+    assert!(
+        (x1 - x0).abs() > 60.0,
+        "a shot fired inside a stripe ends {} units off its straight line",
+        x1 - x0
+    );
+    assert!(
+        num(&r, "IN_TURN") > 0.5 && num(&r, "IN_DX").abs() > 0.3,
+        "it turned: {} rad, heading x {}",
+        num(&r, "IN_TURN"),
+        num(&r, "IN_DX")
+    );
+    assert_eq!(
+        (
+            s(&r, "OUT_X0"),
+            s(&r, "OUT_X1"),
+            s(&r, "OUT_DX"),
+            s(&r, "OUT_TURN")
+        ),
+        ("800".into(), "800".into(), "0".into(), "0".into()),
+        "a shot fired in the gap stays on its line"
+    );
+    assert_between(
+        "drone in stripe 1 (pulled down)",
+        num(&r, "DY1"),
+        140.0,
+        160.0,
+    );
+    assert_between(
+        "drone in stripe 2 (pulled up)",
+        num(&r, "DY2"),
+        -160.0,
+        -140.0,
+    );
+    assert_eq!(s(&r, "DY3"), "0", "a drone in a gap is not pulled");
+    assert!(has_sound(&r, "stripes_on"));
+}
+
+#[test]
+fn mother_coil_dies_in_a_long_burst_pays_120_scrap_offers_a_rare_card_and_opens_the_door() {
+    let r = run("boss_dies");
+    assert_eq!(s(&r, "BEFORE_STATE"), "boss");
+    assert_eq!(s(&r, "COIL_LEFT"), "0");
+    assert_eq!(
+        (s(&r, "SCRAP0"), s(&r, "SCRAP1"), s(&r, "PAID")),
+        ("0".into(), "120".into(), "120".into()),
+        "a big scrap pay"
+    );
+    assert!(
+        num(&r, "RARES") >= 1.0,
+        "at least one rare in the offer: {}",
+        s(&r, "IDS")
+    );
+    assert_eq!(s(&r, "DRONES"), "0", "her drones go with her");
+    assert!(
+        ["scatter", "second_wind", "capacitor"].contains(&s(&r, "TAKEN").as_str()),
+        "the rare cards are Scatter, Second Wind and Capacitor"
+    );
+    assert_eq!(s(&r, "HELD"), s(&r, "TAKEN"));
+    assert_eq!(
+        (s(&r, "DOOR_STATE"), s(&r, "DOOR2")),
+        ("unlocked".into(), "open".into()),
+        "the door unlocks at the pay and opens when the card is taken"
+    );
+    assert!(
+        count_sound(&r, "boss_burst") >= 8,
+        "a long burst: {} blasts",
+        count_sound(&r, "boss_burst")
+    );
+    assert!(has_sound(&r, "boss_die"));
+    let sounds = report_sounds(&r).join(" | ");
+    let boss = sounds
+        .find("music mother_coil")
+        .expect("the boss track plays when the fight does");
+    let after = sounds
+        .rfind("music undertow")
+        .expect("the district track again");
+    assert!(
+        boss < after,
+        "the boss track gives way to the district track: {sounds}"
+    );
+}
+
+#[test]
+fn the_fight_is_fair_a_whole_fight_without_invincibility_is_won_by_dodging_and_not_one_attack_lands()
+ {
+    let r = run("boss_fair");
+    assert_eq!(s(&r, "RUNNER.hp"), "12", "not a point of health lost");
+    assert_eq!(s(&r, "RUNNER.state"), "free");
+    assert_eq!(s(&r, "nova.count('mother_coil')"), "0", "she is gone");
+    assert_eq!(s(&r, "nova.scene_now().state"), "cards");
+    assert_eq!(s(&r, "#nova.all('card')"), "3");
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "boss hit lands"), 0);
+    assert!(
+        count_lines(&l, "mother coil casts lanes") >= 2
+            && count_lines(&l, "mother coil casts cars") >= 2
+            && count_lines(&l, "mother coil casts slam") >= 5,
+        "every attack was played"
+    );
+    assert_eq!(
+        count_lines(&l, "phase 2: the floor is magnetised"),
+        1,
+        "and the stripe phase"
+    );
+    assert!(count_lines(&l, "mother coil takes") >= 10);
+    assert!(l.last().unwrap().0 < 6000, "a minute or so of fighting");
+}
+
+#[test]
+fn every_boss_sound_exists_and_the_routes_play_each_by_purpose() {
+    let names = [
+        "tell_lanes",
+        "junk_drag",
+        "tell_car",
+        "car_slam",
+        "tell_magnet",
+        "magnet_slam",
+        "drum_open",
+        "drum_clang",
+        "stripes_on",
+        "boss_burst",
+        "boss_die",
+        "boss_bark",
+        "printed",
+        "lullaby_blip",
+        "menu_move",
+        "menu_select",
+        "move_in",
+        "revive",
+        "reroll",
+        "wreck_break",
+    ];
+    for n in names {
+        assert!(
+            folder().join("sounds").join(format!("{n}.wav")).exists(),
+            "no sounds/{n}.wav"
+        );
+        assert!(
+            folder()
+                .join("sounds")
+                .join(format!("{n}.sfx.json"))
+                .exists()
+        );
+    }
+    assert!(
+        folder().join("music/mother_coil.ogg").exists() && folder().join("music/den.ogg").exists()
+    );
+    let mut played = std::collections::BTreeSet::new();
+    for name in [
+        "boss_lane_hit",
+        "boss_car",
+        "boss_drum",
+        "boss_phase2",
+        "boss_dies",
+        "den_tour",
+        "up_second",
+        "up_streets",
+        "movein_patch",
+    ] {
+        for line in report_sounds(&run(name)) {
+            if let Some(rest) = line.split("sound ").nth(1) {
+                played.insert(rest.split(' ').next().unwrap().to_string());
+            }
+        }
+    }
+    for n in names {
+        assert!(played.contains(n), "no route plays {n}: {played:?}");
+    }
+}
+
+#[test]
+fn the_workbench_buys_with_the_right_keys_never_below_zero_or_past_the_last_tier() {
+    let r = run("workbench_sums");
+    assert_eq!(s(&r, "B1"), "true 38 1", "Thicker Print tier 1 costs 12");
+    assert_eq!(s(&r, "B2"), "true 14 2", "tier 2 costs 24");
+    assert!(
+        s(&r, "B3").starts_with("false 14 2 40 keys needed"),
+        "{}",
+        s(&r, "B3")
+    );
+    assert_eq!(s(&r, "B4"), "true 60 3", "tier 3 costs 40");
+    assert_eq!(s(&r, "B5"), "false 60 3 Fully upgraded.");
+    assert!(
+        s(&r, "B6").starts_with("false 0 0 25 keys needed"),
+        "no keys: nothing is bought, nothing goes below zero"
+    );
+    assert_eq!(
+        s(&r, "COSTS").trim(),
+        "thicker_print=12/24/40 warm_start=20/36/60 good_solder=25/45/75 bigger_magazine=20/40 loose_change=15/30/50 familiar_streets=30/50/80 fast_print=100 lullaby_eye=25/45 deeper_deck=25/40/60/90 second_chance=60"
+    );
+    let l = run("up_locked");
+    assert_eq!(s(&l, "FAST"), "false Locked: after the second district");
+    assert_eq!(s(&l, "DEEP"), "false Locked: more cards coming");
+    assert_eq!(
+        (s(&l, "KEYS"), s(&l, "TIER_F"), s(&l, "TIER_D")),
+        ("500".into(), "0".into(), "0".into()),
+        "nothing was taken"
+    );
+    assert!(s(&l, "NAMES").starts_with("Thicker Print/3 Warm Start/3 Good Solder/3 Bigger Magazine/2 Loose Change/3 Familiar Streets/3 Fast Print/1 LULLABY's Eye/2 Deeper Deck/4 Second Chance/1"), "ten upgrades with their tiers");
+}
+
+#[test]
+fn each_of_the_ten_upgrades_changes_what_it_says() {
+    // Thicker Print tier 2: a run starts with 14 points
+    let r = run("up_thicker");
+    assert_eq!(
+        (s(&r, "MAX"), s(&r, "HP"), s(&r, "RUN_MAX")),
+        ("14".into(), "14".into(), "14".into())
+    );
+    // Good Solder: 100 hits of 2 do 200 / 210 (tier 1, +5%) / 230 (tier 3, +15%); a chain of 2, 2, 4 five times is 40 and 46 at tier 3
+    let r = run("up_solder");
+    assert_eq!(
+        (s(&r, "T0"), s(&r, "T1"), s(&r, "T3")),
+        ("200".into(), "210".into(), "230".into())
+    );
+    assert_eq!(
+        s(&r, "CHAINS5_T3"),
+        "46",
+        "5 chains of 8 at +15% (46 of 46): {}",
+        s(&r, "CH")
+    );
+    let r = run("up_solder_real");
+    assert_eq!(
+        (s(&r, "BASE"), s(&r, "SOLDER")),
+        ("24".into(), "27".into()),
+        "three real chains on a dummy: 24, and 27 at tier 3 (9.2 each, the fractions carried)"
+    );
+    // Warm Start: a common, then + an uncommon, then + the chosen card
+    let r = run("up_warm");
+    assert_eq!(s(&r, "W0"), "");
+    assert_eq!(s(&r, "W1"), "long_reach:common");
+    assert_eq!(s(&r, "W2"), "long_reach:common,live_wire:uncommon");
+    assert_eq!(
+        s(&r, "W3"),
+        "long_reach:common,live_wire:uncommon,plating:common"
+    );
+    assert_eq!(
+        s(&r, "MAXHP3"),
+        "14",
+        "(the chosen Plating is held from the start)"
+    );
+    // Bigger Magazine: +1 pip a tier
+    let r = run("up_magazine");
+    assert_eq!((s(&r, "PIPS"), s(&r, "CH")), ("5".into(), "5".into()));
+    // Loose Change: 10% a tier of unbanked scrap as keys on death: 100 scrap at tier 2 is 20 keys, on top of the 5 held
+    let r = run("up_loose");
+    assert_eq!(
+        (
+            s(&r, "KEYS0"),
+            s(&r, "KEYS1"),
+            s(&r, "LOOSE"),
+            s(&r, "BANKED")
+        ),
+        ("5".into(), "25".into(), "20".into(), "0".into())
+    );
+    // Familiar Streets: 2 rerolls at tier 2, each draws the offer again; the third does nothing
+    let r = run("up_streets");
+    assert_eq!(
+        (
+            s(&r, "LEFT0"),
+            s(&r, "LEFT1"),
+            s(&r, "LEFT2"),
+            s(&r, "LEFT3")
+        ),
+        ("2".into(), "1".into(), "0".into(), "0".into())
+    );
+    assert_ne!(s(&r, "IDS"), s(&r, "IDS1"));
+    assert_ne!(s(&r, "IDS1"), s(&r, "IDS2"));
+    assert_eq!(
+        s(&r, "IDS2"),
+        s(&r, "IDS3"),
+        "no rerolls left: the cards stay"
+    );
+    assert_eq!((s(&r, "N1"), s(&r, "N2")), ("3".into(), "3".into()));
+    // LULLABY's Eye: nothing, the next room's kind, then the elite's mark too
+    let r = run("up_eye");
+    assert_eq!(s(&r, "E0"), "nil");
+    assert_eq!(s(&r, "E1"), "NEXT: An elite");
+    assert_eq!(
+        s(&r, "E2"),
+        format!("NEXT: An elite: {}", {
+            let m = s(&r, "MARK");
+            format!("{}{}", m[..1].to_uppercase(), &m[1..])
+        })
+    );
+    assert_eq!(
+        s(&r, "E_BOSS"),
+        "NEXT: The shop and the bank",
+        "(from room 8 the next room is the walk-through room)"
+    );
+    // Deeper Deck: 12 cards, +6 a tier; a made-up 13th card is never offered at tier 0 and is at tier 1
+    let r = run("up_deck");
+    assert_eq!(
+        (s(&r, "POOL0"), s(&r, "POOL1"), s(&r, "POOL4")),
+        ("12".into(), "18".into(), "36".into())
+    );
+    assert_eq!(s(&r, "SEEN0"), "0");
+    assert!(num(&r, "SEEN1") > 10.0, "{}", s(&r, "SEEN1"));
+    assert_eq!(
+        s(&r, "BUY"),
+        "false",
+        "the tiers are shown 'more cards coming' and not for sale"
+    );
+    // Second Chance: once a run a killing blow leaves him on half health, 2 s untouchable; the second one kills
+    let r = run("up_second");
+    assert_eq!(
+        (
+            s(&r, "HP1"),
+            s(&r, "STATE1"),
+            s(&r, "BLINK1"),
+            s(&r, "LEFT1")
+        ),
+        ("6".into(), "free".into(), "2.0".into(), "0".into())
+    );
+    assert_eq!((s(&r, "HP2"), s(&r, "STATE2")), ("0".into(), "dead".into()));
+    // Fast Print: stored, locked (see the Workbench test)
+}
+
+#[test]
+fn lullaby_has_many_different_lines_by_what_brought_you_to_the_den() {
+    let r = run("lullaby_lines");
+    assert_eq!(s(&r, "KINDS").trim(), "first=4 dead=10 win=7");
+    assert_eq!(s(&r, "TOTAL"), "21");
+    assert_eq!(s(&r, "DUP"), "0", "no line is used twice");
+    assert_eq!(
+        s(&r, "NEXT_DIFFERENT"),
+        "true",
+        "the next line is not the last one"
+    );
+    assert_eq!(s(&r, "SCREEN").trim(), "fresh=3 won=3 veteran=3 default=3");
+}
+
+#[test]
+fn the_den_has_its_stations_and_the_title_leads_to_a_run_through_the_workbench() {
+    let r = run("den_tour");
+    assert_eq!(
+        (s(&r, "WAKE_KIND"), s(&r, "WAKE_STATE")),
+        ("first".into(), "wake".into()),
+        "the first boot: a 'printing' beat with LULLABY's first-boot line"
+    );
+    assert_eq!(
+        s(&r, "WAKE_LINE"),
+        "Oh, it worked. Don't thank me. Thank the loose wire."
+    );
+    assert_eq!(
+        (s(&r, "FREE"), s(&r, "DEN_SCENE")),
+        ("free".into(), "den".into())
+    );
+    assert_eq!(
+        (s(&r, "SCREEN_SET"), s(&r, "SCREEN_N")),
+        ("fresh".into(), "3".into()),
+        "her screen: a few lines that change with your runs and wins"
+    );
+    assert!(
+        s(&r, "PLATE").starts_with("Empty stall. Met 0 of 3 times"),
+        "{}",
+        s(&r, "PLATE")
+    );
+    assert_eq!(
+        (s(&r, "BENCH"), s(&r, "SEL0"), s(&r, "SEL1")),
+        ("bench".into(), "1".into(), "2".into())
+    );
+    assert_eq!(
+        (s(&r, "KEYS_AFTER"), s(&r, "TIER"), s(&r, "TOAST")),
+        (
+            "28".into(),
+            "1".into(),
+            "Thicker Print: 13 health points".into()
+        ),
+        "40 keys, tier 1 costs 12"
+    );
+    assert_eq!(
+        (s(&r, "KEYS_AFTER2"), s(&r, "TIER2")),
+        ("4".into(), "2".into()),
+        "tier 2 costs 24"
+    );
+    assert_eq!(s(&r, "CLOSED"), "free");
+    assert_eq!(
+        s(&r, "RUN_MAX"),
+        "14",
+        "the door starts a run with the bought upgrade"
+    );
+    assert_eq!(s(&r, "FROM_DEN"), "true");
+}
+
+fn movein(name: &str, who: &str, nth_line: &str) {
+    let r = run(name);
+    assert_eq!(
+        (s(&r, "IN1"), s(&r, "IN2"), s(&r, "IN3")),
+        ("nil".into(), "nil".into(), "true".into()),
+        "{who}: moves in at the third meeting"
+    );
+    assert_eq!(
+        (s(&r, "MET1"), s(&r, "MET2"), s(&r, "MET3")),
+        ("1".into(), "2".into(), "3".into())
+    );
+    assert_eq!(s(&r, "MOVED"), who);
+    assert_eq!(
+        (s(&r, "ANN"), s(&r, "ANN_WHO"), s(&r, "SEEN")),
+        ("movein".into(), who.into(), "true".into()),
+        "the Den announces it, once"
+    );
+    assert_eq!(s(&r, "LINE"), s(&r, "LINE_1"), "a new line set in the Den");
+    assert!(s(&r, "LINE").starts_with(nth_line), "{}", s(&r, "LINE"));
+    assert_eq!(s(&r, "STATE_R"), "resident");
+}
+
+#[test]
+fn three_meetings_move_patch_in_her_den_perk_is_2_health_at_the_start_of_each_run() {
+    movein("movein_patch", "patch", "Sit. Good.");
+    let r = run("movein_patch");
+    assert_eq!(
+        (s(&r, "MAX1"), s(&r, "HP1"), s(&r, "NOTES")),
+        ("14".into(), "14".into(), "Patch: +2 health".into())
+    );
+    assert_eq!(
+        (s(&r, "H0"), s(&r, "H1"), s(&r, "H2")),
+        ("14".into(), "12".into(), "10".into()),
+        "(no bowl: every hit lands)"
+    );
+}
+
+#[test]
+fn three_meetings_move_old_sal_in_her_bowl_ignores_the_first_hit_of_the_first_room_only() {
+    movein("movein_sal", "old_sal", "Eat first.");
+    let r = run("movein_sal");
+    assert_eq!(
+        (s(&r, "MAX1"), s(&r, "NOTES")),
+        ("12".into(), "Old Sal: the first hit is ignored".into())
+    );
+    assert_eq!(
+        (s(&r, "H0"), s(&r, "H1"), s(&r, "H2")),
+        ("12".into(), "12".into(), "10".into()),
+        "room 1: the first hit is ignored, the second lands"
+    );
+    assert_eq!(
+        (s(&r, "G0"), s(&r, "G1")),
+        ("10".into(), "8".into()),
+        "room 2: the bowl is gone, the first hit lands"
+    );
+}
+
+#[test]
+fn a_death_leads_to_the_summary_then_the_den_with_lullabys_death_line_and_not_into_a_run() {
+    let r = run("death_den");
+    assert_eq!(s(&r, "LINE0"), "first");
+    assert_eq!(
+        (s(&r, "SUM_DEN"), s(&r, "LAST"), s(&r, "PRINTS")),
+        ("true".into(), "dead".into(), "1".into())
+    );
+    assert_eq!(
+        (s(&r, "KIND"), s(&r, "STATE"), s(&r, "IN_RUN")),
+        ("dead".into(), "wake".into(), "false".into()),
+        "the Den, waking: not a run"
+    );
+    assert_eq!(s(&r, "RUNS"), "1");
+    assert!(s(&r, "LINE").starts_with("That's the fourth you this week."));
+}
+
+#[test]
+fn keys_upgrades_meetings_move_ins_runs_wins_and_best_time_are_saved_and_new_game_wipes_them() {
+    let dir = scratch("save");
+    // boot 1: a fresh save, the title's Start, the Workbench buys Thicker Print (50 keys, 12 spent), counters set, then the game "quits"
+    let r1 = play_saved("save1", plan_text("save_boot1"), &dir);
+    assert_eq!(printed(&r1, "require('lib.meta').keys"), "38");
+    assert!(dir.read_dir().unwrap().count() > 0, "a save was written");
+    // boot 2: the same folder, a new game process: everything is there
+    let r2 = play_saved("save2", plan_text("save_boot2"), &dir);
+    for (k, v) in [
+        ("L_KEYS", "38"),
+        ("L_TIER", "1"),
+        ("L_MET", "3"),
+        ("L_IN", "true"),
+        ("L_RUNS", "4"),
+        ("L_WINS", "1"),
+        ("L_BEST", "311.5"),
+    ] {
+        assert_eq!(printed(&r2, k), v, "{k} after the restart");
+    }
+    assert_eq!(printed(&r2, "ITEMS"), "Continue/New game");
+    assert_eq!(printed(&r2, "MODE1"), "confirm", "New game asks first");
+    assert_eq!(
+        (printed(&r2, "MODE2"), printed(&r2, "KEYS_KEPT")),
+        ("menu".into(), "38".into()),
+        "'Keep my save' keeps everything"
+    );
+    for (k, v) in [
+        ("W_KEYS", "0"),
+        ("W_TIER", "0"),
+        ("W_MET", "0"),
+        ("W_IN", "nil"),
+        ("W_RUNS", "0"),
+        ("W_WINS", "0"),
+        ("W_LAST", "first"),
+    ] {
+        assert_eq!(printed(&r2, k), v, "{k} after 'Erase it all'");
+    }
+    // boot 3: the wipe is on disk too
+    let r3 = play_saved("save3", plan_text("save_boot3"), &dir);
+    for (k, v) in [
+        ("N_KEYS", "0"),
+        ("N_TIER", "0"),
+        ("N_IN", "nil"),
+        ("N_RUNS", "0"),
+    ] {
+        assert_eq!(printed(&r3, k), v, "{k} at the next boot");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_whole_route_title_den_workbench_eight_rooms_mother_coil_bank_district_cleared_and_a_win_in_the_den()
+ {
+    // (the test player is invincible for this route: it proves the whole flow; the fighting is proven by the routes above, boss_fair without invincibility)
+    let r = run("full_run");
+    assert_eq!(
+        (s(&r, "DEN0"), s(&r, "WINS0")),
+        ("first".into(), "0".into())
+    );
+    assert_eq!(
+        (s(&r, "BOUGHT"), s(&r, "KEYS_SPENT"), s(&r, "MAX_START")),
+        ("1".into(), "12".into(), "13".into()),
+        "one upgrade bought for 12 keys, and the run starts with 13 points"
+    );
+    let chain: Vec<String> = s(&r, "CHAIN").split(' ').map(String::from).collect();
+    assert_eq!(chain.len(), 9);
+    assert_eq!(s(&r, "ROOM8"), "gutter.boss");
+    assert_eq!(chain[7], "gutter.boss");
+    assert!(
+        num(&r, "RARE_OFFER") >= 1.0,
+        "a rare card on offer after Mother Coil"
+    );
+    assert!(
+        num(&r, "BOSS_PAID") >= 120.0,
+        "the boss pays 120 (more with Deep Pockets, which this seed's run took)"
+    );
+    assert_eq!(
+        s(&r, "CARDS8"),
+        "7",
+        "six fight rooms and Mother Coil's rare card"
+    );
+    assert_eq!(
+        (s(&r, "ROOM9"), s(&r, "WON9"), s(&r, "WINS1")),
+        ("gutter.walk".into(), "true".into(), "1".into())
+    );
+    let scrap = num(&r, "SCRAP_BEFORE_BANK") as i64;
+    assert!(scrap > 300, "the boss's 120 is in it: {scrap}");
+    assert_eq!(num(&r, "KEYS1") as i64, num(&r, "KEYS0") as i64 + scrap / 4);
+    assert_eq!(s(&r, "END_SCENE"), "summary", "the district cleared screen");
+    assert_eq!(s(&r, "SUM"), format!("win 8 {} 7", scrap / 4));
+    assert!(num(&r, "BEST") > 100.0);
+    assert_eq!(
+        (s(&r, "BACK"), s(&r, "DEN1"), s(&r, "WINS2"), s(&r, "LAST")),
+        ("den".into(), "win".into(), "1".into(), "win".into()),
+        "back in the Den, a win counted, LULLABY's win line"
+    );
+    assert_eq!(num(&r, "KEYS_END") as i64, 28 + scrap / 4);
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "mother coil is gone"), 1);
+    assert_eq!(count_lines(&l, "run ends: win, 8 rooms"), 1);
+}
+
+#[test]
+fn a_rough_gauge_a_test_player_with_no_dodging_and_no_invincibility_dies_in_rooms_2_or_3_on_five_seeds()
+ {
+    // (a scripted bot that only walks up and swings is worse than a person at avoiding hits and better at nothing: the numbers are a floor)
+    let mut rows = vec![];
+    for seed in [3, 7, 11, 20, 31] {
+        let r = run(&format!("gauge_{seed}"));
+        assert_eq!(s(&r, "G_DIED"), "true", "seed {seed}");
+        rows.push(format!(
+            "seed {seed}: died in room {} with {} rooms cleared (health on entering rooms 1 to 4: {} {} {} {})",
+            s(&r, "G_ROOM"), s(&r, "G_CLEARED"), s(&r, "G_HP1"), s(&r, "G_HP2"), s(&r, "G_HP3"), s(&r, "G_HP4")
+        ));
+        assert!(num(&r, "G_ROOM") <= 4.0);
+    }
+    eprintln!("{}", rows.join("\n"));
+}

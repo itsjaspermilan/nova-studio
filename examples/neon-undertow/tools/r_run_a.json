@@ -372,7 +372,21 @@
   },
   {
    "wait": 20,
-   "capture": "the boss comes in the next slice"
+   "capture": "Mother Coil's arena"
+  },
+  {
+   "lua": "nova.named('coil'):die()"
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 600,
+   "capture": "she is down: the cards rise"
+  },
+  {
+   "wait": 20
+  },
+  {
+   "lua": "nova.scene_now().state = 'done'; for _, c in ipairs(nova.all('card')) do c:sink() end; for _, d in ipairs(nova.all('door')) do if d.exit then d:open() end end"
   },
   {
    "walk_to": "door_out",

@@ -9,13 +9,14 @@ local Waves = require("data.gutter_waves")
 local Elites = require("data.elites")
 local Meta = require("lib.meta")
 local J = require("lib.juice")
+local Work = require("lib.workbench")
 
 local Run = { active = false }
 
 local function fresh_mods()
   return {
     reach = 1, live_wire = 0, knock = 1, stun = 0, burn = 0, bounces = 0, pellets = 1, tracer = 0, shock = 0, rolls = 1,
-    hp = 0, pips = 0, scrap = 1,
+    hp = 0, pips = 0, scrap = 1, solder = 0,
   }
 end
 
@@ -45,10 +46,16 @@ local function start(seed)
   Run.banked = 0          -- keys banked this run
   Run.won = false
   Run.summary = nil
+  Run.solder_frac = 0     -- Good Solder's fractions of a point, carried to the next hit
+  Run.rerolls, Run.revives, Run.eye, Run.loose = 0, 0, 0, 0
+  Run.den_notes = {}
+  Run.from_den = false    -- the Den's door began this run (the summary then leads back to the Den)
+  Run.moved = {}          -- strangers who moved into the Den during this run
 end
 
 function Run.begin(seed)
   start(seed)
+  Work.apply(Run)
   nova.log("run begins, seed " .. Run.seed)
 end
 
@@ -82,6 +89,9 @@ function Run.begin_chain(seed)
   start(seed)
   Run.chain = Run.build_chain(Run.seed)
   Meta.runs = Meta.runs + 1
+  Meta.started = true
+  Work.apply(Run)
+  Meta.save()
   local names = {}
   for i, e in ipairs(Run.chain) do names[i] = e.scene end
   nova.log("run begins, seed " .. Run.seed .. ": " .. table.concat(names, " "))
@@ -129,6 +139,7 @@ function Run.exit_room()
   if here and here.kind == "boss" then
     Run.won = true
     Meta.wins = Meta.wins + 1
+    Meta.save()
     nova.log("the boss door: the run is won")
   end
   if dest == "summary" then Run.finish(Run.won and "win" or "dead") end
@@ -139,8 +150,22 @@ end
 function Run.finish(result)
   local names = {}
   for _, id in ipairs(Run.cards) do names[#names + 1] = Cards.by_id[id].name end
+  local loose = 0
+  if result == "dead" then
+    -- Loose Change: a share of the scrap that was not banked comes through the print as keys
+    local share = Work.tier("loose_change") * Work.by_id.loose_change.per.share
+    loose = math.floor(J.scrap * share + 1e-9)
+    Meta.keys = Meta.keys + loose
+    Meta.prints = Meta.prints + 1
+    if loose > 0 then nova.log(string.format("loose change: %d of %d unbanked scrap kept as %d keys", loose, J.scrap, loose)) end
+  elseif result == "win" and (Meta.best == 0 or Run.time < Meta.best) then
+    Meta.best = math.floor(Run.time * 10) / 10
+  end
+  Run.loose = loose
+  Meta.last = result
+  Meta.save()
   Run.summary = {
-    result = result, seed = Run.seed, cleared = Run.cleared, time = Run.time, keys = Run.banked, scrap_left = J.scrap,
+    result = result, loose = loose, moved = Run.moved, best = Meta.best, den_notes = Run.den_notes, seed = Run.seed, cleared = Run.cleared, time = Run.time, keys = Run.banked, scrap_left = J.scrap,
     cards = #Run.cards, card_names = names, rooms = Run.chain and 8 or nil,
   }
   Run.active = false
@@ -189,6 +214,7 @@ function Run.bank(rate)
   Run.scrap = J.scrap
   Meta.keys = Meta.keys + keys
   Run.banked = Run.banked + keys
+  if keys > 0 then Meta.save() end
   if keys > 0 then nova.log(string.format("bank: %d scrap into %d keys (keys held %d)", taken, keys, Meta.keys)) end
   return keys, taken
 end
@@ -205,6 +231,17 @@ function Run.give_to(runner)
   runner.max_hp, runner.max_charge = Run.max_hp(), Run.max_charge()
   runner.hp = math.min(runner.max_hp, Run.hp or runner.max_hp)
   runner.charge = math.min(runner.max_charge, Run.charge or runner.max_charge)
+end
+
+-- A card the run simply holds (Warm Start): no runner, no offer.
+function Run.grant(id)
+  local c = Cards.by_id[id]
+  if not c or Run.count(id) >= c.max then return false end
+  Run.counts[id] = Run.count(id) + 1
+  Run.cards[#Run.cards + 1] = id
+  c.apply(Run)
+  nova.log("card held from the start: " .. id)
+  return true
 end
 
 function Run.can_take(id)
@@ -241,7 +278,8 @@ function Run.offer(n, opts)
     nova.log("the offer is rerolled")
   end
   local pool = {}
-  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max then pool[#pool + 1] = c end end
+  local pool_size = Work.pool_size()          -- (Deeper Deck: how many of the cards this player may meet)
+  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max and c.index <= pool_size then pool[#pool + 1] = c end end
   local out, families = {}, {}
   local state = mix(Run.seed, salt)
   local function take(list, i)

@@ -1,0 +1,20 @@
+{
+ "start_scene": "test_lab",
+ "lua": "for k, v in pairs({ bigger_magazine = 2 }) do require('lib.meta').upgrades[k] = v end; require('lib.run').begin_chain(5); nova.goto_scene(require('lib.run').chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "PIPS = nova.named('runner').max_charge; CH = nova.named('runner').charge"
+  }
+ ],
+ "print": [
+  "PIPS",
+  "CH"
+ ]
+}

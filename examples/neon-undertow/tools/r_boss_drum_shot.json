@@ -1,0 +1,34 @@
+{
+ "start_scene": "gutter.boss",
+ "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1056, 700",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "lua": "nova.named('runner').facing = 'up'; nova.named('runner').aim_dx, nova.named('runner').aim_dy = 0, -1; nova.named('runner'):fire(); C0 = nova.named('coil').hp"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "C1 = nova.named('coil').hp; CLANGS = nova.named('coil').clangs"
+  },
+  {
+   "lua": "nova.named('coil'):open_drum(); nova.named('runner').shot_cd = 0; nova.named('runner'):fire()"
+  },
+  {
+   "wait": 60,
+   "capture": "a shot hits the open drum"
+  },
+  {
+   "lua": "C2 = nova.named('coil').hp"
+  }
+ ],
+ "print": [
+  "C0",
+  "C1",
+  "CLANGS",
+  "C2"
+ ]
+}

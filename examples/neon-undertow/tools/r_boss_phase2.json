@@ -1,0 +1,68 @@
+{
+ "start_scene": "gutter.boss",
+ "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1900, 990",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "lua": "nova.named('coil').hp = 49; nova.named('coil').open = true; nova.named('coil').state = 'window'; nova.named('coil').t = 0; PH0 = tostring(nova.named('coil').phase2); PAUSE0 = nova.named('coil'):pause_len(); ARMED0 = tostring(require('lib.field').armed)"
+  },
+  {
+   "lua": "nova.named('coil'):take_hit(2, 0, 0, 0); PH1 = tostring(nova.named('coil').phase2); PAUSE1 = nova.named('coil'):pause_len(); HP_BOSS = nova.named('coil').hp"
+  },
+  {
+   "wait": 30,
+   "capture": "the stripes charge"
+  },
+  {
+   "until": "require('lib.field').armed",
+   "max": 200,
+   "capture": "armed"
+  },
+  {
+   "lua": "ST = ''; for _, s in ipairs(require('lib.field').stripes) do ST = ST .. string.format('%.0f-%.0f ', s.x0, s.x1) end; local x1 = require('lib.field').stripes[1].cx\nnova.named('runner').x, nova.named('runner').y = x1, 520; nova.named('runner').aim_dx, nova.named('runner').aim_dy = 0, 1; nova.named('runner').shot_cd = 0; nova.named('runner'):fire()\nSHOT_IN = nova.first('shot'); IN_X0, IN_Y0 = SHOT_IN.x, SHOT_IN.y\nnova.named('runner').x, nova.named('runner').y = 800, 520; nova.named('runner').shot_cd = 0; nova.named('runner'):fire()\nfor _, s in ipairs(nova.all('shot')) do if s ~= SHOT_IN then SHOT_OUT = s end end; OUT_X0, OUT_Y0 = SHOT_OUT.x, SHOT_OUT.y"
+  },
+  {
+   "wait": 6,
+   "capture": "two shots leave"
+  },
+  {
+   "wait": 14,
+   "capture": "the one in the stripe bends"
+  },
+  {
+   "lua": "IN_X1, IN_Y1, IN_DX = SHOT_IN.x, SHOT_IN.y, SHOT_IN.dx; OUT_X1, OUT_Y1, OUT_DX = SHOT_OUT.x, SHOT_OUT.y, SHOT_OUT.dx; IN_TURN = SHOT_IN.curved; OUT_TURN = SHOT_OUT.curved or 0"
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 1900, 990; local c = require('lib.field').stripes; D1 = nova.spawn('rat_drone', c[1].cx, 600); D2 = nova.spawn('rat_drone', c[2].cx, 600); D3 = nova.spawn('rat_drone', 800, 600); DY0 = 600"
+  },
+  {
+   "wait": 60,
+   "capture": "pulled along the stripes"
+  },
+  {
+   "lua": "DY1, DY2, DY3 = D1.y - DY0, D2.y - DY0, D3.y - DY0"
+  }
+ ],
+ "print": [
+  "PH0",
+  "PAUSE0",
+  "ARMED0",
+  "PH1",
+  "PAUSE1",
+  "HP_BOSS",
+  "ST",
+  "IN_X0",
+  "IN_X1",
+  "IN_DX",
+  "IN_TURN",
+  "OUT_X0",
+  "OUT_X1",
+  "OUT_DX",
+  "OUT_TURN",
+  "DY1",
+  "DY2",
+  "DY3"
+ ]
+}

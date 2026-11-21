@@ -34,7 +34,8 @@ function Runner:create()
   self.blink_t, self.hurt_t, self.shot_cd, self.dead_t = 0, 0, 0, 0
   self.aiming, self.aim_dx, self.aim_dy = false, 0, 1
   self.moved = 0                 -- how far the last step moved (units), for tests
-  self.truce = Run.perks.truce == true   -- Old Sal: the first hit in each room is ignored (set again in every room, used once)
+  -- Old Sal: the first hit in each room is ignored (set again in every room, used once); her bowl in the Den: the first room only
+  self.truce = Run.perks.truce == true or (Run.perks.bowl == true and Run.room == 0)
   self.stats = { baton_hits = 0, shots = 0, clicks = 0, hurt = 0, blocked_by_roll = 0, blocked_by_blink = 0, rolls = 0, zaps = 0 }
   nova.spawn("sight", self.x, self.y, { owner = self })
   self.depth = -self.y
@@ -153,6 +154,16 @@ function Runner:take_damage(n)
   nova.sound.play("hurt", { volume = P.sfx.hurt })
   J.shake(A.shake * 1.5, 8)
   nova.log(string.format("runner hurt: %d, health %d (%s, roll t %.3f)", n, self.hp, self.state, self.roll_t))
+  if self.hp <= 0 and (Run.revives or 0) > 0 then
+    -- Second Chance (a Workbench upgrade): LULLABY reprints you mid-death, once a run
+    Run.revives = Run.revives - 1
+    self.hp = math.max(1, self.max_hp // 2)
+    self.blink_t = 2.0
+    nova.sound.play("revive", { volume = P.sfx.revive })
+    nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 5 })
+    nova.log("second chance: reprinted with " .. self.hp)
+    return true
+  end
   if self.hp <= 0 then
     self.state, self.dead_t = "dead", 0
     nova.log("printed again")

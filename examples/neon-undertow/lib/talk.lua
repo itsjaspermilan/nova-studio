@@ -3,6 +3,7 @@
 local Strangers = require("data.strangers")
 local Meta = require("lib.meta")
 local Run = require("lib.run")
+local Den = require("data.den")
 
 local T = { active = false, stage = "none" }
 
@@ -10,6 +11,7 @@ local T = { active = false, stage = "none" }
 function T.start(who)
   local S = Strangers[who]
   Meta.met[who] = Meta.met[who] + 1
+  Meta.save()
   T.who, T.def, T.n = who, S, Meta.met[who]
   T.set = math.min(T.n, #S.sets)
   T.lines = S.sets[T.set]
@@ -38,6 +40,13 @@ function T.update(runner)
       c.apply(Run)
       Run.give_to(runner)
       T.chosen, T.stage, T.active = c, "done", false
+      -- helped three times: they move into the Den (their perk starts with the next run)
+      if Meta.met[T.who] >= Den.moved_in_needed and not Meta.moved_in[T.who] then
+        Meta.moved_in[T.who] = true
+        Run.moved[#Run.moved + 1] = T.who
+        nova.log("moves into the Den: " .. T.who)
+      end
+      Meta.save()
       nova.log(string.format("talk: %s: chose %s", T.who, c.label))
     end
   end

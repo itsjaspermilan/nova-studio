@@ -1,0 +1,42 @@
+{
+ "start_scene": "gutter.boss",
+ "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1056, 300",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "lua": "nova.named('coil'):open_drum()"
+  },
+  {
+   "wait": 10,
+   "capture": "the drum is open: glow, marker, bar, banner"
+  },
+  {
+   "lua": "nova.named('runner').facing = 'up'"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 8,
+   "capture": "a hit"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "until": "not nova.named('coil').open",
+   "max": 200,
+   "capture": "shut again"
+  }
+ ],
+ "out": "build/look_boss_drum",
+ "columns": 2
+}

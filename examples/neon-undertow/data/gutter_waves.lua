@@ -27,8 +27,9 @@ return {
     { scrap = 30, waves = { wave(1.0, row("sp_1", "rat_drone", 1), row("sp_2", "scrapper", 2)), wave(0.6, row("sp_3", "bottle_thrower", 1), row("sp_4", "bottle_thrower", 1)), wave(0.6, row("sp_1", "scrapper", 2), row("sp_2", "rat_drone", 1)) } },
   },
   [4] = {
-    -- the elite and its escort; one table (the elite room's variety is its mark)
-    { scrap = 40, guarantee = "uncommon", waves = { wave(1.0, row("sp_1", "elite", 1, { elite = true }), row("sp_2", "scrapper", 2)) } },
+    -- the elite and its escort, then a second wave that arrives as soon as the first is dead (a thrower and two drones): a real wall for a fresh
+    -- save (12 health, nothing healed since room 1). One table (the elite room's variety is its mark).
+    { scrap = 40, guarantee = "uncommon", waves = { wave(1.0, row("sp_1", "elite", 1, { elite = true }), row("sp_2", "scrapper", 2)), wave(0.6, row("sp_3", "bottle_thrower", 1), row("sp_4", "rat_drone", 2)) } },
   },
   [5] = {
     -- a bigger room: waves from two doors (sp_1 and sp_2 are far apart, one at each end of the room)

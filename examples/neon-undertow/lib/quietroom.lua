@@ -1,4 +1,4 @@
--- A room with no fight: the stranger's room (6), the boss placeholder (8) and the walk-through room (shop and bank). The doors are
+-- A room with no fight: the stranger's room (6) and the walk-through room (shop and bank). The doors are
 -- open from the start. Everything else (the camera, the pause, the carry from room to room) is the fight room's (lib/fightroom.lua).
 local P = require("data.player")
 local J = require("lib.juice")
@@ -32,8 +32,6 @@ function Quiet:enter()
     self.npc = nova.spawn("stranger", at.x, at.y, { who = who, sprite = S.sprite })
     self.who = who
     nova.log("a stranger waits: " .. S.name)
-  elseif self.kind == "boss" then
-    nova.log("the boss comes in the next slice")
   end
 end
 
@@ -122,9 +120,6 @@ function Quiet:draw_ui()
     elseif r:distance_to(self.npc) < 100 then
       HUD.prompt(380, 440, "interact", self.talked and "say bye" or "talk to " .. S.name)
     end
-  elseif self.kind == "boss" then
-    centered(104, "THE BOSS COMES IN THE NEXT SLICE", 28, { 255, 43, 214, 255 })
-    centered(144, "Mother Coil waits behind this door. Walk through it to end the run.", 14, { 190, 200, 230, 255 })
   elseif self.kind == "walk" then
     centered(96, "THE SHOP AND THE BANK", 26, { 6, 240, 255, 255 })
     for _, c in ipairs(nova.all("counter")) do
