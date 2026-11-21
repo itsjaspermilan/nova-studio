@@ -47,6 +47,8 @@
         "tileset": "labs",
         "scale": 1.5,
         "seed": 2,
+        "wear": 0.4,
+        "district": "bloom labs",
         "paint": {
           "t": "lab_tile",
           "g": "grating",
