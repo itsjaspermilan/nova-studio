@@ -292,8 +292,8 @@ Solo is never missing a mechanic: the tether, link cards and split rooms simply 
   colours per district** used only for things that matter (enemy tells, pickups, doors): Market magenta and cyan; Labs acid green
   and violet; Hollow Line amber and red; Spire white and gold. If it glows, it is important.
 - The runner: a long coat, a visor, a baton that leaves a neon arc. Reads at a glance in all four directions.
-- Music: one looping track per district (slow synth bass, a lead that enters when a fight starts, drops out when it ends), a
-  hub track, a boss variation. Effects by purpose, with a distinct **tell sound** for each enemy attack.
+- Music: driving synthwave (the owner's choice, 2026-11-21): fast bright arpeggios and big drums. One looping track per
+  district (the lead enters when a fight starts and drops out when it ends), a hub track, a boss variation. Effects by purpose, with a distinct **tell sound** for each enemy attack.
 
 ## How it is built (for whoever implements)
 
