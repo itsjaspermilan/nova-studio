@@ -1,0 +1,52 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 200, 470, 'right'; r.hp = 99\nlocal R = nova.named('runner'); local J = require('lib.juice'); H = {}; local orig = R.update;\nR.update = function(self, dt) orig(self, dt); H[#H+1] = string.format('%.2f,%.2f,%d,%d,%s', self.x, self.y, self.f, J.hold, self.state) end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "X0 = nova.named('runner').x"
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 60,
+   "capture": "running"
+  },
+  {
+   "lua": "RUN_DX = nova.named('runner').x - X0; RUN_CLIP = tostring(nova.named('runner')._anim.tag); RUN_DUST = nova.named('runner').dust_starts or 0; RUN_PUFFS = nova.count('vfx')"
+  },
+  {
+   "hold": [
+    "left"
+   ],
+   "frames": 12
+  },
+  {
+   "lua": "TURNS = nova.named('runner').dust_turns or 0"
+  },
+  {
+   "wait": 6
+  },
+  {
+   "hold": [
+    "ranged",
+    "right"
+   ],
+   "frames": 12
+  },
+  {
+   "lua": "AIM_CLIP = tostring(nova.named('runner')._anim.tag)"
+  }
+ ],
+ "print": [
+  "string.format('%.1f', RUN_DX)",
+  "RUN_CLIP",
+  "RUN_DUST",
+  "TURNS",
+  "AIM_CLIP",
+  "table.concat(H, ' ')"
+ ]
+}

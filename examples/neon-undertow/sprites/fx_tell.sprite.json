@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "image": "fx_tell.png",
+  "frame_width": 128,
+  "frame_height": 128,
+  "columns": 3,
+  "frames": 3,
+  "frame_duration_ms": 60,
+  "tags": [
+    {
+      "name": "ring",
+      "from": 0,
+      "to": 0
+    },
+    {
+      "name": "hatch",
+      "from": 1,
+      "to": 1
+    },
+    {
+      "name": "rim",
+      "from": 2,
+      "to": 2
+    }
+  ]
+}

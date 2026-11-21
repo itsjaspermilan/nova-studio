@@ -112,7 +112,7 @@
    "lua": "local ok = nova.named('runner'):take_damage(2); EARLY = string.format('%.2f', require('lib.juice').slow_t)"
   },
   {
-   "until": "nova.named('runner').roll_t >= 0.14",
+   "until": "nova.named('runner').roll_t >= 0.20",
    "max": 20
   },
   {

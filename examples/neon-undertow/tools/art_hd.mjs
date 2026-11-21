@@ -193,7 +193,7 @@ sheet("marks", [32, 32], [
     animations: [{ name: "swing", from: 0, to: 2 }, { name: "heavy", from: 3, to: 5 }], frame_ms: 50,
   };
   const shot = (g) => [R(2, 13, 6, 6, "N"), R(6, 11, 10, 10, "N"), R(10, 9, 14, 14, "n"), R(14, 11, 16, 10, g ? "w" : "n"), R(22, 13, 9, 6, "w"), C(26, 16, 3, "w")];
-  sheet("fx_shot", [32, 32], [f(shot(0), null), f(shot(1), null)], { animations: [{ name: "fly", from: 0, to: 1 }], frame_ms: 70 });
+  // (fx_shot, fx_arc's successors and the rest of the effects are drawn by art_fx.mjs now: the shot is its 48x24 bolt; this script no longer writes fx_shot)
   sheet("fx_dot", [16, 16], [f([C(8, 8, 6, "N"), C(8, 8, 4, "n"), C(8, 8, 2, "w")], null)]);
   const spark = (i) => [L(16 - 5 - i * 4, 16, 16 + 5 + i * 4, 16, "w"), L(16, 16 - 5 - i * 4, 16, 16 + 5 + i * 4, "w"), L(7 - i * 2, 7 - i * 2, 25 + i * 2, 25 + i * 2, "n"), L(7 - i * 2, 25 + i * 2, 25 + i * 2, 7 - i * 2, "n"), C(16, 16, Math.max(1, 5 - i * 2), "w")];
   sheet("fx_spark", [32, 32], [0, 1, 2].map((i) => f(spark(i), null)), { animations: [{ name: "spark", from: 0, to: 2, loop: false }], frame_ms: 50 });

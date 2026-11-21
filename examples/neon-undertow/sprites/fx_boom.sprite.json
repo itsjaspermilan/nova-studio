@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "image": "fx_boom.png",
+  "frame_width": 128,
+  "frame_height": 128,
+  "columns": 6,
+  "frames": 12,
+  "durations_ms": [
+    40,
+    50,
+    50,
+    55,
+    55,
+    60,
+    60,
+    70,
+    110,
+    140,
+    170,
+    200
+  ],
+  "tags": [
+    {
+      "name": "boom",
+      "from": 0,
+      "to": 11,
+      "loop": false
+    }
+  ]
+}

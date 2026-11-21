@@ -2,7 +2,7 @@
 -- `spec` = { radius, runner, enemy, prop } (damage to the runner, to enemies, to stalls and barrels). Barrels and Volatile elites use it.
 local P = require("data.player")
 local J = require("lib.juice")
-local F = require("lib.fx")
+local V = require("lib.vfx")
 
 local B = {}
 
@@ -10,8 +10,7 @@ function B.dist(x, y, e) return math.sqrt((e.x - x) ^ 2 + (e.y - y) ^ 2) end
 
 function B.at(x, y, spec, source)
   nova.sound.play("blast", { volume = P.sfx.blast })
-  F.burst(x, y - 16, spec.radius / 24)
-  J.shake(8, 10)
+  V.boom(x, y, spec.radius)
   local hurt = {}
   local p = nova.first("player")
   if p and p.state ~= "dead" and spec.runner > 0 and B.dist(x, y, p) <= spec.radius then

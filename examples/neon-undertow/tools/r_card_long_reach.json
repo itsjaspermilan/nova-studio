@@ -1,6 +1,6 @@
 {
  "start_scene": "test_lab",
- "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 405, 420 end",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 435, 420 end",
  "route": [
   {
    "wait": 3

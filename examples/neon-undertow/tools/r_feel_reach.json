@@ -1,0 +1,41 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 300, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end\nD_IN = nova.spawn('dummy', 415, 420); D_OUT = nova.spawn('dummy', 432, 420); S_IN = nova.spawn('dummy', 360, 465); S_OUT = nova.spawn('dummy', 360, 480); N_IN = nova.spawn('dummy', 360, 362); N_OUT = nova.spawn('dummy', 360, 345)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.count('swing') > 0",
+   "max": 30
+  },
+  {
+   "lua": "local s = nova.first('swing'); SW = string.format('%.0f,%.0f,%.0f', s.rect.w, s.rect.h, s.rect.x0 - 300); SHORT_ALONG = s.rect.along"
+  },
+  {
+   "wait": 30,
+   "capture": "the short arc"
+  },
+  {
+   "lua": "local P = require('data.player'); LONG = nova.spawn('swing', 300, 406, { dir = 'right', damage = 0, area = P.attack.area.long, arc = 'heavy', chain = 3 }); LW = string.format('%.0f,%.0f,%.0f', LONG.rect.w, LONG.rect.h, LONG.rect.x0 - 300)\nLEFT = nova.spawn('swing', 300, 406, { dir = 'left', damage = 0, area = P.attack.area.short, arc = 'swing', chain = 1 }); LEFT_X = string.format('%.0f,%.0f', LEFT.rect.x0 - 300, LEFT.rect.w)"
+  },
+  {
+   "wait": 3,
+   "capture": "the heavy arc"
+  }
+ ],
+ "print": [
+  "D_IN.total",
+  "D_OUT.total",
+  "S_IN.total",
+  "S_OUT.total",
+  "N_IN.total",
+  "N_OUT.total",
+  "SW",
+  "LW",
+  "LEFT_X"
+ ]
+}

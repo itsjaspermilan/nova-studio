@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "image": "fx_scorch.png",
+  "frame_width": 128,
+  "frame_height": 128,
+  "columns": 2,
+  "frames": 2,
+  "frame_duration_ms": 60,
+  "tags": [
+    {
+      "name": "fresh",
+      "from": 0,
+      "to": 0
+    },
+    {
+      "name": "cold",
+      "from": 1,
+      "to": 1
+    }
+  ]
+}
