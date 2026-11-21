@@ -691,3 +691,40 @@ fn a_stuck_3d_walk_names_what_blocks_and_the_camera_minds_tree_crowns() {
     g.update_input(1.0 / 60.0, 0.1, [960.0, 540.0], &InputFrame::default());
     assert_eq!(g.lua_text("nova.solid.count()").unwrap(), before);
 }
+
+/// The racing starter (`project_create`'s "racing" template, made only with car_make, engine_make, driving_sounds_make,
+/// road_make, land_make and prop3d_make) is driven a whole lap by its autopilot: the car stays on the road, the
+/// six-speed box goes up through the gears, the lap is counted and timed, and the engine is heard through
+/// nova.engine_sound (its bands and the tyres, wind and turbo loops start).
+#[test]
+fn the_racing_starter_drives_a_lap() {
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/starter-racing");
+    let vfs: Rc<dyn Vfs> = Rc::new(nova_runtime::vfs::DirVfs::new(&folder).unwrap());
+    let mut g = Game::load(vfs).expect("the racing starter loads");
+    g.upload(&mut FakeGpu);
+    let plan = r#"{
+      "steps": [
+        { "lua": "nova.named('car').autopilot = true" },
+        { "repeat": 40, "until": "nova.scene_now().laps >= 1", "steps": [
+          { "wait": 30 },
+          { "lua": "local c = nova.named('car') if not nova.scene_now():on_road(c.x, c.z) then nova.log('off the road at ' .. math.floor(c.x) .. ', ' .. math.floor(c.z)) end" }
+        ] }
+      ],
+      "print": ["nova.scene_now().laps", "nova.scene_now().best", "nova.named('car').gear"]
+    }"#;
+    let (report, _) = play(&mut g, plan, "racing");
+    assert_eq!(report["error"], Value::Null, "{report}");
+    let prints = &report["end"]["prints"];
+    assert_eq!(prints[0]["value"], "1", "{report}");
+    let best: f64 = prints[1]["value"].as_str().unwrap().parse().unwrap();
+    assert!((12.0..40.0).contains(&best), "a lap from a standing start: {best} s");
+    let gear: f64 = prints[2]["value"].as_str().unwrap().parse().unwrap();
+    assert!(gear >= 4.0, "up through the gears: {gear}");
+    let log = log(&report);
+    assert!(!log.iter().any(|l| l.contains("off the road")), "{log:?}");
+    assert!(log.iter().any(|l| l.starts_with("lap 1 in")), "{log:?}");
+    let sounds = report["sounds"].to_string();
+    for s in ["eng_car_1", "eng_car_off_1", "eng_car_4", "tyre_road", "wind_loop", "turbo_loop"] {
+        assert!(sounds.contains(s), "{s} never started: {sounds}");
+    }
+}

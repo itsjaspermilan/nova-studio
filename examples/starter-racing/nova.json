@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "name": "Starter: Racing",
+  "input": {
+    "throttle": ["key:ArrowUp", "key:KeyW", "axis:r2", "pad:south"],
+    "brake": ["key:ArrowDown", "key:KeyS", "axis:l2", "pad:east"]
+  }
+}

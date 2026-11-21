@@ -1,0 +1,16 @@
+-- A tiny racing starter: one car on a short circuit, its engine heard by the revs, a chase camera, laps timed.
+-- Read entities/car.lua first, then scenes/race.lua; docs/agent-guide.md ("The shortest path to a checked racing game") says how
+-- each file was made and checked. Everything but the Lua (and nova.json's two input actions) came from these tool calls:
+--
+--   car_make            { "name": "car", "type": "hot_hatch", "paint": "#c8322b" }
+--   engine_make         { "name": "car", "layout": "four", "displacement": 2.0, "aspiration": "turbo", "idle": 850, "limit": 7200, "character": "raspy" }
+--   driving_sounds_make { "sounds": ["tyre_road", "tyre_rough", "tyre_squeal", "wind_loop", "turbo_loop", "shift_quick", "bov", "pop", "thump"] }
+--   road_make           { "name": "ring", "control": [[0, -80], [60, -75], [100, -35], [95, 25], [55, 70], [0, 80], [-55, 70], [-95, 25], [-100, -35], [-60, -75]], "textured": true }
+--   land_make           { "name": "land", "ground": "grass", "cells": 30 }
+--   prop3d_make         { "kinds": [conifer "pine", conifer round_a "pine_round", broadleaf oak "oak", boulder large_a "rock", "tyre_stack" "tyres", "cone",
+--                         grandstand covered "stand", arch (style detailed) "start_arch", flag checkers "flag", spectator man_a "fan_a", woman_b "fan_b"] }
+--   scene_write         { "name": "race", "scene": { ...the land, the road, the car, a checkpoint at each control point with its order, the props } }
+--
+-- (road_make and land_make made the road and grass pictures in textures/ with surface_make.) The engine is played by the runtime's
+-- library: entities/car.lua does require("nova.engine_sound").
+nova.start("race")
