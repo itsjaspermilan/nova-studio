@@ -351,7 +351,8 @@ const spawns = (m, pts) => pts.forEach(([x, y], i) => m.marker(`sp_${i + 1}`, x,
   const m = room("s5_courts", 44, 26, E("W", 12), E("E", 12));
   m.open(1, 1, 17, 24); m.open(26, 1, 42, 24); m.open(18, 10, 25, 15);
   m.paved(1, 12, 4, 13); m.paved(39, 12, 42, 13); m.paved(18, 10, 25, 15);
-  m.open(43, 3, 43, 5); m.open(43, 20, 43, 22);                          // two doors in the far wall
+  // (the far wall is whole: two openings once stood in it at rows 3-5 and 20-22, with nothing in them, and the runner and a scrapper
+  // walked out of the map through one; the waves come from sp_1 and sp_2, inside the room)
   m.wall(5, 4, 10, 6); m.wall(5, 19, 10, 21); m.wall(9, 11, 12, 14); m.paved(8, 10, 13, 15); m.wall(9, 11, 12, 14);   // shopfronts and a fountain
   for (let i = 0; i < 5; i++) { m.wall(26, 1 + i, 30 - i, 1 + i); m.wall(26, 24 - i, 30 - i, 24 - i); }               // cut corners (west side of the east court)
   m.wall(34, 9, 38, 10); m.wall(34, 15, 38, 16);                                                                       // a bus shelter's walls

@@ -4035,3 +4035,65 @@ fn back_to_the_den_a_wipe_holds_with_a_lullaby_line_and_the_wake_beat_starts_whe
     assert!(num(&r, "T1") < 0.2);
     assert_eq!(s(&r, "WAKE1"), "wake");
 }
+
+/// Every room is closed: each cell on the edge of its tile map is solid, or a door stands in it. (s5_courts had two
+/// openings in its east wall with nothing in them; in soak seed 19 the runner rolled out through one and a scrapper
+/// followed him off the map.)
+#[test]
+fn every_room_is_closed_round_its_edge_but_for_its_doors() {
+    let dir = folder().join("scenes/gutter");
+    let mut open = Vec::new();
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.to_string_lossy().ends_with(".scene.json") {
+            continue;
+        }
+        let scene: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let maps: Vec<&Value> = scene["tilemaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["solid"].as_array().is_some_and(|s| !s.is_empty()))
+            .collect();
+        let tile = |m: &Value, c: usize, r: usize| m["tiles"][r][c].as_i64().unwrap_or(-1);
+        let rows = maps[0]["tiles"].as_array().unwrap().len();
+        let cols = maps[0]["tiles"][0].as_array().unwrap().len();
+        let size = maps[0]["tileset"]["tile_width"].as_f64().unwrap()
+            * maps[0]["tileset"]["scale"].as_f64().unwrap_or(1.0);
+        let solid = |c: usize, r: usize| {
+            maps.iter().any(|m| {
+                m["solid"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t.as_i64() == Some(tile(m, c, r)))
+            })
+        };
+        // (a door is two tiles tall, standing in its gap)
+        let door = |c: usize, r: usize| {
+            scene["objects"].as_array().unwrap().iter().any(|o| {
+                o["kind"] == "door"
+                    && (o["x"].as_f64().unwrap() / size).floor() as usize == c
+                    && ((o["y"].as_f64().unwrap() / size).floor() as usize).abs_diff(r) <= 1
+            })
+        };
+        let mut edge: Vec<(usize, usize)> = Vec::new();
+        for c in 0..cols {
+            edge.push((c, 0));
+            edge.push((c, rows - 1));
+        }
+        for r in 1..rows - 1 {
+            edge.push((0, r));
+            edge.push((cols - 1, r));
+        }
+        for (c, r) in edge {
+            if !solid(c, r) && !door(c, r) {
+                open.push(format!(
+                    "{} {c},{r}",
+                    path.file_name().unwrap().to_string_lossy()
+                ));
+            }
+        }
+    }
+    assert!(open.is_empty(), "open cells on a room's edge: {open:?}");
+}
