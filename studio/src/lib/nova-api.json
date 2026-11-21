@@ -1467,7 +1467,7 @@
   "name": "slide",
   "kind": "method",
   "signature": "self:slide(dx, dy [, { solid = tag }]) -> blocked_x, blocked_y, thing",
-  "doc": "Move, stopping against solid tiles (and with `solid = \"tag\"` against the hitboxes of the entities with that tag; `thing` is the one it ran into). One that starts inside something solid is moved out the nearest way by no more than its own size, or stays put: never thrown through a wall.",
+  "doc": "Move, stopping against solid tiles (and with `solid = \"tag\"` against the hitboxes of the entities with that tag; `thing` is the one it ran into). One that starts inside something solid is moved out the nearest way by no more than its own size; deeper in (x, y set into a wall), back to where a slide last found it free, or for one made there the nearest free place: never thrown through a wall nor left stuck in one.",
   "group": "Entity methods"
  },
  {

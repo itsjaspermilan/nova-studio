@@ -2396,6 +2396,9 @@ local function way_out(e, horizontal, dir, most, tag)
   return found
 end
 
+-- (the directions a search for a free place tries at each distance: straight ones first, then the diagonals)
+local RING_ORDER = { 0, 4, 8, 12, 2, 6, 10, 14, 1, 3, 5, 7, 9, 11, 13, 15 }
+
 -- An entity that starts a move overlapping something solid (it was put there, or something solid came to it) is moved out
 -- the nearest way, by no more than its own size; when no way out is that short it stays where it is. False when it is stuck.
 local function get_out(e, tag)
@@ -2407,9 +2410,33 @@ local function get_out(e, tag)
     local d = way_out(e, way[1], way[2], most, tag)
     if d and (not best or d < best) then best, bh, bd = d, way[1], way[2] end
   end
-  if not best then return false end
-  if bh then e.x = e.x + bd * best else e.y = e.y + bd * best end
-  return true
+  if best then
+    if bh then e.x = e.x + bd * best else e.y = e.y + bd * best end
+    return true
+  end
+  -- Deeper in than its own size (something set x, y straight into a wall): back to the last place a slide found it free,
+  -- which is on the side it came from; failing that (it was made there), the nearest free place round it.
+  local fx, fy = rawget(e, "_free_x"), rawget(e, "_free_y")
+  if fx then
+    local ox, oy = e.x, e.y
+    e.x, e.y = fx, fy
+    local a0, b0, a1, b1 = bounds(e)
+    if not blocker(e, a0, b0, a1, b1, tag) then return true end
+    e.x, e.y = ox, oy
+  end
+  local ox, oy = e.x, e.y
+  local stepr = math.max(most * 0.5, solid_step())
+  for ring = 1, 24 do
+    local r = ring * stepr
+    for _, k in ipairs(RING_ORDER) do
+      local a = k / 16 * math.pi * 2
+      e.x, e.y = ox + math.cos(a) * r, oy + math.sin(a) * r
+      local a0, b0, a1, b1 = bounds(e)
+      if not blocker(e, a0, b0, a1, b1, tag) then return true end
+    end
+  end
+  e.x, e.y = ox, oy
+  return false
 end
 
 local function slide_axis(e, delta, horizontal, limit, tag)
@@ -2445,7 +2472,8 @@ end
 -- Move by dx, dy and stop against solid tiles, one axis at a time so entities slide along walls.
 -- Large moves are taken in small steps, so nothing tunnels through a thin wall. `opts.solid` names a tag whose entities
 -- block too. An entity that starts inside something solid is first moved out the nearest way (no further than its own
--- size), or stays put when there is no such way out: it is never thrown through a wall.
+-- size); deeper in, back to where a slide last found it free (or, made there, to the nearest free place): it is never
+-- thrown through a wall nor left stuck in one.
 -- Returns whether it was blocked horizontally and vertically, and the entity it was stopped by (with opts.solid).
 function Entity:slide(dx, dy, opts)
   local tag = opts and opts.solid
@@ -2455,6 +2483,8 @@ function Entity:slide(dx, dy, opts)
   local blocked_x, blocked_y, by_x, by_y = false, false, nil, nil
   if dx ~= 0 then blocked_x, by_x = slide_axis(self, dx, true, limit, tag) end
   if dy ~= 0 then blocked_y, by_y = slide_axis(self, dy, false, limit, tag) end
+  -- (where it was last free: the way back if something later sets it down inside a wall)
+  self._free_x, self._free_y = self.x, self.y
   return blocked_x, blocked_y, by_x or by_y
 end
 

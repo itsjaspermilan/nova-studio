@@ -33,8 +33,10 @@ The questions a first 2D game asks, answered in one place (the sections further 
   `examples/starter-topdown/entities/hero.lua` does this), or let `slide` stop at them too:
   `local bx, by, thing = self:slide(dx, dy, { solid = "solid" })` stops at the hitboxes of the entities with that tag
   and says which one it ran into (`thing`). A mover that starts inside something solid (spawned there, or a roll that
-  ended in it) is first moved out the nearest way, by no more than its own size; when no way out is that short it stays
-  where it is. It is never thrown through a wall.
+  ended in it) is first moved out the nearest way, by no more than its own size. Deeper in than that (x, y set straight into a
+  wall) it goes back to where a slide last found it free, on the side it came from; one made inside a wall goes to the
+  nearest free place round it. It is never thrown through a wall, and never left stuck in one. To test a spot yourself,
+  look at the tiles under its box (`nova.solid_at` at the corners of `self:bounds()`), not at whether `slide` moved it.
   A solid thing is never overlapped by what stops at it, so **its `on_collide_<tag>` never runs** and `touching` never sees
   the two together. Notice it with `self:near(tag, margin)`: the first entity with the tag whose hitbox is within `margin`
   units (4) of this one's. A chest: `if self:near("hero", 6) and nova.input.pressed("a") then self:open() end`.

@@ -4097,3 +4097,20 @@ fn every_room_is_closed_round_its_edge_but_for_its_doors() {
     }
     assert!(open.is_empty(), "open cells on a room's edge: {open:?}");
 }
+
+/// A roll that ends inside a solid thing beside a wall steps out onto floor, never into the wall. (Soak 16: in gutter.s7_hall
+/// a Shock Wake roll ended at 835, 912 beside the bottom wall and `unstick` chose 826, 935, inside the wall, where he stayed.)
+#[test]
+fn unstick_steps_out_onto_floor_never_into_a_wall() {
+    let lua = "local r = nova.named('runner'); r.x, r.y = 835.47, 912; r.roll_dx, r.roll_dy = -0.3427, 0.9394\
+        ; local B = nova.entity { tags = { 'solid' }, hitbox = { -26, -26, 52, 40 } }; nova.spawn(B, 835, 905)\
+        ; r:unstick(); UX, UY = r.x, r.y; UWALL = tostring(r:in_wall()); USOLID = tostring(r:touching('solid') ~= nil)";
+    let plan = serde_json::json!({
+        "start_scene": "gutter.s7_hall",
+        "steps": [ { "wait": 5 }, { "lua": lua }, { "wait": 1 } ],
+        "print": ["UWALL", "USOLID", "string.format('%.0f %.0f', UX, UY)"]
+    });
+    let r = play("unstick_wall", plan.to_string());
+    assert_eq!(s(&r, "UWALL"), "false", "{}", s(&r, "string.format"));
+    assert_eq!(s(&r, "USOLID"), "false");
+}

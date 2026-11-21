@@ -254,8 +254,9 @@ return S"#,
     assert_eq!(
         g.take_log(),
         [
-            // 20 units out on the right, 38 on the left: both more than its size, so it stays (it used to land at 80)
-            "deep 60.0 4.0 true false -",
+            // 20 units out on the right, 38 on the left: both more than its size, and it was made there (no place it was free
+            // before), so it goes to the nearest free place round it, just under the wall, and takes its step from there (it used to land at 80, the far side)
+            "deep 58.0 20.0 false false -",
             // 5 units from the far side: out that way
             "shallow 80.0 4.0 false false -",
             "walker 22.0 4.0 true false -",
@@ -311,6 +312,40 @@ return S"#,
     .unwrap();
     // flush against the wall (x 54: its box ends at 64), and in the corner; never a unit into the wall
     assert_eq!(g.take_log(), ["54.0 30.0 54.0 54.0 0.00"]);
+}
+
+/// A body set down deep inside a wall (x, y written straight: an "unstick" that chose a bad spot, a teleport) is never
+/// stuck there: its next slide puts it back where a slide last found it free, on the side it came from, not across.
+#[test]
+fn a_body_set_down_deep_in_a_wall_goes_back_to_where_it_was_free() {
+    let mut g = project(vec![
+        (
+            "entities/box.lua",
+            "return nova.entity { hitbox = { -9, -15, 18, 15 } }",
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  -- a floor above y 96, a wall three tiles (48 units) thick below it, then more floor
+  local t = {}
+  for r = 0, 9 do t[r + 1] = {} for c = 0, 9 do t[r + 1][c + 1] = (r >= 6 and r <= 8) and 0 or -1 end end
+  nova.tilemap { image = 'dot', tile_width = 4, tile_height = 4, scale = 4, solid = { 0 }, tiles = t }
+  local e = nova.spawn('box', 80, 90)
+  e:slide(0, 10)                    -- walks down to the wall: stops, free, at y 96
+  e.x, e.y = 76, 118                -- then put 22 units into it (more than its own size: no short way out)
+  local bx, by = e:slide(0, 0)
+  nova.log(string.format('%.1f %.1f', e.x, e.y))
+  e:slide(-3, 0)                     -- and it moves on from there
+  nova.log(string.format('%.1f %.1f', e.x, e.y))
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), ["80.0 96.0", "77.0 96.0"]);
 }
 
 /// `hitbox_units = "world"`: the drawing's scale leaves the box alone (a negative sx still mirrors it); without it the
