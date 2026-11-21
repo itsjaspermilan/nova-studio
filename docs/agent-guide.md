@@ -278,6 +278,9 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
 - **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`. Put `hitbox_units = "world"` in the
   entity to give them in world units instead: then redrawing the art at another size and changing `sx` leaves every box
   as it is. Hitboxes do not turn with `angle` (they stay upright): give a swing a box per facing.
+- **Quit:** a menu's Quit entry calls `nova.quit()` (it writes the save and exits cleanly; nothing on Android). Do not
+  call `os.exit` (not available) or leave the game to be killed: closing the window and the system's "Exit game" already
+  end it cleanly.
 - **A target standing against a wall:** a shot that stops at solid tiles dies at the tile's edge, so a hitbox that ends
   exactly there is never touched. Let such a target's box reach into the wall's first tile.
 - **Game feel is built in:** `nova.hit_stop(3 / 60)` (a freeze frame), `nova.cam.shake(6, 0.2)` (only the picture

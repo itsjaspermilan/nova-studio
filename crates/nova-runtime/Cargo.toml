@@ -46,6 +46,10 @@ cc = "1.11.0"
 env_logger = "0.11.11"
 gilrs = "0.11.2"
 
+[target.'cfg(unix)'.dependencies]
+# (already in the lockfile through other crates; MIT OR Apache-2.0) SIGTERM, SIGINT and SIGHUP for a clean quit: src/shutdown.rs
+libc = "0.2.191"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland"] }
 

@@ -644,8 +644,14 @@ fn main() {
             Ok(false) => std::process::exit(1),
             Err(e) => Err(e),
         },
-        Command::Play(opts) if opts.headless => app::run_headless(*opts),
-        Command::Play(opts) => app::run_windowed(*opts),
+        Command::Play(opts) if opts.headless => {
+            nova_runtime::shutdown::install();
+            app::run_headless(*opts)
+        }
+        Command::Play(opts) => {
+            nova_runtime::shutdown::install();
+            app::run_windowed(*opts)
+        }
     };
     if let Err(e) = result {
         eprintln!("nova: {e}");

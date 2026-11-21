@@ -1448,6 +1448,17 @@ key itself, so a line nobody wrote shows as its name. `{name}` in a text is repl
 `nova.locale.available()` lists the codes. A language file whose value is not text is refused by name (`locales/en.json: "a" must be text`). The language is not chosen
 from the device's settings: a game decides that (a menu, or `nova.save`).
 
+## Quitting
+
+`nova.quit()` ends the game cleanly after the frame it is called in: the save is written, the sound stops, the GPU
+surface and the window are dropped, and the program exits with status 0. It is what a menu's Quit entry calls on a
+desktop or a Linux handheld. The system's own ways of ending a game do the same: closing the window, Escape (unless the
+game uses Escape itself), and SIGTERM, SIGINT and SIGHUP (a handheld's "Exit game" under Steam and gamescope, Ctrl-C, a
+closed terminal). A shutdown never hangs: a watchdog ends the process if it is not over within 0.8 seconds, and a second
+signal ends it at once. A headless run (`--headless`) that quits stops there as if its frames were done, still writes its
+pictures, report and sound file, and prints `quit after N frames: ...`. On Android `nova.quit()` does nothing (an app
+does not end itself there: the player leaves with Home or Back) and says so in the log.
+
 ## Save data
 
 ```lua

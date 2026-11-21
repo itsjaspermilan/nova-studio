@@ -404,6 +404,25 @@ pub fn run_headless(opts: Options) -> Result<(), String> {
         }
         frame += 1;
         frames_run = frame;
+        // nova.quit(), or SIGTERM / SIGINT / SIGHUP: the run ends here as if its frames were done (pictures, the report
+        // and the sound file are still written), then the process exits 0
+        let quit = content.take_quit_request();
+        if quit || crate::shutdown::requested() {
+            if !quit {
+                // (a signal: whatever is left to write must not keep the process from ending)
+                crate::shutdown::watchdog(0);
+            }
+            println!(
+                "quit after {frame} frames: {}",
+                if quit {
+                    "the game called nova.quit()"
+                } else {
+                    "the system asked (a signal)"
+                }
+            );
+            content.flush_save();
+            break;
+        }
     }
     if let (Some((_, samples)), Some(path)) = (&offline, &opts.audio_out) {
         let spec = hound::WavSpec {
@@ -523,6 +542,29 @@ struct App {
 }
 
 impl App {
+    /// The one way the window ends (nova.quit(), a signal, the window closed, Escape): the save is written, the sound is
+    /// stopped, the GPU surface and the window are dropped, and the loop ends (status 0). A watchdog ends the process if
+    /// any of that hangs (`shutdown.rs`).
+    fn shut_down(&mut self, event_loop: &ActiveEventLoop, why: &str) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
+        crate::shutdown::watchdog(0);
+        log::info!("quitting: {why}");
+        if let Some(content) = self.content.as_mut() {
+            content.flush_save();
+        }
+        if let Some(audio) = self.audio.take() {
+            audio.pause();
+            drop(audio);
+        }
+        self.surface = None;
+        self.config = None;
+        self.window = None;
+        event_loop.exit();
+    }
+
     fn configure(&mut self, width: u32, height: u32) {
         let (Some(surface), Some(gfx)) = (&self.surface, &self.gfx) else {
             return;
@@ -691,6 +733,10 @@ impl App {
         if let Some(on) = content.take_grab_request() {
             Self::set_mouse_grab(&self.window, &mut self.input, on);
         }
+        if content.take_quit_request() {
+            self.shut_down(event_loop, "the game called nova.quit()");
+            return;
+        }
 
         let surface = self.surface.as_ref().expect("surface checked above");
         let texture = match surface.get_current_texture() {
@@ -832,7 +878,7 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => self.shut_down(event_loop, "the window was closed"),
             WindowEvent::Resized(size) => self.configure(size.width, size.height),
             WindowEvent::KeyboardInput {
                 event,
@@ -850,7 +896,7 @@ impl ApplicationHandler for App {
                         == PhysicalKey::Code(KeyCode::Escape)
                     && !used
                 {
-                    event_loop.exit();
+                    self.shut_down(event_loop, "Escape");
                 }
                 #[cfg(target_os = "android")]
                 {
@@ -928,7 +974,11 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if crate::shutdown::requested() {
+            self.shut_down(event_loop, "the system asked (a signal)");
+            return;
+        }
         if let Some(window) = &self.window {
             window.request_redraw();
         }

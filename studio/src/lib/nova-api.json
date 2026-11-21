@@ -1247,6 +1247,13 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.quit",
+  "kind": "function",
+  "signature": "nova.quit()",
+  "doc": "End the game cleanly after this frame: the save is written, the sound stops, the window and the GPU surface are dropped, and the program exits with status 0 (for a Quit entry in a desktop or handheld menu). Closing the window and the system's own requests (SIGTERM from a handheld's \"Exit game\", Ctrl-C, SIGHUP) end it the same way, within a second. On Android it does nothing (an app does not end itself there: the player leaves with Home or Back) and says so in the log.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.time_scale",
   "kind": "function",
   "signature": "nova.time_scale([scale [, tag]]) -> scale",

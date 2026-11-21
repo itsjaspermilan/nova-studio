@@ -237,6 +237,21 @@ impl Content {
         }
     }
 
+    /// Did a script call `nova.quit()`?
+    pub fn take_quit_request(&mut self) -> bool {
+        match self {
+            Content::Game { game, .. } => game.take_quit_request(),
+            Content::Spike(_) => false,
+        }
+    }
+
+    /// Writes the game's save now (before a shutdown).
+    pub fn flush_save(&mut self) {
+        if let Content::Game { game, .. } = self {
+            game.flush_save();
+        }
+    }
+
     /// Does the game use this source for something (so the host should leave it alone)?
     pub fn uses_source(&self, id: &str) -> bool {
         match self {
