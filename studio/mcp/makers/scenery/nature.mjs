@@ -1,19 +1,13 @@
-// Pine Ridge Rally's natural scenery (2026-11-20): every tree, bush, cactus, rock, log, stump, tuft of grass, mesa, mountain and cloud, made by this
-// code as studio model documents and written with the Nova MCP server (models/<name>.model.json + .glb), in place of the toy kit models the game
-// started from. Nothing is copied or converted from another asset: every shape below is worked out here.
+// Natural scenery for prop3d_make's detailed kinds (first made for Pine Ridge Rally on 2026-11-20 as scripts/rally/scenery-nature.mjs; moved
+// here so every game has it): every tree, bush, cactus, rock, log, stump, tuft of grass, mesa, mountain and cloud, made by this code as studio
+// model documents. Nothing is copied or converted from another asset: every shape below is worked out here.
 //
-//   scripts/env.sh node scripts/rally/scenery-nature.mjs [--project folder] [name ...]
-//
-// With no names it makes them all and writes build/scenery-nature-report.md (each model's size and triangles before and after).
-// Each model keeps the box (BEFORE, in metres) the kit model had, so no scene, collider or camera changes: a shape is built near that size and then
-// stretched to it exactly, each side of the origin on its own, so the trunk stays where it was. The nk_ models reached a little under y = 0 (their
-// feet are buried, which hides the base on a slope) and still do. Every random choice comes from a seed made of the model's name: a rerun writes
-// the same bytes. Units: 16 = 1 m; y is up.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { connect, GAME } from "./mcp.mjs";
-import { lerp, mix, r2, shade, smoothstep } from "../../studio/mcp/makers/car/kit.mjs";
+// Each preset (a name below, which is also the Pine Ridge Rally model it first made) has a box in metres (BEFORE: the kit model the game
+// started from measured that), and a shape is built near that size and then stretched to it exactly, each side of the origin on its own, so
+// the trunk stays where it was. The nk_ presets reach a little under y = 0 (their feet are buried, which hides the base on a slope).
+// Every random choice comes from a seed made of the preset's name (and, for prop3d_make's seed other than 1, a salt added to it): the same
+// call writes the same bytes. Units: 16 = 1 m; y is up. buildPreset(preset, { part, salt, scale }) is the way in (makers/scenery.ts).
+import { lerp, mix, r2, shade, smoothstep } from "../car/kit.mjs";
 
 // ---- what the kit models measured (metres, triangles), read from their .glb files before they were replaced ---------------------------------
 const B = (x0, y0, z0, x1, y1, z1, tris) => ({ lo: [x0, y0, z0], hi: [x1, y1, z1], tris });
@@ -74,7 +68,9 @@ function rng(seed) {
   f.pick = (list) => list[Math.floor(f() * list.length)];
   return f;
 }
-const seedOf = (text) => { let h = 2166136261; for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
+/// Added to every seed while a preset is built for a seed other than 1 (buildPreset): 0 is the preset itself.
+let SALT = 0;
+const seedOf = (text) => { let h = 2166136261; for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h + SALT) >>> 0; };
 /// A smooth bumpy field over space, about -1 to 1 (a few waves in random directions).
 function field(rnd, freq = 1, waves = 4) {
   const w = Array.from({ length: waves }, (_, i) => ({ k: [rnd.range(-1, 1), rnd.range(-1, 1), rnd.range(-1, 1)].map((v) => v * freq * (1 + i * 0.55)), p: rnd() * TAU, a: 1 / (1 + i * 0.6) }));
@@ -574,7 +570,7 @@ const ROCK_PARTS = {
 const ROCK = { stand: true, parts: [[-0.12, -0.08, 0.8, 1, true], [0.52, 0.42, 0.44, 0.55, false], [-0.45, 0.55, 0.34, 0.4, false]] };
 
 export const MODELS = {};
-const def = (name, make) => { if (!BEFORE[name]) throw new Error(`no size recorded for ${name}`); MODELS[name] = () => make(name, BEFORE[name]); };
+const def = (name, make) => { if (!BEFORE[name]) throw new Error(`no size recorded for ${name}`); MODELS[name] = (T = BEFORE[name]) => make(name, T); };
 for (const [kind, spec] of Object.entries(PINES)) {
   def(`nk_${kind}`, (n, T) => conifer(n, T, { ...spec, like: kind }));
   for (const [prefix, palette] of [["snow", "snow"], ["night", "night"]]) if (BEFORE[`nk_${prefix}_${kind}`]) def(`nk_${prefix}_${kind}`, (n, T) => conifer(`nk_${kind}`, T, { ...spec, palette, droop: spec.droop * (palette === "snow" ? 1.25 : 1) }));
@@ -615,51 +611,24 @@ def("mesa", mesa);
 for (const [name, spec] of Object.entries(MOUNTAINS)) def(name, (n, T) => mountain(n, T, spec));
 def("cloud", cloud);
 
-/// The studio model document of one model.
+/// The studio model document of one preset (Pine Ridge Rally's model of that name: `build(name)` is exactly it).
 export function build(name) {
-  const shapes = MODELS[name]();
-  fit(shapes, BEFORE[name], name);
-  return { version: 1, scale: 0.0625, parts: [{ name, origin: [0, 0, 0], rotation: [0, 0, 0], cubes: shapes.map((s) => s.cube()), children: [] }], ...(COLLIDERS[name] ? { colliders: COLLIDERS[name] } : {}) };
+  return buildPreset(name, { part: name });
 }
 
-/// The box and triangle count of a written .glb (metres).
-function measure(file) {
-  const b = readFileSync(file), j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString()), lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
-  let tris = 0;
-  const visit = (ni, t, s) => {
-    const n = j.nodes[ni], nt = n.translation ?? [0, 0, 0], ns = n.scale ?? [1, 1, 1], at = t.map((v, i) => v + nt[i] * s[i]), sc = s.map((v, i) => v * ns[i]);
-    if (n.mesh !== undefined) for (const p of j.meshes[n.mesh].primitives) {
-      const a = j.accessors[p.attributes.POSITION];
-      tris += (p.indices !== undefined ? j.accessors[p.indices].count : a.count) / 3;
-      for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], at[i] + a.min[i] * sc[i]); hi[i] = Math.max(hi[i], at[i] + a.max[i] * sc[i]); }
-    }
-    for (const c of n.children ?? []) visit(c, at, sc);
-  };
-  for (const r of j.scenes[j.scene ?? 0].nodes) visit(r, [0, 0, 0], [1, 1, 1]);
-  return { lo, hi, tris };
-}
-
-if (process.argv[1] && process.argv[1].endsWith("scenery-nature.mjs")) {
-  const args = process.argv.slice(2), at = args.indexOf("--project"), project = at >= 0 ? resolve(args.splice(at, 2)[1]) : GAME, want = args.filter((a) => !a.startsWith("-"));
-  const names = Object.keys(MODELS).filter((n) => !want.length || want.some((w) => n === w || (w.endsWith("*") && n.startsWith(w.slice(0, -1))))).sort();
-  const nova = await connect(project);
+/// A preset as a model: its one part named `part`; `salt` added to its seeds (0: the preset itself); `scale` on its box (1: as measured).
+export function buildPreset(name, { part = name, salt = 0, scale = 1 } = {}) {
+  if (!MODELS[name]) throw new Error(`no natural scenery preset "${name}"`);
+  const T = scale === 1 ? BEFORE[name] : { lo: BEFORE[name].lo.map((v) => v * scale), hi: BEFORE[name].hi.map((v) => v * scale), tris: BEFORE[name].tris };
+  SALT = salt;
+  let shapes;
   try {
-    for (const name of names) console.log(await nova.call("model_write", { name, model: build(name), project }));
-  } finally { nova.close(); }
-  if (!want.length) {
-    const size = (m) => `${(m.hi[0] - m.lo[0]).toFixed(2)} x ${(m.hi[1] - m.lo[1]).toFixed(2)} x ${(m.hi[2] - m.lo[2]).toFixed(2)}`;
-    let text = "# Natural scenery: before and after\n\nMade by `scripts/rally/scenery-nature.mjs`. Sizes are the model's box in metres (across x, up y, along z); `y from` is its lowest point\n(the nk_ models have their feet a little under the ground, as the kit models did). Triangles are those in the `.glb`.\n\n";
-    text += "| model | size before | size after | y from (before / after) | triangles before | after | ratio |\n|---|---|---|---|---|---|---|\n";
-    let before = 0, after = 0;
-    for (const name of names) {
-      const b = BEFORE[name], a = measure(join(project, "models", `${name}.glb`));
-      before += b.tris; after += a.tris;
-      text += `| ${name} | ${size(b)} | ${size(a)} | ${b.lo[1].toFixed(2)} / ${a.lo[1].toFixed(2)} | ${b.tris} | ${a.tris} | ${(a.tris / b.tris).toFixed(2)} |\n`;
-    }
-    text += `| **all ${names.length}** | | | | ${before} | ${after} | ${(after / before).toFixed(2)} |\n`;
-    const out = join(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "build", "scenery-nature-report.md");
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, text);
-    console.log(`wrote ${out}`);
+    shapes = MODELS[name](T);
+  } finally {
+    SALT = 0;
   }
+  fit(shapes, T, name);
+  const colliders = COLLIDERS[name]?.map((c) => (scale === 1 ? c : { x: r2(c.x * scale), z: r2(c.z * scale), r: r2(c.r * scale) }));
+  return { version: 1, scale: 0.0625, parts: [{ name: part, origin: [0, 0, 0], rotation: [0, 0, 0], cubes: shapes.map((s) => s.cube()), children: [] }], ...(colliders ? { colliders } : {}) };
 }
+export const PRESETS = () => Object.keys(MODELS);

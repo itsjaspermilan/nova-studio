@@ -1,14 +1,9 @@
-// Pine Ridge Rally's built scenery (2026-11-20): the trackside furniture, the stands and buildings, the flags and the spectators, every one made here from
-// measurements of the real thing and written with the studio's own modeller (nova_model_write), so each is a `.model.json` the model editor opens and the
-// `.glb` the game draws. Nothing is copied or converted from another asset. Sizes are in metres here (y up, the front of a thing looks along +z unless said);
-// the models keep the footprint, origin and facing of the ones they replace, so no scene, entity or script changes.
-//
-//   scripts/env.sh node scripts/rally/scenery-built.mjs [name ...]      (no names: all of them; also writes build/scenery-built-report.md)
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import { GAME, withServer } from "./mcp.mjs";
-import { mix, r2, shade } from "../../studio/mcp/makers/car/kit.mjs";
+// Built scenery for prop3d_make's detailed kinds (first made for Pine Ridge Rally on 2026-11-20 as scripts/rally/scenery-built.mjs; moved here
+// so every game has it): the trackside furniture, the stands and buildings, the flags and the spectators, every one made here from measurements
+// of the real thing as a studio model document (a `.model.json` the model editor opens). Nothing is copied or converted from another asset.
+// Sizes are in metres here (y up, the front of a thing looks along +z unless said). No signs carry lettering: billboards are stripes and chequers.
+// Each preset's name is also the Pine Ridge Rally model it first made; `MODELS[name]()` is exactly that model.
+import { mix, r2, shade } from "../car/kit.mjs";
 
 // ---- the kit: shapes built from points in metres -----------------------------------------------------------------------------------------------------------
 const U = 16; // model units in a metre (the model's scale is 1/16)
@@ -735,7 +730,7 @@ const PEOPLE = {
 };
 
 // ================================ writing them ============================================================================================================
-const MODELS = {
+export const MODELS = {
   guardrail: () => guardrail("guardrail", [0.62], 0.84), rail_double: () => guardrail("rail_double", [0.62, 1.36], 1.58), barrier_wall: barrierWall,
   barrier_red: () => plasticBarrier("barrier_red", ["#a8443b", "#a8443b"]), barrier_white: () => plasticBarrier("barrier_white", ["#e3e1d9", "#e3e1d9"]),
   pylon, tires, hay_bale: hayBale, fence, sign_chevron: signChevron,
@@ -751,45 +746,3 @@ const MODELS = {
   camera_tower: cameraTower, radar, grid_box: gridBox, steering_wheel: steeringWheel,
   ...Object.fromEntries(Object.entries(PEOPLE).map(([name, p]) => [name, () => person(p)])),
 };
-
-/// What a .glb holds: triangles, the box round it (metres), clips, the scene's extras.
-function glbStats(buf) {
-  const jl = buf.readUInt32LE(12), json = JSON.parse(buf.subarray(20, 20 + jl).toString("utf8")), bin = buf.subarray(20 + jl + 8), lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
-  let tris = 0;
-  const walk = (i, at) => {
-    const n = json.nodes[i], q = n.rotation ?? [0, 0, 0, 1], tr = n.translation ?? [0, 0, 0];
-    const here = (v) => { const [x, y, z, w] = q, t = [2 * (y * v[2] - z * v[1]), 2 * (z * v[0] - x * v[2]), 2 * (x * v[1] - y * v[0])]; return at([v[0] + w * t[0] + y * t[2] - z * t[1] + tr[0], v[1] + w * t[1] + z * t[0] - x * t[2] + tr[1], v[2] + w * t[2] + x * t[1] - y * t[0] + tr[2]]); };
-    if (n.mesh !== undefined) for (const p of json.meshes[n.mesh].primitives) {
-      const a = json.accessors[p.attributes.POSITION], bv = json.bufferViews[a.bufferView], off = (bv.byteOffset ?? 0) + (a.byteOffset ?? 0), step = bv.byteStride || 12;
-      tris += (p.indices !== undefined ? json.accessors[p.indices].count : a.count) / 3;
-      for (let k = 0; k < a.count; k++) { const v = here([bin.readFloatLE(off + k * step), bin.readFloatLE(off + k * step + 4), bin.readFloatLE(off + k * step + 8)]); for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], v[c]); hi[c] = Math.max(hi[c], v[c]); } }
-    }
-    for (const c of n.children ?? []) walk(c, here);
-  };
-  for (const r of json.scenes[json.scene ?? 0].nodes) walk(r, (v) => v);
-  return { tris, lo, hi, size: hi.map((v, i) => v - lo[i]), clips: (json.animations ?? []).map((a) => a.name), colliders: json.scenes[json.scene ?? 0].extras?.nova?.colliders?.length ?? 0, materials: (json.materials ?? []).length };
-}
-const partNames = (doc) => { const out = [], walk = (p) => { out.push(p.name); p.children.forEach(walk); }; doc.parts.forEach(walk); return out; };
-
-const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
-await withServer(async (nova) => {
-  for (const [name, make] of Object.entries(MODELS)) {
-    if (only.length && !only.includes(name)) continue;
-    console.log(await nova.call("model_write", { name, model: make() }));
-  }
-});
-// the report: each model as it was in the last commit beside what is on disk now
-const root = path.resolve(GAME, "../.."), old = (file) => { try { return execFileSync("git", ["show", `HEAD:examples/pine-ridge-rally/models/${file}`], { cwd: root, maxBuffer: 1 << 28 }); } catch { return null; } };
-const f2 = (v) => v.toFixed(2), dims = (s) => s.size.map(f2).join(" x ");
-let md = "# Built scenery: before and after\n\nMade by `scripts/rally/scenery-built.mjs`. Before = the model in the last commit; after = the model on disk. Sizes are width x height x depth in metres (x, y, z); the crowd models are half life size, as before (scenes draw them about twice as big).\n\n| model | size before | size after | triangles before | after | ratio | materials | clips before -> after | colliders | parts before -> after |\n|---|---|---|---|---|---|---|---|---|---|\n";
-let before = 0, after = 0;
-for (const name of Object.keys(MODELS)) {
-  const og = old(`${name}.glb`), oj = old(`${name}.model.json`), now = glbStats(fs.readFileSync(path.join(GAME, "models", `${name}.glb`))), doc = JSON.parse(fs.readFileSync(path.join(GAME, "models", `${name}.model.json`), "utf8"));
-  const was = og ? glbStats(og) : null, wasDoc = oj ? JSON.parse(oj.toString("utf8")) : null, short = (l) => (l.length > 4 ? `${l.slice(0, 3).join(", ")}, ... (${l.length})` : l.join(", "));
-  before += was?.tris ?? 0; after += now.tris;
-  md += `| ${name} | ${was ? dims(was) : "-"} | ${dims(now)} | ${was?.tris ?? "-"} | ${now.tris} | ${was ? (now.tris / was.tris).toFixed(2) : "-"} | ${now.materials} | ${was ? (was.clips.length ? `${was.clips.length} (uses idle)` : "none") : "-"} -> ${now.clips.length ? now.clips.join(", ") : "none"} | ${was?.colliders ?? "-"} -> ${now.colliders} | ${wasDoc ? short(partNames(wasDoc)) : "-"} -> ${short(partNames(doc))} |\n`;
-}
-md += `\nAll ${Object.keys(MODELS).length} models: ${before} triangles before, ${after} after.\n`;
-fs.mkdirSync(path.join(root, "build"), { recursive: true });
-fs.writeFileSync(path.join(root, "build/scenery-built-report.md"), md);
-console.log("wrote build/scenery-built-report.md");

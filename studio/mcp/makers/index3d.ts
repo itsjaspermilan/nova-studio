@@ -10,6 +10,10 @@ import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { GROUND_KINDS, makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
 import { makeProp, PROP_KINDS, propEntity, type Prop } from "./prop3d";
+import { DETAILED_KINDS, DETAILED_OF, makeScenery, speciesOf } from "./scenery";
+
+/// A spectator's entity: it plays its idle clip (a cheer, a clap, a wave or a long look along the road), each one from its own moment.
+const spectatorEntity = (name: string, says: string) => `-- ${says}.\nlocal Spectator = nova.entity { model = "${name}", on_ground = true, velocity = false }\n\nfunction Spectator:create()\n  self:play_clip("idle", { time = (self.x * 0.37 + (self.z or 0) * 0.61) % 2 })\nend\n\nreturn Spectator\n`;
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -30,14 +34,21 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
   h.tool(
     "prop3d_make",
     "Make the things a 3D level is furnished with, instead of modelling each: `models/<name>.model.json` and `.glb` by kind and seed, in one of the shared palettes, and `entities/<name>.lua` so a scene can place it at once (`{ \"kind\": \"<name>\", \"x\", \"y\": 0, \"z\", \"props\": { \"ry\": radians, \"sx\": scale } }`). " +
-      `Kinds: ${PROP_KINDS.join(", ")}. One style for all: few flat faces, each a slightly different tone, sized in metres beside a hero 1.6 high, standing on y = 0. ` +
+      `Kinds: ${PROP_KINDS.join(", ")}: the low style, few flat faces, each a slightly different tone, sized in metres beside a hero 1.6 high, standing on y = 0. ` +
+      `The detailed kinds (the scenery first made for Pine Ridge Rally: many more faces, smooth shading, real sizes): ${DETAILED_KINDS.map((k) => `${k} (${speciesOf(k).join(", ")})`).join("; ")}. A detailed kind takes \`species\` (the first when left out), \`season\` (summer, autumn, snow, night; from the palette when left out: autumn, snow, night, and desert's red rock) and \`height\` (metres; natural kinds only). \`style\`: "detailed" makes ${Object.keys(DETAILED_OF).join(", ")} the detailed ones (tree is a broadleaf, pine a conifer, bush a shrub, rock a boulder, sign a chevron, lantern a trackside lamp, arch a start arch, tower a race control tower). A spectator is half life size with the clips static, idle, watch, cheer, clap and wave; its entity plays idle. ` +
       "Give one (`kind`, with `name` when it should not be the kind's own) or several at once (`kinds`: names, or { kind, name, seed, size, color } objects: `\"kinds\": [\"tree\", \"pine\", { \"kind\": \"tree\", \"name\": \"tree2\", \"seed\": 5 }, \"rock\"]`); another `seed` is another tree of the same kind. " +
       "Each model carries what it blocks on the ground (`colliders`, `boxes` or `capsules`). The entity file says how it is used: scenery that never moves (`static = true`); things you bump into and can stand on are `solid = true` (their own shape blocks bodies moved with nova.solid.move, and the follow camera); a tree blocks with its trunk and keeps the camera out of its crown; `steps` and `dais` are low enough to walk up; `gem` and `coin` turn and bob and are tagged \"pickup\"; a `lantern`'s answer says where its light goes. " +
       "It returns the same picture as model_preview (a contact sheet for several). The models are ordinary ones afterwards: read the .model.json, change it and give it to model_write.",
     {
       kind: { type: "string", description: PROP_KINDS.join(", ") },
       name: { type: "string", description: "The model's (and the entity's) name; the kind when left out." },
-      kinds: { type: "array", items: { type: ["string", "object"] }, description: 'Several at once: kinds by name, or { "kind", "name", "seed", "size", "color" } objects.' },
+      kinds: { type: "array", items: { type: ["string", "object"] }, description: 'Several at once: kinds by name, or { "kind", "name", "seed", "size", "color", "species", "season", "height", "style", "colliders" } objects.' },
+      species: { type: "string", description: "A detailed kind's species (see the list)." },
+      season: { type: "string", description: 'A detailed kind\'s season: "summer", "autumn", "snow", "night".' },
+      height: { type: "number", description: "A natural detailed kind's height in metres (its own when left out)." },
+      style: { type: "string", description: '"detailed": the detailed versions of the kinds that have both.' },
+      colliders: { type: "boolean", description: "false: no colliders added by the rule (a detailed model keeps any of its own)." },
+      preview: { type: "boolean", description: "false: no picture (quicker for scripts that make many)." },
       size: { type: "string", description: 'For a rock: "small", "medium" (when left out) or "large".' },
       color: { type: "string", description: 'For a gem: its colour, "#rrggbb" (one of five by seed when left out).' },
       entity: { type: "boolean", description: "false: do not write entities/<name>.lua (it is written unless one is already there)." },
@@ -47,19 +58,26 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
     [],
     (a) => {
       const root = h.root(a);
-      const list: Args[] = Array.isArray(a.kinds) && a.kinds.length ? a.kinds.map((k: unknown) => (typeof k === "string" ? { kind: k } : (k as Args))) : a.kind !== undefined ? [{ kind: a.kind, name: a.name, size: a.size, color: a.color }] : [];
-      if (!list.length) throw new Error(`say what to make: "kind" (one of ${PROP_KINDS.join(", ")}) or "kinds" (a list of them)`);
+      const list: Args[] = Array.isArray(a.kinds) && a.kinds.length ? a.kinds.map((k: unknown) => (typeof k === "string" ? { kind: k } : (k as Args))) : a.kind !== undefined ? [{ kind: a.kind, name: a.name, size: a.size, color: a.color, species: a.species, season: a.season, height: a.height }] : [];
+      if (!list.length) throw new Error(`say what to make: "kind" (one of ${[...PROP_KINDS, ...DETAILED_KINDS].join(", ")}) or "kinds" (a list of them)`);
       if (list.length > 24) throw new Error(`kinds has ${list.length} entries; one call makes up to 24`);
       const made: { name: string; prop: Prop; wrote: string }[] = [];
       for (const [i, item] of list.entries()) {
         if (!item || typeof item !== "object") throw new Error(`kinds[${i}] is a kind's name or { "kind": ..., "name": ..., "seed": ... }`);
-        const bad = Object.keys(item).filter((k) => !["kind", "name", "seed", "size", "color"].includes(k));
-        if (bad.length) throw new Error(`kinds[${i}] has "${bad.join('", "')}"; an entry takes kind, name, seed, size, color`);
-        const prop = makeProp({ ...item, palette: a.palette, seed: item.seed ?? a.seed });
+        const ITEM = ["kind", "name", "seed", "size", "color", "species", "season", "height", "style", "colliders"];
+        const bad = Object.keys(item).filter((k) => !ITEM.includes(k));
+        if (bad.length) throw new Error(`kinds[${i}] has "${bad.join('", "')}"; an entry takes ${ITEM.join(", ")}`);
+        for (const k of Object.keys(item)) if (item[k] === undefined) delete item[k];
+        const style = item.style ?? a.style, season = item.season ?? a.season, colliders = item.colliders ?? a.colliders;
+        if (style !== undefined && style !== "low" && style !== "detailed") throw new Error(`style is "low" (when left out) or "detailed", not ${JSON.stringify(style)}`);
+        const detailed = DETAILED_KINDS.includes(item.kind) && !(PROP_KINDS as readonly string[]).includes(item.kind) || (style === "detailed" && DETAILED_OF[item.kind] !== undefined);
+        const prop = detailed
+          ? makeScenery({ ...item, palette: a.palette, seed: item.seed ?? a.seed, style, season, colliders }, h.safeName(item.name ?? (style === "detailed" ? DETAILED_OF[item.kind] ?? item.kind : item.kind), "Model"))
+          : makeProp({ ...item, palette: a.palette, seed: item.seed ?? a.seed });
         const name = h.safeName(item.name ?? prop.kind, "Model");
         if (made.some((m) => m.name === name)) throw new Error(`two entries are called "${name}": give the second its own "name"`);
         h.call("model_write", { project: a.project, name, model: prop.model });
-        made.push({ name, prop, wrote: entity(root, name, propEntity(name, prop), a.entity) });
+        made.push({ name, prop, wrote: entity(root, name, prop.kind === ("spectator" as Prop["kind"]) ? spectatorEntity(name, prop.says) : propEntity(name, prop), a.entity) });
       }
       const lines = made.map(({ name, prop, wrote }) => {
         const m = prop.model;
@@ -71,7 +89,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
         const e = prop.entity;
         return `  ${name} (${prop.kind}): models/${name}.glb${wrote}; ${prop.size.w} x ${prop.size.h} x ${prop.size.d} m (x, y, z). ${prop.says}. Collider${blocks.length === 1 ? "" : "s"}: ${blocks.join("; ") || "none"}. Entity: ${e.spins ? `a live one tagged "${name}" and "pickup" that turns and bobs` : `nova.entity { model = "${name}", static = true${e.solid ? ", solid = true" : ""}${e.sway ? `, sway = ${e.sway}` : ""}, on_ground = true }`}${prop.light ? `. Light: nova.point_light(x + ${prop.light.x}, y + ${prop.light.y}, z + ${prop.light.z}, { radius = ${prop.light.radius}, color = { ${prop.light.color.join(", ")} } }) in the scene's draw, for each one placed (turned by its ry: the lamp is ${prop.light.z} in front of the post)` : ""}`;
       });
-      const shown = made.length === 1 ? h.call("model_preview", { project: a.project, name: made[0]!.name }) : h.call("model_preview", { project: a.project, names: made.map((m) => m.name), fit: "each" });
+      const shown = a.preview === false ? "" : made.length === 1 ? h.call("model_preview", { project: a.project, name: made[0]!.name }) : h.call("model_preview", { project: a.project, names: made.map((m) => m.name), fit: "each" });
       return {
         text: [`made ${made.length} prop${made.length === 1 ? "" : "s"} (palette "${typeof a.palette === "string" ? a.palette : a.palette ? "your own" : "bright meadow"}", seed ${a.seed ?? 1}):`, ...lines, 'Place them in a scene (scene_write): { "kind": "<name>", "x": 4, "y": 0, "z": -6, "props": { "ry": 1.2, "sx": 1.1 } }: on_ground = true stands each on the ground under its x, z (y is the height above it; "props": { "on_ground": false } for one that should stay at its y). What is solid = true blocks nova.solid.move and the follow camera with no more code.', text(shown).split("\n").slice(-1)[0] ?? ""].join("\n"),
         images: images(shown),
