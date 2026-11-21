@@ -1,22 +1,50 @@
 {
   "version": 1,
-  "wave": "noise",
-  "freq": 900,
-  "freqLimit": 0,
-  "slide": -0.6,
-  "slideDelta": 0,
-  "duty": 0.5,
-  "dutySweep": 0,
-  "vibratoDepth": 0,
-  "vibratoSpeed": 8,
-  "arpSemitones": 0,
-  "arpTime": 0.1,
-  "attack": 0.004,
-  "sustain": 0.25,
-  "decay": 0.9,
-  "punch": 0.5,
-  "lowpass": 2500,
-  "highpass": 120,
-  "volume": 0.38,
-  "seed": 1
+  "volume": 0.428,
+  "seed": 1,
+  "drive": 0.45,
+  "reverb": 0.3,
+  "room": 0.7,
+  "width": 0.6,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0.004,
+      "decay": 0.04,
+      "volume": 0.9,
+      "filter": "bandpass",
+      "cutoff": 3500
+    },
+    {
+      "wave": "sine",
+      "freq": 62,
+      "hold": 0.01,
+      "decay": 0.8,
+      "pitch": 24,
+      "pitchTime": 0.06
+    },
+    {
+      "wave": "saw",
+      "freq": 110,
+      "start": 0.02,
+      "hold": 0.02,
+      "decay": 0.9,
+      "volume": 0.4,
+      "slide": -0.3,
+      "unison": 4,
+      "detune": 25,
+      "filter": "lowpass",
+      "cutoff": 2500,
+      "cutoffEnd": 150
+    },
+    {
+      "wave": "pink",
+      "hold": 0.05,
+      "decay": 0.9,
+      "volume": 0.4,
+      "filter": "lowpass",
+      "cutoff": 3000,
+      "cutoffEnd": 200
+    }
+  ]
 }

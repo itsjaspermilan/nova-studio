@@ -1,22 +1,45 @@
 {
   "version": 1,
-  "wave": "saw",
-  "freq": 1337,
-  "freqLimit": 160,
-  "slide": -2.8,
-  "slideDelta": 0,
-  "duty": 0.5,
-  "dutySweep": 0,
-  "vibratoDepth": 0,
-  "vibratoSpeed": 8,
-  "arpSemitones": 0,
-  "arpTime": 0.1,
-  "attack": 0.004,
-  "sustain": 0.1,
-  "decay": 0.168,
-  "punch": 0,
-  "lowpass": 20000,
-  "highpass": 0,
-  "volume": 0.45,
-  "seed": 5
+  "volume": 1.215,
+  "seed": 2,
+  "drive": 0.2,
+  "reverb": 0.15,
+  "room": 0.3,
+  "width": 0.5,
+  "layers": [
+    {
+      "wave": "noise",
+      "freq": 220.66,
+      "hold": 0.004,
+      "decay": 0.015,
+      "volume": 0.54,
+      "filter": "bandpass",
+      "cutoff": 7458
+    },
+    {
+      "wave": "saw",
+      "freq": 1504.49,
+      "decay": 0.185,
+      "volume": 0.35,
+      "pitch": 7,
+      "pitchTime": 0.01,
+      "slide": -3.5,
+      "unison": 3,
+      "detune": 18,
+      "filter": "lowpass",
+      "cutoff": 6393,
+      "cutoffEnd": 1279
+    },
+    {
+      "wave": "sine",
+      "freq": 1203.59,
+      "hold": 0.02,
+      "decay": 0.154,
+      "volume": 0.25,
+      "slide": -3,
+      "fm": 3,
+      "fmRatio": 2.01,
+      "fmDecay": 0.05
+    }
+  ]
 }
