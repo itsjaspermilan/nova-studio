@@ -14,14 +14,13 @@ type In = (x: number, y: number) => boolean;
 /// Fills a shape with a bevel: the two outer pixels lit on the side that faces up and left, dark on the other, then the
 /// face; `spec` puts a highlight near the upper left.
 function bevel(img: Img, inside: In, r: Ramp, spec = false) {
+  // flat cel tones like the people: the face in the base tone, one crisp lit pixel along the upper left, a two-pixel
+  // shadow band along the lower right; no soft steps
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     if (!inside(x, y)) continue;
-    let d = 9, lit = 0;
-    for (let k = 1; k <= 3 && d === 9; k++) {
-      const up = !inside(x, y - k) || !inside(x - k, y), down = !inside(x, y + k) || !inside(x + k, y);
-      if (up || down) [d, lit] = [k, up && !down ? 1 : !up && down ? -1 : 0];
-    }
-    img.set(x, y, d === 1 ? (lit > 0 ? r[4] : lit < 0 ? r[0] : r[1]) : d === 2 ? (lit > 0 ? r[3] : lit < 0 ? r[1] : r[2]) : r[2]);
+    const up = !inside(x, y - 1) || !inside(x - 1, y);
+    const down = !inside(x, y + 1) || !inside(x + 1, y) || !inside(x, y + 2) || !inside(x + 2, y);
+    img.set(x, y, down ? r[1] : up ? r[3] : r[2]);
   }
   if (spec) {
     let best: [number, number] | null = null;
@@ -37,20 +36,18 @@ function bevel(img: Img, inside: In, r: Ramp, spec = false) {
   }
 }
 
-/// The selective outline: a dark of the colour inside, lighter on the lit side.
+/// The bold outline the people have: a near-black ring outside, and on the lower right a second, inside, in the darkest
+/// tone of the colour there.
 function outline(img: Img, P: Palette) {
   const edge: [number, number, Rgba][] = [];
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    if (img.firm(x, y)) continue;
-    let near: Rgba | null = null, lit = false;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (img.firm(x + dx, y + dy)) {
-      const c = img.get(x + dx, y + dy)!;
-      if (!near || c[0] + c[1] + c[2] < near[0] + near[1] + near[2]) near = c;
-      if (dx === 1 || dy === 1) lit = true;
-    }
-    if (near) edge.push([x, y, mix(shade(near, -2.4), P.outline, lit ? 0.35 : 0.65)]);
+    if (!img.firm(x, y)) {
+      let near: Rgba | null = null;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (img.firm(x + dx, y + dy)) near = img.get(x + dx, y + dy)!;
+      if (near) edge.push([x, y, mix(P.outline, shade(near, -3), 0.3)]);
+    } else if (!img.firm(x + 1, y) || !img.firm(x, y + 1)) edge.push([x, y, mix(shade(img.get(x, y)!, -2.6), P.outline, 0.25)]);
   }
-  for (const [x, y, c] of edge) img.set(x, y, c);
+  for (const [x, y, c] of edge) img.r.data.set([c[0], c[1], c[2], 255], (y * N + x) * 4);
 }
 
 interface Look {

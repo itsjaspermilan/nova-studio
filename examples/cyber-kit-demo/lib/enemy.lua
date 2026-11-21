@@ -1,5 +1,5 @@
 -- What the demo's enemies share: they wander, come for the runner when near, show their "tell" frame (creature_make
--- draws one for every city archetype: the outline and lights flash) before they lunge, and flash white when hit.
+-- draws one for every city archetype: the outline and lights flash) before they lunge (a person has its own tell_<dir>: wound up, flashing), and flash white when hit.
 -- A character sheet (the Scrapper) walks and swings by direction instead.
 return function(spec)
   local Enemy = nova.entity {
@@ -22,7 +22,7 @@ return function(spec)
   -- the animation for a state, by direction for a character sheet
   function Enemy:show(state)
     if spec.person then
-      local name = ({ idle = "idle_", move = "walk_", tell = "attack_", hit = "hurt_" })[state] .. self.facing
+      local name = ({ idle = "idle_", move = "walk_", tell = "tell_", hit = "hurt_" })[state] .. self.facing
       self:play(name)
     elseif state == "move" and spec.still then
       self:play("idle")

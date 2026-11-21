@@ -1,12 +1,21 @@
-// creature_make's city archetypes in the detailed style: twice the pixels (draw with sx = 1.5), built in 3D and drawn by
-// pix3d.ts, with more frames where motion shows: a rat-drone's blade spins through six, a drone bobs while its light
-// sweeps, a mimic opens through in-between frames. Every one has a "tell" frame (its edge lit in the glow colour and
-// its lights flared) and a white "hit" frame.
+// creature_make's city archetypes in the detailed style (draw with sx = 1.5): built in 3D and drawn bold by toon.ts
+// (three cel tones, a two-pixel outline, a neon rim), a third bigger than the first detailed kit, with personality: a
+// rat-drone glares through two angry headlights, a drone has one big mean eye under a lid, the mimic grows eyes and a
+// tongue of cans. More frames where motion shows (a blade spins through six, a mimic opens through four). Every one has
+// a "tell" frame (wound up, its outline flashing in the glow colour) and a white "hit" frame.
 
 import { hex, Img, mix, type Ramp, type Rgba } from "./paint";
 import type { Palette } from "./palettes";
-import { box, capsule, cut, cylinder, ellipsoid, glowHd, hdRamp, render, smooth, sphere, union, type Hit, type Look, type Part, type Sdf, type V3 } from "./pix3d";
+import { box, capsule, cut, cylinder, ellipsoid, glowHd, smooth, sphere, union, type Hit, type Look, type Part, type Sdf, type V3 } from "./pix3d";
+import { flashRing, glowInside, stamp, toon, toonRamp, type TPart, type Xf } from "./toon";
 import { vendingHd } from "./city-hd";
+
+/// Every creature's tones are the bold three-tone cel ramps of toon.ts.
+const hdRamp = (c: Rgba) => toonRamp(c);
+/// How much bigger than they are built the creatures are drawn (a third, as the people are).
+const K = 4 / 3;
+/// Where the vending machine (32x64) sits in the mimic's 80x80 frame: shut, those pixels are the tile's exactly.
+export const MIMIC_X = 24, MIMIC_Y = 10;
 
 const WHITE: Rgba = [255, 255, 255, 255];
 
@@ -28,6 +37,8 @@ interface HdKind {
   /// A frame drawn whole (the mimic is the vending machine).
   whole?: (c: HdCtx, state: string, i: number) => Img;
   shadow?: (state: string, i: number) => [number, number, number, number] | null;
+  /// How the whole thing tips in a frame (a rat-drone rears before it charges).
+  xf?: (state: string, i: number) => Omit<Xf, "yaw">;
   names?: Record<string, number>;
   oy?: number;
 }
@@ -50,9 +61,15 @@ function drone(c: HdCtx, state: string, i: number, mirror: boolean): Part[] {
     P(ellipsoid([0, y, tilt], [8, 4.6, 7]), [0, y, 0], 9, body, 1),
     P(cut(ellipsoid([0, y - 2.5, 1], [4.4, 3, 4]), box([0, y + 1, 1], [6, 2, 6])), [0, y - 2, 1], 5, L(c.dark, 0.7), 1),
   ];
-  // the camera eye: its light sweeps side to side
-  const sweep = Math.sin(ph) * 2.5;
-  parts.push(P(sphere([sweep, y - 3.6, 4.4], 1.4), [sweep, y - 3.6, 4.4], 2, glowL(c), 2));
+  // one big eye that looks about (a white, a pupil lit in the glow colour), under a heavy lid that glares
+  const sweep = Math.sin(ph) * 1.6, tell = state === "tell";
+  const eye: V3 = [0, y - 2.2, 6];
+  parts.push(P(sphere(eye, 3.6), eye, 5, (h) => {
+    const dx = h.w[0] - (eye[0] + sweep), dy = h.w[1] - (eye[1] - 0.6);
+    if (h.w[2] > eye[2] + 1.5 && Math.hypot(dx, dy) < (tell ? 2.2 : 1.5)) return L(c.acc, 0, { emit: true });
+    return L(hdRamp([226, 230, 238, 255]), 0.8);
+  }, 2));
+  parts.push(P(cut(sphere(eye, 4.3), box([0, eye[1] - (tell ? 0.4 : 1.4), eye[2] + 2], [6, 3.2, 6])), eye, 6, L(c.dark, 0.6), 5));
   for (const [x, z] of [[-11, -6], [11, -6], [-11, 6], [11, 6]] as const) {
     parts.push(P(capsule([x * 0.5, y, z * 0.5], [x, y + 1, z], 1), [x * 0.75, y, z * 0.75], 7, L(c.dark, 0.5), 3));
     parts.push(P(cylinder([x, 0, z], 1.4, y + 0.5, y + 2.5, 0.4), [x, y + 1.5, z], 3, L(c.metal, 0.8), 3));
@@ -78,7 +95,9 @@ export const HD_CREATURES: Record<string, HdKind> = {
         P(capsule([-9, 5 + bob, 0], [-14, 6 + Math.sin(ph) * 2, -2], 0.7, 0.4), [-12, 6, -1], 5, L(c.dark, 0.3), 2),
         P(capsule([-4, 11 + bob, -1], [-6, 16 + bob, -2], 0.5), [-5, 14, -1], 4, L(c.metal, 0.8), 2),
         P(sphere([-6, 16.5 + bob, -2], 0.9), [-6, 16.5, -2], 2, glowL(c), 2),
-        P(sphere([6.2, 8 + bob, 3], 1.1), [6, 8, 3], 2, glowL(c), 2),
+        // two headlights for eyes, glaring under a slanted brow plate
+        ...[-2.4, 2.4].map((z) => P(sphere([6.4, 8.6 + bob, z], 1.7), [6.4, 8.6, z], 3, glowL(c), 6)),
+        ...[-2.4, 2.4].map((z) => P(capsule([4.2, 11.6 + bob, z], [7.6, 10.2 + bob, z], 0.9), [6, 11, z], 4, L(c.dark, 0.5), 7)),
       ];
       // wheels: discs on their side, a hub that turns
       for (const [x, z] of [[-5, 5], [4, 5], [-5, -5], [4, -5]] as const) parts.push(P(cylinderZ([x, 2.8, z], 2.8, z - 1.1, z + 1.1), [x, 2.8, z], 4, (h) => L(Math.hypot(h.w[0] - x, h.w[1] - 2.8) < 1.2 ? c.metal : c.dark, 0.5, Math.cos(Math.atan2(h.w[1] - 2.8, h.w[0] - x) * 2 + spin * 3) > 0.9 ? { flat: 3 } : {}), 3));
@@ -96,9 +115,11 @@ export const HD_CREATURES: Record<string, HdKind> = {
       return parts;
     },
     shadow: () => [0, 1, 13, 7],
+    // the tell: it rears on its back wheels, nose and blade up, revving
+    xf: (s) => (s === "tell" ? { bank: -0.28, pivot: [-5, 0, 0] } : {}),
   },
-  hover_drone: { size: 32, states: [["idle", 4, 180], ["move", 6, 80]], parts: (c, s, i) => drone(c, s, i, false), shadow: () => [0, 0, 9, 7] },
-  mirror_drone: { size: 32, states: [["idle", 4, 180], ["move", 6, 80]], parts: (c, s, i) => drone(c, s, i, true), shadow: () => [0, 0, 9, 7] },
+  hover_drone: { size: 32, states: [["idle", 4, 180], ["move", 6, 80]], parts: (c, s, i) => drone(c, s, i, false), shadow: () => [0, 0, 9, 7], xf: (s) => (s === "tell" ? { pitch: 0.35, pivot: [0, 15, 0] } : s === "move" ? { pitch: 0.15, pivot: [0, 15, 0] } : {}) },
+  mirror_drone: { size: 32, states: [["idle", 4, 180], ["move", 6, 80]], parts: (c, s, i) => drone(c, s, i, true), shadow: () => [0, 0, 9, 7], xf: (s) => (s === "tell" ? { pitch: 0.35, pivot: [0, 15, 0] } : s === "move" ? { pitch: 0.15, pivot: [0, 15, 0] } : {}) },
   turret: {
     size: 48, states: [["idle", 2, 400], ["turn", 6, 90], ["fire", 3, 70]], alias: { move: "turn" },
     parts: (c, state, i) => {
@@ -118,14 +139,9 @@ export const HD_CREATURES: Record<string, HdKind> = {
     shadow: () => [0, 0, 16, 12],
   },
   vending_mimic: {
-    size: 64, states: [["idle", 1, 600], ["open", 4, 80]], alias: { closed: "idle" },
-    whole: (c, state, i) => {
-      // the vending machine tile itself in a 64x64 frame; opening, its window becomes a mouth
-      const ctx = { t: 32, k: 2, P: c.P, seed: 1 };
-      const open = state === "open" ? [0.25, 0.55, 0.85, 1][i]! : 0;
-      return new Img(64, 64).draw(vendingHd(ctx, open, state === "tell"), 16, 0);
-    },
-    oy: 58,
+    size: 80, states: [["idle", 1, 600], ["open", 4, 80]], alias: { closed: "idle" },
+    whole: (c, state, i) => mimic(c, state, i),
+    oy: MIMIC_Y + 58,
   },
   spore_hound: {
     size: 48, states: [["idle", 4, 220], ["move", 6, 80], ["leap", 2, 120]],
@@ -249,6 +265,44 @@ export const HD_CREATURES: Record<string, HdKind> = {
   },
 };
 
+
+/// The mimic: the vending machine tile itself; waking (the tell), two angry eyes open in its lit header; opening, its
+/// window becomes a mouth of teeth and a tongue of cans lolls out onto the street.
+function mimic(c: HdCtx, state: string, i: number): Img {
+  const ctx = { t: 32, k: 2, P: c.P, seed: 1 };
+  const open = state === "open" ? [0.25, 0.55, 0.85, 1][i]! : 0;
+  const img = new Img(80, 80).draw(vendingHd(ctx, open, state === "tell"), MIMIC_X, MIMIC_Y);
+  if (state === "idle") return img;
+  const X = MIMIC_X, Y = MIMIC_Y, ink = mix(c.P.outline, [0, 0, 0, 255], 0.3);
+  // eyes in the header: whites with a pupil, the brows slanting in
+  const eyes = { K: ink, W: [250, 246, 236, 255] as Rgba, P: c.acc[2], G: WHITE };
+  for (const [ex, flip] of [[X + 8, false], [X + 18, true]] as const) {
+    stamp(img, ["KK...", "KKKK.", ".WWWK", "WWPPW", "WWPPW", ".WWW."], ex, Y + 15, eyes, flip);
+  }
+  if (state === "tell") {
+    flashRing(img, c.acc[2], mix(c.acc[3], WHITE, 0.5));
+    return img;
+  }
+  // the tongue of cans: from the bottom of the mouth, out and down onto the ground in front, longer as it opens
+  const tongue = toonRamp([214, 76, 104, 255]);
+  const len = [4, 12, 20, 24][i]!, x0 = X + 13, y0 = Y + 42;
+  const body = new Img(80, 80);
+  for (let s = 0; s <= len; s++) {
+    const t = s / 24, cx = x0 + Math.sin(t * 2.4) * 6 + t * 4, cy = y0 + s, r = 5 - t * 1.2;
+    body.ellipse(cx, cy, r, 1.4, (x) => (x < cx - r * 0.3 ? tongue[3] : x > cx + r * 0.5 ? tongue[1] : tongue[2]));
+  }
+  const cans = [c.P.mat.flower2[3], c.P.mat.leaf[4], c.P.mat.gold[3], c.P.mat.flower[3]];
+  for (let k = 0; k * 6 + 3 < len; k++) {
+    const s = k * 6 + 4, t = s / 24, cx = Math.round(x0 + Math.sin(t * 2.4) * 6 + t * 4 + (k % 2 ? 2 : -2)), cy = y0 + s;
+    const can = toonRamp(cans[k % cans.length]!);
+    body.rect(cx - 1, cy - 2, 3, 4, can[2]);
+    body.rect(cx - 1, cy - 2, 1, 4, can[3]);
+    body.rect(cx - 1, cy - 2, 3, 1, c.metal[3]);
+  }
+  img.draw(body.outline(ink));
+  return img;
+}
+
 function add(a: V3, b: V3): V3 {
   return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 }
@@ -257,46 +311,76 @@ const cylinderZ = (c: V3, r: number, z0: number, z1: number): Sdf => (x, y, z) =
   return Math.min(Math.max(d, dz), 0) + Math.hypot(Math.max(d, 0), Math.max(dz, 0));
 };
 
-/// A hologram: a person made of light over its projector, scan lines running down it, see-through, no outline.
+
+/// A frame's size and where the ground's middle is in it, a third bigger than the kind is built.
+function frameOf(kind: HdKind): { n: number; oy: number } {
+  if (kind.whole) return { n: kind.size, oy: kind.oy ?? kind.size - 5 };
+  const n = Math.round((kind.size * K) / 4) * 4;
+  return { n, oy: Math.round(n - (kind.size - (kind.oy ?? kind.size - 5)) * K) };
+}
+
+/// The parts of a creature for toon.ts: painted by where they are on the creature as it is built.
+const asToon = (parts: Part[]): TPart[] => parts.map((p) => {
+  const look = p.look;
+  return { sdf: p.sdf, at: p.at, size: p.size, group: p.group, bare: p.bare, look: typeof look === "function" ? (h: Hit) => look({ ...h, w: h.l, n: h.ln }) : look };
+});
+
+const HOLO = Math.round((64 * K) / 4) * 4;
+
+/// A hologram: a person made of light over its projector, in the glow colour's tones by how lit each part is, scan
+/// lines across it (no dither), see-through, a line of it slipping sideways now and then.
 function hologramHd(c: HdCtx, state: string, i: number): Img {
-  const img = new Img(64, 64), a = c.acc;
-  const bob = state === "move" ? Math.sin((i / 6) * Math.PI * 2) : 0, glitch = state === "idle" && i === 2 ? 24 : -9;
+  const n = HOLO, oy = Math.round(n - 6 * K);
+  const img = new Img(n, n), a = c.acc;
+  const bob = state === "move" ? Math.sin((i / 6) * Math.PI * 2) : 0, glitch = state === "idle" && i === 2 ? 34 : -9;
+  const arms = state === "tell" ? 8 : 0;
   const parts: Part[] = [
-    P(ellipsoid([0, 46 + bob, 0.5], [5.5, 6, 5.5]), [0, 46, 0], 7, L(a)),
-    P(smooth(3, ellipsoid([0, 34 + bob, 0], [7, 6, 4]), ellipsoid([0, 26 + bob, 0], [5.5, 5, 3.5])), [0, 30, 0], 10, L(a)),
-    ...[-1, 1].map((s) => P(capsule([s * 7.5, 37 + bob, 0], [s * 9, 22 + bob, 2], 2.4, 1.9), [s * 8, 30, 1], 10, L(a))),
-    ...[-1, 1].map((s) => P(capsule([s * 3.5, 22 + bob, 0], [s * 3.6 + (state === "move" ? Math.sin(i + s) * 2 : 0), 7 + bob, 0], 2.8, 2.2), [s * 3.5, 15, 0], 10, L(a))),
+    P(ellipsoid([0, 46 + bob, 0.5], [6, 6.4, 6]), [0, 46, 0], 7, L(a)),
+    P(cylinder([0, 0, 0], 4.5, 51 + bob, 56 + bob, 1), [0, 53, 0], 6, L(a)),
+    P(ellipsoid([0, 51 + bob, 0.5], [9, 1, 8]), [0, 51, 0], 9, L(a)),
+    P(smooth(3, ellipsoid([0, 34 + bob, 0], [8, 6, 4.6]), ellipsoid([0, 26 + bob, 0], [6, 5, 4])), [0, 30, 0], 10, L(a)),
+    ...[-1, 1].map((s) => P(capsule([s * 8, 38 + bob, 0], [s * (16 + arms * 0.5), 34 + bob + arms, 3], 2.6, 2.2), [s * 12, 36, 1], 12, L(a))),
+    ...[-1, 1].map((s) => P(capsule([s * 3.6, 22 + bob, 0], [s * 3.8 + (state === "move" ? Math.sin(i + s) * 2 : 0), 7 + bob, 0], 3, 2.6), [s * 3.6, 15, 0], 10, L(a))),
   ];
-  const fig = render(parts, { w: 64, h: 64, ox: 32, oy: 58, tilt: 25, outline: a[0] }).img;
-  // the projector
-  const base = render([P(cylinder([0, 0, 0], 8, 0, 3, 1), [0, 1.5, 0], 10, L(c.metal, 0.8))], { w: 64, h: 64, ox: 32, oy: 58, tilt: 25, outline: c.P.outline, shadows: [[0, 0, 9, 7]] }).img;
-  img.draw(base);
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+  const fig = toon([{ parts: asToon(parts), xf: { yaw: 0, sx: K, sy: K } }], { w: n, h: n, ox: n / 2, oy, outline: a[0] }).img;
+  const base = toon([{ parts: asToon([P(cylinder([0, 0, 0], 8, 0, 3, 1), [0, 1.5, 0], 10, L(c.metal, 0.8))]), xf: { yaw: 0, sx: K, sy: K } }], { w: n, h: n, ox: n / 2, oy, outline: c.P.outline, shadows: [[0, 0, 12, 9]] });
+  img.draw(base.img);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const p = fig.get(x, y);
     if (!p || p[3] < 200) continue;
-    if (x % 2 === 0 && (y + i) % 2 === 0 && ((x >> 1) + ((y + i) >> 1)) % 2 === 0) continue;
+    const l = (p[0] * 0.3 + p[1] * 0.55 + p[2] * 0.15) / 255;
+    const scan = (y + i) % 3 === 0;
+    let col = l < 0.3 ? a[1] : l < 0.6 ? a[2] : mix(a[3], WHITE, 0.3);
+    if (state === "tell") col = mix(col, WHITE, 0.35);
+    if (scan) col = mix(col, a[0], 0.55);
     const sx = y === glitch || y === glitch + 1 ? x + 3 : x;
-    const scan = (y + i * 2) % 4 === 0;
-    const col = state === "tell" ? mix(p, WHITE, 0.4) : scan ? mix(p, a[0], 0.5) : p;
-    img.set(sx, y, [col[0], col[1], col[2], scan ? 170 : 225]);
+    img.set(sx, y, [col[0], col[1], col[2], scan ? 150 : 225]);
   }
-  // the beam up from the projector
-  for (let y = 40; y < 56; y++) for (let x = 22; x < 43; x++) if ((x + y) % 2 === 0 && Math.abs(x - 32) < 4 + (56 - y) * 0.4) img.set(x, y, [a[2][0], a[2][1], a[2][2], 40]);
-  glowHd(img, (x, y) => y === 56 && x >= 26 && x <= 37, a, { reach: 2.5 });
+  for (let x = n / 2 - 7; x <= n / 2 + 7; x++) img.set(x, oy - 4, mix(a[3], WHITE, 0.5));
   return img;
 }
 
 export const HD_CREATURE_NAMES = Object.keys(HD_CREATURES);
 
+/// A detailed archetype's frame size and the ground's row in it.
+export function hdCreatureFrame(kindName: string): { n: number; oy: number } {
+  if (kindName === "hologram") return { n: HOLO, oy: Math.round(HOLO - 6 * K) };
+  return frameOf(HD_CREATURES[kindName]!);
+}
+
 /// Every frame of a detailed archetype: its states, then "tell", then "hit".
 export function hdFrames(kindName: string, c: HdCtx) {
-  const kind = HD_CREATURES[kindName]!, n = kind.size, oy = kind.oy ?? n - 5;
+  const kind = HD_CREATURES[kindName]!;
+  const { n, oy } = hdCreatureFrame(kindName);
   const frame = (state: string, i: number, shadow = true): Img => {
     if (kind.whole) return kind.whole(c, state, i);
     const sh = shadow ? kind.shadow?.(state, i) : null;
-    const { img, emit } = render(kind.parts!(c, state, i), { w: n, h: n, ox: n / 2, oy, tilt: 25, outline: c.P.outline, rim: c.P.city ? c.P.accent[1][3] : undefined, shadows: sh ? [sh] : [] });
-    glowHd(img, (x, y) => emit.has(x, y), c.acc, { reach: 3, strength: 0.9 });
-    return img;
+    const t = toon([{ parts: asToon(kind.parts!(c, state, i)), xf: { yaw: 0, sx: K, sy: K, ...kind.xf?.(state, i) } }], {
+      w: n, h: n, ox: n / 2, oy, tilt: 25, outline: c.P.outline, rim: c.P.city ? c.P.accent[1][3] : undefined,
+      shadows: sh ? [[sh[0] * K, sh[1] * K, sh[2] * K, sh[3] * K]] : [],
+    });
+    glowInside(t, c.acc, { reach: 2, strength: 0.6, hot: 0.45 });
+    return t.img;
   };
   const frames: Img[] = [], durations: number[] = [];
   const tags: { name: string; from: number; to: number; loop?: boolean }[] = [];
@@ -311,13 +395,10 @@ export function hdFrames(kindName: string, c: HdCtx) {
     const t = tags.find((x) => x.name === of);
     if (t) tags.push({ ...t, name: alias });
   }
-  // the tell: the first pose, its edge lit in the glow colour
+  // the tell: wound up to strike (each kind's own pose), its outline flashing in the glow colour
   const first = kind.states.find(([s]) => s === "idle")?.[0] ?? kind.states[0]![0];
   const tell = frame("tell", 0);
-  const edge = (x: number, y: number) => (tell.get(x, y)?.[3] ?? 0) > 200 && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => (tell.get(x + dx!, y + dy!)?.[3] ?? 0) < 100);
-  const lit = new Img(n, n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (edge(x, y)) lit.set(x, y, WHITE);
-  glowHd(tell, (x, y) => lit.has(x, y), c.acc, { reach: 2.5, hot: 0.2, strength: 0.8 });
+  if (kindName !== "vending_mimic") flashRing(tell, c.acc[2], mix(c.acc[3], WHITE, 0.5));
   tags.push({ name: "tell", from: frames.length, to: frames.length, loop: false });
   frames.push(tell);
   durations.push(240);

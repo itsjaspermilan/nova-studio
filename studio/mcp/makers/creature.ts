@@ -7,7 +7,7 @@ import { colourOf, Img, mix, ramp, shade, SHADOW, type Ramp, type Rgba } from ".
 import { accentOf, lit, paletteOf } from "./palettes";
 import { CITY_CREATURE_NAMES, CITY_CREATURES, cityCtx, cityFrames, up } from "./city-creatures";
 import { HD_CREATURE_NAMES, hdFrames } from "./creatures-hd";
-import { hdRamp } from "./pix3d";
+import { toonRamp as hdRamp } from "./toon";
 import { styleOf } from "./style";
 import { writeSheet, type Put } from "./sheet";
 
@@ -322,7 +322,7 @@ function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { te
     r: hdRamp(lit(P, colourOf(a.color ?? a.colour, '"color"', kind.colour)), warm),
     r2: hdRamp(lit(P, colourOf(a.second_color ?? a.second_colour, '"second_color"', kind.second)), warm),
     acc: accentOf(P, a.glow_color ?? a.glow_colour, '"glow_color"') ?? P.accent[0],
-    metal: hdRamp(lit(P, P.mat.metal[2]), warm),
+    metal: hdRamp(lit(P, P.mat.metal[3]), warm),
     dark: hdRamp(lit(P, mix(P.mat.metal[1], P.outline, 0.45)), warm),
   });
   const n = made0.size;

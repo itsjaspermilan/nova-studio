@@ -32,7 +32,8 @@
     "item": "baton",
     "glow_color": "2",
     "shoe_color": "#2a2630",
-    "style": "detailed"
+    "style": "detailed",
+    "expression": "smirk"
    }
   },
   {
@@ -48,7 +49,10 @@
     "skin": "light",
     "item": "pipe",
     "glow_color": "1",
-    "style": "detailed"
+    "style": "detailed",
+    "stance": "hunched",
+    "pose": "shoulder",
+    "expression": "grin"
    }
   },
   {

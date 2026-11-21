@@ -14,6 +14,14 @@ import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
 import { register3d } from "./index3d";
 import { STYLE_OPTION } from "./style";
+import { ARM_COUNTS, EXPRESSIONS, HD_HATS_MORE, HD_ITEMS_MORE, HD_OUTFITS_MORE, POSES, STANCES, VISORS } from "./character-hd";
+
+/// character_make's "style": the detailed figure is its own size (the shared description is the tiles').
+const CHARACTER_STYLE = {
+  type: "string",
+  description:
+    '"detailed": a bold cartoon figure about 44x64 pixels in 96x96 frames, drawn with sx = 1.5 (96 units high on the screen; a 32 px tile is 48), with a face that changes (eyes, brows, a mouth), hard cel shading in three tones, a two-pixel outline, a neon rim; its own parts besides the classic ones (stance, pose, expression, visor, arms, hologram, hat_color; the outfits, hats and items marked detailed). "classic" (when left out) is the 16 px look.',
+};
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -66,7 +74,7 @@ export function registerMakers(h: Host): Record<string, Args> {
   h.tool(
     "character_make",
     "Make a top-down character sheet from parts, instead of drawing forty frames: `sprites/<name>.png` and `.sprite.json`. " +
-      `Parts: build (${BUILDS.join(", ")}), skin (${Object.keys(SKINS).join(", ")}, or a colour), hair (${HAIR_STYLES.join(", ")}) and hair_color, outfit (${OUTFITS.join(", ")}) with outfit_color and trim_color (belt, trousers, hem), hat (${HATS.join(", ")}), item (${ITEMS.join(", ")}: what it swings). Colours are "#rrggbb" or a word (${Object.keys(DYES).slice(0, 12).join(", ")}, ...). ` +
+      `Parts: build (${BUILDS.join(", ")}), skin (${Object.keys(SKINS).join(", ")}, or a colour), hair (${HAIR_STYLES.join(", ")}) and hair_color, outfit (${OUTFITS.join(", ")}; detailed also ${HD_OUTFITS_MORE.join(", ")}) with outfit_color and trim_color (belt, trousers, hem), hat (${HATS.join(", ")}; detailed also ${HD_HATS_MORE.join(", ")}), item (${ITEMS.join(", ")}; detailed also ${HD_ITEMS_MORE.join(", ")}: what it swings). Colours are "#rrggbb" or a word (${Object.keys(DYES).slice(0, 12).join(", ")}, ...). ` +
       'It draws idle (2 frames), a 4-frame walk, a 3-frame swing with the item and a hurt frame, each facing down, left, right and up, tagged "idle_down", "walk_left", "attack_right", "hurt_up" and so on, so an entity plays them by name: self:play("walk_" .. dir). ' +
       `The body is ${CHARACTER_SIZES.join(" or ")} pixels (\`size\`), drawn in the middle of a 32x32 or 48x48 frame so the swing has room: the answer gives the pivot (the feet) and the feet's hitbox to put in the entity, and both are in the .sprite.json. ` +
       "It returns the same picture as sprite_preview (every frame, and a strip per animation). The sheet is an ordinary sprite afterwards: fix a frame with sprite_write `at`.",
@@ -74,7 +82,7 @@ export function registerMakers(h: Host): Record<string, Args> {
       name: { type: "string", description: 'The sprite\'s name ("hero").' },
       size: { type: "string", description: `The body's size: ${CHARACTER_SIZES.map((s) => `"${s}"`).join(" or ")} ("16x24" when left out; at "sx": 3 that is 72 units of the 540 the screen is high).` },
       build: { type: "string", description: BUILDS.join(", ") },
-      skin: { type: "string", description: `${Object.keys(SKINS).join(", ")}, or "#rrggbb".` },
+      skin: { type: "string", description: `${Object.keys(SKINS).join(", ")}, or "#rrggbb"; detailed also chrome (an android: a shine, a jaw seam, eyes lit in glow_color).` },
       hair: { type: "string", description: HAIR_STYLES.join(", ") },
       hair_color: { type: "string" },
       outfit: { type: "string", description: OUTFITS.join(", ") },
@@ -84,8 +92,15 @@ export function registerMakers(h: Host): Record<string, Args> {
       hat: { type: "string", description: `${HATS.join(", ")}. The city's: visor (a lit band across the eyes), mohawk (the haircut), riot_helmet (a dark dome with a lit strip and a face shield), gas_mask, cyber_eye (one lit eye).` },
       item: { type: "string", description: `What the swing is made with: ${ITEMS.join(", ")}. The city's are carried in every frame: baton (its shaft lit in glow_color; its swing leaves an arc in that colour), pipe (the same arc), pistol and rifle (aimed: their attack raises, fires with a flash at the muzzle, and kicks), shield (a riot shield held in front; the attack is a bash), bottle (thrown).` },
       glow_color: { type: "string", description: 'What glows on the city parts (a visor, a long coat\'s hem, a riot_armor\'s strip, a baton, a gas mask\'s lenses, a muzzle flash, the swing\'s arc): 1 or 2 for the palette\'s accents, or a colour ("#35e6ff", "cyan"). Accent 1 when left out.' },
+      hat_color: { type: "string", description: "Detailed style: the headgear's colour (a bandana, a cap, a fedora, a hood). The trim colour when left out (a bellhop cap and a hood: the outfit's)." },
+      stance: { type: "string", description: `Detailed style: how the body stands: ${STANCES.join(", ")} (upright when left out; a stout build is heavy). hunched: shoulders up and forward, knees bent (a Scrapper); lanky: tall and narrow; heavy: broad and low; proud: chest out, chin up.` },
+      pose: { type: "string", description: `Detailed style: where the hands are at rest and walking: ${POSES.join(", ")}. low: the item held low at the side (the runner's baton); shoulder: over the shoulder (a pipe, a wrench); cocked: raised back to throw (a bottle, a mine); wide: both arms out wide, hands open (a barker); guard: up in front (a shield, a tray); aim: both hands forward (pistol and rifle get it when left out; shield and tray get guard; the rest low).` },
+      expression: { type: "string", description: `Detailed style: the face at rest: ${EXPRESSIONS.join(", ")} (neutral when left out). The face changes by itself: gritted teeth winding up, a yell in the smear, shock and then a wince when hurt.` },
+      visor: { type: "string", description: `Detailed style, with hat "visor": ${VISORS.join(" or ")}. "up" (pushed up onto the forehead, the face shows; when left out) or "down" (over the eyes, a glint).` },
+      arms: { type: "number", description: `Detailed style: ${ARM_COUNTS.join(", ")} arms (2 when left out); the extra pairs hang lower, splayed, each with a small blade (a Splicer).` },
+      hologram: { type: "boolean", description: "Detailed style: draw the figure as a hologram in the glow colour, scan lines across it, standing on its projector (a Tout)." },
       palette: PALETTE,
-      style: STYLE_OPTION,
+      style: CHARACTER_STYLE,
     },
     ["name"],
     (a) => {

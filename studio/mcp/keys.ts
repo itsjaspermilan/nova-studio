@@ -74,6 +74,7 @@ export const MOVED: Record<string, Moved> = {
   prop3d_make: { type: "kind", prop: "kind", names: "kinds", props: "kinds", scale: "`props.sx` on the scene object that places it", colour: "color" },
   character3d_make: { color: "outfit_color", colour: "outfit_color", weapon: "item", held: "item", backpack: '`pack`: "backpack"', clips: "nothing: it always makes idle, walk, run, jump, wave, attack and hurt", height: "build" },
   creature3d_make: { type: "kind", colour: "color", scale: "size" },
+  character_make: { mood: "expression", face: "expression", posture: "stance", hands: "pose", arm_count: "arms", holo: "hologram", headgear: "hat", weapon: "item" },
   ground3d_make: { rows: "map", tiles: "map", paint: "legend", size: "cell", scale: "cell", height: "hills" },
 };
 
