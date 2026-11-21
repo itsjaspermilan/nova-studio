@@ -23,6 +23,17 @@ here is decided unless marked OPEN. Numbers are starting values to tune by play.
 - **Order: polish district 1 until it is fun** (new art with light and worn ground, the remaining cards, tuning from play on the
   Retroid) before districts 2 to 4 and before co-op.
 
+**Decided with the owner after playing on the handheld, 2026-11-21 (the UI pass; code: `lib/type.lua`, `lib/wipe.lua`, `lib/banner.lua`, `lib/prompt.lua`, `data/flow.lua`):**
+- **Type:** a clean bold sans for body text, numbers, cards and menus; the punchy comic face for the big moments (title, banners, boss and card names), all with
+  a dark outline. Every font name and size is in `lib/type.lua`; the smallest text is 28 px tall at 1080p.
+- **Transitions:** leaving the Den is the runner stepping into the door, a neon diagonal shutter, a district card ("LOW MERIDIAN / GUTTER MARKET" and a tagline
+  that changes each run) for 1.2 s, and the shutter opening on room 1. Between rooms a quick wipe (0.25 s each way); back to the Den a wipe with a LULLABY line.
+  Input is ignored and the world is paused for the whole wipe: a room begins when it has opened.
+- **Banners:** LET'S GO!, ROOM n / 8 with its kind, CLEARED! (with the pay), ELITE! (with its mark), the boss's name card before the fight, DISTRICT CLEARED!,
+  and the death line with LULLABY's joke. They slam in, hold and are whipped off; they never pause play.
+- **Prompts, not labels:** nothing usable is labelled from afar (a quiet chevron and glint only). Within about 1.6 tiles of the nearest usable thing a panel
+  rises over it: the A button, its name, one line, its price.
+
 Pillars: **fights you can read** (every attack is telegraphed, four-way sprites, big clear shapes); **a run is a build** (three
 cards after every room, and they combine); **the city remembers** (what you bank, who you helped and what you unlocked stays).
 

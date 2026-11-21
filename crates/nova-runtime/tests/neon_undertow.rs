@@ -3832,3 +3832,206 @@ fn the_roll_goes_4_2_tiles_in_0_34_s_untouchable_for_0_27_s_with_after_images_al
         printed(&r, "string.format('%.0f', GH_SPAN)")
     );
 }
+
+// ---- UI pass: the prompts over things that can be used, the wipes, the district card and the banners (routes: tools/routes.mjs, the "UI pass" block)
+
+#[test]
+fn a_prompt_rises_only_near_a_thing_only_for_the_nearest_and_slides_away_when_it_is_used() {
+    let r = run("ui_prompts");
+    // far from everything: no panel and nothing is "the target"; every usable thing carries only its quiet cue
+    assert_eq!(
+        (s(&r, "FAR_N"), s(&r, "FAR_KEY"), s(&r, "ALL_FAR")),
+        ("0".into(), "nil".into(), "0".into()),
+        "no panel, no target, nothing within reach"
+    );
+    assert!(
+        num(&r, "CUES") >= 5.0,
+        "the screen, the codex, the bench, the door and the stalls are cued"
+    );
+    // it fades in over about 0.12 s: partway two frames in, up after a few more
+    let k2 = num(&r, "K2");
+    assert!(k2 > 0.0 && k2 < 1.0, "fading in, not there at once: {k2}");
+    assert_eq!(num(&r, "K14"), 1.0, "fully up soon after");
+    assert_eq!(
+        (s(&r, "BENCH_N"), s(&r, "BENCH_KEY")),
+        ("1".into(), "bench".into())
+    );
+    // two things within reach: one panel, the nearer thing's
+    assert_eq!(
+        num(&r, "IN1"),
+        2.0,
+        "the screen and the codex are both within reach"
+    );
+    assert_eq!(
+        (s(&r, "T1"), s(&r, "N1"), s(&r, "V1")),
+        ("screen".into(), "1".into(), "screen".into())
+    );
+    assert_eq!(
+        (s(&r, "T2"), s(&r, "N2"), s(&r, "V2")),
+        ("codex".into(), "1".into(), "codex".into()),
+        "a step nearer the codex and only the codex shows"
+    );
+    // a little further than its reach: nothing
+    assert_eq!(
+        (s(&r, "OUT_N"), s(&r, "OUT_KEY")),
+        ("0".into(), "nil".into())
+    );
+    // used: the workbench opens and the panel has slid away
+    assert_eq!(
+        (s(&r, "USED_STATE"), s(&r, "USED_N")),
+        ("bench".into(), "0".into())
+    );
+}
+
+#[test]
+fn leaving_the_den_the_runner_steps_in_a_wipe_closes_the_district_card_holds_and_lets_go_comes_when_it_has_opened()
+ {
+    let r = run("ui_run_start");
+    assert_eq!(
+        s(&r, "TAG_DIFF"),
+        "true",
+        "never the same tagline twice running"
+    );
+    assert_eq!(s(&r, "S_CLOSE"), "closing");
+    assert_eq!(s(&r, "CARD"), "LOW MERIDIAN / GUTTER MARKET");
+    assert!(
+        !s(&r, "TAGLINE").is_empty(),
+        "a one-line tagline on the card"
+    );
+    assert_eq!(
+        s(&r, "LATE_HOLD"),
+        "true",
+        "the first room is loaded behind the card"
+    );
+    assert_eq!(
+        s(&r, "S_HOLD_1S"),
+        "hold",
+        "the card is still held a second after the wipe closed"
+    );
+    // input is ignored through the whole wipe: the buttons pressed did nothing
+    assert_eq!(
+        (
+            s(&r, "ROLLS0"),
+            s(&r, "ROLLS1"),
+            s(&r, "HITS0"),
+            s(&r, "HITS1")
+        ),
+        ("0".into(), "0".into(), "0".into(), "0".into())
+    );
+    // nothing can hurt the runner before the room has opened: nothing was spawned during the wipe and the room's clock had not started
+    assert_eq!(
+        num(&r, "BAD"),
+        0.0,
+        "no enemy, warning or clock during the wipe"
+    );
+    let open = s(&r, "OPEN");
+    assert!(
+        open.starts_with("intro t=0.0") && open.contains("enemies=0"),
+        "the room begins when the shutter has opened: {open}"
+    );
+    // LET'S GO! and the room tab, then they are gone
+    assert!(s(&r, "BANNERS").contains("go:LET'S GO!"));
+    assert!(s(&r, "BANNERS").contains("room:ROOM 1 / 8   FIGHT"));
+    assert_eq!(
+        s(&r, "LATER"),
+        "",
+        "the banners are whipped off after a moment"
+    );
+    assert_eq!(s(&r, "WIPE_DONE"), "1");
+}
+
+#[test]
+fn between_rooms_a_quick_wipe_without_a_card_and_the_next_room_begins_only_when_it_has_opened() {
+    let r = run("ui_rooms");
+    let wn = num(&r, "WN");
+    assert!(
+        (26.0..=42.0).contains(&wn),
+        "about 0.25 s each way, {wn} frames in all"
+    );
+    assert_eq!(s(&r, "HAS_CARD"), "no", "no card between rooms");
+    assert_eq!(
+        num(&r, "BAD"),
+        0.0,
+        "nothing in the new room while the wipe runs"
+    );
+    assert_eq!(s(&r, "ROOM2"), "true");
+    assert!(
+        s(&r, "TAB2").contains("room:ROOM 2 / 8   FIGHT") && !s(&r, "TAB2").contains("go:"),
+        "the room counter, and no LET'S GO!: {}",
+        s(&r, "TAB2")
+    );
+    assert!(
+        num(&r, "S2T") < 0.1,
+        "the room's clock starts when the shutter has opened"
+    );
+    // CLEARED! with what the room paid
+    assert_eq!(s(&r, "CLEARED_B"), "clear:CLEARED!");
+    assert!(
+        s(&r, "CLEARED_SUB").contains("scrap") && s(&r, "CLEARED_SUB").contains("+1 key"),
+        "{}",
+        s(&r, "CLEARED_SUB")
+    );
+}
+
+#[test]
+fn banners_never_stop_play_the_elite_has_its_mark_and_the_boss_its_name_before_the_fight_and_death_has_lullabys_joke()
+ {
+    let p = run("ui_banner_play");
+    assert!(s(&p, "BP").contains("go:LET'S GO!"));
+    assert_eq!(
+        s(&p, "DOWN"),
+        "true",
+        "the runner walked while the banners were up"
+    );
+    assert!(s(&p, "BP1").contains("go:"), "still up while he walked");
+    assert_eq!(s(&p, "BP2"), "", "and gone later");
+
+    let e = run("ui_banner_elite");
+    assert!(s(&e, "TAB4").contains("ROOM 4 / 8   ELITE"));
+    assert!(s(&e, "ELITE_B").contains("elite:ELITE!"));
+    assert!(
+        s(&e, "ELITE_SUB").starts_with(&s(&e, "MARK_NAME")),
+        "ELITE! names its mark: {} / {}",
+        s(&e, "ELITE_SUB"),
+        s(&e, "MARK_NAME")
+    );
+
+    let b = run("ui_banner_boss");
+    assert!(s(&b, "BOSS_B").contains("boss:MOTHER COIL"));
+    assert_eq!(
+        (s(&b, "BOSS_STATE"), s(&b, "COIL_STATE")),
+        ("boss_intro".into(), "dormant".into()),
+        "the name card comes before the fight"
+    );
+    assert_eq!(
+        (s(&b, "BOSS_STATE_1S"), s(&b, "COIL_STATE_1S")),
+        ("boss_intro".into(), "dormant".into()),
+        "a second later she still sleeps"
+    );
+    assert_eq!(
+        (s(&b, "BOSS_STATE_NOW"), s(&b, "COIL_AWAKE")),
+        ("boss".into(), "true".into())
+    );
+
+    let d = run("ui_banner_death");
+    assert!(s(&d, "DEATH_B").contains("death:FLATLINED!"));
+    assert!(
+        s(&d, "DEATH_SUB").starts_with("LULLABY: "),
+        "{}",
+        s(&d, "DEATH_SUB")
+    );
+}
+
+#[test]
+fn back_to_the_den_a_wipe_holds_with_a_lullaby_line_and_the_wake_beat_starts_when_it_has_opened() {
+    let r = run("ui_den_return");
+    assert_eq!(s(&r, "S0"), "closing");
+    assert!(s(&r, "LINE").starts_with("LULLABY: "), "{}", s(&r, "LINE"));
+    assert_eq!(
+        (s(&r, "SCENE_NOW"), s(&r, "WAKE0")),
+        ("den".into(), "wake".into())
+    );
+    assert_eq!(s(&r, "T0"), "0.00", "the Den's clock waits for the shutter");
+    assert!(num(&r, "T1") < 0.2);
+    assert_eq!(s(&r, "WAKE1"), "wake");
+}

@@ -25,9 +25,16 @@
    "lua": "A_HP = nova.named('runner').hp; A_CHARGE = string.format('%.2f', nova.named('runner').charge); A_SCRAP = require('lib.juice').scrap; A_CARDS = table.concat(require('lib.run').cards, ','); A_MAXHP = nova.named('runner').max_hp; A_MAXCH = nova.named('runner').max_charge"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_e",
    "who": "runner",
    "max": 600
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 3,

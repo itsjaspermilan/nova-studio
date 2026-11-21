@@ -1,0 +1,24 @@
+{
+ "start_scene": "gutter.walk",
+ "lua": "local R = require('lib.run'); R.begin_chain(5); R.room = 8; require('lib.juice').scrap = 83; nova.named('runner').hp = 6; R.take_from(nova.named('runner'))",
+ "route": [
+  { "wait": 20, "capture": "the shop: far cues, the room tab" },
+  { "walk_to": "shop_heal", "who": "runner", "max": 900 },
+  { "wait": 20, "capture": "the heal stall: its prompt" },
+  { "press": "interact" },
+  { "wait": 8, "capture": "bought: the prompt slides away" },
+  { "wait": 50, "capture": "the prompt is back" },
+  { "walk_to": "bank", "who": "runner", "max": 900 },
+  { "wait": 20, "capture": "the bank" },
+  { "lua": "nova.goto_scene('gutter.stranger')" },
+  { "until": "nova.current_scene() == 'gutter.stranger' and nova.named('runner') ~= nil", "max": 60 },
+  { "wait": 20, "capture": "the stranger's room: far cue" },
+  { "walk_to": "npc", "who": "runner", "max": 900, "may_time_out": true },
+  { "wait": 20, "capture": "near the stranger: the prompt" },
+  { "press": "interact" },
+  { "wait": 6, "capture": "a talk box" },
+  { "repeat": 6, "until": "require('lib.talk').stage == 'choice'", "steps": [ { "press": "interact" }, { "wait": 3 } ] },
+  { "wait": 6, "capture": "the choice" }
+ ],
+ "print": ["nova.current_scene()", "require('lib.prompt').visible_key()"]
+}

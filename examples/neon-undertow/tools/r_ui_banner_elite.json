@@ -1,0 +1,29 @@
+{
+ "start_scene": "gutter.elite",
+ "invincible": true,
+ "lua": "require('lib.meta').upgrades = {}; local R = require('lib.run'); R.begin_chain(5); R.room = 3",
+ "route": [
+  {
+   "wait": 4
+  },
+  {
+   "lua": "TAB4 = require('lib.banner').visible()"
+  },
+  {
+   "until": "nova.count('warn') > 0",
+   "max": 200
+  },
+  {
+   "wait": 6
+  },
+  {
+   "lua": "ELITE_B = require('lib.banner').visible(); ELITE_SUB = ''; for _, b in ipairs(require('lib.banner').list) do if b.kind == 'elite' then ELITE_SUB = b.sub end end; MARK = nova.scene_now().entry.mark; MARK_NAME = require('data.elites').marks[MARK].name:upper()"
+  }
+ ],
+ "print": [
+  "TAB4",
+  "ELITE_B",
+  "ELITE_SUB",
+  "MARK_NAME"
+ ]
+}

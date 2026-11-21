@@ -7,6 +7,10 @@
    "max": 40
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 3
   },
   {

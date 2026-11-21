@@ -59,9 +59,17 @@
        "wait": 8
       },
       {
+       "lua": "WIPE0 = require('lib.wipe').done"
+      },
+      {
        "walk_to": "door_out",
        "who": "runner",
        "max": 1500,
+       "may_time_out": true
+      },
+      {
+       "until": "require('lib.wipe').done > WIPE0",
+       "max": 200,
        "may_time_out": true
       },
       {
@@ -121,9 +129,17 @@
        "wait": 8
       },
       {
+       "lua": "WIPE0 = require('lib.wipe').done"
+      },
+      {
        "walk_to": "door_out",
        "who": "runner",
        "max": 1500,
+       "may_time_out": true
+      },
+      {
+       "until": "require('lib.wipe').done > WIPE0",
+       "max": 200,
        "may_time_out": true
       },
       {
@@ -183,9 +199,17 @@
        "wait": 8
       },
       {
+       "lua": "WIPE0 = require('lib.wipe').done"
+      },
+      {
        "walk_to": "door_out",
        "who": "runner",
        "max": 1500,
+       "may_time_out": true
+      },
+      {
+       "until": "require('lib.wipe').done > WIPE0",
+       "max": 200,
        "may_time_out": true
       },
       {
@@ -245,9 +269,17 @@
        "wait": 8
       },
       {
+       "lua": "WIPE0 = require('lib.wipe').done"
+      },
+      {
        "walk_to": "door_out",
        "who": "runner",
        "max": 1500,
+       "may_time_out": true
+      },
+      {
+       "until": "require('lib.wipe').done > WIPE0",
+       "max": 200,
        "may_time_out": true
       },
       {

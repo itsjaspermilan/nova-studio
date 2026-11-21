@@ -1,6 +1,7 @@
 -- Elites: a normal enemy made bigger and tougher with one mark (data/elites.lua). `make` wraps the enemy's own take_hit and die, so any
 -- enemy can be an elite; the marks that need to run every frame (a pull, a link, the shield's picture) live in entities/elite_fx.lua.
 local D = require("data.elites")
+local Ty = require("lib.type")
 local C = require("lib.combat")
 local Hits = require("lib.hits")
 local Status = require("lib.status")
@@ -20,7 +21,7 @@ function E.hud(self)
     nova.ui.rect(x - w / 2 + 1, y + 1, (w - 2) * math.max(0, self.hp) / self.max_hp, 3, { 255, 43, 214, 255 })
   end
   if self.elite then
-    nova.ui.text(x - 80, y - 20, D.marks[self.elite].name, { font = "pixel", size = 15, color = { 255, 228, 94, 255 }, align = "center", width = 160, shadow = true })
+    Ty.text(x - 80, y - 20, D.marks[self.elite].name, "small", { color = { 255, 228, 94, 255 }, align = "center", width = 160 })
     Status.hud(self, x, y - 34)
   else
     Status.hud(self, x, y - 14)

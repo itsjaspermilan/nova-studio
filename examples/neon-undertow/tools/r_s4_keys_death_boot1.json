@@ -38,6 +38,10 @@
    "max": 60
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 2
   },
   {
@@ -72,9 +76,16 @@
    "wait": 8
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -84,6 +95,10 @@
    "max": 60
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 2
   },
   {
@@ -118,9 +133,16 @@
    "wait": 8
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -128,6 +150,10 @@
   {
    "until": "nova.current_scene() == require('lib.run').chain[3].scene and nova.named('runner') ~= nil",
    "max": 60
+  },
+  {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
   },
   {
    "wait": 5

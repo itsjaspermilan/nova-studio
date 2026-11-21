@@ -654,7 +654,7 @@ out("room_flow", {
     { press: "interact" }, { wait: 6, capture: "taken" },
     { lua: `D_AFTER_TAKE = DOORS(); HELD = table.concat(${RUN}.cards, ','); SCENE_STATE = nova.scene_now().state` },
     { wait: 40, capture: "the others sank" }, { lua: "CARDS_LEFT = nova.count('card')" },
-    { walk_to: "door_e", who: "runner", max: 600 }, { wait: 2 },
+    ...through("door_e", 600), { wait: 2 },
     { lua: "END_SCENE = nova.current_scene()" },
   ],
   print: ["D_START", "D_SHUT", "PUSH_X", "PUSH_SCENE", "W1", "D_WAVE1", "W2_ENEMIES_AT_WARN", "W2", "W3_ENEMIES_AT_WARN", "W3", "D_CLEARED", "PAID", "SCRAP_START", "SCRAP_CLEARED", "WAVES_DONE",
@@ -672,7 +672,7 @@ local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countd
     { lua: `local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 },
     { press: "interact" }, { wait: 10 },
     { lua: `A_HP = ${R0}.hp; A_CHARGE = string.format('%.2f', ${R0}.charge); A_SCRAP = ${J}.scrap; A_CARDS = table.concat(${RUN}.cards, ','); A_MAXHP = ${R0}.max_hp; A_MAXCH = ${R0}.max_charge` },
-    { walk_to: "door_e", who: "runner", max: 600 }, { wait: 3, capture: "room B" },
+    ...through("door_e", 600), { wait: 3, capture: "room B" },
     { lua: `B_SCENE = nova.current_scene(); B_HP = ${R0}.hp; B_CHARGE = string.format('%.2f', ${R0}.charge); B_SCRAP = ${J}.scrap; B_CARDS = table.concat(${RUN}.cards, ','); B_MAXHP = ${R0}.max_hp; B_MAXCH = ${R0}.max_charge; B_REACH = ${RUN}.mods.reach` },
   ],
   print: ["A_HP", "A_CHARGE", "A_SCRAP", "A_CARDS", "A_MAXHP", "A_MAXCH", "B_SCENE", "B_HP", "B_CHARGE", "B_SCRAP", "B_CARDS", "B_MAXHP", "B_MAXCH", "B_REACH"],
@@ -710,7 +710,7 @@ out("slice", {
     { lua: `A_DOORS = nova.named('door_w').state .. ',' .. nova.named('door_e').state; A_PAID = nova.scene_now().paid; A_WAVES = nova.scene_now().wave_i; A_SCRAP = ${J}.scrap; A_OFFER = nova.scene_now().state` },
     { walk_to: "card", who: "runner", max: 600 }, { press: "interact" }, { wait: 8, capture: "A: a card taken" },
     { lua: `A_CARDS = table.concat(${RUN}.cards, ','); A_HP = nova.named('runner').hp; A_SCRAP_EXIT = ${J}.scrap; A_EXIT_DOOR = nova.named('door_e').state` },
-    { walk_to: "door_e", who: "runner", max: 900 }, { wait: 3, capture: "B: the long street" },
+    ...through("door_e", 900), { wait: 3, capture: "B: the long street" },
     { lua: `B_SCENE = nova.current_scene(); B_CARDS = table.concat(${RUN}.cards, ','); B_SCRAP_ENTER = ${J}.scrap` },
     clearRoom, { wait: 30, capture: "B: cleared" },
     { lua: `B_PAID = nova.scene_now().paid; B_WAVES = nova.scene_now().wave_i; B_DOORS = nova.named('door_w').state .. ',' .. nova.named('door_e').state` },
@@ -1109,21 +1109,21 @@ out("carry_chain", {
   lua: `local R = ${RUN}; R.begin_chain(1234); R.chain[3] = { index = 3, slot = 3, kind = 'stranger', scene = 'gutter.stranger', who = 'patch', layout = 1 }
 nova.goto_scene(R.chain[1].scene)`,
   route: [
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 30 }, { wait: 3 },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 30 }, idle(), { wait: 3 },
     { lua: `local r = ${R0}; r.hp = 7; r.charge = 1.5; ${J}.scrap = 44; ${RUN}.add_card('long_reach', r); ${RUN}.add_card('capacitor', r)
 local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil` },
     { until: "nova.scene_now().state == 'cards'", max: 300 }, { wait: 40 },
     { lua: `local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 }, { press: "interact" }, { wait: 10 },
     { lua: `A_HP = ${R0}.hp; A_CHARGE = string.format('%.2f', ${R0}.charge); A_SCRAP = ${J}.scrap; A_CARDS = #${RUN}.cards; A_MAXHP = ${R0}.max_hp; A_MAXCH = ${R0}.max_charge` },
-    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    ...through("door_out", 1200), { wait: 4 },
     { lua: `B_SCENE = nova.current_scene(); B_IS_2 = tostring(B_SCENE == ${RUN}.chain[2].scene); B_HP = ${R0}.hp; B_CHARGE = string.format('%.2f', ${R0}.charge); B_SCRAP = ${J}.scrap; B_CARDS = #${RUN}.cards; B_MAXHP = ${R0}.max_hp; B_MAXCH = ${R0}.max_charge
 local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil` },
     { until: "nova.scene_now().state == 'cards'", max: 300 }, { wait: 40 },
     { lua: `local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 }, { press: "interact" }, { wait: 10 },
     { lua: `B2_CARDS = #${RUN}.cards; B2_SCRAP = ${J}.scrap` },
-    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    ...through("door_out", 1200), { wait: 4 },
     { lua: `C_SCENE = nova.current_scene(); C_HP = ${R0}.hp; C_CHARGE = string.format('%.2f', ${R0}.charge); C_SCRAP = ${J}.scrap; C_CARDS = #${RUN}.cards; C_MAXHP = ${R0}.max_hp; C_STATE = nova.scene_now().state` },
-    { walk_to: "door_out", who: "runner", max: 1200 }, { wait: 4 },
+    ...through("door_out", 1200), { wait: 4 },
     { lua: `D_SCENE = nova.current_scene(); D_IS_ELITE = tostring(D_SCENE == ${RUN}.chain[4].scene); D_HP = ${R0}.hp; D_CHARGE = string.format('%.2f', ${R0}.charge); D_SCRAP = ${J}.scrap; D_CARDS = #${RUN}.cards; D_MAXHP = ${R0}.max_hp; D_ROOM = ${RUN}.room` },
   ],
   print: ["A_HP", "A_CHARGE", "A_SCRAP", "A_CARDS", "A_MAXHP", "A_MAXCH", "B_IS_2", "B_HP", "B_CHARGE", "B_SCRAP", "B_CARDS", "B_MAXHP", "B_MAXCH", "B2_CARDS", "B2_SCRAP",
@@ -1135,13 +1135,13 @@ out("death_summary", {
   start_scene: "test_lab",
   lua: `local R = ${RUN}; R.begin_chain(77); OLD_SEED = R.seed; R.room = 3; R.cleared = 3; nova.goto_scene(R.chain[4].scene)`,
   route: [
-    { until: `nova.current_scene() == ${RUN}.chain[4].scene and nova.named('runner') ~= nil`, max: 30 }, { wait: 3 },
+    { until: `nova.current_scene() == ${RUN}.chain[4].scene and nova.named('runner') ~= nil`, max: 30 }, idle(), { wait: 3 },
     { lua: `${RUN}.add_card('plating', ${R0}); ${RUN}.add_card('long_reach', ${R0}); ${RUN}.banked = 5; ${R0}.hp = 1` },
     { wait: 30 }, { lua: `${R0}:take_damage(2); DEAD_STATE = ${R0}.state` },
     { until: "nova.current_scene() == 'summary'", max: 200, capture: "the summary" },
     { lua: `local s = ${RUN}.summary; SUM = s.result .. ' ' .. s.cleared .. ' ' .. string.format('%.0f', s.time) .. ' ' .. s.keys .. ' ' .. s.cards; SUM_ACTIVE = tostring(${RUN}.active)` },
     { wait: 60 }, { press: "interact" },
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5, capture: "room 1 again" },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 5, capture: "room 1 again" },
     { lua: `NEW_SEED = ${RUN}.seed; SEED_CHANGED = tostring(NEW_SEED ~= OLD_SEED); ROOM_AFTER = ${RUN}.room; CARDS_AFTER = #${RUN}.cards; HP_AFTER = ${R0}.hp; MAX_AFTER = ${R0}.max_hp; SCRAP_AFTER = ${J}.scrap; FIRST = tostring(nova.current_scene() == ${RUN}.chain[1].scene)` },
   ],
   print: ["DEAD_STATE", "SUM", "SUM_ACTIVE", "SEED_CHANGED", "ROOM_AFTER", "CARDS_AFTER", "HP_AFTER", "MAX_AFTER", "SCRAP_AFTER", "FIRST"],
@@ -1162,7 +1162,7 @@ const fightRoomSteps = (i) => [
   { lua: `PAID${i} = nova.scene_now().paid; CARDS${i} = #${RUN}.cards` },
   { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 },
   { lua: `CARDS${i}_AFTER = #${RUN}.cards; SCRAP${i} = ${J}.scrap` },
-  { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+  ...through("door_out", 1500), { wait: 4 },
 ];
 const wholeRun = (seed) => ({
   start_scene: "run_start",
@@ -1177,15 +1177,15 @@ const wholeRun = (seed) => ({
     { walk_to: "stranger", who: "runner", max: 900 }, { press: "interact" }, { wait: 3, capture: "a stranger's talk" },
     { repeat: 10, until: `${TALK}.stage == 'done'`, steps: [{ press: "interact" }, { wait: 3 }] }, { wait: 5, capture: "the choice made" },
     { lua: `TALKED = ${TALK}.chosen.label; MET1 = ${META}.met[${RUN}.chain[6].who]` },
-    { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+    ...through("door_out", 1500), { wait: 4 },
     ...fightRoomSteps(7),
     // 8: Mother Coil. (The test player is invincible here and these two routes prove the chain, not the fights: the boss is taken down with her
     // own `die`, the rare card is left on the floor and the door opened by hand, so the six-card count of slice 3a still holds. `boss_fair` is
     // the fight, played without invincibility; `full_run` takes the card and goes on to the Den.)
-    { lua: `ROOM8 = nova.current_scene(); KIND8 = ${RUN}.chain[8].kind; WON0 = tostring(${RUN}.won)` }, { wait: 20, capture: "Mother Coil's arena" },
+    { lua: `ROOM8 = nova.current_scene(); KIND8 = ${RUN}.chain[8].kind; WON0 = tostring(${RUN}.won)` }, { wait: 20, capture: "Mother Coil's arena" }, { until: "nova.scene_now().state == 'boss'", max: 300 },
     { lua: "nova.named('coil'):die()" }, { until: "nova.scene_now().state == 'cards'", max: 600, capture: "she is down: the cards rise" }, { wait: 20 },
     { lua: "nova.scene_now().state = 'done'; for _, c in ipairs(nova.all('card')) do c:sink() end; for _, d in ipairs(nova.all('door')) do if d.exit then d:open() end end" },
-    { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+    ...through("door_out", 1500), { wait: 4 },
     // 9: the walk-through room: the bank
     { lua: `ROOM9 = nova.current_scene(); WON9 = tostring(${RUN}.won); SCRAP_BEFORE_BANK = ${J}.scrap; KEYS0 = ${META}.keys` },
     { walk_to: "bank", who: "runner", max: 900 }, { press: "interact" }, { wait: 6, capture: "the bank" },
@@ -1250,7 +1250,7 @@ out("run_b", wholeRun(20));
 // =====================================================================================================================
 const BOT = fs.readFileSync(`${dir}/bossbot.lua`, "utf8");
 const COIL = "nova.named('coil')";
-const manual = (rx, ry) => `${COIL}.manual = true; ${R0}.x, ${R0}.y = ${rx}, ${ry}`;
+const manual = (rx, ry) => `require('data.flow').boss_delay = 0; ${COIL}.manual = true; ${R0}.x, ${R0}.y = ${rx}, ${ry}`;
 const FIELD = "require('lib.field')";
 const WORK = "require('lib.workbench')";
 
@@ -1345,7 +1345,7 @@ out("boss_dies", {
 // drum in its window. It wins without being hurt: every attack has a safe place and the tell to find it.
 out("boss_fair", {
   start_scene: "gutter.boss", seed: 5,
-  lua: BOT + `\n${R0}.x, ${R0}.y = 1056, 380`,
+  lua: "require('data.flow').boss_delay = 0\n" + BOT + `\n${R0}.x, ${R0}.y = 1056, 380`,
   route: [{ wait: 30 },
     { repeat: 1500, may_time_out: true, until: "(not BOSS:is_alive()) or RUNNER.state == 'dead'", steps: [
       { lua: "BRAIN()" }, { walk_to: "spot", who: "runner", max: 8, may_time_out: true },
@@ -1356,7 +1356,7 @@ out("boss_fair", {
   print: ["RUNNER.hp", "RUNNER.state", "nova.scene_now().state", "nova.count('mother_coil')", "#nova.all('card')"],
 });
 // ... and the three pictures of the fight at its three beats (lanes, a car, the slam and the open drum), then the stripe phase
-withLook("look_boss", { start_scene: "gutter.boss", seed: 5, lua: BOT + `\n${R0}.x, ${R0}.y = 1056, 380`,
+withLook("look_boss", { start_scene: "gutter.boss", seed: 5, lua: "require('data.flow').boss_delay = 0\n" + BOT + `\n${R0}.x, ${R0}.y = 1056, 380`,
   route: [{ wait: 30 },
     { until: `${COIL}.state == 'cast' and ${COIL}.attack == 'lanes'`, max: 400 }, { wait: 30, capture: "lanes: lit, 0.8 s ahead" }, { wait: 40, capture: "lanes: the junk is dragged" }, { wait: 35, capture: "lanes: it passes while he stands between" },
     { until: `${COIL}.state == 'cast' and ${COIL}.attack == 'slam'`, max: 800 }, { wait: 20, capture: "slam: the ring follows" }, { until: "nova.first('coil_magnet') and nova.first('coil_magnet').state == 'lock'", max: 100 }, { wait: 20, capture: "slam: locked" },
@@ -1379,7 +1379,7 @@ withLook("look_boss_death", { start_scene: "gutter.boss", lua: manual(1056, 340)
 const luaTable = (o) => "{ " + Object.entries(o).map(([k, v]) => `${k} = ${v}`).join(", ") + " }";
 const upStart = (tiers, extra = "") => `for k, v in pairs(${luaTable(tiers)}) do ${META}.upgrades[k] = v end; ${extra}`;
 const newRun = (seed = 5) => `${RUN}.begin_chain(${seed}); nova.goto_scene(${RUN}.chain[1].scene)`;
-const inRoom1 = [{ until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 40 }, { wait: 3 }];
+const inRoom1 = [{ until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 40 }, idle(), { wait: 3 }];
 // Thicker Print: +1 health point a tier: tier 2 starts a run with 14
 out("up_thicker", { start_scene: "test_lab", lua: upStart({ thicker_print: 2 }, newRun()), route: [...inRoom1, { lua: `MAX = ${R0}.max_hp; HP = ${R0}.hp; RUN_MAX = ${RUN}.max_hp()` }], print: ["MAX", "HP", "RUN_MAX"] });
 // Good Solder: +5% a tier on baton damage (tier 3: +15%); fractions are carried: 100 hits of 2 do 230 at tier 3, 210 at tier 1, 200 at none
@@ -1468,7 +1468,7 @@ out("den_tour", { start_scene: "title", lua: `${META}.keys = 40`,
     { press: "interact" }, { wait: 6, capture: "bought: Thicker Print" }, { lua: `KEYS_AFTER = ${META}.keys; TIER = ${META}.upgrades.thicker_print; TOAST = ${DENS}.toast` },
     { press: "interact" }, { wait: 6 }, { lua: `KEYS_AFTER2 = ${META}.keys; TIER2 = ${META}.upgrades.thicker_print` }, { press: "dash" }, { wait: 4, capture: "closed" }, { lua: `CLOSED = ${DENS}.state` },
     { walk_to: "rundoor", who: "runner", max: 900 }, { wait: 3, capture: "the door" }, { press: "interact" },
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5, capture: "room 1" }, { lua: `RUN_MAX = ${R0}.max_hp; ROOM1 = nova.current_scene(); FROM_DEN = tostring(${RUN}.from_den)` }],
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 5, capture: "room 1" }, { lua: `RUN_MAX = ${R0}.max_hp; ROOM1 = nova.current_scene(); FROM_DEN = tostring(${RUN}.from_den)` }],
   print: ["WAKE_KIND", "WAKE_STATE", "WAKE_LINE", "FREE", "DEN_SCENE", "SCREEN_SET", "SCREEN_N", "PLATE", "BENCH", "SEL0", "SEL1", "KEYS_AFTER", "TIER", "TOAST", "KEYS_AFTER2", "TIER2", "CLOSED", "RUN_MAX", "ROOM1", "FROM_DEN"] });
 // LULLABY's lines: how many, all different, by kind
 out("lullaby_lines", { start_scene: "test_lab",
@@ -1488,9 +1488,9 @@ const moveIn = (who, choice) => ({
     { walk_to: `stall_${who}`, who: "runner", max: 900 }, { wait: 4, capture: "their stall" }, { press: "interact" }, { wait: 4, capture: "their line" },
     { lua: `LINE = ${DENS}.panel.line; STATE_R = ${DENS}.state; LINE_1 = require('data.den').movers.${who}.den_lines[1]` }, { press: "interact" }, { wait: 4 },
     { walk_to: "rundoor", who: "runner", max: 900 }, { press: "interact" },
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5, capture: "room 1" },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 5, capture: "room 1" },
     { lua: `MAX1 = ${R0}.max_hp; HP1 = ${R0}.hp; NOTES = table.concat(${RUN}.den_notes, ';'); H0 = ${R0}.hp; ${R0}:take_damage(2); H1 = ${R0}.hp` }, { wait: 60 }, { lua: `${R0}:take_damage(2); H2 = ${R0}.hp` },
-    { lua: `${RUN}.take_from(${R0}); ${RUN}.room = 1; nova.goto_scene(${RUN}.chain[2].scene)` }, { until: `nova.current_scene() == ${RUN}.chain[2].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 3 },
+    { lua: `${RUN}.take_from(${R0}); ${RUN}.room = 1; nova.goto_scene(${RUN}.chain[2].scene)` }, { until: `nova.current_scene() == ${RUN}.chain[2].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 3 },
     { lua: `G0 = ${R0}.hp; ${R0}:take_damage(2); G1 = ${R0}.hp` }],
   print: ["IN1", "MET1", "IN2", "MET2", "IN3", "MET3", "MOVED", "ANN", "ANN_WHO", "SEEN", "LINE", "LINE_1", "STATE_R", "MAX1", "HP1", "NOTES", "H0", "H1", "H2", "G0", "G1"],
 });
@@ -1499,7 +1499,7 @@ out("movein_sal", moveIn("old_sal", 2));
 // A death leads to the summary, then the Den (not into a run), with LULLABY's death line; a stall's perk stays for the next run
 out("death_den", { start_scene: "den", lua: `${META}.keys = 7; ${META}.last = 'first'`,
   route: [...denWake, { lua: `LINE0 = ${DENS}.line_kind` }, { walk_to: "rundoor", who: "runner", max: 900 }, { press: "interact" },
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5 },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 5 },
     { lua: `${J}.scrap = 40; ${R0}.hp = 1; ${R0}:take_damage(2)` }, { until: "nova.current_scene() == 'summary'", max: 200, capture: "the summary: printed again" }, { lua: `SUM_DEN = tostring(${RUN}.from_den); LAST = ${META}.last; PRINTS = ${META}.prints` },
     { wait: 60 }, { press: "interact" }, { until: "nova.current_scene() == 'den' and nova.named('runner') ~= nil", max: 80 }, { wait: 30, capture: "the Den: LULLABY's death line" },
     { lua: `KIND = ${DENS}.line_kind; LINE = ${DENS}.line; STATE = ${DENS}.state; RUNS = ${META}.runs; IN_RUN = tostring(${RUN}.active)` }],
@@ -1535,17 +1535,17 @@ out("save_boot3", { start_scene: "title", route: [{ wait: 5 }, { lua: `N_KEYS = 
       { lua: `CHAIN = ''; for i = 1, #${RUN}.chain do CHAIN = CHAIN .. ${RUN}.chain[i].scene .. (i < #${RUN}.chain and ' ' or '') end; MAX_START = ${R0}.max_hp; WHO = ${RUN}.chain[6].who` },
       ...[1, 2, 3, 4, 5].flatMap((i) => fightRoomSteps(i)),
       { lua: `ROOM6 = nova.current_scene()` }, { walk_to: "stranger", who: "runner", max: 900 }, { press: "interact" }, { wait: 3, capture: "a stranger's talk" },
-      { repeat: 10, until: `${TALK}.stage == 'done'`, steps: [{ press: "interact" }, { wait: 3 }] }, { wait: 5 }, { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+      { repeat: 10, until: `${TALK}.stage == 'done'`, steps: [{ press: "interact" }, { wait: 3 }] }, { wait: 5 }, ...through("door_out", 1500), { wait: 4 },
       ...fightRoomSteps(7),
       // 8: Mother Coil, with the test player's eyes
-      { lua: `ROOM8 = nova.current_scene()\n` + BOT }, { wait: 20, capture: "Mother Coil's arena" },
+      { lua: `ROOM8 = nova.current_scene()\n` + BOT }, { wait: 20, capture: "Mother Coil's arena" }, { until: "nova.scene_now().state == 'boss'", max: 300 },
       { repeat: 1500, may_time_out: true, until: "nova.scene_now().state ~= 'boss' and nova.scene_now().state ~= 'boss_intro'", steps: [
         { lua: "BRAIN()" }, { walk_to: "spot", who: "runner", max: 8, may_time_out: true },
         { repeat: 1, may_time_out: true, until: "MODE ~= 'strike'", steps: [{ press: "attack" }, { wait: 2 }] }, { wait: 1 } ] },
       { until: "nova.scene_now().state == 'cards'", max: 800, capture: "she is down" }, { wait: 40 },
       { lua: `RARE_OFFER = 0; for _, c in ipairs(nova.all('card')) do if c.def.rarity == 'rare' then RARE_OFFER = RARE_OFFER + 1 end end; BOSS_PAID = nova.scene_now().paid` },
       { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 }, { lua: `CARDS8 = #${RUN}.cards` },
-      { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 },
+      ...through("door_out", 1500), { wait: 4 },
       { lua: `ROOM9 = nova.current_scene(); WON9 = tostring(${RUN}.won); WINS1 = ${META}.wins; SCRAP_BEFORE_BANK = ${J}.scrap; KEYS0 = ${META}.keys` },
       { walk_to: "bank", who: "runner", max: 900 }, { press: "interact" }, { wait: 6, capture: "the bank" }, { lua: `KEYS1 = ${META}.keys` },
       { walk_to: [2010, 424], who: "runner", max: 1500 }, { hold: ["right"], until: "nova.current_scene() == 'summary'", max: 160 }, { wait: 40, capture: "district cleared" },
@@ -1567,7 +1567,7 @@ const gaugeRoom = (i) => ({ repeat: 1, may_time_out: true, until: gaugeStop, ste
     { fight: "enemy", attack: "attack", max: 1500, may_time_out: true }, { wait: 4 } ] },
   { repeat: 1, may_time_out: true, until: gaugeStop, steps: [
     { wait: 48 }, { walk_to: "card", who: "runner", max: 900, may_time_out: true }, { press: "interact" }, { wait: 8 },
-    { walk_to: "door_out", who: "runner", max: 1500, may_time_out: true }, { wait: 4 } ] },
+    ...through("door_out", 1500, true), { wait: 4 } ] },
 ] });
 for (const seed of [3, 7, 11, 20, 31]) {
   out(`gauge_${seed}`, { start_scene: "run_start", seed,
@@ -1806,13 +1806,13 @@ out("s4_keys_kinds", { start_scene: "test_lab", lua: `${META}.upgrades = {}; ${M
   route: [...inRoom1, killLoop, { wait: 30, capture: "a fight room: +1 key" }, { lua: `K_FIGHT = ${META}.keys; ROOM_KEYS1 = ${RUN}.room_keys; ${RUN}.room = 3; nova.goto_scene('gutter.elite')` },
     { until: "nova.current_scene() == 'gutter.elite' and nova.named('runner') ~= nil", max: 40 }, killLoop, { wait: 30, capture: "the elite: +3" }, { lua: `K_ELITE = ${META}.keys; ${RUN}.room = 6; nova.goto_scene('gutter.s7_yard')` },
     { until: "nova.current_scene() == 'gutter.s7_yard' and nova.named('runner') ~= nil", max: 40 }, killLoop, { wait: 30, capture: "the gauntlet: +2" }, { lua: `K_GAUNTLET = ${META}.keys; ${RUN}.room = 7; nova.goto_scene('gutter.boss')` },
-    { until: "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil", max: 40 }, { wait: 30 }, { lua: "nova.named('coil'):die()" }, { until: "nova.scene_now().state == 'cards'", max: 900, capture: "the boss: +10" }, { wait: 20 },
+    { until: "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil", max: 40 }, { until: "nova.scene_now().state == 'boss'", max: 300 }, { wait: 30 }, { lua: "nova.named('coil'):die()" }, { until: "nova.scene_now().state == 'cards'", max: 900, capture: "the boss: +10" }, { wait: 20 },
     { lua: `K_BOSS = ${META}.keys; ROOM_KEYS = ${RUN}.room_keys` }], print: ["K_FIGHT", "ROOM_KEYS1", "K_ELITE", "K_GAUNTLET", "K_BOSS", "ROOM_KEYS"] });
-const leaveRoom = [{ wait: 48 }, { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 }, { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 }];
+const leaveRoom = [{ wait: 48 }, { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 }, ...through("door_out", 1500), { wait: 4 }];
 out("s4_keys_death_boot1", { start_scene: "title", lua: `${META}.keys = 0`, route: [{ wait: 25 }, { press: "interact" }, ...denWake, { walk_to: "rundoor", who: "runner", max: 900 }, { press: "interact" },
-    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 2 }, killLoop, ...leaveRoom,
-    { until: `nova.current_scene() == ${RUN}.chain[2].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 2 }, killLoop, ...leaveRoom,
-    { until: `nova.current_scene() == ${RUN}.chain[3].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5 }, { lua: `K_BEFORE = ${META}.keys; ${R0}.hp = 1; ${R0}:take_damage(2)` }, { until: "nova.current_scene() == 'summary'", max: 200, capture: "died in room 3: the summary lists the keys" },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 2 }, killLoop, ...leaveRoom,
+    { until: `nova.current_scene() == ${RUN}.chain[2].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 2 }, killLoop, ...leaveRoom,
+    { until: `nova.current_scene() == ${RUN}.chain[3].scene and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 5 }, { lua: `K_BEFORE = ${META}.keys; ${R0}.hp = 1; ${R0}:take_damage(2)` }, { until: "nova.current_scene() == 'summary'", max: 200, capture: "died in room 3: the summary lists the keys" },
     { lua: `K_AFTER = ${META}.keys; SUM_ROOM_KEYS = ${RUN}.summary.room_keys; SUM_CLEARED = ${RUN}.summary.cleared` }],
   print: ["K_BEFORE", "K_AFTER", "SUM_ROOM_KEYS", "SUM_CLEARED"] });
 out("s4_keys_death_boot2", { start_scene: "title", route: [{ wait: 25 }, { lua: `K_LOADED = ${META}.keys; RUNS = ${META}.runs` }], print: ["K_LOADED", "RUNS"] });
@@ -1938,3 +1938,102 @@ out("feel_roll", {
   ],
   print: ["GHOSTS", "string.format('%.0f', GH_SPAN)", "UNT", "string.format('%.1f', ROLL_DIST)", H],
 });
+
+// ---- UI pass: transitions, banners, prompts (the helper is a function: hoisted, so the routes above can use it)
+// A door now closes behind a quick wipe (lib/wipe.lua) and the next room opens when it has: `through` walks into the door and waits for that wipe to finish.
+function through(door, max, may) {
+  return [
+    { lua: "WIPE0 = require('lib.wipe').done" },
+    { walk_to: door, who: "runner", max, ...(may ? { may_time_out: true } : {}) },
+    { until: "require('lib.wipe').done > WIPE0", max: 200, ...(may ? { may_time_out: true } : {}) },
+  ];
+}
+// ...and the room it opens on holds still until the shutter has opened: wait for that before acting in it
+function idle() {
+  return { until: "not require('lib.wipe').busy()", max: 240 };
+}
+
+// ---- UI pass: the prompts over things that can be used, the run-start wipe and card, the wipe between rooms, and the banners.
+// (tests: crates/nova-runtime/tests/neon_undertow.rs, the tests at the end of the file)
+const WIPE = "require('lib.wipe')";
+const PROMPT = "require('lib.prompt')";
+const BANNER = "require('lib.banner')";
+
+// A prompt rises only when the runner is near (78 units from the thing's edge), only for the nearest thing, and slides away when it is used.
+out("ui_prompts", { start_scene: "den", lua: `${META}.started = true`,
+  route: [...denWake,
+    { lua: `${R0}.x, ${R0}.y = 400, 520` }, { wait: 30, capture: "far from everything: no panel, only quiet cues" },
+    { lua: `FAR_N = ${PROMPT}.count(); FAR_KEY = tostring(${PROMPT}.target and ${PROMPT}.target.key); CUES = #${PROMPT}.items; ALL_FAR = 0; for _, it in ipairs(${PROMPT}.items) do if it.near <= 78 then ALL_FAR = ALL_FAR + 1 end end` },
+    { lua: `${R0}.x, ${R0}.y = 1104, 240` }, { wait: 2 }, { lua: `K2 = ${PROMPT}.shown.bench and ${PROMPT}.shown.bench.k or -1` }, { wait: 12, capture: "by the workbench: its prompt" },
+    { lua: `K14 = ${PROMPT}.shown.bench.k; BENCH_N = ${PROMPT}.count(); BENCH_KEY = tostring(${PROMPT}.visible_key())` },
+    // between LULLABY's screen (x 696) and the codex (x 888): both are within reach, the nearer one alone shows
+    { lua: `${R0}.x, ${R0}.y = 790, 240` }, { wait: 24, capture: "two things in reach: the nearer shows" },
+    { lua: `T1 = ${PROMPT}.target.key; N1 = ${PROMPT}.count(); V1 = tostring(${PROMPT}.visible_key()); IN1 = 0; for _, it in ipairs(${PROMPT}.items) do if it.near <= 78 then IN1 = IN1 + 1 end end` },
+    { lua: `${R0}.x = 812` }, { wait: 24 },
+    { lua: `T2 = ${PROMPT}.target.key; N2 = ${PROMPT}.count(); V2 = tostring(${PROMPT}.visible_key())` },
+    // a little further than the reach: nothing
+    { lua: `${R0}.x, ${R0}.y = 1104, 330` }, { wait: 24 }, { lua: `OUT_N = ${PROMPT}.count(); OUT_KEY = tostring(${PROMPT}.target and ${PROMPT}.target.key)` },
+    // using it: the workbench opens and its prompt slides away
+    { lua: `${R0}.x, ${R0}.y = 1104, 240` }, { wait: 24 }, { press: "interact" }, { wait: 14, capture: "used: the panel slides away" },
+    { lua: `USED_STATE = ${DENS}.state; USED_N = ${PROMPT}.count()` }],
+  print: ["FAR_N", "FAR_KEY", "CUES", "ALL_FAR", "K2", "K14", "BENCH_N", "BENCH_KEY", "T1", "N1", "V1", "IN1", "T2", "N2", "V2", "OUT_N", "OUT_KEY", "USED_STATE", "USED_N"] });
+
+// Leaving the Den for a run: the runner steps into the door, the wipe closes, the district card holds, the wipe opens on room 1, LET'S GO!. Input is ignored throughout,
+// and the room has not begun when it opens (nothing spawned, its clock at zero).
+out("ui_run_start", { start_scene: "den", lua: `${META}.started = true; local W = ${WIPE}; local a = W.district_card(5).tag; local b = W.district_card(5).tag; TAG_DIFF = tostring(a ~= b)`,
+  route: [...denWake,
+    { walk_to: "rundoor", who: "runner", max: 900 }, { wait: 3 },
+    { lua: `WIPE0 = ${WIPE}.done; ROLLS0 = ${R0}.stats.rolls; HITS0 = ${R0}.stats.baton_hits` }, { press: "interact" },
+    { wait: 4, capture: "the wipe closing" }, { lua: `S_CLOSE = ${WIPE}.state` },
+    { press: "attack" }, { press: "dash" }, { press: "ranged" }, { press: "interact" },
+    { until: `${WIPE}.state == 'hold'`, max: 60 }, { wait: 6, capture: "the district card" },
+    { lua: `CARD = ${WIPE}.spec.card.top .. ' / ' .. ${WIPE}.spec.card.name; TAGLINE = ${WIPE}.spec.card.tag; SCENE_HOLD = nova.current_scene(); LATE_HOLD = tostring(${RUN}.chain[1].scene == SCENE_HOLD)` },
+    { press: "attack" }, { press: "dash" }, { press: "interact" }, { wait: 24 },
+    { lua: `S_HOLD_1S = ${WIPE}.state` }, { wait: 24, capture: "the wipe opening on room 1" },
+    { lua: `S_OPEN = ${WIPE}.state` },
+    { repeat: 100, until: `not ${WIPE}.busy()`, steps: [{ lua: `local S = nova.scene_now(); if ${WIPE}.busy() and (nova.count('enemy') > 0 or nova.count('warn') > 0 or S.t > 0) then BAD = (BAD or 0) + 1 end` }, { wait: 1 }] },
+    { lua: `BAD = BAD or 0; local S = nova.scene_now(); OPEN = S.state .. ' t=' .. string.format('%.2f', S.t) .. ' enemies=' .. nova.count('enemy') .. ' hp=' .. ${R0}.hp .. ' max=' .. ${R0}.max_hp; ROLLS1 = ${R0}.stats.rolls; HITS1 = ${R0}.stats.baton_hits; RSTATE = ${R0}.state; BANNERS = ${BANNER}.visible()` },
+    { wait: 20, capture: "LET'S GO!" }, { lua: `GO = ${BANNER}.visible()` },
+    { wait: 120, capture: "banners gone, the fight" }, { lua: `LATER = ${BANNER}.visible(); WIPE_DONE = ${WIPE}.done - WIPE0` }],
+  print: ["TAG_DIFF", "S_CLOSE", "CARD", "TAGLINE", "LATE_HOLD", "S_HOLD_1S", "S_OPEN", "BAD", "OPEN", "ROLLS0", "ROLLS1", "HITS0", "HITS1", "RSTATE", "BANNERS", "GO", "LATER", "WIPE_DONE"] });
+
+// Between rooms: a quick wipe (0.25 s each way, no card); the next room does not begin until the shutter has opened; its tab says ROOM 2 / 8 and no LET'S GO!.
+out("ui_rooms", { start_scene: "test_lab", invincible: true, lua: `${META}.upgrades = {}; ${RUN}.begin_chain(1234); nova.goto_scene(${RUN}.chain[1].scene)`,
+  route: [{ until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 30 }, idle(), { wait: 3 },
+    { lua: `local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil` },
+    { until: "nova.scene_now().state == 'cards'", max: 400 }, { wait: 40 },
+    { lua: `CLEARED_B = ${BANNER}.visible(); local b = ${BANNER}.list[1]; CLEARED_SUB = b and b.sub or ''; local c = nova.all('card')[1]; ${R0}.x, ${R0}.y = c.x, c.y + 24` }, { wait: 5 }, { press: "interact" }, { wait: 10 },
+    { lua: `WIPE0 = ${WIPE}.done; WN = 0; BAD = 0; HAS_CARD = 'no'` },
+    { walk_to: "door_out", who: "runner", max: 1200 },
+    { repeat: 200, until: `${WIPE}.done > WIPE0`, steps: [{ lua: `local S = nova.scene_now(); if ${WIPE}.busy() then WN = WN + 1; if ${WIPE}.spec and ${WIPE}.spec.card then HAS_CARD = 'yes' end; if nova.current_scene() == ${RUN}.chain[2].scene and (nova.count('enemy') > 0 or nova.count('warn') > 0 or S.t > 0) then BAD = BAD + 1 end end` }, { wait: 1 }] },
+    { lua: `ROOM2 = nova.current_scene() == ${RUN}.chain[2].scene; TAB2 = ${BANNER}.visible(); RUN_ROOM = ${RUN}.room; S2T = string.format('%.2f', nova.scene_now().t)` },
+    { wait: 30, capture: "room 2 has begun" }],
+  print: ["CLEARED_B", "CLEARED_SUB", "WN", "HAS_CARD", "BAD", "ROOM2", "TAB2", "RUN_ROOM", "S2T"] });
+
+// The banners: the room tab, ELITE! with its mark, the boss's name card BEFORE the fight, CLEARED! with the pay, the death line; they never stop play.
+// A banner never pauses play: the runner walks while the tab and LET'S GO! are up, and they are gone a little later.
+out("ui_banner_play", { start_scene: "gutter.s1_street", lua: `${META}.upgrades = {}; ${RUN}.begin_chain(5); ${R0}.x, ${R0}.y = 600, 400`,
+  route: [{ wait: 6 }, { lua: `Y0 = ${R0}.y; BP = ${BANNER}.visible()` }, { hold: ["down"], frames: 20 }, { lua: `Y1 = ${R0}.y; BP1 = ${BANNER}.visible(); DOWN = tostring(Y1 > Y0 + 20)` },
+    { wait: 100 }, { lua: `BP2 = ${BANNER}.visible()` }],
+  print: ["BP", "BP1", "DOWN", "BP2"] });
+out("ui_banner_elite", { start_scene: "gutter.elite", invincible: true, lua: `${META}.upgrades = {}; local R = ${RUN}; R.begin_chain(5); R.room = 3`,
+  route: [{ wait: 4 }, { lua: `TAB4 = ${BANNER}.visible()` }, { until: "nova.count('warn') > 0", max: 200 }, { wait: 6 },
+    { lua: `ELITE_B = ${BANNER}.visible(); ELITE_SUB = ''; for _, b in ipairs(${BANNER}.list) do if b.kind == 'elite' then ELITE_SUB = b.sub end end; MARK = nova.scene_now().entry.mark; MARK_NAME = require('data.elites').marks[MARK].name:upper()` }],
+  print: ["TAB4", "ELITE_B", "ELITE_SUB", "MARK_NAME"] });
+out("ui_banner_boss", { start_scene: "gutter.boss", invincible: true, lua: `${META}.upgrades = {}; local R = ${RUN}; R.begin_chain(5); R.room = 7`,
+  route: [{ wait: 6 }, { lua: `BOSS_B = ${BANNER}.visible(); BOSS_STATE = nova.scene_now().state; COIL_STATE = ${COIL}.state` }, { wait: 60 },
+    { lua: `BOSS_STATE_1S = nova.scene_now().state; COIL_STATE_1S = ${COIL}.state` },
+    { until: "nova.scene_now().state == 'boss'", max: 300 }, { lua: `BOSS_STATE_NOW = nova.scene_now().state; COIL_AWAKE = tostring(${COIL}.state ~= 'dormant'); BOSS_T = string.format('%.1f', nova.scene_now().fight_t)` }],
+  print: ["BOSS_B", "BOSS_STATE", "COIL_STATE", "BOSS_STATE_1S", "COIL_STATE_1S", "BOSS_STATE_NOW", "COIL_AWAKE"] });
+out("ui_banner_death", { start_scene: "gutter.s1_street", lua: `${META}.upgrades = {}; ${RUN}.begin_chain(5)`,
+  route: [{ wait: 40 }, { lua: `${R0}.hp = 1; ${R0}.blink_t = 0; ${R0}:take_damage(2)` }, { wait: 12 },
+    { lua: `DEATH_B = ${BANNER}.visible(); DEATH_SUB = ''; for _, b in ipairs(${BANNER}.list) do if b.kind == 'death' then DEATH_SUB = b.sub or '' end end` },
+    { until: "nova.current_scene() == 'summary'", max: 200 }, { lua: `WIPE_TO_SUMMARY = ${WIPE}.done` }],
+  print: ["DEATH_B", "DEATH_SUB", "WIPE_TO_SUMMARY"] });
+// Back to the Den after a death: a wipe with LULLABY's short line holding the screen, then the Den (the wake beat starts when the shutter has opened).
+out("ui_den_return", { start_scene: "summary", lua: `${META}.started = true; ${RUN}.begin_chain(3); ${RUN}.from_den = true; ${RUN}.finish('dead'); nova.goto_scene('summary')`,
+  route: [{ wait: 60 }, { press: "interact" }, { wait: 4, capture: "closing" }, { lua: `S0 = ${WIPE}.state` },
+    { until: `${WIPE}.state == 'hold'`, max: 60 }, { wait: 6, capture: "LULLABY's line" },
+    { lua: `LINE = ${WIPE}.spec.line; SCENE_NOW = nova.current_scene(); WAKE0 = nova.scene_now().state; T0 = string.format('%.2f', nova.scene_now().t)` },
+    { until: `not ${WIPE}.busy()`, max: 240 }, { wait: 3, capture: "the Den wakes" }, { lua: `T1 = string.format('%.2f', nova.scene_now().t); WAKE1 = nova.scene_now().state` }],
+  print: ["S0", "LINE", "SCENE_NOW", "WAKE0", "T0", "T1", "WAKE1"] });

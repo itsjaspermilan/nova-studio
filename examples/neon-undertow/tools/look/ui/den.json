@@ -1,0 +1,21 @@
+{
+ "start_scene": "title",
+ "lua": "require('lib.meta').keys = 40; require('lib.meta').started = true",
+ "route": [
+  { "wait": 25, "capture": "title" },
+  { "press": "interact" },
+  { "wait": 80, "capture": "den wake" },
+  { "press": "interact" },
+  { "until": "nova.scene_now().state == 'free'", "max": 200 },
+  { "wait": 20, "capture": "den far: quiet cues" },
+  { "walk_to": "screen", "who": "runner", "max": 900 },
+  { "wait": 15, "capture": "den near LULLABY: a prompt" },
+  { "walk_to": "bench", "who": "runner", "max": 900 },
+  { "wait": 15, "capture": "den near the workbench" },
+  { "walk_to": "stall_patch", "who": "runner", "max": 900 },
+  { "wait": 15, "capture": "den near a stall" },
+  { "walk_to": "rundoor", "who": "runner", "max": 900 },
+  { "wait": 15, "capture": "den near the door" }
+ ],
+ "print": ["nova.scene_now().state"]
+}

@@ -2,6 +2,7 @@
 -- Enemies call `tick(self, dt)` near the top of update (after the hit-stop check) and `hud(self)` where they draw their bar.
 local S = {}
 local ENEMY = require("data.enemies")
+local Ty = require("lib.type")
 
 local function nz(v) return v or 0 end
 
@@ -67,9 +68,9 @@ function S.hud(e, x, y)
     -- Bounty Board: a gold tag over the marked enemy (it pays only if it is the room's first kill)
     local on = require("lib.run").room_kills == 0
     nova.ui.rect(x - 26, y - 22, 52, 16, on and { 255, 228, 94, 255 } or { 90, 90, 100, 255 })
-    nova.ui.text(x - 26, y - 20, "$" .. e.bounty, { font = "pixel", size = 15, color = { 20, 16, 5, 255 }, align = "center", width = 52 })
+    Ty.text(x - 26, y - 20, "$" .. e.bounty, "small", { color = { 20, 16, 5, 255 }, align = "center", width = 52 })
   end
-  if e.leaky then nova.ui.text(x - 20, y + 4, "leak", { font = "pixel", size = 13, color = { 6, 240, 255, 255 }, align = "center", width = 40, shadow = true }) end
+  if e.leaky then Ty.text(x - 20, y + 4, "leak", "tiny", { color = { 6, 240, 255, 255 }, align = "center", width = 40 }) end
 end
 
 return S

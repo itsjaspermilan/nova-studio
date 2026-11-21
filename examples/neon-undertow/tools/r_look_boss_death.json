@@ -1,6 +1,6 @@
 {
  "start_scene": "gutter.boss",
- "lua": "nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1056, 340",
+ "lua": "require('data.flow').boss_delay = 0; nova.named('coil').manual = true; nova.named('runner').x, nova.named('runner').y = 1056, 340",
  "capture_at": [
   40,
   52,

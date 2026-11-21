@@ -7,6 +7,10 @@
    "max": 30
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 3
   },
   {
@@ -35,9 +39,16 @@
    "lua": "A_HP = nova.named('runner').hp; A_CHARGE = string.format('%.2f', nova.named('runner').charge); A_SCRAP = require('lib.juice').scrap; A_CARDS = #require('lib.run').cards; A_MAXHP = nova.named('runner').max_hp; A_MAXCH = nova.named('runner').max_charge"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1200
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -68,9 +79,16 @@
    "lua": "B2_CARDS = #require('lib.run').cards; B2_SCRAP = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1200
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -79,9 +97,16 @@
    "lua": "C_SCENE = nova.current_scene(); C_HP = nova.named('runner').hp; C_CHARGE = string.format('%.2f', nova.named('runner').charge); C_SCRAP = require('lib.juice').scrap; C_CARDS = #require('lib.run').cards; C_MAXHP = nova.named('runner').max_hp; C_STATE = nova.scene_now().state"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1200
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4

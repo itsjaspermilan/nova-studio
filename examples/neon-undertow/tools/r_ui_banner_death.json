@@ -1,0 +1,30 @@
+{
+ "start_scene": "gutter.s1_street",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(5)",
+ "route": [
+  {
+   "wait": 40
+  },
+  {
+   "lua": "nova.named('runner').hp = 1; nova.named('runner').blink_t = 0; nova.named('runner'):take_damage(2)"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "lua": "DEATH_B = require('lib.banner').visible(); DEATH_SUB = ''; for _, b in ipairs(require('lib.banner').list) do if b.kind == 'death' then DEATH_SUB = b.sub or '' end end"
+  },
+  {
+   "until": "nova.current_scene() == 'summary'",
+   "max": 200
+  },
+  {
+   "lua": "WIPE_TO_SUMMARY = require('lib.wipe').done"
+  }
+ ],
+ "print": [
+  "DEATH_B",
+  "DEATH_SUB",
+  "WIPE_TO_SUMMARY"
+ ]
+}

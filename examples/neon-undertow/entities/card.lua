@@ -1,6 +1,7 @@
 -- A card on the floor: rises out of it, then waits to be taken. Shows its name and family icon above it, a ring in its rarity's
 -- colour on the ground; the text appears in the room's panel when the runner stands by it. Props: card_id.
 local P = require("data.player")
+local Ty = require("lib.type")
 local J = require("lib.juice")
 local D = require("lib.draw")
 local R = require("data.rooms")
@@ -82,11 +83,8 @@ function Card:hud()
   local x, y = nova.cam.to_screen(self.x, self.y - 78 * k)
   local fam = Cards.families[self.def.family]
   local col = self.rar.color
+  -- (the icon is the card's quiet cue; its name comes in a prompt when the runner is near: lib/prompt.lua)
   nova.ui.sprite("ui", x, y - 34, { frame = Cards.frame_of(self.def.family, self.def.rarity), scale = 1.6 * k })
-  if k >= 1 then
-    nova.ui.text(x - 70, y - 12, self.def.name, { font = "pixel", size = 15, color = { col[1], col[2], col[3], 255 }, align = "center", width = 140, shadow = true })
-    if self.def.jinx then nova.ui.text(x - 70, y + 2, "JINX!", { font = "pixel", size = 15, color = { 255, 228, 94, 255 }, align = "center", width = 140, shadow = true }) end
-  end
 end
 
 return Card

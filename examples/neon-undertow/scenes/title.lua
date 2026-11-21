@@ -1,5 +1,6 @@
 -- The title screen: Continue (or Start on a fresh save) and New game, which wipes the save after a confirm. The save is read at boot (main.lua).
 local P = require("data.player")
+local Ty = require("lib.type")
 local Meta = require("lib.meta")
 local HUD = require("lib.hud")
 
@@ -68,31 +69,31 @@ end
 
 function Title:draw_ui()
   nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 120 })          -- (the street shows through, dimmed)
-  nova.ui.rect(0, 84, W, 210, { 5, 6, 15, 150 })         -- (a band behind the name and the tagline)
+  nova.ui.rect(0, 50, W, 250, { 5, 6, 15, 150 })         -- (a band behind the name and the tagline)
   local glow = 0.75 + 0.25 * math.sin(self.t * 3)
-  nova.ui.text(0, 100, "NEON", { font = "pixel", size = 64, color = { 255 * glow, 43, 214, 255 }, align = "center", width = W, shadow = true })
-  nova.ui.text(0, 170, "UNDERTOW", { font = "pixel", size = 64, color = { 6, 240 * glow, 255, 255 }, align = "center", width = W, shadow = true })
-  nova.ui.text(0, 244, "Low Meridian floods a little more every year.\nSomebody has to deliver the mail.", { font = "pixel", size = 14, line_spacing = 1.4, color = { 190, 200, 230, 255 }, align = "center", width = W })
+  Ty.text(0, 52, "NEON", "title", { color = { 255 * glow, 43, 214, 255 }, align = "center", width = W })
+  Ty.text(0, 134, "UNDERTOW", "title", { color = { 6, 240 * glow, 255, 255 }, align = "center", width = W })
+  Ty.text(0, 244, "Low Meridian floods a little more every year.\nSomebody has to deliver the mail.", "small", { color = { 190, 200, 230, 255 }, align = "center", width = W })
   if self.mode == "menu" then
     for i, name in ipairs(self:items()) do
       local on = i == self.sel
       local y = 320 + (i - 1) * 50
       nova.ui.rect(340, y, 280, 40, on and { 6, 240, 255, 255 } or { 70, 80, 120, 255 })
       nova.ui.rect(343, y + 3, 274, 34, { 12, 14, 34, 255 })
-      nova.ui.text(340, y + 10, name, { font = "pixel", size = 18, color = on and { 255, 255, 255, 255 } or { 150, 160, 190, 255 }, align = "center", width = 280 })
+      Ty.text(340, y + 10, name, "label", { color = on and { 255, 255, 255, 255 } or { 150, 160, 190, 255 }, align = "center", width = 280 })
     end
     HUD.prompt(380, 470, "interact", "choose")
   else
     nova.ui.rect(180, 300, 600, 150, { 255, 43, 214, 255 })
     nova.ui.rect(183, 303, 594, 144, { 8, 10, 26, 255 })
-    nova.ui.text(180, 318, "Erase everything? Keys, upgrades, friends, wins.", { font = "pixel", size = 16, color = { 255, 255, 255, 255 }, align = "center", width = 600 })
-    nova.ui.text(180, 342, "LULLABY will not remember you. She says that is fine.", { font = "pixel", size = 15, color = { 190, 200, 230, 255 }, align = "center", width = 600 })
+    Ty.text(180, 318, "Erase everything? Keys, upgrades, friends, wins.", "body", { color = { 255, 255, 255, 255 }, align = "center", width = 600 })
+    Ty.text(180, 342, "LULLABY will not remember you. She says that is fine.", "small", { color = { 190, 200, 230, 255 }, align = "center", width = 600 })
     for i, name in ipairs({ "Keep my save", "Erase it all" }) do
       local on = i == self.confirm
       local x = 220 + (i - 1) * 270
       nova.ui.rect(x, 380, 240, 40, on and { 6, 240, 255, 255 } or { 70, 80, 120, 255 })
       nova.ui.rect(x + 3, 383, 234, 34, { 12, 14, 34, 255 })
-      nova.ui.text(x, 391, name, { font = "pixel", size = 16, color = on and { 255, 255, 255, 255 } or { 150, 160, 190, 255 }, align = "center", width = 240 })
+      Ty.text(x, 391, name, "body", { color = on and { 255, 255, 255, 255 } or { 150, 160, 190, 255 }, align = "center", width = 240 })
     end
   end
 end

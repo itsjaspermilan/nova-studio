@@ -139,9 +139,16 @@
    "lua": "CARDS_LEFT = nova.count('card')"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_e",
    "who": "runner",
    "max": 600
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 2
