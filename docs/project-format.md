@@ -101,7 +101,7 @@ up to eight sine waves over the ground. The shaders lift every vertex of a model
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
 (a car's weight on a hill). A model that must stay rigid (a vehicle) is drawn with `rigid = true`: it is lifted by the height under its origin only, and the game tilts it
 (Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
-few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
+few metres, and a ground made of a grid of squares (`land_make`, `studio/mcp/makers/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's
 track editor, `docs/track-editor.md`, with the cross-section and colours of
@@ -189,8 +189,8 @@ case-insensitive systems.
   its mipmaps average out to that grey, so the grain fades by itself and its repeat does not show. It costs one more texture read
   a pixel, on the models that have one only (`fs_detail` in `mesh.wgsl`); it needs a base colour picture, and it is not drawn on
   see-through or skinned models, on models lit by their material (`"materials"`) or drawn with a custom shader. Pine Ridge Rally's
-  ground (`scripts/rally/land.mjs`) and roads (the track editor's `"textured": true`, `docs/track-editor.md`) use both, with
-  pictures made by `scripts/rally/surfaces.mjs`.
+  ground (`land_make`) and roads (the track editor's `"textured": true`, `docs/track-editor.md`) use both, with
+  pictures made by `surface_make` (`studio/mcp/makers/surface.mjs`).
 - **Scripts:** Lua 5.4.
 - **Keyframe animations:** `animations/<name>.anim.json` (see [Keyframe animations](#keyframe-animations-animationsnameanimjson)), checked when the project loads.
 

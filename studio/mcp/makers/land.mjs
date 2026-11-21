@@ -1,33 +1,31 @@
-// The ground under Pine Ridge Rally's circuits, as grids of small squares (models/land_*.glb): the shader lifts every vertex by the
-// height of the hills under it (`nova.terrain`), so a flat plane of four corners would not follow them. 50 x 50 squares of 16 m, centred
-// on the camera (lib/horizon.lua snaps the centre to a whole 64 m, the size of the ground's picture, so that neither the squares nor
-// the picture slide over the hills as the camera moves).
-// Written as glTF directly. The ground has one colour (its tint), a normal straight up (the shader leans it with the slope), and two
-// pictures it names by `uri`, made by scripts/rally/surfaces.mjs: a base picture 64 m across (patches of dry grass, drifts, ripples)
-// and a detail picture every 8 m (blades, grains, crystals; the material's `extras.nova.detail`). The tint is divided by the base
-// picture's average (textures/means.json), so the ground keeps the colour it had before it was textured.
-//
-//   node scripts/rally/surfaces.mjs && node scripts/rally/land.mjs [project folder]
-import fs from "node:fs";
-import path from "node:path";
-import { packGlb } from "../lib/trackgen.mjs";
+// land_make: the ground under a racing game's circuits (first Pine Ridge Rally's models/land_*.glb, made by scripts/rally/land.mjs), as a grid
+// of small squares: the shader lifts every vertex by the height of the hills under it (`nova.terrain`), so a flat plane of four corners would
+// not follow them. CELLS x CELLS squares of CELL metres, centred on the origin (a game draws it at the camera, snapped to a whole TILE: Pine
+// Ridge's lib/horizon.lua), so that neither the squares nor the picture slide over the hills as the camera moves.
+// Written as glTF directly. The ground has one colour (its tint), a normal straight up (the shader leans it with the slope), and two pictures it
+// names by `uri`, made by surface_make: a base picture TILE metres across (patches of dry grass, drifts, ripples) and a detail picture REPEAT
+// times in a tile (blades, grains, crystals; the material's `extras.nova.detail`). The tint is divided by the base picture's average
+// (textures/means.json), so the ground keeps the colour it had before it was textured.
+// @ts-ignore (plain JavaScript, shared with the studio's track editor)
+import { packGlb } from "../../../scripts/lib/trackgen.mjs";
 
-const project = process.argv[2] ?? "examples/pine-ridge-rally";
-const CELLS = 50, CELL = 16, TOP = -0.25, TILE = 64, REPEAT = 8;
-const GROUNDS = {
-  land_grass: { colour: "#4f8a3c", base: "ground_grass", detail: "grass_detail" },
-  land_autumn: { colour: "#8c7a34", base: "ground_autumn", detail: "leaves_detail" },
-  land_sand: { colour: "#d9b277", base: "ground_sand", detail: "sand_detail" },
-  land_snow: { colour: "#eaf0f6", base: "ground_snow", detail: "snow_detail" },
-  // (the night courses are grass and quays in the dark: the grass pictures under a dark tint)
-  land_night: { colour: "#1e2a38", base: "ground_grass", detail: "grass_detail" },
+/// The kinds of ground: tint, base picture, detail picture.
+export const GROUNDS = {
+  grass: { colour: "#4f8a3c", base: "ground_grass", detail: "grass_detail" },
+  autumn: { colour: "#8c7a34", base: "ground_autumn", detail: "leaves_detail" },
+  sand: { colour: "#d9b277", base: "ground_sand", detail: "sand_detail" },
+  snow: { colour: "#eaf0f6", base: "ground_snow", detail: "snow_detail" },
+  // (night courses are grass in the dark: the grass pictures under a dark tint)
+  night: { colour: "#1e2a38", base: "ground_grass", detail: "grass_detail" },
 };
-const means = JSON.parse(fs.readFileSync(path.join(project, "textures", "means.json"), "utf8"));
 
 const linear = (v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const colour = (hex) => [1, 3, 5].map((i) => linear(parseInt(hex.slice(i, i + 2), 16) / 255));
 
-function glb({ colour: hex, base, detail }) {
+/// The ground as a .glb. `means` are the base pictures' mean colours (textures/means.json); `o`: { cells, cell, top, tile, repeat }.
+export function landGlb({ colour: hex, base, detail }, means, o = {}) {
+  const CELLS = o.cells ?? 50, CELL = o.cell ?? 16, TOP = o.top ?? -0.25, TILE = o.tile ?? 64, REPEAT = o.repeat ?? 8;
+  if (!means[base]) throw new Error(`textures/means.json has no mean for ${base}: make the pictures with surface_make first`);
   const n = CELLS + 1;
   const positions = new Float32Array(n * n * 3), normals = new Float32Array(n * n * 3), colors = new Float32Array(n * n * 4), uvs = new Float32Array(n * n * 2);
   const rgb = colour(hex).map((c, i) => Math.min(1, c / means[base][i]));
@@ -62,10 +60,3 @@ function glb({ colour: hex, base, detail }) {
     ],
   }, [positions, normals, colors, uvs, indices]);
 }
-
-for (const [name, ground] of Object.entries(GROUNDS)) {
-  fs.writeFileSync(path.join(project, "models", name + ".glb"), glb(ground));
-  // (the ground is made here, not drawn in the model editor: an editor's file beside it would say otherwise)
-  fs.rmSync(path.join(project, "models", name + ".model.json"), { force: true });
-}
-console.log("wrote", Object.keys(GROUNDS).join(", "));
