@@ -2,6 +2,7 @@
   "format": 1,
   "name": "Pine Ridge Rally",
   "world_height": 720,
+  "ignore": ["steam"],
   "graphics": { "msaa": 4, "anisotropy": 16 },
   "materials": ["car_gt", "car_gt_red", "car_gt_white", "car_gt_grey", "car_offroad", "car_offroad_green", "car_offroad_white", "car_offroad_red",
     "car_s15", "car_s15_white", "car_s15_black", "car_s15_red", "car_s14", "car_s14_white", "car_s14_blue", "car_s14_black", "car_hatch_r", "car_hatch_r_red", "car_hatch_r_blue", "car_hatch_r_grey", "car_gt2", "car_gt2_orange", "car_gt2_blue", "car_gt2_black", "car_city", "car_city_blue", "car_city_red", "car_city_white", "car_hatch", "car_hatch_white", "car_hatch_blue", "car_hatch_grey", "car_rally", "car_rally_blue", "car_rally_yellow", "car_rally_green", "car_muscle", "car_muscle_blue", "car_muscle_green", "car_muscle_white", "car_suv", "car_suv_white", "car_suv_black", "car_suv_red", "car_pickup", "car_pickup_white", "car_pickup_black", "car_pickup_blue", "car_truck", "car_truck_sand", "car_truck_green", "car_truck_white"],
