@@ -444,8 +444,19 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     }
 
     const which = a.state ?? "end";
+    // (a value that cannot be worked out yet, before the thing exists, is said in full once and then shortly, so that
+    // a long strip's captions do not bury the one error that matters)
+    const saidErrors = new Set<string>();
+    const shown = (p: Args) => {
+      const v = String(p.value);
+      if (!v.startsWith("error:")) return `${p.expr} = ${v}`;
+      const key = `${p.expr}\n${v}`;
+      if (saidErrors.has(key)) return `${p.expr} = (error, as above)`;
+      saidErrors.add(key);
+      return `${p.expr} = ${v}`;
+    };
     for (const c of captures) {
-      const prints = (c.prints ?? []).map((p: Args) => `${p.expr} = ${p.value}`);
+      const prints = (c.prints ?? []).map(shown);
       const st = which === "all" ? stateLines(c.state, true) : [];
       if (prints.length || st.length) {
         lines.push(`f${c.frame}${c.label ? ` "${c.label}"` : ""}:${prints.length ? ` ${prints.join("; ")}` : ""}`);
@@ -454,7 +465,7 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     }
     for (const rec of (report?.records ?? []) as Args[]) lines.push(...recordLines(rec));
     if (report) {
-      const prints = (report.end?.prints ?? []).map((p: Args) => `${p.expr} = ${p.value}`);
+      const prints = (report.end?.prints ?? []).map(shown);
       lines.push(`at the end (f${ran}):${prints.length ? ` ${prints.join("; ")}` : ""}`);
       if (which !== "none") lines.push(...stateLines(report.end?.state, true).map((s) => `  ${s}`));
       const log: Args[] = report.log ?? [];

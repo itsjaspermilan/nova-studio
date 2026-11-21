@@ -193,7 +193,7 @@ function applyDraw(r: Raster, d: Draw, colourOf: (c: unknown) => Rgba | "clear" 
   const copy = (fx: number, fy: number, tx: number, ty: number) => r.data.copyWithin((ty * r.w + tx) * 4, (fy * r.w + fx) * 4, (fy * r.w + fx) * 4 + 4);
   if (d.mirror.includes("x")) for (let y = 0; y < r.h; y++) for (let x = 0; x < Math.floor(r.w / 2); x++) copy(x, y, r.w - 1 - x, y);
   if (d.mirror.includes("y")) for (let y = 0; y < Math.floor(r.h / 2); y++) for (let x = 0; x < r.w; x++) copy(x, y, x, r.h - 1 - y);
-  if (d.outline !== undefined && d.outline !== false) {
+  if (d.outline !== undefined && d.outline !== false && d.outline !== null) {
     const c = colour(d.outline, "outline");
     if (c && c !== "clear") {
       const solid = (x: number, y: number) => x >= 0 && y >= 0 && x < r.w && y < r.h && r.data[(y * r.w + x) * 4 + 3]! > 0;

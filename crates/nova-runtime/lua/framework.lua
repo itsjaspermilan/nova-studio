@@ -307,6 +307,8 @@ local function finalize(cls)
   cls.__max_distance = spec.max_distance or parent.__max_distance
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
+  -- (so that self.sprite and self.model read what the class gave: nova.spawn("ghost", x, y, { sprite = self.sprite }))
+  cls.sprite, cls.model = cls.__sprite, cls.__model
   cls.__depth = spec.depth or parent.__depth or 0
   cls.__hitbox = spec.hitbox or parent.__hitbox
   cls.__pivot = spec.pivot or parent.__pivot

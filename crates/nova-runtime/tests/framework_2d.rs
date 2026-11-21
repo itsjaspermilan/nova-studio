@@ -307,6 +307,35 @@ return S"#,
     );
 }
 
+/// `self.sprite` reads the sprite the class gave (it was nil, so a copy spawned with `{ sprite = self.sprite }` drew
+/// nothing); an instance's own still wins.
+#[test]
+fn self_sprite_reads_the_class_sprite() {
+    let mut g = project(vec![
+        ("entities/hero.lua", "return nova.entity { sprite = 'dot' }"),
+        (
+            "entities/kid.lua",
+            "return nova.entity(require('entities.hero'), {})",
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  local a = nova.spawn('hero', 0, 0)
+  local b = nova.spawn('hero', 0, 0, { sprite = 'other' })
+  local c = nova.spawn('kid', 0, 0)
+  nova.log(tostring(a.sprite) .. ' ' .. tostring(b.sprite) .. ' ' .. tostring(c.sprite) .. ' ' .. tostring(a.model))
+  b:destroy() -- (there is no picture called other)
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.take_log(), ["dot other dot nil"]);
+}
+
 /// Game time: `nova.time_scale` for all or for a tag, an entity's own `time_scale`, `unscaled` things that run in real
 /// time, `nova.hit_stop` freezing the rest (velocity, timers, collisions too) and `nova.cam.shake` moving only the picture.
 #[test]

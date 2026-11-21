@@ -831,7 +831,8 @@ return nova.entity(require("entities.enemy"), { hp = 500, tags = { "boss" } })
 its hitbox within `margin` units, 4 by default: for solid things, which are never overlapped),
 and the timer methods below.
 
-**World functions:** `nova.spawn(kind_or_class, x, y [, props])`, `nova.each(tag, fn)`,
+**World functions:** `nova.spawn(kind_or_class, x, y [, props])` (props are plain Lua values set on the new entity
+before its `create`, functions and tables included), `nova.each(tag, fn)`,
 `nova.all(tag)` (a fresh list of living entities), `nova.first(tag)`, `nova.count(tag)`, `nova.named(name)` (the living entity the scene file named so),
 `nova.nearest(x, y, tag [, max_distance])`, `nova.in_radius(x, y, r, tag [, list_to_refill])` (both use a grid of the tag's entities once there are about forty, so they stay cheap with hundreds; they compare where entities are *now*, so an entity that jumped further than one square within a single step may be missed until the next),
 `nova.send(entity_or_tag, "method", ...)`, `nova.pause(on)` (freezes entities, timers keep going and
@@ -1464,7 +1465,9 @@ Android. `--save-dir <folder>` chooses another place. **Headless runs keep saves
 (a temporary file, then a rename); if it cannot be read it is kept as `save.json.corrupt-<time>`, the
 game starts with an empty save and a warning is logged. Limits: 1 MiB in total, keys of 1 to 128
 characters. A value that cannot be saved (a function, say) or would break the limit is an error that
-names the key. The save is opened before any script runs, so a script can read it at load time.
+names the key. The save is opened before any script runs, so a script can read it at load time. A number
+comes back as it was set: an integer as an integer, but one worked out with `/` (`12 / 1` is `12.0`) as a float, which
+prints as `12.0`; save `math.floor(x)` (or read it back with `math.tointeger`) for counts.
 
 ## Script limits
 
