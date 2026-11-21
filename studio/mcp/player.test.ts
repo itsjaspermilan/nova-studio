@@ -205,10 +205,20 @@ describe.skipIf(!built)("the test player", () => {
     expect(said).toMatch(/route: step 1: walk_to 'chest': stopped against it after \d+ frames \('hero' is at x [\d.]+, y [\d.]+; its hitbox and that of 'chest' are [\d.]+ units apart\)/);
     expect(said).toMatch(/route: step 2: fight 'enemy': all 2 beaten in \d+ frames with \d+ attacks; 'hero' still has hp 3/);
     expect(said).toMatch(/note: step 1: walk_to found a way round what is solid through \d+ corners/);
-    expect(said).toMatch(/note: invincible: 'hero' had hp 3 put back/);
+    expect(said).toMatch(/note: invincible: 'hero' kept hp 3 from going down/);
     expect(said).toContain("\"all beaten\": nova.count('enemy') = 0");
     expect(said).not.toContain("warning:");
     expect(said).not.toContain("STOPPED");
+  });
+
+  it("watches every frame with always and record", () => {
+    game();
+    const said = text(use("play", { size: "128x72", always: "nova.named('hero').x < 130", record: "math.floor(nova.named('hero').x)", route: [{ hold: ["right"], frames: 30, always: "nova.named('hero').hp == 3" }] }));
+    expect(said).toMatch(/warning: always `nova.named\('hero'\).x < 130` \(for the whole run\) was false after frame \d+, in step 1/);
+    expect(said).toMatch(/note: always `nova.named\('hero'\).hp == 3` \(on step 1\) held after every one of the 30 frames/);
+    expect(said).toMatch(/record `math.floor\(nova.named\('hero'\).x\)` \(the whole run, \d+ frames\): f2 10\d; f3 10\d; /);
+    expect(() => use("play", { always: 3 })).toThrow(/always is a Lua condition or a list of them/);
+    expect(() => use("play", { route: [{ wait: 3, record: [] }] })).toThrow(/route step 1: record is a piece of Lua or a list of them/);
   });
 
   it("stops the route at the step that failed, and says when the strip shows fewer pictures than were taken", () => {

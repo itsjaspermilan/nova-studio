@@ -36,10 +36,13 @@
 //! - `"may_time_out": true` on an `until` (or a `walk_to`, a `fight`, or a group) says that running out of time is
 //!   expected: no warning.
 //!
-//! For the whole plan: `"invincible": true` puts the hero's `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) back
-//! after every frame and sets `nova.testing.invincible`; `"stop_on_fail": true` ends the route at the first step that
-//! fails; `"overlay": ["hitboxes", "solids", "names"]` draws those over the game; `"lua_each_frame"` runs Lua before
-//! every frame.
+//! - `"always": "<lua>"` on a step (or a group) is a condition that must hold after every frame it plays, and
+//!   `"record": "<lua>"` writes down a value after every frame of it (both also take lists).
+//!
+//! For the whole plan: `"invincible": true` keeps the hero's `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) from
+//! going down at all, refusing every blow as it is dealt, and sets `nova.testing.invincible`; `"stop_on_fail": true` ends
+//! the route at the first step that fails; `"overlay": ["hitboxes", "solids", "names"]` draws those over the game;
+//! `"lua_each_frame"` (or `"each_frame"`) runs Lua before every frame; `"always"` and `"record"` watch the whole run.
 //!
 //! A step whose Lua fails (`lua`, `until`) is written down with its step number in the report's `step_errors` and the run
 //! goes on, so the pictures and values after it are still there. Only an error of the game itself stops a run. The
@@ -133,6 +136,11 @@ pub struct Step {
     pub axes: Option<[String; 2]>,
     /// The four button actions `walk_to` drives instead of `left`, `right`, `up`, `down`.
     pub dirs: Option<[String; 4]>,
+    /// Lua conditions that must hold after every frame of this step (of every step of a group): a frame where one is
+    /// false is a failure, said with its frame.
+    pub always: Option<OneOrMany>,
+    /// Lua expressions written down after every frame of this step (of a group's steps): a value per frame.
+    pub record: Option<OneOrMany>,
 }
 
 impl Step {
@@ -178,8 +186,9 @@ pub struct Plan {
     /// Lua run once, after the first frame (the scene is up by then).
     pub lua: Option<String>,
     pub seed: Option<u64>,
-    /// The hero cannot die: its `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) is put back to the most it has had
-    /// after every frame, and `nova.testing.invincible` is true for the game to read.
+    /// The hero cannot die: its `hp` (or `health`, `hearts`, `lives`, `life`, `energy`) never goes down (a write that
+    /// lowers it is refused as it happens, so one blow bigger than what is left cannot kill), and
+    /// `nova.testing.invincible` is true for the game to read.
     #[serde(default, alias = "god")]
     pub invincible: bool,
     /// Who `invincible` protects (left out: the one named or tagged `hero` or `player`).
@@ -192,7 +201,13 @@ pub struct Plan {
     #[serde(default)]
     pub overlay: Vec<String>,
     /// Lua run before every frame after the first (a setting the scene's own code would otherwise set back).
+    #[serde(alias = "each_frame")]
     pub lua_each_frame: Option<String>,
+    /// Lua conditions that must hold after every frame of the run (from the first after the scene is up): "the hero
+    /// never overlaps a wall", "hp never drops". A frame where one is false is a failure, said with its frame and step.
+    pub always: Option<OneOrMany>,
+    /// Lua expressions written down after every frame of the run: a value per frame, in the report's `records`.
+    pub record: Option<OneOrMany>,
     /// The run's pictures of a 3D game from beside an entity instead of from the game's own camera (see [`View`]).
     pub view: Option<View>,
     /// Every picture's report carries the box of this entity (a name, a tag or a kind) on it, in pixels: what the tools
@@ -281,7 +296,33 @@ struct Group {
     quiet: bool,
     rounds: u32,
     done: bool,
+    /// What its `always` and `record` watch while its steps play, and the label they are reported by.
+    always: Vec<String>,
+    record: Vec<String>,
+    label: String,
 }
+
+/// An `always` condition being watched: where it was given, and the frames it was false on.
+struct Watch {
+    cond: String,
+    scope: String,
+    checked: u32,
+    false_frames: u32,
+    first: Option<(u32, String)>,
+    last: u32,
+    error: bool,
+}
+
+/// A `record` expression's values, frame by frame.
+struct Record {
+    expr: String,
+    scope: String,
+    values: Vec<(u32, String)>,
+    dropped: u32,
+}
+
+/// The most values one `record` keeps (a minute of frames).
+const RECORD_MAX: usize = 3600;
 
 /// The most steps a plan may unroll to.
 const MAX_STEPS: usize = 50_000;
@@ -327,7 +368,7 @@ fn flatten(
                 || s.fight.is_some()
             {
                 return Err(format!(
-                    "{label} is a group (it has \"steps\"), which takes only \"repeat\", \"until\", \"may_time_out\" and \"capture\": put the rest in its steps"
+                    "{label} is a group (it has \"steps\"), which takes only \"repeat\", \"until\", \"may_time_out\", \"capture\", \"always\" and \"record\": put the rest in its steps"
                 ));
             }
             let rounds = s.repeat.unwrap_or(if s.until.is_some() { 100 } else { 1 });
@@ -337,6 +378,9 @@ fn flatten(
                 quiet: s.may_time_out,
                 rounds,
                 done: false,
+                always: s.always.as_ref().map(OneOrMany::list).unwrap_or_default(),
+                record: s.record.as_ref().map(OneOrMany::list).unwrap_or_default(),
+                label: format!("{bare}{suffix}"),
             });
             let mut within = inside.to_vec();
             within.push(id);
@@ -631,6 +675,9 @@ pub struct Playtest {
     /// Whether a `view` or `crop_to` that could not be followed has been said.
     view_said: bool,
     crop_said: bool,
+    /// The `always` conditions and `record` expressions met so far.
+    watches: Vec<Watch>,
+    records: Vec<Record>,
 }
 
 impl Playtest {
@@ -687,6 +734,8 @@ impl Playtest {
             view_cam: None,
             view_said: false,
             crop_said: false,
+            watches: Vec::new(),
+            records: Vec::new(),
         })
     }
 
@@ -1767,6 +1816,9 @@ impl Playtest {
         if self.plan.invincible {
             self.god = game.god(self.plan.who.as_deref()).or(self.god.take());
         }
+        if frame > 0 {
+            self.watch(number, game);
+        }
         let mut due = std::mem::take(&mut self.pictures_due);
         let playing = self.at.as_ref().map(|a| a.index);
         if let Some(index) = playing
@@ -1867,6 +1919,127 @@ impl Playtest {
         due
     }
 
+    /// Checks the `always` conditions and writes down the `record` values of the whole run and of the step playing (and
+    /// the groups it is in), after frame `number`.
+    fn watch(&mut self, number: u32, game: &Game) {
+        let mut always: Vec<(String, String, String)> = Vec::new(); // (condition, where it was given, the step now)
+        let mut record: Vec<(String, String)> = Vec::new();
+        let playing = self
+            .at
+            .as_ref()
+            .map(|a| a.index)
+            .filter(|i| !self.steps_done && !self.skipped(*i));
+        let now = playing
+            .and_then(|i| self.flat.get(i))
+            .filter(|f| f.end_of.is_none())
+            .map(|f| f.label.clone());
+        let list = |v: &Option<OneOrMany>| v.as_ref().map(OneOrMany::list).unwrap_or_default();
+        let step_now = now.clone().unwrap_or_else(|| "after the route".to_string());
+        for c in list(&self.plan.always) {
+            always.push((c, "the whole run".into(), step_now.clone()));
+        }
+        for e in list(&self.plan.record) {
+            record.push((e, "the whole run".into()));
+        }
+        if let (Some(i), Some(label)) = (playing, now) {
+            let flat = &self.flat[i];
+            for g in &flat.groups {
+                let group = &self.groups[*g];
+                for c in &group.always {
+                    always.push((c.clone(), group.label.clone(), label.clone()));
+                }
+                for e in &group.record {
+                    record.push((e.clone(), group.label.clone()));
+                }
+            }
+            // (a repeated step is one place, whichever round)
+            let bare = label.split(" (round ").next().unwrap_or(&label).to_string();
+            for c in list(&flat.step.always) {
+                always.push((c, bare.clone(), label.clone()));
+            }
+            for e in list(&flat.step.record) {
+                record.push((e, bare.clone()));
+            }
+        }
+        for (cond, scope, step) in always {
+            let held = game.lua_truth(&cond);
+            let at = match self
+                .watches
+                .iter()
+                .position(|w| w.cond == cond && w.scope == scope)
+            {
+                Some(i) => i,
+                None => {
+                    self.watches.push(Watch {
+                        cond: cond.clone(),
+                        scope: scope.clone(),
+                        checked: 0,
+                        false_frames: 0,
+                        first: None,
+                        last: 0,
+                        error: false,
+                    });
+                    self.watches.len() - 1
+                }
+            };
+            match held {
+                Ok(true) => self.watches[at].checked += 1,
+                Ok(false) => {
+                    let w = &mut self.watches[at];
+                    w.checked += 1;
+                    w.false_frames += 1;
+                    w.last = number;
+                    if w.first.is_none() {
+                        w.first = Some((number, step.clone()));
+                        let text = format!(
+                            "always `{cond}` ({}) was false after frame {number}, in {step}",
+                            if scope == "the whole run" {
+                                "for the whole run".to_string()
+                            } else {
+                                format!("given on {scope}")
+                            }
+                        );
+                        self.fail(&step, text);
+                    }
+                }
+                Err(e) => {
+                    if !std::mem::replace(&mut self.watches[at].error, true) {
+                        self.step_error(
+                            &step,
+                            format!("always `{cond}` (frame {number}, {step}): {e}"),
+                        );
+                    }
+                }
+            }
+        }
+        for (expr, scope) in record {
+            let value = game
+                .lua_text(&expr)
+                .unwrap_or_else(|e| format!("error: {e}"));
+            let r = match self
+                .records
+                .iter()
+                .position(|r| r.expr == expr && r.scope == scope)
+            {
+                Some(i) => &mut self.records[i],
+                None => {
+                    self.records.push(Record {
+                        expr: expr.clone(),
+                        scope: scope.clone(),
+                        values: Vec::new(),
+                        dropped: 0,
+                    });
+                    self.records.last_mut().expect("just pushed")
+                }
+            };
+            if r.values.len() < RECORD_MAX {
+                r.values.push((number, value));
+            } else {
+                r.dropped += 1;
+            }
+        }
+    }
+
     fn prints(&self, game: &Game) -> Vec<Value> {
         self.plan
             .print
@@ -1918,7 +2091,7 @@ impl Playtest {
             let hook = "a game can also read nova.testing.invincible (true in such a run) where it takes damage";
             match &self.god {
                 Some(g) if g["pinned"].as_str().is_some_and(|p| !p.is_empty()) => self.notes.push(format!(
-                    "invincible: '{}' had {} put back to the most it has had after every frame ({} times it was lower); a hit that takes all of it in one frame still counts. {hook}",
+                    "invincible: '{}' kept {} from going down: {} writes that would have lowered it were refused as they were made, so no blow counted, however big. {hook}",
                     g["who"].as_str().unwrap_or("the walker"),
                     g["pinned"].as_str().unwrap_or(""),
                     g["restored"].as_u64().unwrap_or(0)
@@ -1929,6 +2102,26 @@ impl Playtest {
                 )),
                 None => self.warnings.push(format!(
                     "invincible found nobody to protect (\"who\" names the entity; left out, the one named or tagged hero or player). {hook}"
+                )),
+            }
+        }
+        for w in &self.watches {
+            let place = if w.scope == "the whole run" {
+                "for the whole run".to_string()
+            } else {
+                format!("on {}", w.scope)
+            };
+            if w.error {
+                continue; // (said as an error)
+            }
+            match &w.first {
+                None => self.notes.push(format!(
+                    "always `{}` ({place}) held after every one of the {} frames it was checked",
+                    w.cond, w.checked
+                )),
+                Some((first, step)) => self.warnings.push(format!(
+                    "always `{}` ({place}) was false on {} of the {} frames it was checked: first after frame {first} (in {step}), last after frame {}",
+                    w.cond, w.false_frames, w.checked, w.last
                 )),
             }
         }
@@ -1954,6 +2147,12 @@ impl Playtest {
             "captures": self.captures,
             "log": self.log,
             "sounds": self.sounds,
+            "records": self.records.iter().map(|r| json!({
+                "expr": r.expr,
+                "scope": r.scope,
+                "values": r.values.iter().map(|(f, v)| json!([f, v])).collect::<Vec<_>>(),
+                "dropped": r.dropped,
+            })).collect::<Vec<_>>(),
             "end": { "prints": self.prints(game), "state": game.snapshot(), "render": game.render_facts() },
             "end_box": end_box,
         });

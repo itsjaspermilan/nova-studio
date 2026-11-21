@@ -111,9 +111,16 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    | `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and swings at once |
    | `{ "repeat": 5, "until": "...", "steps": [ ... ] }` | a group of steps again and again, until something holds |
    | `"may_time_out": true` | on an `until`, `walk_to` or `fight` that is allowed to run out: no warning |
+   | `"always": "not nova.named('hero'):touching('solid')"` | on a step or group (or the whole call): must hold after every frame it plays; the first frame it does not is a failure with its frame and step, and the answer says how many frames it held on |
+   | `"record": "nova.named('hero').x"` | on a step or group (or the whole call): the value after every frame, a run of one value said once (`f12-f15 120 (x4)`): a hit-stop, a knock-back, health through a fight |
 
-   For the whole call: `"invincible": true` (the hero's `hp`, `health`, `hearts` or `lives` is put back after every frame,
-   so a clumsy route still reaches the end; `nova.testing.invincible` is true for damage code that is not a plain field),
+   A step's `tap`/`press` happen on its first two frames and its `lua` when it starts, never when its `until` comes true:
+   to press at a moment, end one step with the `until` and press in the next.
+
+   For the whole call: `"invincible": true` (the hero's `hp`, `health`, `hearts` or `lives` never goes down: a blow is
+   refused as it lands, even one bigger than all it has, so a clumsy route still reaches the end;
+   `nova.testing.invincible` is true for damage code that is not a plain field), `"each_frame": "<lua>"` (run before
+   every frame),
    `"stop_on_fail": true` (the route ends at the first step that fails, with a picture, instead of playing the rest from
    the wrong place), `"overlay": ["hitboxes", "solids", "names"]` (drawn on the pictures: why a press beside a chest did
    nothing), `"compare": "nova.shadows(nil)"` (the run again with that one difference: the share of pixels that changed

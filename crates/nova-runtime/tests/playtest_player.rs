@@ -253,7 +253,7 @@ fn fight_beats_what_is_tagged_and_says_how_it_went() {
     assert!(
         strings(&report["notes"])
             .iter()
-            .any(|n| n.contains("invincible: 'hero' had hp 3 put back")),
+            .any(|n| n.contains("invincible: 'hero' kept hp 3 from going down")),
         "{report}"
     );
     assert_eq!(strings(&report["warnings"]).len(), 0, "{report}");
@@ -281,6 +281,76 @@ fn invincible_keeps_a_clumsy_route_alive() {
     assert!(log(&report).iter().any(|l| l.starts_with("hurt")));
     assert_eq!(report["end"]["prints"][0]["value"], "3");
     assert_eq!(report["end"]["prints"][1]["value"], "true");
+
+    // one blow bigger than all it has, with the game's own "dead?" check right after it in the same call: refused as it
+    // lands (it used to be put back only after the frame, by which time the hero was gone)
+    let plan = r#"{ "start_scene": "arena", "invincible": true, "steps": [
+        { "lua": "local h = nova.named('hero'); h.hp = h.hp - 10; if h.hp <= 0 then nova.log('dead'); h:destroy() end" },
+        { "wait": 5 } ], "print": ["nova.named('hero').hp"] }"#;
+    let (report, _) = play(&mut game(), plan, "god-blow");
+    assert!(!log(&report).contains(&"dead".to_string()), "{report}");
+    assert_eq!(report["end"]["prints"][0]["value"], "3");
+    // and the hp can still go up
+    let plan = r#"{ "start_scene": "arena", "invincible": true, "steps": [ { "lua": "nova.named('hero').hp = 5" }, { "wait": 2 } ], "print": ["nova.named('hero').hp"] }"#;
+    let (report, _) = play(&mut game(), plan, "god-heal");
+    assert_eq!(report["end"]["prints"][0]["value"], "5");
+}
+
+/// `always` checks a condition after every frame (of the whole run, a step or a group) and says the first frame it was
+/// false on; `record` writes a value down after every frame.
+#[test]
+fn always_and_record_watch_every_frame() {
+    let plan = r#"{ "always": "nova.named('hero').x < 160",
+        "steps": [
+          { "hold": ["move_x=1"], "frames": 40, "record": "math.floor(nova.named('hero').x)", "always": "nova.named('hero').hp == 3" },
+          { "repeat": 2, "always": ["nova.named('hero').y >= 0"], "steps": [ { "wait": 3 } ] }
+        ] }"#;
+    let (report, _) = play(&mut game(), plan, "always");
+    let w = strings(&report["warnings"]);
+    // 120 units a second from x 100: past 160 after 30 frames of walking (the steps start at frame 2)
+    assert!(
+        w.iter().any(|w| w.contains("always `nova.named('hero').x < 160` (for the whole run) was false after frame 31, in step 1")),
+        "{w:?}"
+    );
+    assert!(
+        w.iter()
+            .any(|w| w.contains("was false on ") && w.contains("first after frame 31 (in step 1)")),
+        "{w:?}"
+    );
+    let notes = strings(&report["notes"]);
+    assert!(
+        notes.iter().any(|n| n.contains(
+            "always `nova.named('hero').hp == 3` (on step 1) held after every one of the 40 frames"
+        )),
+        "{notes:?}"
+    );
+    assert!(
+        notes.iter().any(|n| n.contains(
+            "always `nova.named('hero').y >= 0` (on step 2) held after every one of the 6 frames"
+        )),
+        "{notes:?}"
+    );
+    let rec = &report["records"][0];
+    assert_eq!(rec["scope"], "step 1");
+    let values = rec["values"].as_array().unwrap();
+    assert_eq!(values.len(), 40);
+    assert_eq!(values[0], serde_json::json!([2, "102"]));
+    assert_eq!(values[39][0], 41);
+    assert!(
+        values
+            .iter()
+            .all(|v| v[1].as_str().unwrap().parse::<i64>().is_ok())
+    );
+
+    // with stop_on_fail the route ends at the frame it was first false
+    let plan = r#"{ "stop_on_fail": true, "steps": [ { "hold": ["move_x=1"], "frames": 40, "always": "nova.named('hero').x < 130" }, { "lua": "nova.log('later')" } ] }"#;
+    let (report, _) = play(&mut game(), plan, "always-stop");
+    assert!(
+        report["stopped"].as_str().unwrap().contains("step 1"),
+        "{report}"
+    );
+    assert!(!log(&report).contains(&"later".to_string()));
+    assert_eq!(report["frames"], 16); // (x is 130 after frame 16)
 }
 
 #[test]
