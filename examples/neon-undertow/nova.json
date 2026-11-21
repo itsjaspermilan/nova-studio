@@ -1,7 +1,7 @@
 {
   "format": 1,
   "name": "Neon Undertow",
-  "ignore": ["tools", "build"],
+  "ignore": ["tools", "build", "steam"],
   "input": {
     "attack": ["pad:west", "key:KeyJ"],
     "interact": ["pad:south", "key:KeyE"],
