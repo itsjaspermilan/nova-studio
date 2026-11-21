@@ -1,9 +1,9 @@
--- The runner: a long coat, a lit visor, a baton, in the makers' detailed style (64x64 frames drawn at 1.5). The sheet is character_make's (every call is in tools/make.json), so every animation is
+-- The runner: a long coat, a lit visor, a baton, in the makers' detailed style (96x96 frames drawn at 1.5). The sheet is character_make's (every call is in tools/make.json), so every animation is
 -- tagged by name and direction ("walk_left", "attack_up") and this file only says which to play.
 local Runner = nova.entity {
   sprite = "runner", anim = "idle_down",
   tags = { "hero" },
-  pivot = { 0.5, 0.953 },
+  pivot = { 0.5, 0.906 },
   hitbox = { -7, -8, 14, 8 },
   sx = 1.5, sy = 1.5,
   speed = 190,
@@ -20,7 +20,7 @@ function Runner:swing()
   self.swinging = true
   self:play("attack_" .. self.facing, { restart = true })
   local w = WAY[self.facing]
-  local cx, cy = self.x + w[1] * 42, self.y - 30 + w[2] * 42
+  local cx, cy = self.x + w[1] * 48, self.y - 40 + w[2] * 48
   for _, e in ipairs(nova.all("enemy")) do
     if math.abs(e.x - cx) < 48 and math.abs(e.y - 18 - cy) < 48 then e:take_hit(w[1], w[2]) end
   end
