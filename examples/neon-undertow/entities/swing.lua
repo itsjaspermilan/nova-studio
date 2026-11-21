@@ -17,7 +17,8 @@ function Swing:create()
   self.hitbox = C.box(dir, self.area)
   self.depth = -self.y - 5
   self.hit = {}
-  if self.scale_arc and self.scale_arc ~= 1 then self.sx, self.sy = 1.5 * self.scale_arc, 1.5 * self.scale_arc end -- (Long Reach: the arc is drawn as long as its box)
+  -- (Long Reach: the runner already made self.area 30% longer and wider a card, and the crescent is drawn to the box, so nothing is scaled
+  -- here: scaling sx as well grew the box twice, to 1.69 times)
   self.heavy = self.arc == "heavy"
   self.rect = V.rect_of(self)                      -- (what is drawn is the box that hurts: taken from it now, before it is emptied)
   self:strike()

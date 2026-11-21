@@ -128,7 +128,15 @@ function H.pause_input(scene)
     nova.sound.play("menu_select", { volume = P.sfx.menu_select })
     nova.log("effects: " .. q)
   end
+  -- Quit: hold the ranged button for three quarters of a second (a tap does nothing, so it cannot happen by accident). The save is
+  -- written by nova.quit(); keys and upgrades are already kept, the run in hand is given up.
+  scene.quit_hold = nova.input.down("ranged") and (scene.quit_hold or 0) + 1 or 0
+  if scene.quit_hold >= H.QUIT_HOLD_FRAMES then
+    nova.log("quit from the pause page")
+    nova.quit()
+  end
 end
+H.QUIT_HOLD_FRAMES = 45
 
 local function pause_page(scene)
   nova.ui.rect(0, 0, W, HH, { 5, 6, 15, 245 })
@@ -170,6 +178,7 @@ local function pause_page(scene)
   local x = 24
   x = H.prompt(x, 500, "start", "resume")
   x = H.prompt(x, 500, "interact", "effects")
+  x = H.prompt(x, 500, "ranged", (scene.quit_hold or 0) > 0 and ("quitting" .. string.rep(".", 1 + math.floor((scene.quit_hold or 0) / 12))) or "hold: quit game")
   if pages > 1 then Ty.text(x + 6, 503, "left / right: page", "body", { color = { 210, 218, 245, 255 } }) end
 end
 
