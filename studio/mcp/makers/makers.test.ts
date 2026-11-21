@@ -10,7 +10,9 @@ import { parseSheetJson } from "../../src/lib/sprite-doc";
 import { parseTileset } from "../../src/lib/tileset";
 import { decodePng } from "../draw";
 import { call, EXAMPLES } from "../server";
-import { CITY_HATS, CITY_ITEMS, CITY_OUTFITS } from "./character";
+import { CITY_HATS, CITY_ITEMS, CITY_OUTFITS, HATS, ITEMS, OUTFITS } from "./character";
+import { HD_ANIMS, HD_ARCHETYPES, HD_FRAME, HD_HATS_MORE, HD_HITBOX, HD_ITEMS_MORE, HD_OUTFITS_MORE, HD_PIVOT } from "./character-hd";
+import { MIMIC_X, MIMIC_Y } from "./creatures-hd";
 import { CITY_CREATURE_NAMES, CLASSIC_CREATURES } from "./creature";
 import { CITY_ITEM_NAMES, CLASSIC_ITEM_NAMES } from "./items";
 import { CITY_PALETTES, PALETTE_NAMES, paletteOf } from "./palettes";
@@ -416,19 +418,19 @@ describe("the city kit", () => {
   for (const style of ["classic", "detailed"]) {
     it(`gives every city outfit, headgear and item all its animations in the ${style} style`, () => {
       const hd = style === "detailed";
-      const per = hd ? ["idle", "walk", "attack", "hurt", "roll"] : ["idle", "walk", "attack", "hurt"];
-      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 4 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
+      const per = hd ? HD_ANIMS.map((x) => x[0]) : ["idle", "walk", "attack", "hurt"];
+      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
       const parts = [...CITY_OUTFITS.map((o) => ({ outfit: o })), ...CITY_HATS.map((h) => ({ hat: h })), ...CITY_ITEMS.map((i) => ({ item: i }))];
       for (const part of parts) {
         use("character_make", { name: "c", palette: "gutter market", style, glow_color: "2", ...part });
         const json = sheet("c");
         expect(json.tags!.map((x) => x.name), JSON.stringify(part)).toEqual(CITY_DIRS.flatMap((d) => per.map((p) => `${p}_${d}`)));
         for (const tag of json.tags!) expect(tag.to - tag.from + 1, tag.name).toBe(counts[tag.name.split("_")[0]!]);
-        expect(json.frame_width).toBe(hd ? 64 : 32);
+        expect(json.frame_width).toBe(hd ? 96 : 32);
       }
       // a baton's swing leaves an arc in the glow colour (accent 2 here)
       use("character_make", { name: "b", palette: "gutter market", style, item: "baton", glow_color: "2" });
-      const png = decodePng(bytes("sprites/b.png")), f = hd ? 64 : 32, attack = sheet("b").tags!.find((x) => x.name === "attack_right")!;
+      const png = decodePng(bytes("sprites/b.png")), f = hd ? 96 : 32, attack = sheet("b").tags!.find((x) => x.name === "attack_right")!;
       const cyanish = (n: number) => {
         let found = false;
         for (let y = 0; y < f && !found; y++) for (let x = 0; x < f; x++) {
@@ -463,11 +465,11 @@ describe("the city kit", () => {
         expect(white, `${kind}'s hit frame is white`).toBe(firm);
       }
       // shut, the mimic is the vending machine tile, pixel for pixel
-      const t = style === "detailed" ? 32 : 16, f = style === "detailed" ? 64 : 32;
+      const t = style === "detailed" ? 32 : 16, [mx, my] = style === "detailed" ? [MIMIC_X, MIMIC_Y] : [8, 0];
       use("tileset_make", { name: "vm", palette: "gutter market", style, terrains: [], props: ["vending_machine"] });
       const tiles = decodePng(bytes("sprites/vm.png")), mimic = decodePng(bytes("sprites/vending_mimic.png"));
       for (let y = 0; y < 2 * t; y++) for (let x = 0; x < t; x++) {
-        const tile = y < t ? 1 : 0, o = ((y % t) * tiles.w + tile * t + x) * 4, m = (y * mimic.w + (f - t) / 2 + x) * 4;
+        const tile = y < t ? 1 : 0, o = ((y % t) * tiles.w + tile * t + x) * 4, m = ((y + my) * mimic.w + mx + x) * 4;
         expect([...mimic.data.subarray(m, m + 4)], `pixel ${x}, ${y}`).toEqual([...tiles.data.subarray(o, o + 4)]);
       }
     }, 180_000);
@@ -486,4 +488,67 @@ describe("the city kit", () => {
       expect(() => use("items_make", { name: "x", items: ["laser"] })).toThrow(/'laser', which the maker does not have/);
     }, 60_000);
   }
+});
+
+describe("the detailed people", () => {
+  /// One frame of a sheet as its own pixels.
+  const frameOf = (png: { w: number; data: Uint8Array }, json: { columns?: number; frame_width: number; frame_height: number }, n: number) => {
+    const c = json.columns!, fw = json.frame_width, fh = json.frame_height, out = new Uint8Array(fw * fh * 4);
+    for (let y = 0; y < fh; y++) out.set(png.data.subarray(((Math.floor(n / c) * fh + y) * png.w + (n % c) * fw) * 4, ((Math.floor(n / c) * fh + y) * png.w + (n % c) * fw + fw) * 4), y * fw * 4);
+    return out;
+  };
+  /// The share of a frame's edge pixels (solid, beside see-through) that are not dark: an outline is closed when it is
+  /// small. A little light is allowed: the glow round a lit baton or visor spills over the outline on purpose.
+  const lightEdge = (f: Uint8Array, w: number, h: number) => {
+    let edge = 0, light = 0;
+    const a = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : f[(y * w + x) * 4 + 3]!);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (a(x, y) < 250 || ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => a(x + dx!, y + dy!) < 60)) continue;
+      edge++;
+      const o = (y * w + x) * 4;
+      if (Math.max(f[o]!, f[o + 1]!, f[o + 2]!) > 100) light++;
+    }
+    return edge ? light / edge : 0;
+  };
+
+  it("makes the runner and every enemy archetype: every animation, the frame, the feet's box, closed outlines", () => {
+    const counts = Object.fromEntries(HD_ANIMS.map(([n, c]) => [n, c]));
+    expect(counts).toEqual({ idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2 });
+    for (const [name, recipe] of Object.entries(HD_ARCHETYPES)) {
+      const said = text(use("character_make", { name, style: "detailed", ...recipe }));
+      expect(said, name).toContain("hitbox = { -7, -8, 14, 8 }");
+      const json = sheet(name);
+      expect(json.frame_width, name).toBe(HD_FRAME);
+      expect(json.frame_height, name).toBe(HD_FRAME);
+      expect(json.hitbox, name).toEqual(HD_HITBOX);
+      expect(json.pivot, name).toEqual(HD_PIVOT);
+      expect(json.tags!.map((t) => t.name), name).toEqual(CITY_DIRS.flatMap((d) => HD_ANIMS.map(([a]) => `${a}_${d}`)));
+      for (const t of json.tags!) expect(t.to - t.from + 1, `${name} ${t.name}`).toBe(counts[t.name.split("_")[0]!]);
+      expect(json.frames, name).toBe(4 * 23);
+      if (recipe.hologram) continue; // light, not a body: no outline by design
+      const png = decodePng(bytes(`sprites/${name}.png`));
+      // the frames without light laid over the edge (an arc, a streak, the tell's flash): idle, walk, hurt
+      for (const t of json.tags!.filter((x) => /^(idle|walk|hurt)_/.test(x.name))) for (let n = t.from; n <= t.to; n++) {
+        expect(lightEdge(frameOf(png, json, n), HD_FRAME, HD_FRAME), `${name} frame ${n} (${t.name})`).toBeLessThan(0.06);
+      }
+      // the figure stands in its frame: something solid in the middle, nothing touching the frame's edge
+      const idle = frameOf(png, json, 0);
+      let edgeHit = 0;
+      for (let k = 0; k < HD_FRAME; k++) for (const [x, y] of [[k, 0], [k, HD_FRAME - 1], [0, k], [HD_FRAME - 1, k]]) if (idle[(y! * HD_FRAME + x!) * 4 + 3]! > 0) edgeHit++;
+      expect(edgeHit, `${name} touches its frame's edge`).toBe(0);
+    }
+  }, 240_000);
+
+  it("draws every part name of both styles, and says what is wrong", () => {
+    for (const part of [...OUTFITS.map((o) => ({ outfit: o })), ...HD_OUTFITS_MORE.map((o) => ({ outfit: o })), ...HATS.map((h) => ({ hat: h })), ...HD_HATS_MORE.map((h) => ({ hat: h })), ...ITEMS.map((i) => ({ item: i })), ...HD_ITEMS_MORE.map((i) => ({ item: i }))]) {
+      use("character_make", { name: "p", style: "detailed", palette: "gutter market", ...part });
+      expect(sheet("p").frames, JSON.stringify(part)).toBe(92);
+    }
+    use("character_make", { name: "v", style: "detailed", hat: "visor", visor: "down", arms: 4, stance: "proud", pose: "wide", expression: "smile", skin: "chrome" });
+    expect(() => use("character_make", { name: "x", style: "detailed", arms: 3 })).toThrow(/"arms" is 2, 4, 6/);
+    expect(() => use("character_make", { name: "x", style: "detailed", stance: "slouch" })).toThrow(/"stance" is one of upright/);
+    expect(() => use("character_make", { name: "x", style: "detailed", expression: "sad" })).toThrow(/"expression" is one of/);
+    // the classic style keeps its own lists
+    expect(() => use("character_make", { name: "x", outfit: "bellhop" })).toThrow(/"outfit" is one of/);
+  }, 240_000);
 });

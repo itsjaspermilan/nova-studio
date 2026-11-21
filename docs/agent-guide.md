@@ -144,8 +144,11 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
 `creature_make` and `items_make` one of the city palettes (`"gutter market"`, `"bloom labs"`, `"hollow line"`, `"spire"`)
 and the same `"style": "detailed"`. Each palette has two accents; only what matters glows in them (`glow_color` 1 or 2 picks
 which for a person or a creature). The detailed style has twice the pixels at the same size on the screen, so paint its
-layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox); a detailed
-person has `roll_<dir>` besides idle, walk, attack and hurt, and every city creature a `tell` frame to show before it hurts.
+layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox). A detailed
+person is a bold cartoon a third bigger than a tile row (96x96 frames, pivot `{ 0.5, 0.906 }`, the feet's hitbox `{ -7, -8, 14, 8 }`),
+with a face that changes, `roll_<dir>` and `tell_<dir>` besides idle, walk, attack and hurt; `stance`, `pose` and `expression`
+give each enemy its own silhouette (Neon Undertow's cast is `HD_ARCHETYPES` in `makers/character-hd.ts`). Every city creature
+has a `tell` frame to show before it hurts.
 `examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
 `play` at game scale on a dark street, not in the sheet.
 
