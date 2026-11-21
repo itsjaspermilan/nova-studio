@@ -297,6 +297,7 @@ function Title:main_menu()
     { "button", "GARAGE", id = "garage", h = 40 },
     { "button", "HOW TO PLAY", id = "howto", h = 40 },
     { "button", "OPTIONS", id = "options", h = 40 },
+    { "button", "QUIT", id = "quit", h = 40 },
   }
   ui.hints({ { "pad_a", "Select" } })
   if r.pressed then
@@ -307,6 +308,8 @@ function Title:main_menu()
       self:open_track()
     elseif id == "garage" then
       self:open_garage("menu")
+    elseif id == "quit" then
+      nova.quit() -- (saves and closes the game; on Android it does nothing: the system closes apps there)
     else
       self:go(id)
     end
