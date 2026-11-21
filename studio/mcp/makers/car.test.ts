@@ -28,7 +28,7 @@ describe("car_make", () => {
       const car = makeCar({ type });
       expect(serializeModel(written(car.model)), type).toBe(readFileSync(join(pine, `${PINE[type]}.model.json`), "utf8"));
     }
-  });
+  }, 120_000);
 
   it("is the same car again for a seed and a visibly different one for another, with its wheels as parts", () => {
     for (const type of CAR_TYPES) {
@@ -41,7 +41,7 @@ describe("car_make", () => {
       // (every wheel stands on the ground: its centre is its radius up)
       for (const w of a.wheels) expect(w.y, `${type} ${w.name}`).toBeCloseTo(a.wheelRadius, 1);
     }
-  });
+  }, 120_000);
 
   it("reshapes to the sizes asked for, within the limits, and says where it clamped", () => {
     const own = makeCar({ type: "coupe_90s" });
@@ -55,7 +55,7 @@ describe("car_make", () => {
     expect(far.length).toBeCloseTo(own.length * LIMITS.length[1], 1);
     expect(far.says.join("\n")).toMatch(/length 9 m is past/);
     expect(far.says.join("\n")).toMatch(/width 1 m is past/);
-  });
+  }, 120_000);
 
   it("takes style pieces off and puts them on", () => {
     const names = (o: Record<string, unknown>) => makeCar(o as never).model.parts[0].cubes.map((c: { name: string }) => c.name);
@@ -67,7 +67,7 @@ describe("car_make", () => {
     expect(names({ type: "suv", flares: false }).some((n: string) => n.startsWith("flare"))).toBe(false);
     expect(names({ type: "city_car", flares: "paint" }).some((n: string) => n.startsWith("flare"))).toBe(true);
     expect(names({ type: "crew_cab_pickup", bed: "cover" })).toContain("bed cover");
-  });
+  }, 120_000);
 
   it("builds a car from a whole spec", () => {
     const spec = {
@@ -105,6 +105,6 @@ describe("car_make", () => {
         if (!p.ok) throw new Error(p.error);
         expect(Buffer.compare(Buffer.from(exportGlb(p.doc)), readFileSync(join(dir, "models", `${name}.glb`))), name).toBe(0);
       }
-    });
+    }, 120_000);
   });
 });

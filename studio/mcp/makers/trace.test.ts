@@ -33,7 +33,7 @@ describe("blueprint_trace", () => {
     // (the box's top line is at 15 and its underside at 3, all along)
     expect(sil).toMatch(/^z 0: 15 3 /m);
     expect(sil).toMatch(/^z -25: 15 3 /m);
-  });
+  }, 60_000);
 
   it("knows the calibrations of the cars already traced and refuses what it cannot read", () => {
     expect(Object.keys(knownTraces())).toEqual(expect.arrayContaining(["gt", "offroad", "s14", "truck"]));

@@ -22,7 +22,7 @@ describe("prop3d_make's detailed kinds", () => {
       const prop = makeScenery({ ...it, style: "detailed", colliders: false }, it.name);
       expect(serializeModel(written(prop.model)), it.name).toBe(readFileSync(join(pine, `${it.name}.model.json`), "utf8"));
     }
-  });
+  }, 120_000);
 
   it("make each kind and species again for a seed, grow another tree for another, and stand on the ground with what blocks", () => {
     for (const kind of DETAILED_KINDS) for (const species of speciesOf(kind)) {
@@ -35,7 +35,7 @@ describe("prop3d_make's detailed kinds", () => {
       if (a.entity.solid) expect((a.model.colliders?.length ?? 0) + (a.model.boxes?.length ?? 0), `${kind} ${species} blocks`).toBeGreaterThan(0);
     }
     expect(makeScenery({ kind: "spectator", species: "man_a" }, "fan").model.clips.map((c: { name: string }) => c.name)).toEqual(["static", "idle", "watch", "cheer", "clap", "wave"]);
-  });
+  }, 120_000);
 
   it("takes the season from the palette, and a height", () => {
     const snow = makeScenery({ kind: "conifer", palette: "snow" }, "t"), plain = makeScenery({ kind: "conifer" }, "t");

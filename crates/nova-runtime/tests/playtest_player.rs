@@ -717,14 +717,24 @@ fn the_racing_starter_drives_a_lap() {
     let prints = &report["end"]["prints"];
     assert_eq!(prints[0]["value"], "1", "{report}");
     let best: f64 = prints[1]["value"].as_str().unwrap().parse().unwrap();
-    assert!((12.0..40.0).contains(&best), "a lap from a standing start: {best} s");
+    assert!(
+        (12.0..40.0).contains(&best),
+        "a lap from a standing start: {best} s"
+    );
     let gear: f64 = prints[2]["value"].as_str().unwrap().parse().unwrap();
     assert!(gear >= 4.0, "up through the gears: {gear}");
     let log = log(&report);
     assert!(!log.iter().any(|l| l.contains("off the road")), "{log:?}");
     assert!(log.iter().any(|l| l.starts_with("lap 1 in")), "{log:?}");
     let sounds = report["sounds"].to_string();
-    for s in ["eng_car_1", "eng_car_off_1", "eng_car_4", "tyre_road", "wind_loop", "turbo_loop"] {
+    for s in [
+        "eng_car_1",
+        "eng_car_off_1",
+        "eng_car_4",
+        "tyre_road",
+        "wind_loop",
+        "turbo_loop",
+    ] {
         assert!(sounds.contains(s), "{s} never started: {sounds}");
     }
 }
