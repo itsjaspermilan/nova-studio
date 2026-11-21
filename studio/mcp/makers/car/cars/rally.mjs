@@ -2,10 +2,10 @@
 // rally.trace.json). 4.42 m long, 1.77 m over the arches, 1.27 m high, wheelbase 2.53 m as drawn. One smooth body from buildBody; glass, lamps, grille,
 // vents, gaps and the livery's two flashes are cut-outs; the boxy bolted-on arches, bumpers, ducktail, mirror, aerial, flaps and exhaust are separate pieces.
 // No lettering, numbers or badges. Units 1/16 m, y up from the ground, nose along +z.
-import { CHROME, DARK, GLASS, PAINT, PLASTIC, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, curve, cyl, ellipse, fillet, glassOf, hexa, inset, lattice, mesh, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, stroke, wheel, rayHit, boxArch, sweptBar } from "../carkit.mjs";
+import { CHROME, DARK, GLASS, PAINT, PLASTIC, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, curve, cyl, ellipse, fillet, glassOf, hexa, inset, lattice, mesh, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, stroke, wheel, rayHit, boxArch, sweptBar } from "../kit.mjs";
 
 
-function rally(paint = "#e9eaec", flashA = "#d2342c", flashB = "#1d2f5a") {
+export function rally(paint = "#e9eaec", flashA = "#d2342c", flashB = "#1d2f5a") {
   const gap = shade(paint, 0.22), R = 4.6, track = 12.0, wheelZ = [21.4, -19.0];
   const spec = {
     paint, midY: 9,
@@ -133,13 +133,7 @@ function rally(paint = "#e9eaec", flashA = "#d2342c", flashB = "#1d2f5a") {
   // small deep-dish rally wheels: a wide lip, a ring of holes
   const holes = Array.from({ length: 10 }, (_, k) => ellipse(Math.sin((k / 10) * 2 * Math.PI) * 1.72, Math.cos((k / 10) * 2 * Math.PI) * 1.72, 0.27, 0.27, 8));
   const wheelOf = (sx) => wheel({ R, width: 3.9, rimR: 2.8, rim: "#dfe2e6", rimMaterial: { metallic: 0.35, roughness: 0.4 }, windows: holes, spokeDepth: 0.3, hubR: 0.27, nuts: 5, nutAt: 1.35, dish: 0.85, faceAt: 0.74, cap: "#9aa0aa", discR: 0.62 }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.5 / 16), y: r2(9.5 / 16 - 0.06), x: r2(8.7 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.5 / 16), y: r2(9.5 / 16 - 0.06), x: r2(8.7 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_rally: () => rally(),
-  car_rally_blue: () => rally("#1f4fa8", "#f2f3f5", "#f0c02a"),
-  car_rally_yellow: () => rally("#f4c41c", "#16171b", "#f2f3f5"),
-  car_rally_green: () => rally("#1f5a3c", "#f2f3f5", "#d8a425"),
-};
 void [DARK, GLASS, PLASTIC];

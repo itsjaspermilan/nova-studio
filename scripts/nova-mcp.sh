@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=build/nova-mcp.mjs
-if [ ! -f "$out" ] || [ -n "$(find studio/mcp studio/src/lib -newer "$out" -name '*.ts' 2>/dev/null | head -1)" ]; then
+if [ ! -f "$out" ] || [ -n "$(find studio/mcp studio/src/lib -newer "$out" \( -name '*.ts' -o -name '*.mjs' \) 2>/dev/null | head -1)" ]; then
   mkdir -p build
   scripts/env.sh studio/node_modules/.bin/rolldown studio/mcp/server.ts --file "$out" --format esm --platform node >&2
 fi

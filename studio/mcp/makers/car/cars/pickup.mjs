@@ -2,10 +2,10 @@
 // (calibration in pickup.trace.json: every view 14.93 px per 1/16 m). The nose, the cab and the bed's outer skin are one surface from buildBody; the top line
 // steps down from the roof to the bed rail. The load bed is a real hollow: a top-view cut-out takes the bed's top sheet away and stands walls down to the floor
 // (it is the LAST cut, so no other view's cut lands on those walls), with a floor piece and wheel tubs inside. No badges or lettering.
-import { DARK, TRIM, CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, fillet, flare, glassOf, hexa, inset, mesh, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, hexBars, inPoly } from "../carkit.mjs";
+import { DARK, TRIM, CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, fillet, flare, glassOf, hexa, inset, mesh, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, hexBars, inPoly } from "../kit.mjs";
 
 
-function pickup(paint = "#c4541f") {
+export function pickup(paint = "#c4541f") {
   const gap = shade(paint, 0.25), R = 6.8, track = 13.55, wheelZ = [31.3, -27.9], liner = "#1b1c20";
   const spec = {
     paint, midY: 15,
@@ -143,10 +143,7 @@ function pickup(paint = "#c4541f") {
   cubes.push(cyl("tail pipe", 11.6, 7.0, -41.9, 0.7, 3.8, "z", "#6f747c", { segments: 14, material: STEEL }), cyl("tail pipe bore", 11.6, 7.0, -43.75, 0.54, 0.14, "z", "#050506", { segments: 12, material: { metallic: 0, roughness: 1 } }));
   const wheelSpec = { R, width: 4.9, rimR: 3.95, rim: "#757a83", rimMaterial: { metallic: 0.6, roughness: 0.38 }, windows: spokeWindows(6, 1.55, 3.45, 0.5, 0.8), spokeDepth: 0.6, hubR: 0.26, nuts: 6, nutAt: 1.5, dish: 0.4, cap: "#8f959f", tread: 22, faceAt: 0.62, discR: 0.66 };
   const model = assemble({ cubes, pivot: R, wheelZ, track, wheelOf: (sx) => wheel(wheelSpec, sx), R });
-  return { model, tail: { z: r2(-46.0 / 16), y: r2(17.7 / 16 - 0.06), x: r2(14.2 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model, tail: { z: r2(-46.0 / 16), y: r2(17.7 / 16 - 0.06), x: r2(14.2 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_pickup: () => pickup(), car_pickup_white: () => pickup("#e4e5e2"), car_pickup_black: () => pickup("#1d1f23"), car_pickup_blue: () => pickup("#2a4d86"),
-};
 void [STEEL, rounded];

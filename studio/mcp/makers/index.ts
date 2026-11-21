@@ -13,6 +13,7 @@ import { makeSong, MOOD_NAMES, MOODS } from "./song";
 import { MATERIALS, PALETTE_NAMES } from "./palettes";
 import { makeTileset, PROP_NAMES, TERRAIN_NAMES, TILE_SIZES } from "./tileset";
 import { register3d } from "./index3d";
+import { registerRacing } from "./index-racing";
 import { STYLE_OPTION } from "./style";
 import { ARM_COUNTS, EXPRESSIONS, HD_HATS_MORE, HD_ITEMS_MORE, HD_OUTFITS_MORE, POSES, STANCES, VISORS } from "./character-hd";
 
@@ -177,9 +178,11 @@ export function registerMakers(h: Host): Record<string, Args> {
   );
 
   const three = register3d(h, PALETTE, SEED);
+  const racing = registerRacing(h, SEED);
 
   return {
     ...three,
+    ...racing,
     song_make: { name: "village", mood: "calm village" },
     tileset_make: { name: "tiles", palette: "bright meadow" },
     character_make: { name: "hero", hair: "short", hair_color: "brown", outfit: "tunic", outfit_color: "green", item: "sword" },

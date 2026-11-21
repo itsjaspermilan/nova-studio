@@ -1,10 +1,10 @@
 // `car_hatch_r`: a modern hot hatch with a big rear wing (4560 x 1875 x 1435 mm, wheelbase 2700, track 1600), from build/blueprints/hatch_r.png (front, side
 // and plan views; no rear view, so the tail is designed from the side and plan). Each view calibrated on its own dimension line (hatch_r.trace.json).
 // One body surface from buildBody, everything cut into the skin by the Cut-out modifier, separate shapes only for real separate pieces. No badges.
-import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, archLiner, assemble, bar, box, buildBody, ellipse, hexa, inset, lattice, mesh, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, slab, blade } from "../carkit.mjs";
+import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, archLiner, assemble, bar, box, buildBody, ellipse, hexa, inset, lattice, mesh, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, slab, blade } from "../kit.mjs";
 
 
-function hatchR(paint = "#e6e7e9") {
+export function hatchR(paint = "#e6e7e9") {
   const gap = shade(paint, 0.22), R = 5.15, track = 12.8, wheelZ = [21.5, -21.7], BLACK = "#121317";
   const spec = {
     paint,
@@ -124,10 +124,7 @@ function hatchR(paint = "#e6e7e9") {
     cubes.push(hexa(`wing stand ${sx}`, [[xt, 20.75, -31.4], [xt, 21.35, -34.8], [xb, yB, -30.4], [xb, yA, -27.4]], [[xt + t, 20.75, -31.4], [xt + t, 21.35, -34.8], [xb + t, yB, -30.4], [xb + t, yA, -27.4]], BLACK, { material: { metallic: 0.3, roughness: 0.3 } }));
   }
   const wheelOf = (sx) => wheel({ R, width: 3.9, rimR: 4.1, rim: "#7b808a", rimMaterial: { metallic: 0.7, roughness: 0.35 }, windows: spokeWindows(10, 1.5, 3.6, 0.5, 0.78), spokeDepth: 0.5, caliper: "#c8102e", hubR: 0.2, nuts: 5, nutAt: 1.55, dish: 0.3, cap: "#55585f" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-35.3 / 16), y: r2(15.4 / 16 - 0.06), x: r2(10.5 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-35.3 / 16), y: r2(15.4 / 16 - 0.06), x: r2(10.5 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_hatch_r: () => hatchR(), car_hatch_r_red: () => hatchR("#b3202a"), car_hatch_r_blue: () => hatchR("#1d4fa8"), car_hatch_r_grey: () => hatchR("#4a4e56"),
-};
 void [PAINT, PLASTIC];

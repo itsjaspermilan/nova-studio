@@ -21,7 +21,7 @@ export const RECTS = {
 };
 // Every later car keeps its own numbers beside its model script: scripts/rally/cars/<car>.trace.json = { "cal": { side, top, front, rear }, "rects": { ... } }
 // (a view the drawing lacks is left out).
-const dir = new URL("../rally/cars/", import.meta.url);
+const dir = new URL("../../studio/mcp/makers/car/cars/", import.meta.url);
 if (existsSync(dir)) for (const f of readdirSync(dir).filter((f) => f.endsWith(".trace.json"))) {
   const t = JSON.parse(readFileSync(new URL(f, dir), "utf8")), car = f.replace(".trace.json", "");
   CAL[car] = t.cal; RECTS[car] = t.rects ?? {};

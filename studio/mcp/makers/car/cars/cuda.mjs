@@ -1,11 +1,11 @@
 // `car_muscle`: a late-1960s American fastback muscle car, modelled from build/blueprints/cuda.png (calibration in cuda.trace.json) the way car_gt was:
 // one smooth body from buildBody, everything cut into the skin by the Cut-out modifier, bumpers / mirror / wheels / wipers / exhaust as real separate pieces.
 // Numbers are 1/16 m, y up from the ground, nose along +z. Run:  scripts/env.sh node scripts/rally/blueprint-cars.mjs car_muscle
-import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, assemble, bar, box, buildBody, cyl, ellipse, glassOf, inset, lattice, mesh, mirrorX, path, r2, rect, rounded, rrect, shade, stroke, wheel, archE } from "../carkit.mjs";
+import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, assemble, bar, box, buildBody, cyl, ellipse, glassOf, inset, lattice, mesh, mirrorX, path, r2, rect, rounded, rrect, shade, stroke, wheel, archE } from "../kit.mjs";
 
 const lo = (sx, a, b) => [Math.min(sx * a, sx * b), Math.max(sx * a, sx * b)];
 
-function cuda(paint = "#e0701b") {
+export function cuda(paint = "#e0701b") {
   const gap = shade(paint, 0.25), R = 5.35, track = 11.8, wheelZ = [24.7, -20.2];
   const spec = {
     paint, midY: 11,
@@ -98,13 +98,7 @@ function cuda(paint = "#e0701b") {
   for (const [x0, z0, x1, z1] of [[1.0, 12.4, 9.6, 11.0], [-1.0, 12.4, -9.6, 11.0]]) cubes.push(bar("wiper", onTop(x0, z0), onTop(x1, z1), 0.42, 0.22, "#0b0c0e", { material: RUBBER }, [0, 0.78, 0.63]));
   // steel wheels with a chrome hub cap
   const wheelOf = (sx) => wheel({ R, width: 3.2, rimR: 3.6, rim: "#8d9199", rimMaterial: STEEL, windows: [], hubR: 0.55, nuts: 5, nutAt: 1.2, dish: 0.35, cap: "#c9cdd3", nut: "#8d9199" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-38.4 / 16), y: r2(13.0 / 16 - 0.06), x: r2(9.5 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-38.4 / 16), y: r2(13.0 / 16 - 0.06), x: r2(9.5 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_muscle: () => cuda(),
-  car_muscle_blue: () => cuda("#2b4f9c"),
-  car_muscle_green: () => cuda("#3f6b3a"),
-  car_muscle_white: () => cuda("#e6e2d6"),
-};
 void [DARK, GLASS, mesh, rect];

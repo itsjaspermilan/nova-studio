@@ -1,9 +1,9 @@
 // `car_city`: a tiny rounded five-door city car of the late 1990s (3495 x 1495 x 1485 mm, wheelbase 2340), traced from build/blueprints/city.png (numbers in
 // city.trace.json). One smooth body from buildBody; everything cut into the skin is a Cut-out; mirrors, wheels, wipers and the exhaust are separate pieces.
 // No badges or lettering (the drawing's badges are left out; the plates are blank).
-import { CHROME, DARK, PAINT, PLASTIC, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, inset, lattice, mirrorX, path, pebble, hexa, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../carkit.mjs";
+import { CHROME, DARK, PAINT, PLASTIC, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, inset, lattice, mirrorX, path, pebble, hexa, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../kit.mjs";
 
-function city(paint = "#e8b923") {
+export function city(paint = "#e8b923") {
   const gap = shade(paint, 0.3), bump = "#80838a", R = 4.35, track = 10.4, wheelZ = [17.4, -20.2];
   const spec = {
     paint, midY: 10,
@@ -102,13 +102,7 @@ function city(paint = "#e8b923") {
   // exhaust tip under the rear bumper
   cubes.push(cyl("exhaust", -6.9, 4.7, -27.0, 0.55, 2.0, "z", "#9aa0a8", { segments: 14, material: CHROME }));
   const wheelOf = (sx) => wheel({ R, width: 2.9, rimR: 2.75, rim: "#8f949c", rimMaterial: { metallic: 0.3, roughness: 0.5 }, windows: spokeWindows(4, 1.15, 2.5, 0.55, 0.78, 0.3), spokeDepth: 0.4, hubR: 0.26, nuts: 4, nutAt: 1.9, dish: 0.35, cap: "#b5bac2", discR: 0.6 }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-26.6 / 16), y: r2(13.4 / 16 - 0.06), x: r2(9.0 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-26.6 / 16), y: r2(13.4 / 16 - 0.06), x: r2(9.0 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_city: () => city(),
-  car_city_blue: () => city("#2f6fc4"),
-  car_city_red: () => city("#c4302b"),
-  car_city_white: () => city("#e6e8e8"),
-};
 void [PLASTIC, STEEL, rect, ellipse];

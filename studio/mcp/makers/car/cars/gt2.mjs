@@ -1,7 +1,7 @@
 // `car_gt2`: a low mid-engined GT race car (about 4.63 x 2.07 x 1.12 m, wheelbase 2.85 m), traced from build/blueprints/gt2.png (calibration in gt2.trace.json).
 // One smooth body from carkit's buildBody; the one-piece canopy, lamps, intakes, louvres, vents and wheel openings are cut-outs; the splitter, wing on its
 // swan necks, diffuser fins, mirrors, wiper and wheels are separate pieces. No lettering, numbers or badges.
-import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, archLiner, assemble, bar, box, buildBody, ellipse, hexa, inset, lattice, path, pebble, r2, rounded, rrect, shade, curve, mesh, smoothstep, spokeWindows, stroke, wheel, loft } from "../carkit.mjs";
+import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, archLiner, assemble, bar, box, buildBody, ellipse, hexa, inset, lattice, path, pebble, r2, rounded, rrect, shade, curve, mesh, smoothstep, spokeWindows, stroke, wheel, loft } from "../kit.mjs";
 
 const CARBON = "#14151a", MATT = { metallic: 0, roughness: 0.85 };
 
@@ -31,7 +31,7 @@ function facet(body, zs) {
   }
 }
 
-function gt2(paint = "#e6e8ea") {
+export function gt2(paint = "#e6e8ea") {
   const gap = shade(paint, 0.25), R = 5.5, track = 13.5, wheelZ = [21.6, -24.0];
   const spec = {
     paint, midY: 7,
@@ -126,10 +126,7 @@ function gt2(paint = "#e6e8ea") {
   const onTop = (x, z, lift = 0.12) => [x, at.top(x, z) + lift, z];
   cubes.push(bar("wiper", onTop(0.3, 19.2), onTop(4.6, 15.4), 0.4, 0.2, "#0b0c0e", { material: RUBBER }, [0, 0.8, 0.6]));
   const wheelOf = (sx) => wheel({ R, width: 4.9, rimR: 3.9, rim: "#2c2e34", rimMaterial: { metallic: 0.7, roughness: 0.35 }, windows: spokeWindows(10, 1.5, 3.4, 0.4, 0.7), spokeDepth: 0.55, caliper: "#c8322b", hubR: 0.2, nuts: 1, nutAt: 0, dish: 0.35, cap: "#8f959f" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-36.4 / 16), y: r2(7.8 / 16 - 0.06), x: 0 } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-36.4 / 16), y: r2(7.8 / 16 - 0.06), x: 0 } };
 }
 
-export const CARS = {
-  car_gt2: () => gt2(), car_gt2_orange: () => gt2("#e2641c"), car_gt2_blue: () => gt2("#1c4fa8"), car_gt2_black: () => gt2("#1d1f24"),
-};
 void [DARK, PAINT];

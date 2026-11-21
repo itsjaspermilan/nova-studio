@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { GAME, withServer } from "./mcp.mjs";
-import { mix, r2, shade } from "./carkit.mjs";
+import { mix, r2, shade } from "../../studio/mcp/makers/car/kit.mjs";
 
 // ---- the kit: shapes built from points in metres -----------------------------------------------------------------------------------------------------------
 const U = 16; // model units in a metre (the model's scale is 1/16)

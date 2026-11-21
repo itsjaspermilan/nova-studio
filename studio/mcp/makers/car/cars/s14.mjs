@@ -1,8 +1,8 @@
 // A mid-1990s Japanese sports coupe (4560 x 1730 x 1295 mm, wheelbase 2525, drawing build/blueprints/s14.png), made like car_gt: one smooth body from buildBody,
 // everything cut into its skin with the Cut-out modifier, only mirrors, spoiler, wheels, wipers, exhausts as separate shapes. Units 1/16 m, z = 0 midway between the axles.
-import { DARK, TRIM, CHROME, GLASS, PAINT, RUBBER, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, hexa, inset, mesh, lattice, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../carkit.mjs";
+import { DARK, TRIM, CHROME, GLASS, PAINT, RUBBER, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, hexa, inset, mesh, lattice, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../kit.mjs";
 
-function s14(paint = "#b5202c") {
+export function s14(paint = "#b5202c") {
   const gap = shade(paint, 0.22), R = 5.0, track = 11.8, wheelZ = [20.1, -20.1];
   const spec = {
     paint, h0: 0.8, h1: 3.2, midY: 9,
@@ -112,8 +112,7 @@ function s14(paint = "#b5202c") {
   // twin exhaust tips
   for (const x of [7.4, 5.7]) { cubes.push(cyl(`tail pipe ${x}`, x, 5.15, -36.1, 0.58, 2.0, "z", "#c4c9d2", { segments: 14, material: CHROME })); cubes.push(cyl(`tail pipe bore ${x}`, x, 5.15, -37.12, 0.4, 0.1, "z", "#050506", { segments: 12, material: { metallic: 0.4, roughness: 0.6 } })); }
   const wheelOf = (sx) => wheel({ R, width: 3.5, rimR: 3.65, rim: "#c3c8d0", windows: spokeWindows(5, 1.35, 3.3, 0.5, 0.78), spokeDepth: 0.5, caliper: "#c0262d", hubR: 0.2, nuts: 5, nutAt: 1.55, dish: 0.28, cap: "#8f959f" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-36.9 / 16), y: r2(12.7 / 16 - 0.06), x: r2(8.0 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-36.9 / 16), y: r2(12.7 / 16 - 0.06), x: r2(8.0 / 16 / 0.92) } };
 }
 
-export const CARS = { car_s14: () => s14(), car_s14_white: () => s14("#e2e4e7"), car_s14_blue: () => s14("#1f3f8f"), car_s14_black: () => s14("#1a1b1e") };
 void [path];

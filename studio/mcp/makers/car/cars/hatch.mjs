@@ -1,8 +1,8 @@
 // `car_hatch`: a modern five-door hatchback (4460 x 1795 x 1440 mm, wheelbase 2725, track 1570/1580) modelled from build/blueprints/hatch.png with the
 // kit's one smooth body and cut-outs, the way `gt()` is. Numbers read off the drawing with scripts/blueprint-trace (cal in hatch.trace.json). No badges or lettering.
-import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, hexa, inset, lattice, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../carkit.mjs";
+import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, hexa, inset, lattice, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../kit.mjs";
 
-function hatch(paint = "#8c1420") {
+export function hatch(paint = "#8c1420") {
   const gap = shade(paint, 0.22), R = 5.65, track = 12.6, wheelZ = [20.9, -22.6];
   const spec = {
     paint, midY: 9.5,
@@ -102,10 +102,7 @@ function hatch(paint = "#8c1420") {
   for (const [x0, z0, x1, z1] of [[1.0, 15.0, 9.0, 13.2], [-7.6, 13.4, -0.6, 15.0]]) cubes.push(bar("wiper", onTop(x0, z0), onTop(x1, z1), 0.4, 0.2, "#0b0c0e", { material: RUBBER }));
   cubes.push(bar("rear wiper", onTop(-1.6, -32.3), onTop(-8.2, -31.8), 0.4, 0.2, "#0b0c0e", { material: RUBBER }, [0, 0.8, -0.6]));
   const wheelOf = (sx) => wheel({ R, width: 3.6, rimR: 4.15, rim: "#c3c8d0", windows: spokeWindows(10, 1.55, 3.7, 0.5, 0.78), spokeDepth: 0.5, caliper: "#b8232c", hubR: 0.2, nuts: 5, nutAt: 1.55, dish: 0.3, cap: "#8f959f" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.2 / 16), y: r2(15.2 / 16), x: r2(9.2 / 16) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.2 / 16), y: r2(15.2 / 16), x: r2(9.2 / 16) } };
 }
 
-export const CARS = {
-  car_hatch: () => hatch(), car_hatch_white: () => hatch("#e4e6e8"), car_hatch_blue: () => hatch("#1f4f9c"), car_hatch_grey: () => hatch("#4a4f58"),
-};
 void [GLASS, STEEL, rrect];

@@ -1,8 +1,8 @@
 // A modern seven-seat body-on-frame SUV (4795 x 1855 x 1835 mm, wheelbase 2745) modelled from build/blueprints/suv.png with carkit.mjs:
 // one smooth body, everything cut into it with the Cut-out modifier, and only real separate pieces as shapes. Calibration: suv.trace.json.
-import { DARK, TRIM, archOutline, flare, glassOf, mirrorX, CHROME, PAINT, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, hexa, inset, lattice, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, path } from "../carkit.mjs";
+import { DARK, TRIM, archOutline, flare, glassOf, mirrorX, CHROME, PAINT, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, hexa, inset, lattice, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel, path } from "../kit.mjs";
 
-function suv(paint = "#2f4a63") {
+export function suv(paint = "#2f4a63") {
   const gap = shade(paint, 0.25), R = 6.2, track = 12.6, wheelZ = [22.4, -21.5], arcR = 8.0, arcY = 6.3;
   const spec = {
     paint, material: { metallic: 0.4, roughness: 0.34, coat: 1 }, midY: 14,
@@ -125,9 +125,6 @@ function suv(paint = "#2f4a63") {
   // exhaust
   cubes.push(cyl("tail pipe", 8.8, 6.6, -33.6, 0.8, 2.4, "z", "#c4c9d2", { segments: 14, material: CHROME }));
   const wheelOf = (sx) => wheel({ R, width: 4.2, rimR: 3.95, rim: "#c3c8d0", windows: spokeWindows(6, 1.7, 3.6, 0.5, 0.7), spokeDepth: 0.5, caliper: "#8d939c", hubR: 0.2, nuts: 6, nutAt: 1.55, dish: 0.35, cap: "#8f959f" }, sx);
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-37.4 / 16), y: r2(19.0 / 16 - 0.06), x: r2(10 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-37.4 / 16), y: r2(19.0 / 16 - 0.06), x: r2(10 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_suv: () => suv(), car_suv_white: () => suv("#e6e7e9"), car_suv_black: () => suv("#1b1d21"), car_suv_red: () => suv("#8f2a2a"),
-};

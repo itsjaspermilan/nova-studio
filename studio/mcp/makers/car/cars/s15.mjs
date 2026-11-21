@@ -1,10 +1,10 @@
 // `car_s15`: a late-1990s Japanese sports coupe with an aero kit (4445 x 1695 x 1285 mm, wheelbase 2525), read off build/blueprints/s15.png
 // (calibration in s15.trace.json: the side view by its length and height, the plan by length and width, front and rear by width and height).
 // One smooth body from buildBody; glass, lamps, intakes, gaps and wheel openings are cut-outs; mirrors, wing, wipers, exhaust and wheels are pieces.
-// No badges or lettering (the plates are blank).  Run:  scripts/env.sh node scripts/rally/blueprint-cars.mjs car_s15
-import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, hexa, inset, lattice, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../carkit.mjs";
+// No badges or lettering (the plates are blank).  Made by car_make { "type": "aero_coupe" }
+import { DARK, TRIM, archOutline, glassOf, mirrorX, CHROME, GLASS, PAINT, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, hexa, inset, lattice, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../kit.mjs";
 
-function s15(paint = "#e3b21c", rimCol = "#5a5d65") {
+export function s15(paint = "#e3b21c", rimCol = "#5a5d65") {
   const gap = shade(paint, 0.22), R = 5.3, track = 11.35, wheelZ = [20.72, -19.68];
   const spec = {
     paint,
@@ -122,11 +122,8 @@ function s15(paint = "#e3b21c", rimCol = "#5a5d65") {
   cubes.push(box("silencer", 4.6, 9.4, 3.2, 5.0, -32.0, -26, "#2a2c31", { round: 0.5, segs: 2, material: { metallic: 0.6, roughness: 0.5 } }));
   const wheelOf = (sx) => wheel({ R, width: 3.8, rimR: 4.2, rim: rimCol, windows: spokeWindows(6, 1.35, 3.72, 0.5, 0.8), spokeDepth: 0.55, caliper: "#b3202a", hubR: 0.2, nuts: 5, nutAt: 1.5, dish: 0.35, cap: shade(rimCol, 0.8) }, sx);
   // TAIL is where the rear lamps are (lib/state.lua): metres, the same way car_gt gives it
-  return { model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.3 / 16), y: r2(12.5 / 16 - 0.06), x: r2(9.3 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model: assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R }), tail: { z: r2(-34.3 / 16), y: r2(12.5 / 16 - 0.06), x: r2(9.3 / 16 / 0.92) } };
 }
 
 // The first is the one the player drives; the rest are what rivals wear.
-export const CARS = {
-  car_s15: () => s15(), car_s15_white: () => s15("#e4e6e8", "#8a6a3a"), car_s15_black: () => s15("#17181c", "#c9ced6"), car_s15_red: () => s15("#b3202a", "#d9dbde"),
-};
 void [PLASTIC];

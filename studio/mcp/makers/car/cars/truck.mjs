@@ -1,11 +1,11 @@
 // `car_truck`: a heavy bonneted 6x6 off-road truck as a chassis cab (8428 long, 2806 over the tyres, 3021 high; axles 4750 + 1450 apart), from
 // build/blueprints/truck.png. The bonnet and cab are one smooth body (it ends at the back of the cab); the ladder frame, tanks, boxes and axles are
 // separate pieces, as on the real truck. z = 0 is midway between the front axle and the middle of the two rear axles. No badge or lettering.
-import { DARK, TRIM, glassOf, mirrorX, CHROME, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, fillet, flare, inset, lattice, mesh, path, r2, rect, rounded, rrect, shade, stroke, wheel, tube } from "../carkit.mjs";
+import { DARK, TRIM, glassOf, mirrorX, CHROME, PLASTIC, RUBBER, STEEL, archLiner, assemble, bar, box, buildBody, cyl, ellipse, fillet, flare, inset, lattice, mesh, path, r2, rect, rounded, rrect, shade, stroke, wheel, tube } from "../kit.mjs";
 
 const lo = (a, b) => [Math.min(a, b), Math.max(a, b)];
 
-function truck(paint = "#b3261e") {
+export function truck(paint = "#b3261e") {
   const gap = shade(paint, 0.3), R = 9.75, track = 19.1, zF = 43.8, zM = -32.2, zR = -55.4, wheelZ = [zF, zR];
   const frame = "#23252a", steel = "#3a3d44", alu = "#aeb3ba", black = "#15161a";
   const spec = {
@@ -192,10 +192,7 @@ function truck(paint = "#b3261e") {
   const wheelOf = (sx) => wheel(wheelSpec, sx);
   const model = assemble({ cubes, pivot: R, wheelZ, track, wheelOf, R });
   for (const [name, sx] of [["wheel_ml", -1], ["wheel_mr", 1]]) model.parts.push({ name, origin: [sx * track, R, zM], rotation: [0, 0, 0], cubes: wheelOf(sx), children: [] });
-  return { model, tail: { z: r2(-28.2 / 16), y: r2(12.4 / 16 - 0.06), x: r2(14.6 / 16 / 0.92) } };
+  return { at, R, track, wheelZ, model, tail: { z: r2(-28.2 / 16), y: r2(12.4 / 16 - 0.06), x: r2(14.6 / 16 / 0.92) } };
 }
 
-export const CARS = {
-  car_truck: () => truck(), car_truck_sand: () => truck("#cdb788"), car_truck_green: () => truck("#55633f"), car_truck_white: () => truck("#e2e3df"),
-};
 void [DARK, PLASTIC];

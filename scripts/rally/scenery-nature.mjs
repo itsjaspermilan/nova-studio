@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect, GAME } from "./mcp.mjs";
-import { lerp, mix, r2, shade, smoothstep } from "./carkit.mjs";
+import { lerp, mix, r2, shade, smoothstep } from "../../studio/mcp/makers/car/kit.mjs";
 
 // ---- what the kit models measured (metres, triangles), read from their .glb files before they were replaced ---------------------------------
 const B = (x0, y0, z0, x1, y1, z1, tris) => ({ lo: [x0, y0, z0], hi: [x1, y1, z1], tris });

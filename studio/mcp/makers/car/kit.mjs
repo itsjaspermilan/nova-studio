@@ -365,7 +365,7 @@ export function assemble({ cubes, pivot, wheelZ, track, wheelOf, R }) {
   return { version: 1, scale: 0.0625, parts: [{ name: "body", origin: [0, pivot, 0], rotation: [0, 0, 0], cubes, children: [] }, wr("wheel_fl", -1, wheelZ[0]), wr("wheel_fr", 1, wheelZ[0]), wr("wheel_rl", -1, wheelZ[1]), wr("wheel_rr", 1, wheelZ[1])] };
 }
 
-// ---- shared by the car files (blueprint-cars.mjs, cars/*.mjs)
+// ---- shared by the car files (cars/*.mjs, spec.ts)
 export const DARK = "#131418", GLASS_COL = "#1a2633", TRIM = "#0e0f12";
 export const glassOf = (o) => ({ color: GLASS_COL, ...GLASS, depth: 0.07, wall: TRIM, ...o });
 /// The upper part of a circle as an outline for a wheel opening, carried down below the sill.
