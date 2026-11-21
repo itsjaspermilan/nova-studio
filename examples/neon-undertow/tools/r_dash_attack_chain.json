@@ -1,0 +1,76 @@
+{
+ "start_scene": "test_lab",
+ "invincible": true,
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; DA_D = nova.spawn('dummy', 410, 560)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "wait": 5
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.named('runner').state == 'dashatk'",
+   "max": 40
+  },
+  {
+   "wait": 4
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "UNT_LUNGE = tostring(nova.named('runner').untouchable)"
+  },
+  {
+   "until": "nova.named('runner').state == 'attack'",
+   "max": 60
+  },
+  {
+   "lua": "CHAIN_AFTER = nova.named('runner').chain"
+  },
+  {
+   "wait": 40
+  },
+  {
+   "lua": "FIRST_TOTAL = DA_D.total; DASHES1 = nova.named('runner').stats.dash_attacks"
+  },
+  {
+   "lua": "nova.named('runner').state, nova.named('runner').chain, nova.named('runner').chain_window = 'free', 0, 0; nova.named('runner').roll_end = require('lib.hits').clock - 0.02; require('lib.hits').last_hit = -99"
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "STATE_AGAIN = nova.named('runner').state; CHAIN_AGAIN = nova.named('runner').chain; DASHES2 = nova.named('runner').stats.dash_attacks"
+  },
+  {
+   "wait": 40
+  }
+ ],
+ "print": [
+  "UNT_LUNGE",
+  "CHAIN_AFTER",
+  "FIRST_TOTAL",
+  "DASHES1",
+  "STATE_AGAIN",
+  "CHAIN_AGAIN",
+  "DASHES2"
+ ]
+}

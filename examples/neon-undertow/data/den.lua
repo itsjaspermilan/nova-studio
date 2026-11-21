@@ -50,7 +50,7 @@ return {
     { when = "fresh", lines = {
       "Welcome to the Den. It is wet. The wet is a feature.",
       "The Workbench lets you spend keys. Keys come from scrap. Scrap comes from violence. It's a circle.",
-      "Walk through the door when you're ready. Or don't. I'm not your mother. I'm a printer.",
+      "Door's there when you're ready. Not your mother, I'm a printer. Tip: roll, then swing. That's a dash attack. It hits like a bus.",
     } },
     { when = "won", lines = {
       "One district down. Three to go. I've drafted your eulogy. It's short.",

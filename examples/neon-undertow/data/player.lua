@@ -6,7 +6,14 @@ return {
   tile = TILE,
 
   health = 12,                 -- points; 6 hearts in halves
-  run_speed = 235,             -- units/s (4.9 tiles/s): a runner runs, not walks (the run clip of the sheet keeps step with it: 8 frames of 45 ms)
+  run_speed = 310,             -- units/s (6.5 tiles/s): a runner runs, not walks. (Owner, handheld, 2026-11-21: "needs to move faster": 235 before.)
+  -- The feet and the ground. The sheet's run clip is drawn as 8 frames of 45 ms (0.36 s a cycle), a stride that matches 235 units a second:
+  -- 84.6 units of ground a cycle. The clip's speed is run_speed over that stride, so changing run_speed alone keeps the feet from skating.
+  run_cycle = 0.36,            -- seconds one cycle of the run clip lasts as drawn
+  run_stride = 84.6,           -- the ground one cycle covers as drawn (units)
+  walk_cycle = 0.57,           -- the walk clip (6 frames of 95 ms) as drawn, and the ground a cycle covers at 0.35 of the old run speed (aiming)
+  walk_stride = 46.9,
+  camera_follow = 11,          -- how hard the camera chases the runner (per second): the lag when running is run_speed / this (28 units; 9 gave 26 at the old speed)
 
   -- Baton chain: three hits, the third knocks back. Frames are 1/60 s.
   attack = {
@@ -27,8 +34,21 @@ return {
     area = {
       short = { reach = 12, length = 92, half_width = 48 },
       long  = { reach = 12, length = 116, half_width = 58 },
+      dash  = { reach = 12, length = 150, half_width = 65 },   -- the dash attack: 150 long by 130 wide
     },
     hips = 14,                 -- the arc and its box sit this far above the feet
+    -- The dash attack: attack (X) during a roll, or up to `window` seconds after it ends, instead of the first baton hit. One a roll.
+    -- The runner lunges on the way the roll went; the slash is a wide, long box in front of him from where the hit comes out.
+    dash = {
+      window = 0.15,           -- seconds after a roll ends that a press still makes it (a press during the roll is kept and the lunge starts as the roll ends)
+      distance_tiles = 1.6, time = 0.14,   -- the lunge: 76.8 units in 0.14 s (548 units/s)
+      damage = 5, knockback = 320,
+      startup_frames = 3,      -- the lunge has begun; then the box hurts for active_frames (every enemy in it once)
+      active_frames = 5,
+      recovery_frames = 14,    -- after the lunge ends: a commitment (a roll may cut it, as with the other hits, once the box has gone)
+      hitstop_frames = 7,      -- (a normal hit: 3)
+      shake = 11, shake_frames = 9,   -- (a normal hit: 6, 6)
+    },
   },
 
   -- The dash roll.
@@ -62,7 +82,7 @@ return {
 
   -- Volumes by purpose (sounds/<name>.wav)
   sfx = {
-    swing = 0.8, hit = 0.8, roll = 0.7, shot = 0.6, empty = 0.4, hurt = 0.8, enemy_tell = 0.7, enemy_die = 0.7, scrap = 0.4,
+    swing = 0.8, dash_attack = 0.9, hit = 0.8, roll = 0.7, shot = 0.6, empty = 0.4, hurt = 0.8, enemy_tell = 0.7, enemy_die = 0.7, scrap = 0.4,
     -- slice 2
     door_shut = 0.8, door_open = 0.7, door_unlock = 0.5, wave_warn = 0.5,
     tell_thrower = 0.7, throw = 0.6, bottle_smash = 0.7, fire_start = 0.6,

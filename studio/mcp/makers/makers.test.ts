@@ -537,7 +537,7 @@ describe("the detailed people", () => {
 
   it("makes the runner and every enemy archetype: every animation, the frame, the feet's box, closed outlines", () => {
     const counts = Object.fromEntries(HD_ANIMS.map(([n, c]) => [n, c]));
-    expect(counts).toEqual({ idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8 });
+    expect(counts).toEqual({ idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8, dash_attack: 4 });
     for (const [name, recipe] of Object.entries(HD_ARCHETYPES)) {
       const said = text(use("character_make", { name, style: "detailed", ...recipe }));
       expect(said, name).toContain("hitbox = { -7, -8, 14, 8 }");
@@ -547,8 +547,8 @@ describe("the detailed people", () => {
       expect(json.hitbox, name).toEqual(HD_HITBOX);
       expect(json.pivot, name).toEqual(HD_PIVOT);
       expect(json.tags!.map((t) => t.name), name).toEqual(CITY_DIRS.flatMap((d) => HD_ANIMS.map(([a]) => `${a}_${d}`)));
-      for (const t of json.tags!) expect(t.to - t.from + 1, `${name} ${t.name}`).toBe(counts[t.name.split("_")[0]!]);
-      expect(json.frames, name).toBe(4 * 31);
+      for (const t of json.tags!) expect(t.to - t.from + 1, `${name} ${t.name}`).toBe(counts[t.name.replace(/_(down|left|right|up)$/, "")]);
+      expect(json.frames, name).toBe(4 * 35);
       if (recipe.hologram) continue; // light, not a body: no outline by design
       const png = decodePng(bytes(`sprites/${name}.png`));
       // the frames without light laid over the edge (an arc, a streak, the tell's flash): idle, walk, hurt
@@ -566,7 +566,7 @@ describe("the detailed people", () => {
   it("draws every part name of both styles, and says what is wrong", () => {
     for (const part of [...OUTFITS.map((o) => ({ outfit: o })), ...HD_OUTFITS_MORE.map((o) => ({ outfit: o })), ...HATS.map((h) => ({ hat: h })), ...HD_HATS_MORE.map((h) => ({ hat: h })), ...ITEMS.map((i) => ({ item: i })), ...HD_ITEMS_MORE.map((i) => ({ item: i }))]) {
       use("character_make", { name: "p", style: "detailed", palette: "gutter market", ...part });
-      expect(sheet("p").frames, JSON.stringify(part)).toBe(124);
+      expect(sheet("p").frames, JSON.stringify(part)).toBe(140);
     }
     use("character_make", { name: "v", style: "detailed", hat: "visor", visor: "down", arms: 4, stance: "proud", pose: "wide", expression: "smile", skin: "chrome" });
     expect(() => use("character_make", { name: "x", style: "detailed", arms: 3 })).toThrow(/"arms" is 2, 4, 6/);

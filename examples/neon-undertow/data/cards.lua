@@ -16,7 +16,7 @@
 --   scrap        multiplier on scrap                                        (Deep Pockets)
 --   metro        +damage for a baton hit that lands in the rhythm window    (Metronome)
 --   skim         scrap dropped by each hit a leaking enemy takes            (Skim)
---   backhand     the swing after a roll also hits behind                    (Backhand)
+--   backhand     the swing after a roll also hits behind: a baton swing, doubled; after a dash attack too (Backhand)
 --   slug         copies of the held shot (damage, how many it pierces)      (Overpressure)
 --   incendiary   copies: seconds of fire a shot leaves (2 + 1 per extra)    (Incendiary)
 --   siphon       a kill with a shot refunds the pips it cost                (Siphon)
@@ -38,6 +38,13 @@
 --   regen, hp_cap  charge refilled by itself; ceiling on max health         (Red Line)
 --   choices, crowd  extra cards in an offer; extra share of enemies         (Crowd Pleaser)
 --   debt         double keys, and a point lost at each room's start         (Debt Spiral)
+-- The DASH ATTACK (attack during a roll or within 0.15 s after it; data/player.lua attack.dash) is a baton hit, and each baton and roll card says so:
+--   Long Reach      its box grows by the one rule (150 x 130 -> 195 x 169), nothing else is scaled           yes
+--   Hot Solder, Skim, Tracer, Metronome, Good Solder, Overclock, Adrenal (damage shares, burn, leak)         yes: every enemy it hits, as for a baton hit
+--   Backhand        the hit behind is the ordinary baton swing's (hit 1, doubled: 4), the dash attack is the one in front   yes, sane
+--   Live Wire, Riot Stock   the third hit's (chain 3): the dash attack is neither, no stun, its knock-back is its own 320   no
+--   Shock Wake, Burn Rubber, Afterimage, Phase, Second Wind, Slipstream   work in the roll before it, exactly as they did; the lunge is not a roll (it does not pass through enemies, leaves no fire, is not untouchable); Slipstream's speed still runs after it   as before
+-- (A baton hit gives back a third of a pip and the Echo set copies it: both per enemy hit, as for any swing.)
 local cards = {
   -- ---------------------------------------------------------------- 1-12: the pool a new player meets
   { id = "live_wire", name = "Live Wire", family = "baton", rarity = "uncommon", tags = { "volt" }, max = 3,
@@ -97,7 +104,7 @@ local cards = {
     text = "Your shots leave a fire for 2 s that sets enemies alight. It never burns you. The fire is loyal.",
     apply = function(run) run.mods.incendiary = run.mods.incendiary + 1 end },
   { id = "backhand", name = "Backhand", family = "baton", rarity = "rare", tags = {}, max = 1,
-    text = "Swing within 0.4 s of a roll and you also hit behind you, for double damage. Rude. Efficient.",
+    text = "Swing within 0.4 s of a roll (a dash attack too) and you also hit behind you with a baton swing for double damage. Rude. Efficient.",
     apply = function(run) run.mods.backhand = run.mods.backhand + 1 end },
 
   -- ---------------------------------------------------------------- 19-24: Deeper Deck 2

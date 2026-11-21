@@ -42,7 +42,7 @@ cards after every room, and they combine); **the city remembers** (what you bank
 | Button | Does |
 |---|---|
 | Left stick | Move freely (eight directions and everything between); the sprite faces up, down, left or right |
-| X (`pad:west`) | Attack: a three-hit chain with the baton; the third hit knocks back |
+| X (`pad:west`) | Attack: a three-hit chain with the baton; the third hit knocks back. Pressed during a roll or within 0.15 s after it: the **dash attack** (a lunge with a wide, long slash) |
 | A (`pad:south`) | Interact: talk, open, take a card, revive a partner |
 | B (`pad:east`) | Dash roll: a short burst in the stick's direction, untouchable for most of it, 0.6 s between rolls |
 | Y (`pad:north`) | Ranged: hold to aim (the stick aims, you walk at 35% speed, a thin sight line shows), release to fire |
@@ -51,8 +51,8 @@ cards after every room, and they combine); **the city remembers** (what you bank
 Keyboard twins for the desk: arrows or WASD, J attack, K dash, L ranged, E interact. Everything is played with the pad; no touch.
 
 **The feel to hit:** attack comes out in 5 frames, each hit stops the game for 3 frames and shakes the screen 2 px; a roll covers
-4.2 tiles in 0.34 s with no damage taken for the first 0.27 s (owner's note from the handheld, 2026-11-21: the runner runs at 235 units a second, the baton covers 92 by 96 units in front (116 by 116 for the third hit)); you can cancel the end of any attack into a roll, never a roll into
-an attack. Ranged shots cost **charge** (3 pips); every baton hit gives a third of a pip back. That one rule makes the two attacks
+4.2 tiles in 0.34 s with no damage taken for the first 0.27 s (owner's note from the handheld, 2026-11-21: the runner ran at 235 units a second, the baton covers 92 by 96 units in front (116 by 116 for the third hit); the same evening: "the player moves too slowly", so the runner now runs at **310** and the run clip's speed follows `run_speed` (`data/player.lua`); and "there should be a dash attack. So dash then attack"); you can cancel the end of any attack into a roll, never a roll into
+an attack (but a roll can be followed by the **dash attack**: attack during the roll or within 0.15 s after it; a lunge of 1.6 tiles in 0.14 s with a 150 by 130 slash for 5 and a knock-back of 320, a 14-frame recovery, free, one a roll, the lunge not untouchable, a 7-frame hit-stop and an 11-unit shake; the chain then starts from hit 1). Ranged shots cost **charge** (3 pips); every baton hit gives a third of a pip back. That one rule makes the two attacks
 feed each other: shoot to open, close in to reload.
 
 ## The shape of a run

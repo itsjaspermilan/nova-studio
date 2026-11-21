@@ -1893,7 +1893,7 @@ for (let seed = 1; seed <= 30; seed++) {
 // A second of holding right in the test room: the distance is the run speed; the clip playing is the run's; a puff of dust at the start.
 out("feel_run", {
   start_scene: "test_room",
-  lua: place(200, 470, "right") + "; r.hp = 99\n" + PROBE,
+  lua: place(200, 520, "right") + "; r.hp = 99\n" + PROBE,
   route: [
     { wait: 3 },
     { lua: "X0 = nova.named('runner').x" },
@@ -2037,3 +2037,150 @@ out("ui_den_return", { start_scene: "summary", lua: `${META}.started = true; ${R
     { lua: `LINE = ${WIPE}.spec.line; SCENE_NOW = nova.current_scene(); WAKE0 = nova.scene_now().state; T0 = string.format('%.2f', nova.scene_now().t)` },
     { until: `not ${WIPE}.busy()`, max: 240 }, { wait: 3, capture: "the Den wakes" }, { lua: `T1 = string.format('%.2f', nova.scene_now().t); WAKE1 = nova.scene_now().state` }],
   print: ["S0", "LINE", "SCENE_NOW", "WAKE0", "T0", "T1", "WAKE1"] });
+
+// =====================================================================================================================
+// Feel pass 2 (2026-11-21): the runner runs at 310 and his feet match the ground; the dash attack (attack during a roll or within 0.15 s after it).
+// (tests: crates/nova-runtime/tests/neon_undertow.rs, the tests at the end of the file)
+// =====================================================================================================================
+// The run: the clip's frame and the runner's x after every frame, so a test can count strides and measure the ground one cycle covers.
+out("dash_feet", {
+  start_scene: "test_room",
+  lua: place(200, 520, "right") + "; r.hp = 99; for _, e in ipairs(nova.all('enemy')) do e:destroy() end\n"
+    + `local R = nova.named('runner'); FR = {}; local orig = R.update; R.update = function(self, dt) orig(self, dt); FR[#FR+1] = string.format('%d,%.2f,%s', self.frame, self.x, tostring(self._anim and self._anim.tag)) end`,
+  route: [{ wait: 3 }, { hold: ["right"], frames: 100, capture: "running" }],
+  print: ["table.concat(FR, ' ')", "require('data.player').run_speed", "string.format('%.3f', nova.named('runner').anim_speed)"],
+});
+
+// The dash attack in the card lab: a dummy 100 ahead of where a roll to the right ends (the roll starts at x 100 and covers 201.6).
+const DA_RESET = `local r = ${R0}; r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0
+${J}.hold = 0; ${HITS}.last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end
+if DA_D then DA_D:destroy() end
+DA_D = nova.spawn('dummy', 410, 560)`;
+const daRoll = [{ lua: DA_RESET }, { wait: 2 }, { press: "dash" }, { until: `${R0}.state == 'roll'`, max: 10 }];
+const daRecord = (i) => ({ lua: `local d = DA_D; C${i} = string.format('%d %d %d', d.last_damage, d.hits, ${R0}.stats.dash_attacks or 0); T${i} = ${R0}.stats.baton_hits` });
+const daCase = (i, steps) => [...daRoll, ...steps, { wait: 60 }, daRecord(i)];
+out("dash_attack", {
+  start_scene: "test_lab",
+  invincible: true,
+  lua: `${labPlace(100, 560)}; ${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}`,
+  route: [
+    { wait: 3 },
+    // 1. attack pressed during the roll (5 frames in): the dash attack
+    ...daCase(1, [{ wait: 5 }, { press: "attack" }]),
+    // 2-4. pressed 0, 4 and 8 frames after the roll ends (0, 0.07, 0.13 s): still the dash attack
+    ...daCase(2, [{ until: `${R0}.state ~= 'roll'`, max: 40 }, { press: "attack" }]),
+    ...daCase(3, [{ until: `${R0}.state ~= 'roll'`, max: 40 }, { wait: 4 }, { press: "attack" }]),
+    ...daCase(4, [{ until: `${R0}.state ~= 'roll'`, max: 40 }, { wait: 8 }, { press: "attack" }]),
+    // 5. pressed 14 frames after (0.23 s): the ordinary first hit
+    ...daCase(5, [{ until: `${R0}.state ~= 'roll'`, max: 40 }, { wait: 14 }, { press: "attack" }]),
+    // 6. no roll at all
+    { lua: DA_RESET + "; r.x = 330" }, { wait: 2 }, { press: "attack" }, { wait: 60 }, daRecord(6),
+  ],
+  print: ["C1", "C2", "C3", "C4", "C5", "C6", "T1", "T5"],
+});
+
+// The area, the damage, the knock-back and who is untouchable: a Scrapper (held still: a stun still slides it) in front, its take_hit recording what it was given;
+// dummies in the box (each must be hit once) and past its edges (not at all). The slash's rectangle is read from the swing: 150 long, 130 wide, 12 from the hips.
+out("dash_attack_area", {
+  start_scene: "test_lab",
+  invincible: true,
+  lua: `${labPlace(100, 560)}; ${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}
+local s = nova.spawn('scrapper', 440, 560); s.hp = 30; s.max_hp = 30; ${STATUS}.stun(s, 99); SC = s; TH = ''
+local th = s.take_hit; s.take_hit = function(self, d, dx, dy, k) TH = TH .. d .. ':' .. tostring(k) .. ' '; return th(self, d, dx, dy, k) end
+IN1 = nova.spawn('dummy', 420, 520); IN2 = nova.spawn('dummy', 420, 600); IN3 = nova.spawn('dummy', 430, 540)
+OUT_FAR = nova.spawn('dummy', 580, 546); OUT_SIDE = nova.spawn('dummy', 420, 440); OUT_BACK = nova.spawn('dummy', 250, 600)`,
+  route: [
+    { wait: 3 }, { press: "dash" }, { until: `${R0}.state == 'roll'`, max: 10 }, { wait: 6 }, { press: "attack" },
+    { until: "nova.count('swing') > 0", max: 60 },
+    { lua: `local s = nova.first('swing'); SWR = string.format('%.0f,%.0f,%.0f', s.rect.along, s.rect.across, s.rect.x0 - s.x); SW_DASH = tostring(s.dash); UNT0 = tostring(${R0}.untouchable); LUNGE_STATE = ${R0}.state; X_SW = ${R0}.x` },
+    { wait: 40, capture: "the dash attack" },
+    { lua: `X_END = ${R0}.x; HITS_IN = IN1.hits .. IN2.hits .. IN3.hits; DMG_IN = IN1.total .. ',' .. IN2.total .. ',' .. IN3.total; OUT_HITS = OUT_FAR.hits .. OUT_SIDE.hits .. OUT_BACK.hits` },
+    { wait: 25, capture: "settled" }, { lua: `SC_X2 = SC.x` },
+  ],
+  print: ["SWR", "SW_DASH", "UNT0", "LUNGE_STATE", "TH", "HITS_IN", "DMG_IN", "OUT_HITS", "string.format('%.1f', X_END - 100)", "string.format('%.1f', SC_X2 - 440)"],
+});
+
+// Not untouchable in the lunge; a press during the dash attack starts the normal chain from hit 1 when it is over; one dash attack a roll.
+out("dash_attack_chain", {
+  start_scene: "test_lab",
+  invincible: true,
+  lua: `${labPlace(100, 560)}; ${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}; DA_D = nova.spawn('dummy', 410, 560)`,
+  route: [
+    { wait: 3 }, { press: "dash" }, { until: `${R0}.state == 'roll'`, max: 10 }, { wait: 5 }, { press: "attack" },
+    { until: `${R0}.state == 'dashatk'`, max: 40 }, { wait: 4 },
+    { press: "attack" },
+    { wait: 3 }, { lua: `UNT_LUNGE = tostring(${R0}.untouchable)` },
+    { until: `${R0}.state == 'attack'`, max: 60 }, { lua: `CHAIN_AFTER = ${R0}.chain` },
+    { wait: 40 },
+    { lua: `FIRST_TOTAL = DA_D.total; DASHES1 = ${R0}.stats.dash_attacks` },
+    // as if the roll had just ended again, with no new roll: still only a normal hit
+    { lua: `${R0}.state, ${R0}.chain, ${R0}.chain_window = 'free', 0, 0; ${R0}.roll_end = ${HITS}.clock - 0.02; ${HITS}.last_hit = -99` },
+    { press: "attack" }, { wait: 3 }, { lua: `STATE_AGAIN = ${R0}.state; CHAIN_AGAIN = ${R0}.chain; DASHES2 = ${R0}.stats.dash_attacks` }, { wait: 40 },
+  ],
+  print: ["UNT_LUNGE", "CHAIN_AFTER", "FIRST_TOTAL", "DASHES1", "STATE_AGAIN", "CHAIN_AGAIN", "DASHES2"],
+});
+
+// Never in a wall: in real rooms, from spots 60, 130 and 220 units off each wall, in all eight directions, a roll and a dash attack straight at it; every frame is checked.
+function dashWalls(name, scene) {
+  const dirs = [["right"], ["left"], ["up"], ["down"], ["right", "down"], ["right", "up"], ["left", "down"], ["left", "up"]];
+  const vec = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] };
+  const route = [{ until: `nova.current_scene() == '${scene}' and nova.named('runner') ~= nil`, max: 60 }, idle(), { wait: 3 },
+    { lua: `local R = nova.named('runner'); WALL_BAD = ''; WALL_FRAMES = 0; local orig = R.update
+R.update = function(self, dt) orig(self, dt); WALL_FRAMES = WALL_FRAMES + 1; if self:in_wall() then WALL_BAD = WALL_BAD .. string.format('in a wall at %.0f,%.0f (%s, case %s); ', self.x, self.y, self.state, tostring(CASE)) end end
+-- a spot 'back' units off the wall in direction (dx, dy): walk from the middle of the room towards it until the box is in a wall, then come back
+SPOT = function(dx, dy, back)
+  local sc = nova.scene_now(); local r = nova.named('runner')
+  local function free(x, y) r.x, r.y = x, y; return not r:in_wall() end
+  -- the nearest free spot to the middle of the room (some rooms have a wall there)
+  local cx, cy = sc.w / 2, sc.h / 2
+  for rad = 0, 720, 24 do
+    for k = 0, 11 do
+      local a = k / 12 * math.pi * 2
+      if free(cx + math.cos(a) * rad, cy + math.sin(a) * rad) then cx, cy = r.x, r.y; goto found end
+    end
+  end
+  ::found::
+  local x, y = cx, cy
+  for i = 1, 400 do
+    if not free(x + dx * 6, y + dy * 6) then break end
+    x, y = r.x, r.y
+  end
+  if not free(x - dx * back, y - dy * back) then free(cx, cy) end
+end` }];
+  let n = 0;
+  for (const d of dirs) {
+    let dx = 0, dy = 0;
+    for (const k of d) { dx += vec[k][0]; dy += vec[k][1]; }
+    const len = Math.hypot(dx, dy); dx /= len; dy /= len;
+    for (const back of [60, 130, 220]) {
+      n++;
+      route.push({ lua: `CASE = ${n}; local r = nova.named('runner'); r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.hp = 'free', 0, 0, 0, -99, false, false, 0, 99; r.facing = '${d[0]}'; for _, e in ipairs(nova.all('enemy')) do e:destroy() end; SPOT(${dx.toFixed(4)}, ${dy.toFixed(4)}, ${back})` });
+      route.push({ wait: 2 }, { hold: d, tap: "dash", tap_every: 200, until: `${R0}.state == 'roll'`, max: 8 }, { hold: d, frames: 4 }, { press: "attack" });
+      route.push({ hold: d, frames: 50 }, { wait: 4 });
+    }
+  }
+  route.push({ lua: `DASHES = ${R0}.stats.dash_attacks or 0` });
+  out(name, { start_scene: scene, invincible: true, lua: `${META}.upgrades = {}; ${RUN}.begin_chain(7)`, route, print: ["WALL_BAD", "WALL_FRAMES", "DASHES"] });
+}
+dashWalls("dash_walls_a", "gutter.s1_street");
+dashWalls("dash_walls_b", "gutter.s2_maze");
+dashWalls("dash_walls_c", "gutter.s3_flood");
+
+// The cards on the dash attack: Long Reach scales its box by the one rule the baton uses (150 x 130 becomes 195 x 169, once); Hot Solder sets what it hits alight;
+// Riot Stock's stun and Live Wire are the third hit's and do not apply; Backhand's hit behind is the ordinary swing's (see s4_backhand).
+out("dash_attack_cards", {
+  start_scene: "test_lab",
+  invincible: true,
+  lua: `${labPlace(100, 560)}; ${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}
+${give("long_reach")}; ${give("hot_solder")}; ${give("riot_stock")}; ${give("live_wire")}
+local s = nova.spawn('scrapper', 450, 560); s.hp = 30; s.max_hp = 30; ${STATUS}.stun(s, 99); SC = s; STUN0 = s.stun_t or 0
+OTHER = nova.spawn('dummy', 450, 700); OTHER.hp = 30`,
+  route: [
+    { wait: 3 }, { press: "dash" }, { until: `${R0}.state == 'roll'`, max: 10 }, { wait: 6 }, { press: "attack" },
+    { until: "nova.count('swing') > 0", max: 60 },
+    { lua: `local s = nova.first('swing'); SWR = string.format('%.0f,%.0f,%.0f', s.rect.along, s.rect.across, s.rect.x0 - s.x); BURN0 = tostring((SC.burn_t or 0) > 0)` },
+    { wait: 30 },
+    { lua: `BURN = tostring((SC.burn_t or 0) > 0); ZAPS = ${R0}.stats.zaps; LIVE = nova.count('zap'); OTHER_HITS = OTHER.hits` },
+  ],
+  print: ["SWR", "BURN", "ZAPS", "OTHER_HITS"],
+});

@@ -20,6 +20,7 @@ function Swing:create()
   -- (Long Reach: the runner already made self.area 30% longer and wider a card, and the crescent is drawn to the box, so nothing is scaled
   -- here: scaling sx as well grew the box twice, to 1.69 times)
   self.heavy = self.arc == "heavy"
+  -- (the dash attack's slash is this entity too, with \`dash\` set: a longer afterimage, a second crescent swept the other way, and a bigger hit-stop and shake, see Runner:on_baton_hit)
   self.rect = V.rect_of(self)                      -- (what is drawn is the box that hurts: taken from it now, before it is emptied)
   self:strike()
 end
@@ -32,8 +33,8 @@ function Swing:strike()
       local fresh = e.hp ~= nil and e.max_hp ~= nil and e.hp >= e.max_hp          -- (Skim: a hit on a healthy enemy)
       local damage = Hits.baton_damage(e, self.damage, self.rhythm)   -- (Metronome, Tracer, the shares)
       local took = e:take_hit(damage, v[1], v[2], self.knockback or 0)
-      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, damage, self.chain, fresh) end
-      if took then V.hit(e.x, e.y - 26, v[1], v[2], { size = self.heavy and 62 or 46, n = self.heavy and 13 or 8 }) end
+      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, damage, self.chain, fresh, self.dash) end
+      if took then V.hit(e.x, e.y - 26, v[1], v[2], { size = self.dash and 80 or self.heavy and 62 or 46, n = self.dash and 18 or self.heavy and 13 or 8, speed = self.dash and 460 or nil }) end
     end
   end
 end
@@ -52,6 +53,7 @@ end
 
 function Swing:draw()
   V.crescent(self.rect, "fx_swing", self.heavy, self.flip == true, self.age)
+  if self.dash then V.crescent(self.rect, "fx_swing", true, true, self.age) end     -- (both sweeps at once: the long bright one)
 end
 
 return Swing

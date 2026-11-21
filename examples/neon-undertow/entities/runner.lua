@@ -8,6 +8,7 @@ local Hits = require("lib.hits")
 local V = require("lib.vfx")
 local Cards = require("data.cards")
 local A, R, AIM, CH = P.attack, P.roll, P.aim, P.charge
+local D = A.dash
 local N = Cards.num
 local OPPOSITE = { left = "right", right = "left", up = "down", down = "up" }
 
@@ -25,7 +26,8 @@ function Runner:create()
   self.charge = math.min(self.max_charge, Run.charge or self.max_charge)
   self.rolls_used, self.roll_window = 0, 0
   self.zapped = {}
-  self.state = "free"            -- free | attack | roll | dead
+  self.state = "free"            -- free | attack | dashatk (the dash attack) | roll | dead
+  self.dash_used, self.roll_attack = false, false   -- the dash attack: one a roll; an attack press made during the roll (the lunge starts as it ends)
   self.facing = "down"
   self.chain = 0                 -- which hit of the chain the last attack was (0 = none)
   self.chain_window = 0          -- seconds left in which a press continues the chain
@@ -131,6 +133,7 @@ end
 
 function Runner:start_roll()
   self.dash_taken = true
+  self.dash_used, self.roll_attack = false, false
   local dx, dy, len = self:stick()
   if len < 0.3 then local v = C.vec[self.facing]; dx, dy = v[1], v[2] else dx, dy = dx / len, dy / len end
   self.roll_dx, self.roll_dy, self.roll_t = dx, dy, 0
@@ -206,14 +209,20 @@ function Runner:fire()
 end
 
 -- A baton hit landed (called by the swing): the feel, and a third of a pip back.
-function Runner:on_baton_hit(target, damage, chain, fresh)
+-- (`dash`: it was the dash attack's slash: a bigger hit-stop and shake, a lower thud on the hit)
+function Runner:on_baton_hit(target, damage, chain, fresh, dash)
   self.stats.baton_hits = self.stats.baton_hits + 1
   Hits.last_hit = Hits.clock
   self.charge = math.min(self.max_charge, self.charge + CH.baton_refund)
-  J.stop(A.hitstop_frames)
-  J.shake(A.shake, A.shake_frames)
-  nova.sound.play("hit", { volume = P.sfx.hit })
-  nova.log(string.format("baton hit %d: %d damage", self.chain, damage))
+  J.stop(dash and D.hitstop_frames or A.hitstop_frames)
+  J.shake(dash and D.shake or A.shake, dash and D.shake_frames or A.shake_frames)
+  nova.sound.play("hit", { volume = P.sfx.hit, pitch = dash and 0.8 or 1 })
+  if dash then
+    self.stats.dash_hits = (self.stats.dash_hits or 0) + 1
+    nova.log(string.format("dash attack hit: %d damage", damage))
+  else
+    nova.log(string.format("baton hit %d: %d damage", self.chain, damage))
+  end
   Hits.after_baton(self, target, chain or self.chain, nil, fresh, damage)
 end
 
@@ -314,9 +323,13 @@ function Runner:update(dt)
   local sx, sy, len = self:stick()
   local attack, dash = (self.buf_attack or 0) > 0, (self.buf_dash or 0) > 0
   self.sx, self.sy = 1.5, 1.5
+  self.anim_speed = 1            -- (running and walking set it to keep the feet on the ground: update_free)
 
   if self.state == "roll" then
+    if attack then self.roll_attack = true end
     self:update_roll(dt)
+  elseif self.state == "dashatk" then
+    self:update_dash_attack(dt, attack)
   elseif self.state == "attack" then
     self:update_attack(dt, sx, sy, len, dash, attack)
   else
@@ -373,6 +386,64 @@ function Runner:update_roll(dt)
     else
       self.roll_cd, self.roll_window = 0, R.cooldown
     end
+    -- an attack pressed during the roll: the dash attack comes out as it ends
+    if self.roll_attack then self:start_dash_attack() end
+  end
+end
+
+-- The dash attack (attack during a roll, or within D.window seconds after it): a lunge on the way the roll went with a wide, long slash.
+-- It costs nothing, is not untouchable, cannot be made twice in one roll, and the normal chain begins again from hit 1 after it.
+function Runner:start_dash_attack()
+  self.dash_used, self.roll_attack, self.attack_taken = true, false, true
+  self.state, self.f, self.queued, self.hit_out, self.aiming = "dashatk", 0, false, false, false
+  self.chain, self.chain_window, self.lunge_t = 0, 0, 0
+  self.stats.dash_attacks = (self.stats.dash_attacks or 0) + 1
+  self:play("dash_attack_" .. self.facing, { restart = true })
+  V.dust(self.x, self.y - 2, 4, self.roll_dx, self.roll_dy, 56)
+  nova.spawn("streaks", self.x, self.y, { owner = self, dx = self.roll_dx, dy = self.roll_dy })
+  nova.sound.play("dash_attack", { volume = P.sfx.dash_attack })
+  nova.log("dash attack starts")
+end
+
+function Runner:update_dash_attack(dt, attack)
+  self.f = self.f + 1
+  local lunge_frames = math.ceil(D.time * 60 - 1e-6)
+  -- the lunge
+  local speed = D.distance_tiles * P.tile / D.time
+  local step = math.min(dt, D.time - self.lunge_t)
+  if step > 0 then
+    self:move(self.roll_dx * speed * step, self.roll_dy * speed * step)
+    self.lunge_t = self.lunge_t + step
+    if self.f % 2 == 1 then
+      local g = nova.spawn("ghost", self.x, self.y, { sprite = "runner", frame = self.frame, flip_x = self.flip_x, sx = 1.5, sy = 1.5, pivot = { 0.5, 0.906 }, life = 0.2 })
+      g.depth = -self.y + 1
+    end
+  end
+  -- the slash comes out a few frames in
+  if self.f == D.startup_frames then
+    local hx, hy = self:hips()
+    local area, m = A.area.dash, Run.mods.reach              -- Long Reach: the same single rule as the baton's (the arc is drawn to the box)
+    if m ~= 1 then area = { reach = area.reach, length = area.length * m, half_width = area.half_width * m } end
+    local rhythm = Hits.rhythm()
+    nova.spawn("swing", hx, hy, { owner = self, dir = self.facing, damage = D.damage, knockback = D.knockback, area = area, arc = "heavy", dash = true, chain = 0,
+      active_left = D.active_frames, frames_left = D.active_frames + 6, scale_arc = m, rhythm = rhythm })
+    -- Backhand: a dash attack is within its 0.4 s too. The slash in front is the dash attack; the hit behind is the ordinary baton swing's, for double damage
+    if Run.mods.backhand > 0 and Hits.clock - self.roll_end <= N.backhand_window then
+      local c, a = A.chain[1], A.area.short
+      if m ~= 1 then a = { reach = a.reach, length = a.length * m, half_width = a.half_width * m } end
+      nova.spawn("swing", hx, hy, { owner = self, dir = OPPOSITE[self.facing], damage = c.damage * N.backhand_mult, knockback = 0, area = a, arc = c.arc, flip = true, chain = 1, scale_arc = m, rhythm = rhythm })
+      self.stats.backhands = (self.stats.backhands or 0) + 1
+      nova.log("backhand swings behind")
+    end
+  end
+  if attack and self.f >= 2 then self.queued, self.attack_taken = true, true end
+  if self.f >= lunge_frames + D.recovery_frames then
+    self.state = "free"
+    self.chain, self.chain_window = 0, 0
+    V.dust(self.x, self.y - 2, 3, self.roll_dx, self.roll_dy, 46)
+    self:unstick()
+    -- (a press made during it: the normal chain, from hit 1)
+    if self.queued then self:start_attack() end
   end
 end
 
@@ -446,7 +517,7 @@ function Runner:update_free(dt, sx, sy, len, dash, attack)
       self:fire()
     end
   elseif attack then
-    self:start_attack()
+    if not self.dash_used and Hits.clock - self.roll_end <= D.window then self:start_dash_attack() else self:start_attack() end
     return
   end
   if not self.aiming then self.aim_t, self.slug_ready = 0, false end
@@ -454,8 +525,11 @@ function Runner:update_free(dt, sx, sy, len, dash, attack)
     local sm = self:speed_mult()
     self:move(sx * P.run_speed * mult * sm * dt, sy * P.run_speed * mult * sm * dt)
     if not self.aiming then self:face(sx, sy) end
+    -- the feet keep step with the ground: the clip plays at (units a second) x (its cycle) / (the ground a cycle covers as drawn), for the run and the walk
+    local v = P.run_speed * mult * sm * len
+    if self.aiming then self.anim_speed = v * P.walk_cycle / P.walk_stride else self.anim_speed = v * P.run_cycle / P.run_stride end
   end
-  -- running (the sheet's run clip: 8 frames of 45 ms, a stride that keeps step with run_speed); while aiming he only walks
+  -- running (the sheet's run clip: 8 frames of 45 ms at 235 units a second, played at the speed above); while aiming he only walks
   local running = len > 0.1 and not self.aiming
   if running then self:dust_for_run(dt, sx / len, sy / len) else self.run_on = false end
   if self.hurt_t > 0 then self:play("hurt_" .. self.facing)

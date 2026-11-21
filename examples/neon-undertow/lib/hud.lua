@@ -231,13 +231,16 @@ function H.draw(scene)
   end
   local eye = require("lib.workbench").eye_text(Run)      -- LULLABY's Eye (a Workbench upgrade)
   if eye then Ty.text(560, 52, eye, "small", { color = { 6, 240, 255, 255 }, align = "right", width = 380 }) end
-  nova.ui.rect(0, 498, 620, 42, { 5, 6, 15, 190 })     -- (a plate under the prompts)
+  nova.ui.rect(0, 498, 820, 42, { 5, 6, 15, 190 })     -- (a plate under the prompts)
   local x = 16
   x = H.prompt(x, 506, "attack", "baton")
   x = H.prompt(x, 506, "dash", "roll")
   x = H.prompt(x, 506, "ranged", "shoot")
   x = H.prompt(x, 506, "interact", "use")
-  H.prompt(x, 506, "start", "cards")
+  x = H.prompt(x, 506, "start", "cards")
+  -- the dash attack, taught where the other moves are: the roll button, then the baton button
+  x = H.prompt(x + 14, 506, "dash", "then")
+  H.prompt(x - 14, 506, "attack", "dash attack")
   if scene.near_card then card_panel(scene.near_card) end
   if scene.state == "cards" and (Run.rerolls or 0) > 0 then
     H.prompt(700, 478, "ranged", "reroll (" .. Run.rerolls .. " left)")
