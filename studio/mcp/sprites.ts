@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { encodePng } from "../src/lib/png-encode";
 import { newRaster, type Raster, type Rgba } from "../src/lib/pixels";
 import { parseSheetJson, SHEET_COLUMNS, tagSequence, type SheetJson, type Tag } from "../src/lib/sprite-doc";
-import { parseTileset, serializeTileset, newTileset } from "../src/lib/tileset";
+import { parseTileset, serializeTileset, newTileset, tileRoom } from "../src/lib/tileset";
 import { tileFor, type Terrain } from "../src/lib/autotile";
 import { checker, DIM, fill, fit, INK, label, outline, PAPER, paste, readPng } from "./draw";
 
@@ -372,6 +372,9 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
       throw new Error(`animation ${JSON.stringify(t)} is not valid: it needs "name", and "from" and "to" frame numbers inside 0 to ${result.length - 1} (for example { "name": "walk", "from": 0, "to": 3 })`);
     }
   }
+  const isTileset = Object.keys(names).length > 0 || solid.length > 0 || existsSync(setPath);
+  const room = isTileset ? tileRoom(result.length, name) : {};
+  if (room.error) throw new Error(room.error);
   const text = `${JSON.stringify(json, null, 2)}\n`;
   const ok = parseSheetJson(text);
   if (!ok.ok) throw new Error(ok.error);
@@ -383,7 +386,7 @@ export function writeSprite(root: string, name: string, a: Args, put: Put): { te
   const named = namesText(names, terrains).replace(/^; /, "\n");
   const filled = padded.length ? `\nshort rows were filled with transparent on the right, up to ${fw} wide: ${padded.slice(0, 12).join("; ")}${padded.length > 12 ? `; and ${padded.length - 12} more frames` : ""}` : "";
   return {
-    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}${filled}`,
+    text: `sprites/${name}.png: ${result.length} frame(s) of ${fw}x${fh}${adding ? ` (frames ${first} to ${first + given.length - 1} written)` : ""}${result.length > 1 ? `; the sheet is ${columns} across (16 at most), so frame n (and tile n of a tilemap) is at column n % ${columns}, row floor(n / ${columns})` : ""}${named}${filled}${room.warning ? `\n${room.warning}` : ""}`,
     picture: spritePicture(sheet, json, names, terrains),
   };
 }

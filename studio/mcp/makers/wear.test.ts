@@ -170,6 +170,31 @@ describe("wear on a painted detailed street", { timeout: 60_000 }, () => {
     expect(solid.said).toMatch(/\(solid\)/);
   });
 
+  it("lays a rail painted with no ground on the street round it, not on the walls at its ends, and says so", () => {
+    const rows = ["CCCCCCCC", "CaaaaaaC", "CrrrrrrC", "CaaaaaaC", "CCCCCCCC"];
+    const p = paint("rail", { paint: { a: "asphalt", C: "concrete_wall", r: "tram_rail" }, wear: 0 }, rows);
+    expect(p.layers.get("ground")!.names[2]!.slice(1, 7).every((n) => /^asphalt/.test(n)), p.layers.get("ground")!.names[2]!.join(" ")).toBe(true);
+    const solid = p.layers.get("ground")!.solid;
+    expect(p.layers.get("ground")!.tiles[2]!.slice(1, 7).some((t) => solid.has(t))).toBe(false);
+    expect(p.said).toContain(`"r" (tram_rail) has no ground of its own: laid on asphalt, the ground around it`);
+    expect(p.said).not.toContain("SOLID");
+    // a window set in a wall, with no floor above or below it, still stands in the wall; a solid ground is said loudly
+    const wall = paint("window", { paint: { C: "concrete_wall", r: "tram_rail" }, wear: 0 }, ["CCCC", "CrrC", "CCCC"]);
+    expect(wall.said).toMatch(/"r" \(tram_rail\) has no ground of its own: laid on concrete_wall \(SOLID\)[^\n]*paint "tram_rail on <ground>"/);
+  });
+
+  it("hatches a box only where two roads cross, never a whole paved square", () => {
+    const plaza = Array.from({ length: 12 }, () => "a".repeat(20));
+    const square = paint("plaza", { wear: 1, features: ["markings"] }, plaza);
+    expect(square.layers.get("ground_wear")?.names.flat().some((n) => /^wear_hatch/.test(n)) ?? false).toBe(false);
+    const ringed = paint("ringed", { wear: 1, features: ["markings"] }, ["pppppppppppppppppppp", ...plaza.slice(1, 11).map((r) => `p${r.slice(2)}p`), "pppppppppppppppppppp"]);
+    expect(ringed.layers.get("ground_wear")?.names.flat().some((n) => /^wear_hatch/.test(n)) ?? false).toBe(false);
+    // a crossroads: a road four rows high across, one four columns wide down, pavement in the corners
+    const cross = Array.from({ length: 14 }, (_, r) => (r >= 5 && r <= 8 ? "a".repeat(20) : `${"p".repeat(8)}aaaa${"p".repeat(8)}`));
+    const hatched = [0.3, 0.5, 0.7].some((wear) => paint(`cross${wear * 10}`, { wear, features: ["markings"] }, cross).layers.get("ground_wear")?.names.flat().some((n) => /^wear_hatch/.test(n)));
+    expect(hatched).toBe(true);
+  });
+
   it("refuses what it does not know, all at once", () => {
     const bad = () => paint("bad", { wear: 2, features: ["sparkles"], district: "moon", damage: ["#"] });
     for (const said of [/"wear" is 2/, /'sparkles'/, /no district 'moon'/, /"damage" must be 12 rows of 20/]) expect(bad).toThrow(said);

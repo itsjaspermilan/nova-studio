@@ -19,6 +19,7 @@ import { styleOf } from "./style";
 import { CITY_EDGES, CITY_PROP_NAMES, CITY_PROPS, CITY_TERRAIN_NAMES, CITY_TERRAINS } from "./city-tiles";
 import { faceEnds, ground, lightSide, lump, speckle, times, type Ctx, type EdgeKind, type Probe, type PropKind, type Shape, type TerrainKind } from "./tilekit";
 import { writeSheet, type Put } from "./sheet";
+import { tileRoom } from "../../src/lib/tileset";
 import { poolWobble, wearTiles, WORN } from "./wear";
 
 type Args = Record<string, any>;
@@ -843,5 +844,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     `Paint a map: scene_write { "name": "meadow", "scene": { "version": 1, "tilemaps": [ { "tileset": "${name}", "scale": ${hd ? 1.5 : 3}, "paint": { "g": "grass", "p": "path", "w": "water", "T": "tree", "f": "flowers" }, "tiles": ["gggTgg", "gppppg", "gpwwfg", "gggggg"] } ] } }`,
     `Every tile has a name (the whole tile of a terrain is its name, e.g. "grass"; variants "grass_2"; an edge "path_edge_n"); redraw one with sprite_preview { "frame": "<name>" } and sprite_write { "at": n }, or add your own with "append": true.`,
   ];
+  const room = tileRoom(frames.length, name);
+  if (room.warning) said.splice(1, 0, room.warning);
   return { text: said.join("\n"), picture: made.picture };
 }

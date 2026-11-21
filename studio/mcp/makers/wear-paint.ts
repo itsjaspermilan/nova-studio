@@ -382,8 +382,17 @@ export function layWear(x: WearInput): WearResult {
     return lay("markings", base, c, r, worn ? 1 : 0);
   };
   // hatched boxes where two roads cross
+  // (only where two roads really cross: the box is road-wide, not a plaza, and a road goes on out of it on a side and
+  // above or below; a paved square or a yard is all "road" both ways and gets none)
+  const crossing = (r0: number, r1: number, c0: number, c1: number) => {
+    if (r1 - r0 > 7 || c1 - c0 > 7 || (r1 - r0 + 1) * (c1 - c0 + 1) > 0.25 * nrows * cols) return false;
+    const mr = (r0 + r1) >> 1, mc = (c0 + c1) >> 1;
+    const across = (c0 > 0 && road(c0 - 1, mr)) || (c1 < cols - 1 && road(c1 + 1, mr));
+    const along = (r0 > 0 && road(mc, r0 - 1)) || (r1 < nrows - 1 && road(mc, r1 + 1));
+    return across && along;
+  };
   for (const [r0, r1] of H.bands) for (const [c0, c1] of V.bands) {
-    if (r1 - r0 < 2 || c1 - c0 < 2) continue;
+    if (r1 - r0 < 2 || c1 - c0 < 2 || !crossing(r0, r1, c0, c1)) continue;
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) mark("hatch", `hatch_${`${r === r0 ? "n" : r === r1 ? "s" : ""}${c === c0 ? "w" : c === c1 ? "e" : ""}` || "c"}`, c, r);
   }
   // groups of bands split only by a rail are one road: one crossing over all of them

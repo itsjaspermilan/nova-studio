@@ -368,40 +368,63 @@ export function hdCreatureFrame(kindName: string): { n: number; oy: number } {
   return frameOf(HD_CREATURES[kindName]!);
 }
 
-/// Every frame of a detailed archetype: its states, then "tell", then "hit".
-export function hdFrames(kindName: string, c: HdCtx) {
+/// The four ways a creature made with `facings` can face, and the turn that shows it so (each is built nose to +x).
+export const HD_FACINGS: [string, number][] = [["down", -Math.PI / 2], ["left", Math.PI], ["right", 0], ["up", Math.PI / 2]];
+
+/// Whether an archetype can be drawn facing four ways (one built in 3D, not drawn whole).
+export const hdCanFace = (kindName: string) => !!HD_CREATURES[kindName]?.parts;
+
+/// Every frame of a detailed archetype: its states, then "tell", then "hit". With `facings`, every state and the tell
+/// four times, facing down, left, right and up (`move_down`, ..., `tell_up`); the plain names are the right-facing ones.
+export function hdFrames(kindName: string, c: HdCtx, facings = false) {
   const kind = HD_CREATURES[kindName]!;
   const { n, oy } = hdCreatureFrame(kindName);
-  const frame = (state: string, i: number, shadow = true): Img => {
+  const frame = (state: string, i: number, shadow = true, yaw = 0): Img => {
     if (kind.whole) return kind.whole(c, state, i);
     const sh = shadow ? kind.shadow?.(state, i) : null;
-    const t = toon([{ parts: asToon(kind.parts!(c, state, i)), xf: { yaw: 0, sx: K, sy: K, ...kind.xf?.(state, i) } }], {
+    // (a shadow is given lying along x: turned a quarter, it lies along z)
+    const across = Math.abs(Math.sin(yaw)) > 0.5;
+    const t = toon([{ parts: asToon(kind.parts!(c, state, i)), xf: { yaw, sx: K, sy: K, ...kind.xf?.(state, i) } }], {
       w: n, h: n, ox: n / 2, oy, tilt: 25, outline: c.P.outline, rim: c.P.city ? c.P.accent[1][3] : undefined,
-      shadows: sh ? [[sh[0] * K, sh[1] * K, sh[2] * K, sh[3] * K]] : [],
+      shadows: sh ? [across ? [sh[1] * K, sh[0] * K, sh[3] * K, sh[2] * K] : [sh[0] * K, sh[1] * K, sh[2] * K, sh[3] * K]] : [],
     });
     glowInside(t, c.acc, { reach: 2, strength: 0.6, hot: 0.45 });
     return t.img;
   };
   const frames: Img[] = [], durations: number[] = [];
   const tags: { name: string; from: number; to: number; loop?: boolean }[] = [];
-  for (const [state, count, ms] of kind.states) {
-    tags.push({ name: state, from: frames.length, to: frames.length + count - 1, ...(state === "fire" || state === "leap" || state === "open" ? { loop: false } : {}) });
-    for (let i = 0; i < count; i++) {
-      frames.push(frame(state, i));
-      durations.push(ms);
+  const ways: [string, number][] = facings ? HD_FACINGS : [["", 0]];
+  for (const [dir, yaw] of ways) {
+    for (const [state, count, ms] of kind.states) {
+      const tag = { name: dir ? `${state}_${dir}` : state, from: frames.length, to: frames.length + count - 1, ...(state === "fire" || state === "leap" || state === "open" ? { loop: false } : {}) };
+      tags.push(tag);
+      if (dir === "right") tags.push({ ...tag, name: state });
+      for (let i = 0; i < count; i++) {
+        frames.push(frame(state, i, true, yaw));
+        durations.push(ms);
+      }
     }
   }
   for (const [alias, of] of Object.entries(kind.alias ?? {})) {
-    const t = tags.find((x) => x.name === of);
-    if (t) tags.push({ ...t, name: alias });
+    for (const [dir] of ways) {
+      const t = tags.find((x) => x.name === (dir ? `${of}_${dir}` : of));
+      if (t) tags.push({ ...t, name: dir ? `${alias}_${dir}` : alias });
+    }
+    if (facings) {
+      const t = tags.find((x) => x.name === of);
+      if (t) tags.push({ ...t, name: alias });
+    }
   }
   // the tell: wound up to strike (each kind's own pose), its outline flashing in the glow colour
   const first = kind.states.find(([s]) => s === "idle")?.[0] ?? kind.states[0]![0];
-  const tell = frame("tell", 0);
-  if (kindName !== "vending_mimic") flashRing(tell, c.acc[2], mix(c.acc[3], WHITE, 0.5));
-  tags.push({ name: "tell", from: frames.length, to: frames.length, loop: false });
-  frames.push(tell);
-  durations.push(240);
+  for (const [dir, yaw] of ways) {
+    const tell = frame("tell", 0, true, yaw);
+    if (kindName !== "vending_mimic") flashRing(tell, c.acc[2], mix(c.acc[3], WHITE, 0.5));
+    tags.push({ name: dir ? `tell_${dir}` : "tell", from: frames.length, to: frames.length, loop: false });
+    if (dir === "right") tags.push({ name: "tell", from: frames.length, to: frames.length, loop: false });
+    frames.push(tell);
+    durations.push(240);
+  }
   tags.push({ name: "hit", from: frames.length, to: frames.length, loop: false });
   frames.push(frame(first, 0, false).silhouette(WHITE));
   durations.push(120);
