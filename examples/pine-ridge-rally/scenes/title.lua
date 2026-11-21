@@ -2,7 +2,7 @@
 -- They are screens of one scene, so the music keeps playing between them.
 --
 -- Getting a race ready (2026-11-08): the main menu's RALLY, CIRCUIT or TIME TRIAL is the mode; then the track (the stages, or the circuits),
--- then the car (the garage's grid, where a car can also be bought), then for a circuit the laps, and last a page with all of it and a big
+-- then the car (the garage's stage and carousel, where a car can also be bought), then for a circuit the laps, and last a page with all of it and a big
 -- RACE button. B goes back a step at a time. The difficulty is the track's own (its level); the tracks open one after another.
 local state = require("lib.state")
 local audio = require("lib.audio")
@@ -10,6 +10,7 @@ local ui = require("lib.ui")
 local controls = require("lib.controls")
 local backdrop = require("lib.backdrop")
 local menu_bg = require("lib.menu_bg")
+local garage = require("lib.garage")
 local previews = require("lib.previews")
 local transition = require("lib.transition")
 
@@ -44,8 +45,6 @@ function Title:enter(screen)
   for _, id in ipairs({ "main", "options", "controls", "pick_track", "garage", "laps", "confirm" }) do nova.ui.forget(id) end
   self.t = 0
   self.entered = 0
-  self.angles = {}
-  self.cards_last = {}
   audio.music("menu", { volume = 0.95, fade = 0.8 })
   state.apply_volumes()
 end
@@ -77,10 +76,10 @@ function Title:open_garage(from)
   self.chosen = state.car
   self.buying = nil
   self.note = nil
+  local list = state.showroom()
   local at = 1
-  for i, c in ipairs(state.garage()) do if c.id == state.current_car().id then at = i end end
-  nova.ui.forget("garage")
-  nova.ui.focus("garage", "car" .. at)
+  for i, c in ipairs(list) do if c.id == state.current_car().id then at = i end end
+  self.gar = garage.new(list, at)
   self:go("garage")
 end
 
@@ -117,6 +116,11 @@ function Title:update(dt)
   -- (F12 and F11 make the store pictures, from the main menu)
   if screen == "menu" and nova.input.pressed("art_box") then self.screen = "boxart"; backdrop.light()
   elseif screen == "menu" and nova.input.pressed("art_icon") then self.screen = "icon"; backdrop.light()
+  elseif screen == "garage" and self.gar and nova.input.pressed("stats") then
+    -- (F3, for the tests and for looking: what the stage shows and how it turns)
+    local st = self.gar
+    nova.log(string.format("garage: speed=%.3f angle=%.3f tilt=%.3f hand=%d car=%s make=%s", st.omega, st.ang, st.tilt, st.hand and 1 or 0,
+      st.list[st.cur].id, st.list[st.cur].make))
   elseif screen == "howto" then
     if nova.input.pressed("a") or nova.input.pressed("b") or nova.input.pressed("start") then audio.sfx("menu_back"); self:go("menu") end
   elseif screen == "controls" and self.listening then
@@ -150,11 +154,7 @@ function Title:draw()
     return
   end
   menu_bg.setup()
-  if screen == "garage" then
-    menu_bg.wheels(self.t)
-    local on = tonumber((nova.ui.focus("garage") or "car1"):sub(4)) or 1
-    menu_bg.cars(state.garage(), self.cards_last, on, self.angles, dt)
-  end
+  if screen == "garage" and self.gar then garage.draw3d(self.gar) end
 end
 
 local C, F = ui.color, ui.font
@@ -458,82 +458,118 @@ function Title:track_menu()
   end
 end
 
--- The garage: every car in one grid on the left (each card has the car itself standing in it: the one under the focus turns under a
--- spot light, the rest stand grey and still), and on the right what the car is: its class, its numbers, and what it costs or that it is
--- yours. A picks a car of yours; on one you do not have, A asks and a second A buys it, if the coins are there.
-local COLS = 4
+-- The garage (2026-11-21, lib/garage.lua draws it): one car at a time on the stage, turning slowly or by the right stick; along the bottom a
+-- carousel of cards, the make's logo and the car's name on each; beside the car its details. Left and right move one car (hold to keep
+-- going), L and R jump to the next make. A picks a car of yours; on one you do not have, A asks and a second A buys it, if the coins are there.
+local STATS = { { "Power", function(c) return (c.power - 6) / 6.5 end }, { "Top speed", function(c) return (c.top - 28) / 24 end },
+                { "Grip", function(c) return (c.grip - 0.75) / 0.7 end }, { "Drift", function(c) return c.oversteer end } }
+
 function Title:garage_menu()
-  local list = state.garage()
-  local focus = nova.ui.focus("garage")
-  local on = tonumber((focus or "car1"):sub(4)) or 1
-  local car = list[on] or list[1]
+  local st = self.gar
+  local list = st.list
+  local w = nova.view()
+  local dt = math.min(0.1, self.t - (st.last_t or self.t))
+  st.last_t = self.t
+  local flow = self.garage_from == "flow"
+
+  -- the stage: the right stick turns the car (up and down tip the view), the slide and the carousel move on
+  local was, hand = garage.update(st, dt, nova.input.axis("look_x"), nova.input.axis("look_y"))
+  if was ~= hand then nova.log(string.format("garage: %s turn (angle %.2f)", hand and "hand" or "slow", st.ang)) end
+
+  -- left and right move one car, and keep moving while held; L and R jump to the next make
+  local down = (nova.input.down("right") and 1 or 0) - (nova.input.down("left") and 1 or 0)
+  local step = 0
+  if down ~= 0 then
+    if st.held ~= down then
+      st.held, st.hold_t, step = down, 0, down
+    else
+      st.hold_t = st.hold_t + dt
+      if st.hold_t >= 0.4 then st.hold_t, step = st.hold_t - 0.17, down end
+    end
+  else
+    st.held = 0
+  end
+  local jump = (nova.input.pressed("r1") and 1 or 0) - (nova.input.pressed("l1") and 1 or 0)
+  if jump ~= 0 then step = garage.make_jump(st, jump) end
+  if step ~= 0 then
+    garage.move(st, step)
+    audio.sfx("menu_move")
+    self.buying, self.note = nil, nil
+    state.car = state.index_of(list[garage.index(st)].id)
+    nova.log(string.format("garage: shows %s (%s)", list[garage.index(st)].id, list[garage.index(st)].make))
+  end
+
+  local on = garage.index(st)
+  local car = list[on]
+  local make = state.make_of(car)
   local owned = state.owns(car.id)
   local class = state.class_of(car)
   local coins = state.coins()
-  local flow = self.garage_from == "flow"
 
-  -- the header over the grid, and the coins
-  nova.ui.layout { anchor = "topleft", margin = 0, x = 36, y = 22, ui.header(flow and (MODE_NAMES[state.mode] .. "  ·  " .. state.current_track().name) or "Garage",
-    flow and "Choose your car" or "Buy and choose cars", 45) }
+  -- the header, and the coins
+  nova.ui.layout { anchor = "topleft", margin = 0, x = 36, y = 14, ui.header(flow and (MODE_NAMES[state.mode] .. "  ·  " .. state.current_track().name) or "Garage",
+    flow and "Choose your car" or "Buy and choose cars", 32) }
+  nova.ui.layout { anchor = "topright", margin = 36, y = -2, { "column", gap = 0,
+    { "text", "YOUR COINS", style = "kicker", align = "right" },
+    { "text", state.money(coins), font = F.heavy, size = 30, color = C.gold, align = "right" } } }
 
-  local grid = { "grid", columns = COLS, gap = 8, visible = 3, flow = true, w = 540 }
-  for i, c in ipairs(list) do
-    local mine = state.owns(c.id)
-    grid[#grid + 1] = { "button", string.upper(c.name), id = "car" .. i, look = "car", index = i, h = 104, owned = mine,
-                        value = mine and (state.cars[self.chosen] == c and "DRIVING" or "OWNED") or ((c.starter and "STARTER  " or "") .. state.money(c.price)) }
-  end
-  -- the numbers of the car
-  local stats = { "column", gap = 12 }
-  for _, s in ipairs({ { "Power", (car.power - 6) / 6.5 }, { "Top speed", (car.top - 28) / 24 }, { "Grip", (car.grip - 0.75) / 0.7 }, { "Drift", car.oversteer } }) do
-    local v = math.max(0, math.min(1, s[2]))
-    add(stats, { { "column", gap = 5,
-      { "row", { "text", s[1], font = F.medium, size = 18, grow = 1 }, { "text", tostring(math.floor(v * 100 + 0.5)), font = F.medium, size = 18, color = C.dim, w = 40, align = "right" } },
-      bar_box(v, 9) } })
-  end
-  -- what A does here
+  -- what A does here, and what the car is
   local status, action, colour
   if owned then
     status, colour = (state.cars[self.chosen] == car) and "You drive this car." or "One of your cars.", C.green
-    action = flow and "A  RACE IN IT" or ((state.cars[self.chosen] == car) and "" or "A  DRIVE IT")
+    action = flow and "RACE IN IT" or ((state.cars[self.chosen] == car) and "" or "DRIVE IT")
   elseif self.buying == on then
     status, colour = "Buy it for " .. state.money(car.price) .. " coins?", C.gold
-    action = "A AGAIN  BUY IT"
+    action = "AGAIN: BUY IT"
   elseif coins >= car.price then
     status, colour = "Costs " .. state.money(car.price) .. " coins.", C.gold
-    action = "A  BUY IT"
+    action = "BUY IT"
   else
-    status, colour = "Costs " .. state.money(car.price) .. ": " .. state.money(car.price - coins) .. " more coins to go.", C.red
+    status, colour = "Costs " .. state.money(car.price) .. ". Needs " .. state.money(car.price - coins) .. " more.", C.red
     action = ""
   end
-  local pane = { "panel", anchor = "topright", y = -9, w = 340, h = 432, pad = { 21, 18 }, gap = 0,
-    { "row", { "text", string.upper(class.name), style = "kicker", grow = 1 }, { "text", state.money(coins) .. " COINS", font = F.heavy, size = 19.5, color = C.gold, align = "right", w = 160 } },
-    { "text", string.upper(car.name), font = F.title, size = 42 },
-    { "text", class.blurb, style = "muted", size = 15, wrap = true },
-    { "space", h = 12 }, stats, { "space", h = 12 },
-    { "box", h = 1.5, draw = function(r) nova.ui.rect(r.x, r.y, r.w, r.h, C.divider) end }, { "space", h = 10 },
-    { "text", self.note or status, font = F.semi, size = 18, color = self.note and C.red or colour, wrap = true },
-    { "text", "Your rivals drive " .. class.name .. " cars too.", style = "muted", size = 15, wrap = true },
-    { "space", grow = 1 },
-    { "text", action, font = F.heavy, size = 25.5, spacing = 0.04, color = C.white, align = "right" } }
-  ui.cards = {}
-  local r = nova.ui.menu {
-    id = "garage", kind = "stack", w = "100%", h = 432, margin = 36, wrap = false, enter = false,
-    { "column", anchor = "topleft", y = 72, w = 540, grid },
-    pane,
-  }
-  self.cards_last = ui.cards
-  ui.hints({ { "pad_dpad", "Look" }, { "pad_a", owned and (flow and "Race in it" or "Drive it") or "Buy" }, { "pad_b", "Back" } })
-
-  if r.moved then
-    self.buying, self.note = nil, nil
-    local now = tonumber((r.focus or "car1"):sub(4)) or 1
-    state.car = state.index_of(list[now].id)
+  local stats = { "column", gap = 4 }
+  for _, s in ipairs(STATS) do
+    local v = math.max(0, math.min(1, s[2](car)))
+    add(stats, { { "row", h = 22, gap = 8, align = "center",
+      { "text", s[1], font = F.medium, size = 16, w = 84 },
+      { "box", grow = 1, h = 7, draw = function(r) nova.ui.rect(r.x, r.y, r.w, r.h, C.divider); nova.ui.rect(r.x, r.y, r.w * v, r.h, C.orange) end },
+      { "text", tostring(math.floor(v * 100 + 0.5)), font = F.medium, size = 16, color = C.dim, w = 30, align = "right" } } })
   end
-  if r.pressed then
+  local rects = nova.ui.layout { anchor = "topleft", margin = 0, x = 36, y = 74, w = 262, id = "pane", pad = { 16, 12 }, gap = 0,
+    panel = { color = { C.panel[1], C.panel[2], C.panel[3], 235 } },
+    { "row", gap = 12, align = "center",
+      { "image", make.logo, w = 76, h = 76 },
+      { "column", gap = 0, grow = 1,
+        { "text", string.upper(make.name), font = F.heavy, size = 30, color = make.color, spacing = 0.06 },
+        { "text", string.upper(class.name), style = "kicker", size = 15 } } },
+    { "space", h = 6 },
+    { "text", string.upper(car.name), font = F.title, size = ui.fit(string.upper(car.name), 38, 228, F.title) },
+    { "space", h = 8 }, stats, { "space", h = 8 },
+    { "text", self.note or status, font = F.semi, size = 16, color = self.note and C.red or colour, wrap = true } }
+  local p = rects.pane
+  nova.ui.rect(p.x, p.y, 5, p.h, make.color)
+
+  -- the A button's job, under the car on the right
+  if action ~= "" then
+    local tw = nova.ui.text_width(action, { font = F.heavy, size = 24, spacing = 0.04 })
+    nova.ui.rect(w - 36 - tw - 66, 324, tw + 66, 38, { C.ground[1], C.ground[2], C.ground[3], 200 })
+    nova.ui.sprite("ui/pad_a", w - 36 - tw - 66 + 20, 343, { w = 28, h = 28 })
+    ui.say(w - 36 - 14, 343, action, F.heavy, 24, C.white, { align = "right", valign = "middle", spacing = 0.04 })
+  end
+
+  -- the carousel along the bottom, over a dark band
+  nova.ui.rect(0, 372, w, 114, { C.ground[1], C.ground[2], C.ground[3], 170 })
+  garage.carousel(st, 429, self.chosen)
+  ui.hints({ { "pad_stick_r", "Turn" }, { "pad_l", "" }, { "pad_r", "Make" }, { "pad_dpad", "Car" },
+             { "pad_a", owned and (flow and "Race in it" or "Drive it") or "Buy" }, { "pad_b", "Back" } })
+
+  if nova.input.pressed("a") or nova.input.pressed("start") then
     if owned then
       audio.sfx("menu_accept")
       self.chosen = state.car
       state.save_options()
+      nova.log("garage: chose " .. car.id)
       if flow then self:after_car() end
     elseif self.buying == on then
       if state.buy(car) then
@@ -548,7 +584,8 @@ function Title:garage_menu()
       audio.sfx("menu_back")
       self.note = "Not enough coins yet: race to earn more."
     end
-  elseif r.back then
+  elseif nova.input.pressed("b") or nova.input.pressed("menu_back") then
+    audio.sfx("menu_back")
     if self.buying then self.buying = nil
     else
       state.car = self.chosen
