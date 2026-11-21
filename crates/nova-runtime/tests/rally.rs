@@ -376,7 +376,8 @@ fn the_controls_screen_remaps_a_key_and_can_put_the_defaults_back() {
     for _ in 0..30 {
         frame(&mut g, &[]);
     }
-    tap(&mut g, "key:ArrowUp"); // (up from Race wraps round to Options, the last of the main menu)
+    tap(&mut g, "key:ArrowUp"); // (up from Rally wraps round to Quit, the last of the main menu)
+    tap(&mut g, "key:ArrowUp"); // Options, the one above it
     tap(&mut g, "key:Enter"); // Options
     for _ in 0..7 {
         tap(&mut g, "key:ArrowDown");
