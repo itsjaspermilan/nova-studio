@@ -1377,6 +1377,33 @@ The options you pass to `play` apply on top (volume and pitch multiply; a `pan` 
 A sound at a place (`at = { x, y, z }`, see `nova.sound.play`) takes `falloff`: `"smooth"` (the default, a square law), `"linear"`, `"natural"` (loud close up, a long fade; it
 still reaches nothing at `range`) or `"none"` (full volume to the range; only the pan follows). `nova.sound.set(id, { at = ..., falloff = ... })` steers it.
 
+### Engines and driving: `require("nova.engine_sound")`
+
+An opt-in module of the runtime (`crates/nova-runtime/lua/engine_sound.lua`, loaded only by a game that requires it, like `nova.timers`
+and `nova.anim`): a car's engine played from the loops `engine_make` writes, and the driving sounds `driving_sounds_make` writes.
+
+```lua
+local engine_sound = require("nova.engine_sound")
+self.engine = engine_sound.new(require("engines.car"))   -- the profile engine_make wrote (engines/car.lua); { volume, rival, surface } may follow
+-- every step:
+self.engine:update(dt, { rpm = rpm, throttle = t, speed = v, slip = s, surface = "road", lift = body_y, scrape = 0 })
+self.engine:shift("up")                                    -- at a gear change: the engine stops pulling a moment; the gearbox's sound
+```
+
+An engine has loops at fixed revs (the profile's `cycles`: a loop of 65536 samples holding that many engine cycles is at cycles x 80.75 rpm),
+each in two layers, throttle down (`eng_<sound>_<k>`) and lifted (`eng_<sound>_off_<k>`). The two bands either side of the revs play,
+crossfaded, each at the pitch that makes it the engine's note; the layers crossfade by how hard the engine pulls (the throttle, less a
+gear change, less the limiter: `"cut"`, `"soft"` or `"governor"`). Only the loops that are heard play. Beside it: the tyres on the
+`surface` (`engine_sound.SURFACES`: road, gravel, dirt, snow, sand, rough, each a loop, gain, pitch range and how much a slide adds), the
+squeal when sliding on tarmac, the wind with the square of the speed, a turbo's breath with the boost and its blow-off when lifting under
+boost, pops on the overrun, an old gearbox's whine, a `thump` when `lift` jumps, the `scrape_loop` while `scrape` is above 0. `rpm` may be
+`rev` instead (0 at idle to 1 at the limit). `engine:state()` gives the heard rpm and load; `engine:silence()` stops its loops until the next
+update (paused, or a rival out of earshot); `engine:stop()`. A rival (`rival = true`) plays only its throttle-down loops, placed at the
+`x`, `y`, `z` given to update (it pans and fades with distance, 90 m at most) and bent by `doppler`. `engine_sound.cars(cars, player, dt)`
+does all of that for a race's list of cars (each with `engine`, the fields update takes, and `velx`, `velz`), with a `whoosh` as a rival
+passes close and fast. First written for Pine Ridge Rally (whose own `lib/audio.lua` is the same model with its own course settings);
+`examples/starter-racing` uses the module.
+
 ## Languages (`locales/<code>.json`)
 
 Text for several languages lives in one flat JSON file per language, `locales/en.json`, `locales/fr.json`, ...: an object of key to text. The studio's

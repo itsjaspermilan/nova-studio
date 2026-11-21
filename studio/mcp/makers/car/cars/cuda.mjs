@@ -1,6 +1,6 @@
 // `car_muscle`: a late-1960s American fastback muscle car, modelled from build/blueprints/cuda.png (calibration in cuda.trace.json) the way car_gt was:
 // one smooth body from buildBody, everything cut into the skin by the Cut-out modifier, bumpers / mirror / wheels / wipers / exhaust as real separate pieces.
-// Numbers are 1/16 m, y up from the ground, nose along +z. Run:  scripts/env.sh node scripts/rally/blueprint-cars.mjs car_muscle
+// Numbers are 1/16 m, y up from the ground, nose along +z. Made by car_make { "type": "muscle_fastback" }.
 import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, assemble, bar, box, buildBody, cyl, ellipse, glassOf, inset, lattice, mesh, mirrorX, path, r2, rect, rounded, rrect, shade, stroke, wheel, archE } from "../kit.mjs";
 
 const lo = (sx, a, b) => [Math.min(sx * a, sx * b), Math.max(sx * a, sx * b)];
