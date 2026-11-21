@@ -7,6 +7,7 @@ local B = require("data.bosses").mother_coil
 local P = require("data.player")
 local J = require("lib.juice")
 local F = require("lib.fx")
+local V = require("lib.vfx")
 local Field = require("lib.field")
 local Run = require("lib.run")
 
@@ -158,12 +159,12 @@ function Coil:update(dt)
     if self.t >= self.burst_at then
       self.burst_at = self.t + 0.09
       local x, y = self.x + (math.random() - 0.5) * B.cab.w, self.y - math.random() * B.cab.h
-      F.burst(x, y, 6 + math.random() * 5)
+      V.boom(x, y, 40 + math.random() * 36, { quiet = true, shake = 3 })
       nova.sound.play("boss_burst", { volume = P.sfx.boss_burst, limit = 3 })
       J.shake(7, 8)
     end
     if self.t >= B.die.burst then
-      F.burst(self.x, self.y - B.cab.h / 2, 14)
+      V.boom(self.x, self.y - B.cab.h / 2, 190, { shake = 16 })
       J.shake(16, 20)
       self.state = "dead"
       nova.log("mother coil is gone")

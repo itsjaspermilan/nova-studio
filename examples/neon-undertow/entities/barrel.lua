@@ -2,7 +2,7 @@
 -- `radius` (the runner, enemies, stalls, other barrels, which then light their own). Numbers: data/hazards.lua.
 local H = require("data.hazards").barrel
 local J = require("lib.juice")
-local D = require("lib.draw")
+local T = require("lib.tell")
 local P = require("data.player")
 local Blast = require("lib.blast")
 local Run = require("lib.run")
@@ -50,10 +50,8 @@ end
 
 function Barrel:draw()
   if self.state == "fuse" then
-    local on = math.floor(self.t * 12) % 2 == 0
     local r = H.radius * (Run.mods.wiring > 0 and Cards.num.wiring.reach or 1)
-    D.disc(self.x, self.y, r, { 255, 138, 43, on and 55 or 25 })
-    D.ring(self.x, self.y, r, { 255, 138, 43, on and 255 or 150 }, 5, 40)
+    T.disc(self.x, self.y, r, self.t / H.fuse, self.t, T.orange)
   end
   if self.state == "fuse" then nova.light2d(self.x, self.y - 24, { radius = Look.fuse.radius, color = Look.fuse.color, intensity = Look.fuse.intensity * (math.floor(self.t * 12) % 2 == 0 and 1 or 0.55) }) end
   local x, y = nova.cam.to_screen(self.x, self.y)

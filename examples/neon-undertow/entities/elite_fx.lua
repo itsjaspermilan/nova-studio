@@ -3,6 +3,7 @@
 local D = require("data.elites")
 local J = require("lib.juice")
 local DR = require("lib.draw")
+local V = require("lib.vfx")
 local C = require("lib.combat")
 
 local Fx = nova.entity { tags = { "elite_fx" }, velocity = false, t = 0 }
@@ -83,16 +84,41 @@ function Fx:draw()
     local v = C.vec[o.facing or "down"]
     local cx, cy = o.x + v[1] * 40 * k, o.y - 16 * k + v[2] * 30 * k
     local px, py = -v[2], v[1]
-    DR.lane(cx - px * 30 * k, cy - py * 30 * k, cx + px * 30 * k, cy + py * 30 * k, 12, { 6, 240, 255, 230 })
-    DR.lane(cx - px * 30 * k, cy - py * 30 * k, cx + px * 30 * k, cy + py * 30 * k, 22, { 6, 240, 255, 60 })
+    -- a curved shield standing in front: its two ends are the old bar's ends, it bulges out 10 units, glowing in layers
+    local pts = {}
+    for i = 0, 8 do
+      local s = i / 4 - 1
+      pts[#pts + 1] = { cx + px * s * 30 * k + v[1] * 10 * k * (1 - s * s), cy + py * s * 30 * k + v[2] * 10 * k * (1 - s * s) }
+    end
+    local shimmer = 0.75 + 0.25 * math.sin(self.t * 12)
+    for i = 1, #pts - 1 do
+      local a, b = pts[i], pts[i + 1]
+      if V.glow() then V.line(a[1], a[2], b[1], b[2], 24, { 6, 240, 255, 50 * shimmer }, 0) end
+      V.line(a[1], a[2], b[1], b[2], 12, { 6, 240, 255, 200 * shimmer }, 0)
+      V.line(a[1], a[2], b[1], b[2], 4, { 220, 255, 255, 255 }, 0)
+    end
+    -- a glint runs along it
+    local gi = 1 + math.floor((self.t * 5) % 1 * (#pts - 1))
+    local gx, gy = nova.cam.to_screen(pts[gi][1], pts[gi][2])
+    nova.sprite("fx_bits", gx, gy, { frame = V.bits.star, w = 26, h = 26, blend = "add", lit = false })
   elseif self.mark == "magnetic" then
-    local pulse = (self.t * 1.2) % 1
-    DR.ring(o.x, o.y - 8 * k, self.m.shot_range * (1 - pulse), { 255, 43, 214, 240 * pulse }, 6, 36)
+    -- the reach of the pull (shot_range): a ring that contracts towards the elite, with chevrons pointing in
+    local R = self.m.shot_range
+    local cx, cy = nova.cam.to_screen(o.x, o.y - 8 * k)
+    nova.sprite("fx_tell", cx, cy, { frame = 0, w = R * 2.1, h = R * 1.68, color = { 255, 43, 214, 38 }, blend = "add", lit = false })
+    for pass = 0, 1 do
+      local pulse = (self.t * 1.2 + pass * 0.5) % 1
+      local r = R * (1 - pulse)
+      nova.sprite("fx_tell", cx, cy, { frame = 0, w = r * 2.1, h = r * 1.68, color = { 255, 80, 220, 240 * pulse }, blend = "add", lit = false })
+      for j = 0, 7 do
+        local a = j / 8 * math.pi * 2 + pass * 0.4
+        nova.sprite("fx_chev", cx + math.cos(a) * r, cy + math.sin(a) * r * 0.8, { w = 22, h = 22, rotation = a + math.pi, color = { 255, 120, 235, 230 * pulse }, blend = "add", lit = false })
+      end
+    end
   elseif self.mark == "linked" and self.partner and self.partner:is_alive() then
-    local on = math.floor(self.t * 10) % 2 == 0
+    -- a crackling cyan cord between the two, re-jagging every few frames, with a spark at each end
     local a, b = self.partner, o
-    DR.lane(a.x, a.y - 30, b.x, b.y - 30 * k, 6, { 6, 240, 255, on and 230 or 150 })
-    DR.lane(a.x, a.y - 30, b.x, b.y - 30 * k, 14, { 6, 240, 255, 50 })
+    V.bolt(a.x, a.y - 30, b.x, b.y - 30 * k, 0.85, nil, math.floor(self.t * 14), 0, 10)
   end
 end
 

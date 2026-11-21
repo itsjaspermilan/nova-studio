@@ -5,7 +5,8 @@ local S = require("data.bosses").mother_coil.slam
 local P = require("data.player")
 local J = require("lib.juice")
 local D = require("lib.draw")
-local F = require("lib.fx")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 
 local Magnet = nova.entity { tags = { "coil_magnet" }, velocity = false, t = 0, state = "track" }
 
@@ -17,8 +18,12 @@ end
 function Magnet:impact()
   self.state, self.t = "linger", 0
   nova.sound.play("magnet_slam", { volume = P.sfx.magnet_slam })
-  J.shake(12, 12)
-  F.burst(self.x, self.y - 10, 5)
+  V.boom(self.x, self.y, S.radius, { shake = 12 })
+  -- the field breaks across the floor: bolts to the edge of the circle
+  for i = 1, 6 do
+    local a = i / 6 * math.pi * 2 + self.t
+    nova.spawn("zap", self.x, self.y - 6, { x2 = self.x + math.cos(a) * S.radius, y2 = self.y - 6 + math.sin(a) * S.radius * 0.8, color = { 255, 63, 164 } })
+  end
   local p = nova.first("player")
   local hurt = "no one"
   if p and p.state ~= "dead" and math.sqrt((p.x - self.x) ^ 2 + (p.y - self.y) ^ 2) <= S.radius then
@@ -62,12 +67,12 @@ function Magnet:draw()
   local boss = self.boss
   local k = self.state == "lock" and math.min(1, self.t / S.lock) or (self.state == "track" and 0 or 1)
   if self.state == "track" then
-    D.ring(self.x, self.y, S.radius, { 255, 255, 255, 110 }, 4, 24)
+    -- following him: the circle it will crush, pale (it only turns magenta when it locks)
+    local cx, cy = nova.cam.to_screen(self.x, self.y)
+    nova.sprite("fx_tell", cx, cy, { frame = 0, w = S.radius * 2.1, h = S.radius * 1.68, color = { 200, 220, 255, 150 }, blend = "add", lit = false })
+    nova.sprite("fx_tell", cx, cy, { frame = 1, w = S.radius * 2.1, h = S.radius * 1.68, color = { 200, 220, 255, 40 }, blend = "add", lit = false })
   elseif self.state == "lock" then
-    local on = math.floor(self.t * 14) % 2 == 0
-    D.disc(self.x, self.y, S.radius * k, { 255, 43, 214, 90 })
-    D.ring(self.x, self.y, S.radius, { 255, 255, 255, on and 255 or 200 }, 6, 32)
-    D.ring(self.x, self.y, S.radius * 0.5, { 255, 43, 214, 255 }, 5, 20)
+    T.disc(self.x, self.y, S.radius, k, self.t, T.magenta)
   end
   local lift = self.state == "track" and 80 or (self.state == "lock" and 80 * (1 - k) + 6 or 0)
   if boss and boss:is_alive() then D.lane(boss.x, boss.y - 60, self.x, self.y - 34 - lift, 6, { 120, 130, 170, 255 }) end

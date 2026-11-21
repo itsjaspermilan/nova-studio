@@ -5,16 +5,21 @@ local E = require("data.enemies").scrapper
 local Run = require("lib.run")
 local Cards = require("data.cards")
 
+local V = require("lib.vfx")
+
 local Swing = nova.entity {
-  sprite = "fx_arc", anim = "heavy", tags = { "enemy_swing" }, pivot = { 12 / 64, 0.5 }, sx = 1.5, sy = 1.5, velocity = false, blend = "add", lit = false, frames_left = 9, active_left = E.swing_frames,
+  tags = { "enemy_swing" }, sx = 1.5, sy = 1.5, velocity = false, frames_left = 9, active_left = E.swing_frames, age = 0,
 }
 
 function Swing:create()
-  self.angle = C.angle[self.dir]
   self.hitbox = C.box(self.dir, self.area)
   self.depth = -self.y - 5
-  self:play("heavy", { restart = true })
+  self.rect = V.rect_of(self)           -- (the magenta crescent fills the box that hurts, the one the tell showed)
   self:strike()
+end
+
+function Swing:draw()
+  V.crescent(self.rect, "fx_eswing", true, false, self.age)
 end
 
 function Swing:strike()
@@ -34,7 +39,7 @@ function Swing:strike()
   if p and self:overlaps(p) then
     local took = p:take_damage(self.damage)
     self.landed = true
-    if took then nova.log("scrapper hit lands") end
+    if took then nova.log("scrapper hit lands"); V.hit(p.x, p.y - 30, C.vec[self.dir][1], C.vec[self.dir][2], { magenta = true, size = 60, n = 12 }) end
   end
 end
 
@@ -45,6 +50,7 @@ function Swing:update(dt)
     self:strike()
     if self.active_left == 0 then self.hitbox = { 0, 0, 0, 0 } end
   end
+  self.age = self.age + 1
   self.frames_left = self.frames_left - 1
   if self.frames_left <= 0 then self:destroy() end
 end

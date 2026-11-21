@@ -3,7 +3,7 @@
 -- Numbers: data/enemies.lua.
 local E = require("data.enemies").tout
 local P = require("data.player")
-local D = require("lib.draw")
+local T = require("lib.tell")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
 local Look = require("data.look")
@@ -75,7 +75,15 @@ end
 function Tout:draw()
   if self.state == "shout" then
     local k = self.t / E.pulse_tell
-    D.ring(self.x, self.y, E.range * k, { 6, 240, 255, 200 * (1 - k) + 30 }, 5, 40)
+    -- the reach of the shout (E.range): faint and hatched, with a ring of light spreading from the barker to its edge, twice
+    T.disc(self.x, self.y, E.range, k, self.t, T.cyan)
+    local cx, cy = nova.cam.to_screen(self.x, self.y)
+    for pass = 0, 1 do
+      local kk = (k * 1.6 - pass * 0.5) % 1.0
+      if k * 1.6 - pass * 0.5 > 0 then
+        nova.sprite("fx_ring", cx, cy, { frame = math.min(5, math.floor(kk * 6)), w = E.range * 2.06, h = E.range * 2.06, color = { 120, 250, 255, 255 }, blend = "add", lit = false, alpha = 1 - kk * 0.8 })
+      end
+    end
   end
   nova.Entity.draw(self)
 end

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "image": "fx_impact.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "columns": 6,
+  "frames": 6,
+  "frame_duration_ms": 45,
+  "tags": [
+    {
+      "name": "burst",
+      "from": 0,
+      "to": 5,
+      "loop": false
+    }
+  ]
+}
