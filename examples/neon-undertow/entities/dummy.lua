@@ -4,7 +4,8 @@ local Status = require("lib.status")
 
 local Dummy = nova.entity {
   sprite = "dummy", anim = "idle", tags = { "hurtable", "dummy", "solid" },
-  pivot = { 0.5, 0.9 }, hitbox = { -6, -5, 12, 5 }, sx = 3, sy = 3, velocity = false,
+  pivot = { 0.5, 0.9 }, hitbox = { -12, -10, 24, 10 }, sx = 1.5, sy = 1.5, velocity = false, shadow = true,
+  light = { radius = 70, radius_y = 50, color = { 255, 63, 164 }, intensity = 0.9, y = -40 },
   last_damage = 0, last_t = 99, flash = 0, total = 0, hits = 0, wobble = 0,
 }
 

@@ -12,8 +12,10 @@ local Elite = require("lib.elite")
 local Hits = require("lib.hits")
 local Status = require("lib.status")
 local Cards = require("data.cards")
+local LK = require("lib.look")
 
-local Room = nova.scene { room = "market_a", first = false }
+-- `look` is the kind of light of the room (data/look.lua): "outdoors", "yard" (Mother Coil's) or "indoors" (the stranger's room, the shop)
+local Room = nova.scene { room = "market_a", first = false, look = "outdoors" }
 
 local VIEW_W, VIEW_H = 960, 540
 
@@ -45,6 +47,7 @@ function Room:enter()
   nova.pause(false)
   nova.music.play(P.music.track, { volume = P.music.volume })
   nova.log("entered " .. self.room)
+  LK.enter(self.look)
   Run.room_kills, Run.room_hit, self.crowd_frac, self.bounty_set = 0, false, 0, false
   self.next_dip = Cards.num.brownout.every
   Hits.dip_t = 0
@@ -57,6 +60,8 @@ function Room:enter()
   end
   if self.entry then nova.log(string.format("room %d of 8: %s (%s)", math.min(self.entry.index, 8), self.entry.kind, self.room)) end
 end
+
+function Room:leave() LK.leave() end
 
 function Room:camera(dt)
   local r = self.runner
@@ -228,7 +233,7 @@ end
 
 function Room:update(dt)
   if nova.input.pressed("start") and self.runner and self.runner.state ~= "dead" then self:toggle_pause() end
-  if self.paused then return end
+  if self.paused then HUD.pause_input(self); return end
   J.tick()
   self.t = self.t + dt
   Run.time = Run.time + dt

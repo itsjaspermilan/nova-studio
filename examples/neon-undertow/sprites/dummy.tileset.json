@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "tile_width": 24,
-  "tile_height": 32,
+  "tile_width": 48,
+  "tile_height": 64,
   "solid": [],
   "names": {
     "0": "idle",

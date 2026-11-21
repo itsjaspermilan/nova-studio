@@ -52,7 +52,7 @@ end
 function Lane:draw()
   if self.t < L.tell then
     local on = math.floor(self.t * 12) % 2 == 0
-    D.lane(self.x0, self.y, self.x1, self.y, L.width, { 255, 43, 214, on and 90 or 45 })
+    D.lane(self.x0, self.y, self.x1, self.y, L.width, { 255, 43, 214, on and 110 or 55 })
     D.lane(self.x0, self.y - L.width / 2, self.x1, self.y - L.width / 2, 4, { 255, 255, 255, 200 })
     D.lane(self.x0, self.y + L.width / 2, self.x1, self.y + L.width / 2, 4, { 255, 255, 255, 200 })
   else

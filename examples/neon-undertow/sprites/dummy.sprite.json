@@ -1,8 +1,8 @@
 {
   "version": 1,
   "image": "dummy.png",
-  "frame_width": 24,
-  "frame_height": 32,
+  "frame_width": 48,
+  "frame_height": 64,
   "columns": 2,
   "frames": 2,
   "frame_duration_ms": 100,

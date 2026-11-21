@@ -13,8 +13,8 @@ local OPPOSITE = { left = "right", right = "left", up = "down", down = "up" }
 local Runner = nova.entity {
   sprite = "runner", anim = "idle_down",
   tags = { "player" },
-  pivot = { 0.5, 0.875 }, hitbox = { -3, -5, 6, 5 },
-  sx = 3, sy = 3, velocity = false,
+  pivot = { 0.5, 0.906 }, hitbox = { -6, -10, 12, 10 },   -- (the detailed sheet: 96 px frames drawn at 1.5; the feet's box is the old one, doubled for the halved scale)
+  sx = 1.5, sy = 1.5, velocity = false, shadow = true,
 }
 
 function Runner:create()
@@ -136,6 +136,7 @@ function Runner:start_roll()
   self.state, self.aiming = "roll", false
   self.stats.rolls = self.stats.rolls + 1
   self:face(dx, dy)
+  self:play("roll_" .. self.facing, { restart = true })
   nova.sound.play("roll", { volume = P.sfx.roll })
 end
 
@@ -183,7 +184,7 @@ function Runner:fire()
       props.damage = Hits.shot_damage(U.damage + U.per_copy * Run.mods.slug)
       props.pierce = U.pierce + Run.mods.slug
       props.slug = true
-      props.sx, props.sy = 3 * U.scale, 3 * U.scale
+      props.sx, props.sy = 1.5 * U.scale, 1.5 * U.scale
     end
     nova.spawn("shot", hx + dx * 22, hy + dy * 22, props)
     self.stats.pellets = (self.stats.pellets or 0) + 1
@@ -301,7 +302,7 @@ function Runner:update(dt)
 
   local sx, sy, len = self:stick()
   local attack, dash = (self.buf_attack or 0) > 0, (self.buf_dash or 0) > 0
-  self.sx, self.sy = 3, 3
+  self.sx, self.sy = 1.5, 1.5
 
   if self.state == "roll" then
     self:update_roll(dt)
@@ -324,10 +325,9 @@ function Runner:update_roll(dt)
   local step = math.min(dt, R.time - self.roll_t)
   self:move(self.roll_dx * speed * step, self.roll_dy * speed * step)
   self.roll_t = self.roll_t + step
-  self.sx, self.sy = 3.5, 2.4 -- squashed low and long
-  self:play("walk_" .. self.facing)
+  self:play("roll_" .. self.facing)   -- (the sheet's tumble, 5 frames of 56 ms: the roll's 0.28 s)
   if math.floor(self.roll_t * 60 + 0.5) % 2 == 0 then
-    local g = nova.spawn("ghost", self.x, self.y, { sprite = "runner", frame = self.frame, flip_x = self.flip_x, sx = 3, sy = 3, pivot = { 0.5, 0.875 } })
+    local g = nova.spawn("ghost", self.x, self.y, { sprite = "runner", frame = self.frame, flip_x = self.flip_x, sx = 1.5, sy = 1.5, pivot = { 0.5, 0.906 } })
     g.depth = -self.y + 1
   end
   -- Shock Wake: rolling through an enemy zaps it (once per roll)

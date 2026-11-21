@@ -20,7 +20,7 @@ function E.hud(self)
     nova.ui.rect(x - w / 2 + 1, y + 1, (w - 2) * math.max(0, self.hp) / self.max_hp, 3, { 255, 43, 214, 255 })
   end
   if self.elite then
-    nova.ui.text(x - 80, y - 20, D.marks[self.elite].name, { font = "pixel", size = 12, color = { 255, 228, 94, 255 }, align = "center", width = 160, shadow = true })
+    nova.ui.text(x - 80, y - 20, D.marks[self.elite].name, { font = "pixel", size = 15, color = { 255, 228, 94, 255 }, align = "center", width = 160, shadow = true })
     Status.hud(self, x, y - 34)
   else
     Status.hud(self, x, y - 14)

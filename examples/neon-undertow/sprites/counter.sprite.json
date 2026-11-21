@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "image": "counter.png",
-  "frame_width": 16,
-  "frame_height": 16,
-  "columns": 4,
-  "frames": 4,
-  "frame_duration_ms": 100
-}

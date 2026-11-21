@@ -1,7 +1,8 @@
 -- A stranger standing in their room (Patch, Old Sal). Props: who, sprite (set by the room from data/strangers.lua). Solid: the runner
 -- walks up to them; the room's talk starts when interact is pressed beside them.
 local Stranger = nova.entity {
-  anim = "idle_down", tags = { "stranger", "solid" }, pivot = { 0.5, 0.875 }, hitbox = { -5, -5, 10, 5 }, sx = 3, sy = 3, velocity = false,
+  anim = "idle_down", tags = { "stranger", "solid" }, pivot = { 0.5, 0.906 }, hitbox = { -10, -10, 20, 10 }, sx = 1.5, sy = 1.5, velocity = false, shadow = true,
+  light = { radius = 100, radius_y = 70, color = { 255, 190, 120 }, intensity = 0.9, y = -40 },
 }
 
 function Stranger:create() self.depth = -self.y end

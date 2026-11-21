@@ -6,6 +6,8 @@ local H = require("data.hazards").tram
 local P = require("data.player")
 local J = require("lib.juice")
 local D = require("lib.draw")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Tram = nova.entity { tags = { "tram" }, velocity = false, dir = "h", span = 1920, phase = 0, state = "idle", front = 0 }
 
@@ -89,14 +91,20 @@ function Tram:draw()
     D.lane(x0, y0, x1, y1, H.half * 2, { 255, 43, 214, on and 70 or 25 })
     for _, pt in ipairs({ { x0, y0 }, { x1, y1 } }) do
       local sx, sy = nova.cam.to_screen(pt[1] + (h and (pt[1] == x0 and -30 or 30) or 0), pt[2] + (h and 0 or (pt[2] == y0 and -30 or 30)))
-      nova.sprite("solid", sx, sy, { w = 26, h = 26, color = on and { 255, 190, 40 } or { 120, 40, 20 } })
+      nova.sprite("solid", sx, sy, { w = 26, h = 26, color = on and { 255, 190, 40 } or { 120, 40, 20 }, blend = "add", lit = false })
+      if on then nova.light2d(pt[1] + (h and (pt[1] == x0 and -30 or 30) or 0), pt[2] + (h and 0 or (pt[2] == y0 and -30 or 30)), { radius = 120, color = { 255, 150, 40 }, intensity = 2.0 }) end
     end
   end
   if self.state == "cross" then
     local x, y
     if h then x, y = nova.cam.to_screen(self.x + self.front - H.length / 2, self.y)
     else x, y = nova.cam.to_screen(self.x, self.y + self.front - H.length / 2) end
-    nova.sprite("tram", x, y, { w = h and H.length or H.half * 2, h = h and H.half * 2 or H.length, frame = h and 0 or 1 })
+    nova.sprite(h and "tram_h" or "tram_v", x, y, { w = h and H.length or H.half * 2, h = h and H.half * 2 or H.length, foot = nil })
+    -- its headlamp: a hard warm pool ahead of it, and a halo on the lamp
+    local fx, fy = h and (self.x + self.front) or self.x, h and self.y or (self.y + self.front)
+    nova.light2d(fx + (h and 70 or 0), fy + (h and 0 or 70), { radius = Look.tram.radius, radius_y = Look.tram.radius * (h and 0.75 or 1), color = Look.tram.color, intensity = Look.tram.intensity })
+    nova.light2d(self.x + (h and self.front - H.length / 2 or 0), self.y + (h and 0 or self.front - H.length / 2), { radius = 150, color = Look.accent.magenta, intensity = 1.2 })
+    LK.halo(fx, fy, 34, Look.tram.color, 180)
   end
 end
 

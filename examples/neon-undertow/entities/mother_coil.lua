@@ -185,16 +185,21 @@ function Coil:draw()
   local sx, sy = nova.cam.to_screen(self.x, self.y)
   local tint = self.flash > 0 and { 255, 200, 200 } or { 255, 255, 255 }
   nova.sprite("mother_coil", sx, sy - B.cab.h / 2 - 24, { w = B.cab.w + 48, h = B.cab.h + 96, color = tint })
+  nova.light2d(self.x - 100, self.y - 20, { radius = 150, radius_y = 100, color = { 255, 63, 164 }, intensity = 1.8 })
+  nova.light2d(self.x + 100, self.y - 20, { radius = 150, radius_y = 100, color = { 53, 230, 255 }, intensity = 1.8 })
   local dx, dy = sx, sy - 36
   if self.open then
     -- the drum glows, pulses and has a marker over it: this is the moment
     local k = 0.5 + 0.5 * math.sin(self.t * 14)
-    nova.sprite("solid", dx, dy, { w = B.drum.w * (1.5 + 0.3 * k), h = B.drum.h * (1.5 + 0.3 * k), color = { 6, 240, 255, 60 + 60 * k } })
-    nova.sprite("coil_drum", dx, dy, { w = B.drum.w, h = B.drum.h, frame = 1 })
+    -- (additive glow: the open drum is the brightest thing in the yard)
+    nova.circle(dx, dy, B.drum.w * (0.95 + 0.2 * k), { 6, 240, 255, 120 + 90 * k }, { soft = true, blend = "add", lit = false })
+    nova.sprite("crane_arm", dx, dy, { w = B.drum.w * 1.25, h = B.drum.w * 1.25, frame = 0 })
+    nova.circle(dx, dy, B.drum.w * 0.45, { 200, 255, 255, 90 + 120 * k }, { soft = true, blend = "add", lit = false })
+    nova.light2d(self.x, self.y - 36, { radius = 220, radius_y = 160, color = { 53, 230, 255 }, intensity = 2.8 + k })
     local ay = sy - B.cab.h - 60 + 8 * math.sin(self.t * 10)
-    for i = 0, 3 do nova.sprite("solid", dx, ay + i * 8, { w = 44 - i * 12, h = 8, color = { 6, 240, 255 } }) end
+    for i = 0, 3 do nova.sprite("solid", dx, ay + i * 8, { w = 44 - i * 12, h = 8, color = { 6, 240, 255 }, blend = "add", lit = false }) end
   else
-    nova.sprite("coil_drum", dx, dy, { w = B.drum.w, h = B.drum.h, frame = 0, color = tint })
+    nova.sprite("crane_arm", dx, dy, { w = B.drum.w * 1.25, h = B.drum.w * 1.25, frame = 0, color = tint })
   end
 end
 

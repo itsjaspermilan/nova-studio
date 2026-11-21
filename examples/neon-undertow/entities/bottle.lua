@@ -7,7 +7,8 @@ local D = require("lib.draw")
 local Run = require("lib.run")
 local Cards = require("data.cards")
 
-local Bottle = nova.entity { sprite = "bottle", anim = "spin", tags = { "bottle" }, velocity = false, sx = 3, sy = 3, pivot = { 0.5, 0.5 }, t = 0 }
+local Bottle = nova.entity { sprite = "bottle", anim = "spin", tags = { "bottle" }, velocity = false, sx = 1.5, sy = 1.5, pivot = { 0.5, 0.5 }, t = 0,
+  light = { radius = 80, color = { 255, 138, 43 }, intensity = 1.6, flicker = 0.4 } }
 
 function Bottle:create() self.depth = -self.ty - 300 end
 
@@ -41,9 +42,9 @@ end
 function Bottle:draw()
   local s = math.min(1, self.t / self.time)
   local a = 90 + 140 * s
-  D.disc(self.tx, self.ty, E.fire.radius, { 255, 138, 43, 30 + 50 * s })
-  D.ring(self.tx, self.ty, E.fire.radius, { 255, 138, 43, a }, 5, 32)
-  D.ring(self.tx, self.ty, E.fire.radius * (1 - s), { 255, 228, 94, a }, 4, 20)
+  D.disc(self.tx, self.ty, E.fire.radius, { 255, 138, 43, 40 + 70 * s })
+  D.ring(self.tx, self.ty, E.fire.radius, { 255, 160, 60, a }, 6, 32)
+  D.ring(self.tx, self.ty, E.fire.radius * (1 - s), { 255, 228, 94, a }, 5, 20)
   nova.Entity.draw(self)
 end
 

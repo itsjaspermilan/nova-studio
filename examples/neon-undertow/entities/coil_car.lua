@@ -51,13 +51,17 @@ function Car:draw()
   if not self.started then return end
   local k = math.min(1, (self.t - self.delay) / C.tell)
   local on = math.floor(self.t * 10) % 2 == 0
-  D.disc(self.x, self.y, C.radius * (0.25 + 0.75 * k), { 0, 0, 0, 110 })
+  do -- (the car's shadow darkens: an ordinary soft disc, not an added one)
+    local cx, cy = nova.cam.to_screen(self.x, self.y)
+    local r = C.radius * (0.25 + 0.75 * k)
+    nova.circle(cx, cy, r, { 0, 0, 0, 170 }, { soft = true, lit = false, ry = r * 0.8 })
+  end
   D.ring(self.x, self.y, C.radius, { 255, 43, 214, on and 255 or 170 }, 5, 30)
   if k > 0.7 then
     -- the car comes down in the last part of the tell
     local fall = (1 - k) / 0.3
     local sx, sy = nova.cam.to_screen(self.x, self.y)
-    nova.sprite("coil_car", sx, sy - 20 - fall * 520, { w = C.wreck.w, h = C.wreck.h + 20 })
+    nova.sprite("wreckage", sx, sy - 20 - fall * 520, { w = C.wreck.w, h = C.wreck.h + 24, frame = 0 })
   end
 end
 

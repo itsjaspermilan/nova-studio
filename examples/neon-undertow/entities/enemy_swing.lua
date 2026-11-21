@@ -6,7 +6,7 @@ local Run = require("lib.run")
 local Cards = require("data.cards")
 
 local Swing = nova.entity {
-  sprite = "fx_arc", anim = "heavy", tags = { "enemy_swing" }, pivot = { 6 / 32, 0.5 }, sx = 3, sy = 3, velocity = false, frames_left = 9, active_left = E.swing_frames,
+  sprite = "fx_arc", anim = "heavy", tags = { "enemy_swing" }, pivot = { 12 / 64, 0.5 }, sx = 1.5, sy = 1.5, velocity = false, blend = "add", lit = false, frames_left = 9, active_left = E.swing_frames,
 }
 
 function Swing:create()

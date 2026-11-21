@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "image": "crane_arm.png",
+  "frame_width": 84,
+  "frame_height": 84,
+  "columns": 12,
+  "frames": 12,
+  "durations_ms": [
+    400,
+    400,
+    400,
+    400,
+    110,
+    110,
+    110,
+    110,
+    110,
+    110,
+    240,
+    120
+  ],
+  "tags": [
+    {
+      "name": "base",
+      "from": 0,
+      "to": 0
+    },
+    {
+      "name": "arm",
+      "from": 1,
+      "to": 1
+    },
+    {
+      "name": "idle",
+      "from": 2,
+      "to": 3
+    },
+    {
+      "name": "move",
+      "from": 4,
+      "to": 9
+    },
+    {
+      "name": "tell",
+      "from": 10,
+      "to": 10,
+      "loop": false
+    },
+    {
+      "name": "hit",
+      "from": 11,
+      "to": 11,
+      "loop": false
+    }
+  ],
+  "hitbox": {
+    "x": 18,
+    "y": 38,
+    "w": 47,
+    "h": 44
+  },
+  "pivot": {
+    "x": 42,
+    "y": 82
+  }
+}

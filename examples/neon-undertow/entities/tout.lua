@@ -6,10 +6,11 @@ local P = require("data.player")
 local D = require("lib.draw")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
+local Look = require("data.look")
 
 local Tout = nova.entity(Foe, {
   sprite = "tout", anim = "idle_down", tags = { "hurtable", "enemy", "tout" },
-  pivot = { 0.5, 0.875 }, hitbox = { -5, -5, 10, 5 }, tint = { 120, 255, 255 },
+  pivot = { 0.5, 0.906 }, hitbox = { -10, -10, 20, 10 }, light = { radius = 100, radius_y = 70, color = { 53, 230, 255 }, intensity = 1.3, y = -40 },   -- (a hologram: its own light is the cyan accent)
 })
 
 function Tout:create()
@@ -65,8 +66,9 @@ function Tout:update(dt)
   end
 
   local f = self.facing
-  if self.state == "shout" then self:play("attack_" .. f) else self:play("idle_" .. f) end
-  self.alpha = 0.78 + 0.12 * math.sin(self.t * 18)
+  if self.state == "shout" then self:play("tell_" .. f) else self:play("idle_" .. f) end
+  self.light = self.state == "shout" and { radius = 190, radius_y = 130, color = { 53, 230, 255 }, intensity = 3.2, y = -40 } or nil
+  self.alpha = 0.85 + 0.1 * math.sin(self.t * 18)
 end
 
 -- The shout: a ring spreading to the buff's reach.

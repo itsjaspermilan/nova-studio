@@ -1,3 +1,4 @@
+// SUPERSEDED (the 16 px placeholder art): do not run, it would overwrite the detailed sheets. The art is made by art.mjs (the makers) and art_hd.mjs (hand-drawn pieces).
 // Writes the argument files for the slice-3a placeholder sprites (stall, barrel, sign, rail, tram, counter) and, run with `--write`,
 // calls sprite_write for each. Run: scripts/env.sh node examples/neon-undertow/tools/art_gutter.mjs <outdir> [--write]
 // Everything the game draws is reached by name (sprites/stall, ...), stretched to a size set in data/hazards.lua: replace the

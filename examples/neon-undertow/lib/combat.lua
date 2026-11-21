@@ -11,10 +11,13 @@ function C.four_way(dx, dy, keep)
   return dy < 0 and "up" or "down"
 end
 
--- The box (in sprite pixels from the swing's own x, y, at a scale of 3) in front of `dir`:
+-- The swings' sprites are drawn at this scale (the detailed sheets: 64 px arcs at 1.5; the old 32 px ones were drawn at 3).
+C.px = 1.5
+
+-- The box (in sprite pixels from the swing's own x, y, at a scale of C.px) in front of `dir`:
 -- area = { reach, length, half_width } in world units.
 function C.box(dir, area)
-  local r, l, h = area.reach / 3, area.length / 3, area.half_width / 3
+  local r, l, h = area.reach / C.px, area.length / C.px, area.half_width / C.px
   if dir == "right" then return { r, -h, l, 2 * h } end
   if dir == "left" then return { -r - l, -h, l, 2 * h } end
   if dir == "down" then return { -h, r, 2 * h, l } end

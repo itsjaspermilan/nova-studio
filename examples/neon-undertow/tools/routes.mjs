@@ -927,7 +927,7 @@ out("elite_splitting", {
 ${stillScrapper("E", 900, 540, 8)}; ${ELITE}.make(E, 'splitting')`,
   route: [
     { wait: 3 }, { lua: "HP0 = E.hp; E:take_hit(99, 0, 0, 0)" }, { wait: 4, capture: "two small ones" },
-    { lua: `COUNT = nova.count('enemy'); local a = {}; for _, e in ipairs(nova.all('enemy')) do a[#a+1] = e.hp .. '/' .. string.format('%.1f', e.sx / 3) end; SMALL = table.concat(a, ' ')
+    { lua: `COUNT = nova.count('enemy'); local a = {}; for _, e in ipairs(nova.all('enemy')) do a[#a+1] = e.hp .. '/' .. string.format('%.1f', e.sx / 1.5) end; SMALL = table.concat(a, ' ')
 for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end` },
     { wait: 4 }, { lua: "COUNT2 = nova.count('enemy')" },
   ],

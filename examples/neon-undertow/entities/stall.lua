@@ -1,6 +1,7 @@
 -- A market stall: cover with health. A counter `tiles` long (`dir` "h" along x, "v" along y) centred on its x, y; solid; baton, shots,
 -- fire and blasts hurt it and when its health is gone it breaks. Numbers: data/hazards.lua.
 local H = require("data.hazards")
+local Art = require("data.art")
 local S = H.stall
 local D = require("lib.draw")
 local F = require("lib.fx")
@@ -33,14 +34,19 @@ end
 function Stall:update(dt) self.flash = math.max(0, self.flash - dt) end
 
 function Stall:draw()
-  -- one picture per tile of the counter (frame 0 whole, 1 worn, 2 about to go)
-  local frame = self.hp > self.max_hp * 0.66 and 0 or (self.hp > self.max_hp * 0.33 and 1 or 2)
+  -- one picture per tile of the counter: the tileset's stall (a counter of goods and, a tile up, its awning with bulbs); it goes darker and
+  -- more battered as it breaks (whole, worn, about to go)
+  local wear = self.hp > self.max_hp * 0.66 and 0 or (self.hp > self.max_hp * 0.33 and 1 or 2)
+  local shade = ({ { 255, 255, 255 }, { 225, 200, 200 }, { 190, 150, 150 } })[wear + 1]
+  if self.flash > 0 then shade = { 255, 120, 120 } end
   local n = self.tiles
   for i = 0, n - 1 do
     local cx = self.dir == "h" and (self.x - self.w / 2 + (i + 0.5) * H.tile) or self.x
     local cy = self.dir == "v" and (self.y - self.h / 2 + (i + 0.5) * H.tile) or self.y
     local x, y = nova.cam.to_screen(cx, cy)
-    nova.sprite("stall", x, y - 10, { w = H.tile, h = H.tile + 20, frame = frame, color = self.flash > 0 and { 255, 190, 190 } or { 255, 255, 255 } })
+    local k = i % 2 + 1
+    nova.sprite(Art.tiles, x, y - 24, { w = H.tile, h = H.tile, frame = Art.stall.base[k], color = shade })
+    nova.sprite(Art.tiles, x, y - 24 - H.tile, { w = H.tile, h = H.tile, frame = Art.stall.awning[k], color = shade })
   end
 end
 

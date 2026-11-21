@@ -1,0 +1,47 @@
+{
+ "start_scene": "test_lab",
+ "invincible": true,
+ "who": "runner",
+ "out": "build/look/fight_flood",
+ "columns": 3,
+ "route": [
+  {
+   "lua": "require('lib.run').begin_chain(9); nova.goto_scene('gutter.s3_flood')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.s3_flood' and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "lua": "\n-- a stand-in player for the pictures: walks at the nearest enemy, swings when it is near, rolls and shoots now and then\nBOT_F = 0\nlocal Jx = require('lib.juice'); local orig = Jx.tick\nJx.tick = function()\n  orig()\n  BOT_F = BOT_F + 1\n  local r = nova.named('runner')\n  if not (r and r.state == 'free') then return end\n  local e = nova.nearest(r.x, r.y, 'enemy')\n  if not e then return end\n  local dx, dy = e.x - r.x, e.y - r.y; local d = math.sqrt(dx * dx + dy * dy)\n  r:face(dx, dy)\n  if d > 420 and BOT_F % 40 == 0 then r.x, r.y = e.x - (dx > 0 and 150 or -150), e.y end   -- (the stand-in is lazy: it steps to the fight)\n  if d < 90 and BOT_F % 24 == 0 then r:start_attack()\n  elseif d >= 90 and BOT_F % 90 ~= 0 then r:move(dx / d * 3.1, dy / d * 3.1)\n  elseif BOT_F % 90 == 0 and r.roll_cd <= 0 then r:start_roll()\n  elseif BOT_F % 45 == 0 then r.aim_dx, r.aim_dy = dx / d, dy / d; r.shot_cd = 0; r:fire() end\nend\n"
+  },
+  {
+   "wait": 70,
+   "capture": "fight_flood 70"
+  },
+  {
+   "wait": 90,
+   "capture": "fight_flood 160"
+  },
+  {
+   "wait": 90,
+   "capture": "fight_flood 250"
+  },
+  {
+   "wait": 90,
+   "capture": "fight_flood 340"
+  },
+  {
+   "wait": 90,
+   "capture": "fight_flood 430"
+  },
+  {
+   "wait": 90,
+   "capture": "fight_flood 520"
+  }
+ ],
+ "print": [
+  "nova.count('enemy')",
+  "nova.named('runner').hp"
+ ]
+}

@@ -12,7 +12,10 @@ function Title:enter()
   self.t, self.sel, self.mode, self.last_dir, self.confirm = 0, 1, "menu", 0, 1
   nova.music.play(P.music.den, { volume = P.music.den_volume })
   nova.log("title")
+  require("lib.look").enter("outdoors")   -- (the backdrop is scenes/title.scene.json, a rainy corner of the market)
 end
+
+function Title:leave() require("lib.look").leave() end
 
 function Title:items()
   if Meta.started then return { "Continue", "New game" } end
@@ -64,7 +67,8 @@ function Title:update(dt)
 end
 
 function Title:draw_ui()
-  nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 255 })
+  nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 120 })          -- (the street shows through, dimmed)
+  nova.ui.rect(0, 84, W, 210, { 5, 6, 15, 150 })         -- (a band behind the name and the tagline)
   local glow = 0.75 + 0.25 * math.sin(self.t * 3)
   nova.ui.text(0, 100, "NEON", { font = "pixel", size = 64, color = { 255 * glow, 43, 214, 255 }, align = "center", width = W, shadow = true })
   nova.ui.text(0, 170, "UNDERTOW", { font = "pixel", size = 64, color = { 6, 240 * glow, 255, 255 }, align = "center", width = W, shadow = true })
@@ -82,7 +86,7 @@ function Title:draw_ui()
     nova.ui.rect(180, 300, 600, 150, { 255, 43, 214, 255 })
     nova.ui.rect(183, 303, 594, 144, { 8, 10, 26, 255 })
     nova.ui.text(180, 318, "Erase everything? Keys, upgrades, friends, wins.", { font = "pixel", size = 16, color = { 255, 255, 255, 255 }, align = "center", width = 600 })
-    nova.ui.text(180, 342, "LULLABY will not remember you. She says that is fine.", { font = "pixel", size = 13, color = { 190, 200, 230, 255 }, align = "center", width = 600 })
+    nova.ui.text(180, 342, "LULLABY will not remember you. She says that is fine.", { font = "pixel", size = 15, color = { 190, 200, 230, 255 }, align = "center", width = 600 })
     for i, name in ipairs({ "Keep my save", "Erase it all" }) do
       local on = i == self.confirm
       local x = 220 + (i - 1) * 270

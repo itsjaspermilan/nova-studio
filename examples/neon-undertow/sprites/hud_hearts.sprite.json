@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "image": "hud_hearts.png",
-  "frame_width": 16,
-  "frame_height": 16,
-  "columns": 3,
-  "frames": 3,
-  "frame_duration_ms": 100
-}

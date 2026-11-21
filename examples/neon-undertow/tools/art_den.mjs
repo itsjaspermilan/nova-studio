@@ -1,3 +1,4 @@
+// SUPERSEDED (the 16 px placeholder art): do not run, it would overwrite the detailed sheets. The art is made by art.mjs (the makers) and art_hd.mjs (hand-drawn pieces).
 // Placeholder pictures for slice 3b (Mother Coil and the Den), by name: mother_coil, coil_drum, coil_magnet, coil_car, coil_junk, wreckage,
 // den_bed, den_screen, den_bench, den_door, den_stall. The game stretches each to a size set in data/ (nothing depends on a picture's size):
 // the detailed kit replaces the PNGs. Run: scripts/env.sh node examples/neon-undertow/tools/art_den.mjs <outdir> [--write]

@@ -5,7 +5,7 @@ local J = require("lib.juice")
 local Run = require("lib.run")
 local Cards = require("data.cards")
 
-local Can = nova.entity { sprite = "can", anim = "spin", tags = { "can" }, velocity = false, hitbox = { r = 3 }, sx = 3, sy = 3, travelled = 0 }
+local Can = nova.entity { sprite = "can", anim = "spin", tags = { "can" }, velocity = false, hitbox = { r = 6 }, sx = 1.5, sy = 1.5, light = { radius = 60, color = { 255, 63, 164 }, intensity = 1.2 }, travelled = 0 }
 
 function Can:create() self.depth = -self.y - 5 end
 

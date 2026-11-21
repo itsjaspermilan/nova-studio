@@ -7,10 +7,12 @@ local D = require("lib.draw")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
 local Target = require("lib.target")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Drone = nova.entity(Foe, {
   sprite = "rat_drone", anim = "idle", tags = { "hurtable", "enemy", "rat_drone" },
-  pivot = { 0.5, 0.5 }, hitbox = { -5, -5, 10, 10 },
+  pivot = { 22.5 / 44, 29 / 44 }, hitbox = { -10, -10, 20, 20 },   -- (the body's middle sits on the old hit box's middle)
 })
 
 function Drone:create()
@@ -65,13 +67,13 @@ function Drone:update(dt)
       self.state, self.t = "tell", 0
       local len = math.max(dist, 1)
       self.dir_x, self.dir_y = dx / len, dy / len        -- the lane is chosen now: the runner can step out of it
-      self.angle = math.atan(self.dir_y, self.dir_x) + math.pi / 2
+      self.flip_x = self.dir_x < 0      -- (a side view: it faces the way it will go)
       nova.sound.play("rev_up", { volume = P.sfx.rev_up })
       nova.log("rat_drone tell")
     else
       local len = math.max(dist, 1)
       self:move(dx / len * E.speed * sp * dt, dy / len * E.speed * sp * dt)
-      self.angle = math.atan(dy, dx) + math.pi / 2
+      self.flip_x = dx < 0
     end
   elseif s == "tell" then
     if self.t >= E.tell then
@@ -94,13 +96,14 @@ function Drone:update(dt)
   end
 
   if self.flash > 0 or self.state == "stunned" then self:play("hit")
+  elseif self.state == "tell" then self:play("tell")        -- (it rears up, its outline and lights flashing)
   elseif self.state == "charge" or self.state == "creep" then self:play("move")
   else self:play("idle") end
   if self.state == "tell" then
-    self.tint = (math.floor(self.t * 14) % 2 == 0) and { 255, 150, 235 } or { 255, 255, 255 }
     self.x = self.x + ((math.floor(self.t * 40) % 2 == 0) and 1.2 or -1.2)
+    self.light = Look.tell
   else
-    self.tint = nil
+    self.light = Look.enemy
   end
 end
 
@@ -112,6 +115,7 @@ function Drone:draw()
     D.lane(self.x, self.y, self.x + self.dir_x * len, self.y + self.dir_y * len, E.charge.lane_half * 2, { 255, 43, 214, a })
   end
   nova.Entity.draw(self)
+  if self.state == "tell" then LK.halo(self.x, self.y - 10, 64, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end
 end
 
 function Drone:bar_y() return self.y - 50 end

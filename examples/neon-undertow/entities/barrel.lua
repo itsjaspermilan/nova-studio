@@ -8,9 +8,14 @@ local Blast = require("lib.blast")
 local Run = require("lib.run")
 local Cards = require("data.cards")
 
+local Art = require("data.art")
+local LK = require("lib.look")
+local Look = require("data.look")
+
 local Barrel = nova.entity { tags = { "hurtable", "solid", "prop", "barrel" }, velocity = false, sx = 1, sy = 1, t = 0, state = "idle" }
 
 function Barrel:create()
+  self.light = nil
   self.hitbox = { -H.w / 2, -H.h, H.w, H.h }      -- (units: sx is 1; the picture is stretched to this box in draw)
   self.depth = -self.y
   self.prop = true
@@ -50,9 +55,11 @@ function Barrel:draw()
     D.disc(self.x, self.y, r, { 255, 138, 43, on and 55 or 25 })
     D.ring(self.x, self.y, r, { 255, 138, 43, on and 255 or 150 }, 5, 40)
   end
+  if self.state == "fuse" then nova.light2d(self.x, self.y - 24, { radius = Look.fuse.radius, color = Look.fuse.color, intensity = Look.fuse.intensity * (math.floor(self.t * 12) % 2 == 0 and 1 or 0.55) }) end
   local x, y = nova.cam.to_screen(self.x, self.y)
   local lit = self.state == "fuse" and math.floor(self.t * 12) % 2 == 0
-  nova.sprite("barrel", x, y - H.h / 2 - 4, { w = H.w + 10, h = H.h + 26, color = lit and { 255, 200, 160 } or { 255, 255, 255 } })
+  nova.sprite(Art.tiles, x, y - 26, { w = 60, h = 60, frame = Art.barrel, color = lit and { 255, 230, 200 } or { 255, 255, 255 } })
+  if self.state == "fuse" then LK.halo(self.x, self.y - 24, 70, { 255, 138, 43 }, lit and 190 or 90) end
 end
 
 return Barrel

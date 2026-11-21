@@ -53,7 +53,8 @@ end
 function Wreck:draw()
   local x, y = nova.cam.to_screen(self.x, self.y)
   local frame = self.hp > self.max_hp * 0.5 and 0 or 1
-  nova.sprite("wreckage", x, y - 12, { w = self.w, h = self.h + 24, frame = frame, color = self.flash > 0 and { 255, 190, 190 } or { 255, 255, 255 } })
+  nova.sprite("wreckage", x, y - 12, { w = self.w, h = self.h + 24, frame = frame, color = self.flash > 0 and { 255, 140, 140 } or { 255, 255, 255 } })
+  if frame == 1 then nova.light2d(self.x, self.y - 30, { radius = 90, color = { 255, 138, 43 }, intensity = 1.1, flicker = 0.5 }) end
 end
 
 function Wreck:hud()

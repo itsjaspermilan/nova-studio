@@ -3,7 +3,7 @@
 local J = require("lib.juice")
 
 local Decoy = nova.entity {
-  sprite = "runner", anim = "idle_down", tags = { "decoy" }, pivot = { 0.5, 0.875 }, hitbox = { -3, -5, 6, 5 }, sx = 3, sy = 3,
+  sprite = "runner", anim = "idle_down", tags = { "decoy" }, pivot = { 0.5, 0.906 }, hitbox = { -6, -10, 12, 10 }, sx = 1.5, sy = 1.5,
   velocity = false, tint = { 80, 230, 255 }, life = 1.5, t = 0, state = "free",
 }
 

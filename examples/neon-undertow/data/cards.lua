@@ -172,12 +172,13 @@ local cards = {
 local by_id = {}
 for i, c in ipairs(cards) do by_id[c.id] = c; c.index = i end
 
-return {
+local M = {
   list = cards,
   by_id = by_id,
   families = {
-    baton = { name = "Baton", icon = 0 }, sidearm = { name = "Sidearm", icon = 1 }, roll = { name = "Roll", icon = 2 }, body = { name = "Body", icon = 3 },
-    district = { name = "District", icon = 3 }, jinx = { name = "Jinx", icon = 3 },      -- (placeholder icons: the art is being replaced)
+    -- `icon` is the family's first frame (its common one) in sprites/ui.png: the rarity frames follow (common, uncommon, rare). Every family has its own picture.
+    baton = { name = "Baton", icon = 8 }, sidearm = { name = "Sidearm", icon = 11 }, roll = { name = "Roll", icon = 14 }, body = { name = "Body", icon = 17 },
+    district = { name = "District", icon = 20 }, jinx = { name = "Jinx", icon = 26 },
   },
   rarity = {
     common = { name = "Common", color = { 255, 255, 255 }, frame = 0 },
@@ -231,3 +232,10 @@ return {
   -- clear of them; they sit at the end of the Deeper Deck order as well)
   jinx = { skip = 2, base = 0.10, per_offer = 0.05, max = 0.40 },
 }
+
+-- The frame of sprites/ui.png for a card's family and rarity: the card's picture in its rarity's frame.
+function M.frame_of(family, rarity)
+  return M.families[family].icon + M.rarity[rarity].frame
+end
+
+return M

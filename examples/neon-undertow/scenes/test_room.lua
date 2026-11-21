@@ -17,7 +17,10 @@ function Room:enter()
   nova.cam.set(rx, ry)
   nova.music.play(P.music.track, { volume = P.music.volume })
   nova.log("entered test_room")
+  require("lib.look").enter("outdoors")
 end
+
+function Room:leave() require("lib.look").leave() end
 
 function Room:update(dt)
   J.tick()
@@ -51,11 +54,11 @@ function Room:draw_ui()
   for i = 1, math.ceil((r.max_hp or P.health) / 2) do
     local frame = 2
     if r.hp >= i * 2 then frame = 0 elseif r.hp == i * 2 - 1 then frame = 1 end
-    nova.ui.sprite("hud_hearts", 28 + (i - 1) * 38, 30, { frame = frame, scale = 2.4 })
+    nova.ui.sprite("ui", 28 + (i - 1) * 38, 30, { frame = frame, scale = 1.25 })
   end
   -- charge pips and the fraction of the next one
   for i = 1, (r.max_charge or P.charge.pips) do
-    nova.ui.sprite("hud_pips", 28 + (i - 1) * 30, 66, { frame = (r.charge + 1e-6 >= i) and 0 or 1, scale = 2 })
+    nova.ui.sprite("ui", 28 + (i - 1) * 30, 66, { frame = (r.charge + 1e-6 >= i) and 3 or 4, scale = 1.0 })
   end
   local frac = r.charge - math.floor(r.charge + 1e-6)
   if r.charge < (r.max_charge or P.charge.pips) and frac > 0.01 then
@@ -63,8 +66,9 @@ function Room:draw_ui()
     nova.ui.rect(14 + (i - 1) * 30, 86, 28 * frac, 3, { 6, 240, 255, 255 })
   end
   -- scrap
-  nova.ui.sprite("scrap", 912, 30, { scale = 2, frame = 0 })
-  nova.ui.text(924, 20, tostring(J.scrap), { font = "pixel", size = 20, color = { 255, 255, 255, 255 }, shadow = true })
+  nova.ui.rect(868, 8, 92, 44, { 5, 6, 15, 215 })   -- (a plate under the count: it must read over the busiest floor)
+  nova.ui.sprite("ui", 890, 30, { scale = 1.1, frame = 5 })
+  nova.ui.text(908, 18, tostring(J.scrap), { font = "pixel", size = 20, color = { 255, 255, 255, 255 }, shadow = true })
   -- prompt row
   local x = 16
   x = prompt(x, 506, "attack", "baton")

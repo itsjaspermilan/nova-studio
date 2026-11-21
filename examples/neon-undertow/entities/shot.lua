@@ -9,7 +9,7 @@ local Run = require("lib.run")
 local Cards = require("data.cards")
 
 local Shot = nova.entity {
-  sprite = "fx_shot", anim = "fly", tags = { "shot" }, hitbox = { r = 3 }, sx = 3, sy = 3, velocity = false, travelled = 0, bounces = 0, damage = P.aim.shot_damage,
+  sprite = "fx_shot", anim = "fly", tags = { "shot" }, hitbox = { r = 6 }, sx = 1.5, sy = 1.5, velocity = false, blend = "add", lit = false, light = { radius = 70, color = { 53, 230, 255 }, intensity = 1.6 }, travelled = 0, bounces = 0, damage = P.aim.shot_damage,
   pierce = 1, cost = 1,
 }
 

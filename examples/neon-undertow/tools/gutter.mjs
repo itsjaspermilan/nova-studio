@@ -6,11 +6,36 @@
 // the exit are open with room round them, and a sealed pocket is walled up.
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { T as TILE, PAINT, paintGrid, damageRows } from "./paint.mjs";
+import { compare } from "./solid_check.mjs";
 const outdir = process.argv[2];
 fs.mkdirSync(outdir, { recursive: true });
 const T = 48;
 const root = new URL("../", import.meta.url).pathname;
-const PAINT = { "#": "brick_wall", ",": "path", "=": "stone_floor", C: "crate on path" };
+// (the painting is tools/paint.mjs: the terrains and props of the district tileset; this file only draws the shapes)
+// How each room looks, beyond the shapes: the wear (0 plain to 1 wrecked), the corners that are wrecked (tiles x0, y0, x1, y1), and the kinds of
+// marking the road may carry (alleys get none).
+const LOOK = {
+  s1_square: { wear: 0.4, damage: [[1, 20, 6, 22], [33, 1, 38, 3]] },
+  s1_street: { wear: 0.4, features: ["no markings"] },
+  s1_cross: { wear: 0.4, damage: [[1, 1, 11, 9]] },
+  s2_maze: { wear: 0.5, features: ["no markings"] },
+  s2_stalls: { wear: 0.45, features: ["no markings"] },
+  s2_ring: { wear: 0.4, damage: [[28, 20, 34, 24]] },
+  s3_tram: { wear: 0.45, damage: [[1, 1, 8, 6]] },
+  s3_flood: { wear: 0.55, damage: [[1, 17, 7, 22], [30, 1, 36, 6]] },
+  s3_underpass: { wear: 0.55, features: ["no markings"], damage: [[14, 1, 17, 6]] },
+  elite: { wear: 0.5, damage: [[1, 1, 6, 6], [33, 19, 38, 24]] },
+  s5_courts: { wear: 0.45, damage: [[26, 1, 30, 5]] },
+  s5_market: { wear: 0.4, features: ["no markings"] },
+  s5_depot: { wear: 0.5, damage: [[1, 18, 8, 24]] },
+  stranger: { wear: 0.2 },
+  walk: { wear: 0.2 },
+  boss: { wear: 0.85, damage: [[1, 12, 14, 20], [30, 5, 42, 12]] },
+  s7_yard: { wear: 0.5, damage: [[1, 1, 12, 8]] },
+  s7_junction: { wear: 0.5, damage: [[26, 15, 33, 19]] },
+  s7_hall: { wear: 0.5, features: ["no markings"], damage: [[1, 12, 13, 18]] },
+};
 const SOLID_CHARS = new Set(["#", "C"]);
 const written = [];
 
@@ -130,9 +155,20 @@ class Map2 {
       }
     }
     const total = this.g.flat().filter((c) => !SOLID_CHARS.has(c)).length;
+    const look = LOOK[this.name] || {};
+    const style = this.kind === "quiet" && this.name !== "boss" ? "quiet" : this.name === "boss" ? "yard" : "street";
+    const painted = paintGrid({
+      name: this.name, g: this.g, style, seed: this.name.length * 7 + 1,
+      puddles: this.objects.filter((o) => o.kind === "puddle").map((o) => [o.x, o.y]),
+      rails: this.objects.filter((o) => o.kind === "rail").map((o) => ({ dir: o.props.dir, x: o.x, y: o.y, span: o.props.span })),
+    });
+    const tilemap = { name: "ground", tileset: "gutter", scale: 1.5, seed: this.name.length * 7 + 1, wear: look.wear ?? 0.4, district: "gutter market", paint: PAINT, tiles: painted.tiles };
+    if (look.damage) tilemap.damage = damageRows(W, H, look.damage);
+    // (no hatched boxes: on a plaza or a yard the maker's "two roads cross" hatching covers the whole floor and reads as a pattern)
+    tilemap.features = [...(look.features || []), ...(this.name === "boss" ? ["no markings"] : []), "no hatch"];
     const scene = {
-      version: 1, width: W * T, height: H * T, background: [5, 6, 15], objects: this.objects,
-      tilemaps: [{ name: "ground", tileset: "tiles", scale: 3, seed: this.name.length * 7 + 1, paint: PAINT, tiles: this.g.map((r) => r.join("")) }],
+      version: 1, width: W * T, height: H * T, background: [5, 6, 15], objects: [...this.objects, ...painted.lights],
+      tilemaps: [tilemap],
     };
     fs.writeFileSync(`${outdir}/${this.name}.json`, JSON.stringify({ name: `tmp_gutter_${this.name}`, scene }));
     written.push(this.name);
@@ -452,4 +488,7 @@ if (process.argv.includes("--write")) {
     fs.renameSync(`${root}scenes/tmp_gutter_${name}.scene.json`, `${root}scenes/gutter/${name}.scene.json`);
     console.log(name + ": " + res.split("\n").filter((l) => /warning|error/i.test(l)).slice(0, 4).join(" "));
   }
+  // the proof that only the looks changed: every room's solid cells are exactly the old ones
+  const bad = compare(written.filter((n) => !only || n === only).map((n) => `gutter/${n}.scene.json`));
+  if (bad) { console.log(`${bad} room(s) differ in what is solid`); process.exitCode = 1; }
 }

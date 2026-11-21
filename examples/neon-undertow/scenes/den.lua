@@ -39,8 +39,11 @@ function Den:enter()
   nova.pause(true)
   nova.sound.play("printed", { volume = P.sfx.printed })
   nova.music.play(P.music.den, { volume = P.music.den_volume })
+  require("lib.look").enter("indoors")
   nova.log(string.format("the den: printed again (%s, line %d): %s", self.line_kind, self.line_n, self.line))
 end
+
+function Den:leave() require("lib.look").leave() end
 
 function Den:camera(dt)
   local r = self.runner
@@ -196,21 +199,21 @@ function Den:draw_codex()
   local seen, total = 0, #Cards.list
   for _, c in ipairs(Cards.list) do if Meta.seen_cards[c.id] then seen = seen + 1 end end
   nova.ui.text(0, 30, string.format("SEEN %d / %d   POOL %d / %d", seen, total, Work.pool_size(), total), { font = "pixel", size = 16, color = { 255, 228, 94, 255 }, align = "right", width = 920 })
-  local first = math.max(1, math.min(self.csel - 6, total - 12))
-  for row = 0, 12 do
+  local first = math.max(1, math.min(self.csel - 5, total - 11))
+  for row = 0, 11 do
     local i = first + row
     local c = Cards.list[i]
     if not c then break end
-    local y = 70 + row * 32
+    local y = 70 + row * 35
     local on = i == self.csel
     local st = self:card_state(c)
-    nova.ui.rect(30, y, 400, 29, on and { 255, 200, 120, 255 } or { 40, 46, 80, 255 })
-    nova.ui.rect(32, y + 2, 396, 25, on and { 30, 24, 14, 255 } or { 12, 14, 34, 255 })
+    nova.ui.rect(30, y, 400, 32, on and { 255, 200, 120, 255 } or { 40, 46, 80, 255 })
+    nova.ui.rect(32, y + 2, 396, 28, on and { 30, 24, 14, 255 } or { 12, 14, 34, 255 })
     local col = st == "seen" and { c.rarity == "rare" and 255 or (c.rarity == "uncommon" and 6 or 255), c.rarity == "rare" and 43 or (c.rarity == "uncommon" and 240 or 255), c.rarity == "rare" and 214 or 255, 255 }
       or { 110, 116, 140, 255 }
     local name = st == "unseen" and "? ? ?" or c.name
-    nova.ui.text(42, y + 6, string.format("%d. %s", i, name), { font = "pixel", size = 14, color = col })
-    if st == "locked" then nova.ui.text(250, y + 8, "Deeper Deck " .. self:tier_needed(c), { font = "pixel", size = 11, color = { 140, 120, 90, 255 }, align = "right", width = 170 }) end
+    nova.ui.text(42, y + 6, string.format("%d. %s", i, name), { font = "pixel", size = 17, color = col })
+    if st == "locked" then nova.ui.text(250, y + 9, "Deck " .. self:tier_needed(c), { font = "pixel", size = 14, color = { 200, 170, 120, 255 }, align = "right", width = 170 }) end
   end
   local c = Cards.list[self.csel]
   local st = self:card_state(c)
@@ -226,15 +229,15 @@ function Den:draw_codex()
     nova.ui.text(x + 14, y + 12, c.name, { font = "pixel", size = 22, color = head, shadow = true })
     local fam = Cards.families[c.family].name
     local tags = #c.tags > 0 and ("  [" .. table.concat(c.tags, ", ") .. "]") or ""
-    nova.ui.text(x + 14, y + 44, Cards.rarity[c.rarity].name .. "  " .. fam .. tags .. "   up to " .. c.max, { font = "pixel", size = 13, color = DIM })
-    nova.ui.text(x + 14, y + 74, c.text, { font = "pixel", size = 15, color = st == "locked" and { 150, 156, 180, 255 } or WHITE, width = w - 28, line_spacing = 1.35 })
-    local ty = y + 160
+    nova.ui.text(x + 14, y + 44, Cards.rarity[c.rarity].name .. "  " .. fam .. tags .. "   up to " .. c.max, { font = "pixel", size = 15, color = DIM, width = w - 28 })
+    nova.ui.text(x + 14, y + 74, c.text, { font = "pixel", size = 18, color = st == "locked" and { 170, 176, 200, 255 } or WHITE, width = w - 28, line_spacing = 1.3 })
+    local ty = y + 178
     if c.cost then nova.ui.text(x + 14, ty, "JINX! " .. c.cost, { font = "pixel", size = 14, color = { 255, 228, 94, 255 }, width = w - 28 }); ty = ty + 40 end
     for _, t in ipairs(c.tags) do
-      nova.ui.text(x + 14, ty, string.format("SET %s (3 different cards): %s", Cards.sets[t].name, Cards.sets[t].text), { font = "pixel", size = 12, color = { 255, 140, 60, 255 }, width = w - 28 })
-      ty = ty + 34
+      nova.ui.text(x + 14, ty, string.format("SET %s (3 different cards): %s", Cards.sets[t].name, Cards.sets[t].text), { font = "pixel", size = 15, color = { 255, 150, 70, 255 }, width = w - 28 })
+      ty = ty + 50
     end
-    if st == "locked" then nova.ui.text(x + 14, y + 340, "LOCKED: buy Deeper Deck tier " .. self:tier_needed(c) .. " at the Workbench.", { font = "pixel", size = 13, color = { 255, 228, 94, 255 }, width = w - 28 }) end
+    if st == "locked" then nova.ui.text(x + 14, y + 340, "LOCKED: buy Deeper Deck tier " .. self:tier_needed(c) .. " at the Workbench.", { font = "pixel", size = 16, color = { 255, 228, 94, 255 }, width = w - 28 }) end
   end
   HUD.prompt(40, 508, "dash", "back")
 end
@@ -280,7 +283,7 @@ local function speech(name, text, color, sprite, prompt)
   local x, y, w, h = 90, 308, 780, 172
   box(x, y, w, h, color)
   nova.ui.text(x + 18, y + 12, name, { font = "pixel", size = 18, color = color, shadow = true })
-  if sprite then nova.ui.sprite(sprite, x + w - 60, y + 80, { scale = 3, frame = 0 }) end
+  if sprite then nova.ui.sprite(sprite, x + w - 60, y + 80, { scale = 1.2, frame = 0 }) end
   nova.ui.text(x + 18, y + 46, text, { font = "pixel", size = 16, color = WHITE, width = w - (sprite and 130 or 40), line_spacing = 1.4 })
   HUD.prompt(x + w - 150, y + h - 32, "interact", prompt or "next")
 end
@@ -348,18 +351,18 @@ function Den:draw_ui()
       local here = Meta.moved_in[t.who]
       nova.ui.rect(x - 62, y + 18, 124, 36, { 5, 6, 15, 225 })
       nova.ui.rect(x - 62, y + 52, 124, 2, here and CYAN or { 70, 80, 120, 255 })
-      nova.ui.text(x - 62, y + 22, stall.name, { font = "pixel", size = 12, color = here and WHITE or { 150, 160, 190, 255 }, align = "center", width = 124 })
-      nova.ui.text(x - 62, y + 38, here and "lives here" or (stall.later and "later" or string.format("met %d/%d", Meta.met[t.who] or 0, Dd.moved_in_needed)), { font = "pixel", size = 10, color = here and CYAN or { 120, 128, 160, 255 }, align = "center", width = 124 })
+      nova.ui.text(x - 62, y + 22, stall.name, { font = "pixel", size = 15, color = here and WHITE or { 150, 160, 190, 255 }, align = "center", width = 124 })
+      nova.ui.text(x - 62, y + 38, here and "lives here" or (stall.later and "later" or string.format("met %d/%d", Meta.met[t.who] or 0, Dd.moved_in_needed)), { font = "pixel", size = 13, color = here and CYAN or { 120, 128, 160, 255 }, align = "center", width = 124 })
     elseif t.thing == "bench" or t.thing == "screen" or t.thing == "door" or t.thing == "bed" or t.thing == "codex" then
       local label = ({ bench = "WORKBENCH", screen = "LULLABY", door = "DOOR: A RUN", bed = "PRINT BED", codex = "CARD CODEX" })[t.thing]
-      nova.ui.text(x - 80, y + 10, label, { font = "pixel", size = 12, color = CYAN, align = "center", width = 160, shadow = true })
+      nova.ui.text(x - 80, y + 10, label, { font = "pixel", size = 15, color = CYAN, align = "center", width = 160, shadow = true })
     end
   end
   if self.state == "bench" then self:draw_bench(); return end
   if self.state == "codex" then self:draw_codex(); return end
-  nova.ui.sprite("scrap", 912, 30, { scale = 2, frame = 0 })
+  nova.ui.sprite("ui", 912, 30, { scale = 1.2, frame = 6 })
   nova.ui.text(0, 20, string.format("KEYS %d", Meta.keys), { font = "pixel", size = 20, color = { 255, 228, 94, 255 }, align = "right", width = 890, shadow = true })
-  nova.ui.text(16, 16, string.format("runs %d   wins %d%s", Meta.runs, Meta.wins, Meta.best > 0 and string.format("   best %d:%02d", Meta.best // 60, math.floor(Meta.best % 60)) or ""), { font = "pixel", size = 12, color = DIM, shadow = true })
+  nova.ui.text(16, 16, string.format("runs %d   wins %d%s", Meta.runs, Meta.wins, Meta.best > 0 and string.format("   best %d:%02d", Meta.best // 60, math.floor(Meta.best % 60)) or ""), { font = "pixel", size = 15, color = DIM, shadow = true })
   if self.state == "free" and self.by then
     local t = self.by
     local word = ({ screen = "talk to LULLABY", codex = "read the codex", bench = "open the Workbench", door = "start a run", stall = "talk" })[t.thing]

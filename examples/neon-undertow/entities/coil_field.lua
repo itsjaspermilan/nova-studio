@@ -59,14 +59,14 @@ function FieldE:draw()
     local up = s.pull > 0
     local col = up and { 6, 240, 255 } or { 255, 43, 214 }
     local a = armed and 46 or (math.floor(self.t * 8) % 2 == 0 and 40 or 14)
-    nova.sprite("solid", cx, cy, { w = S.width, h = f.y1 - f.y0, color = { col[1], col[2], col[3], a } })
+    nova.sprite("solid", cx, cy, { w = S.width, h = f.y1 - f.y0, color = { col[1], col[2], col[3], a }, blend = "add", lit = false })
     -- chevrons that run along the stripe in the direction it pulls
     local n = 7
     for i = 0, n - 1 do
       local ph = ((self.t * 0.9 + i / n) % 1)
       local y = up and (f.y1 - ph * (f.y1 - f.y0)) or (f.y0 + ph * (f.y1 - f.y0))
       local sx, sy = nova.cam.to_screen(s.cx, y)
-      nova.sprite("solid", sx, sy, { w = S.width * 0.5, h = 5, color = { col[1], col[2], col[3], armed and 150 or 50 } })
+      nova.sprite("solid", sx, sy, { w = S.width * 0.5, h = 5, color = { col[1], col[2], col[3], armed and 150 or 50 }, blend = "add", lit = false })
     end
   end
 end

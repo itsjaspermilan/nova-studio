@@ -6,7 +6,8 @@ local E = require("data.enemies").scrap
 local Hits = require("lib.hits")
 
 local Scrap = nova.entity {
-  sprite = "scrap", anim = "spin", tags = { "scrap" }, pivot = { 0.5, 0.5 }, hitbox = { -6, -6, 12, 12 }, sx = 3, sy = 3,
+  sprite = "ui", frame = 5, tags = { "scrap" }, pivot = { 0.5, 0.5 }, hitbox = { -12, -12, 24, 24 }, sx = 1.5, sy = 1.5,
+  light = { radius = 46, color = { 255, 220, 120 }, intensity = 1.0 },
   velocity = false, t = 0, pvx = 0, pvy = 0,
 }
 

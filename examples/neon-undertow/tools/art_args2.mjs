@@ -1,3 +1,4 @@
+// SUPERSEDED (the 16 px placeholder art): do not run, it would overwrite the detailed sheets. The art is made by art.mjs (the makers) and art_hd.mjs (hand-drawn pieces).
 // Slice 2's hand-drawn placeholder sprites (the makers lack vending machines, bottles, doors, cards...).
 // Run: scripts/env.sh node examples/neon-undertow/tools/art_args2.mjs <outdir>; then sprite_write each file with @path.
 // Everything the game draws is reached by name: replace the pictures, not the code.

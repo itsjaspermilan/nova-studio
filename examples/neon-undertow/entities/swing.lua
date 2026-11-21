@@ -6,7 +6,7 @@ local C = require("lib.combat")
 local Hits = require("lib.hits")
 
 local Swing = nova.entity {
-  sprite = "fx_arc", anim = "swing", tags = { "swing" }, pivot = { 6 / 32, 0.5 }, sx = 3, sy = 3, velocity = false,
+  sprite = "fx_arc", anim = "swing", tags = { "swing" }, pivot = { 12 / 64, 0.5 }, sx = 1.5, sy = 1.5, velocity = false, blend = "add", lit = false,
   frames_left = 9, active_left = P.attack.active_frames,
 }
 
@@ -17,7 +17,7 @@ function Swing:create()
   self.hitbox = C.box(dir, self.area)
   self.depth = -self.y - 5
   self.hit = {}
-  if self.scale_arc and self.scale_arc ~= 1 then self.sx, self.sy = 3 * self.scale_arc, 3 * self.scale_arc end -- (Long Reach: the arc is drawn as long as its box)
+  if self.scale_arc and self.scale_arc ~= 1 then self.sx, self.sy = 1.5 * self.scale_arc, 1.5 * self.scale_arc end -- (Long Reach: the arc is drawn as long as its box)
   self:play(self.arc or "swing", { restart = true })
   self:strike()
 end

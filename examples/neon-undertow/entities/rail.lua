@@ -5,18 +5,7 @@ local H = require("data.hazards")
 
 local Rail = nova.entity { velocity = false, dir = "h", span = 1920, depth = 92 }
 
-function Rail:draw()
-  local n = math.ceil(self.span / H.tile)
-  for i = 0, n - 1 do
-    for _, side in ipairs({ -0.5, 0.5 }) do
-      local wx = self.dir == "h" and (self.x + (i + 0.5) * H.tile) or (self.x + side * H.tile)
-      local wy = self.dir == "v" and (self.y + (i + 0.5) * H.tile) or (self.y + side * H.tile)
-      local x, y = nova.cam.to_screen(wx, wy)
-      if x > -H.tile and x < 960 + H.tile and y > -H.tile and y < 540 + H.tile then
-        nova.sprite("rail", x, y, { w = H.tile, h = H.tile, frame = self.dir == "h" and 0 or 1 })
-      end
-    end
-  end
-end
+-- (the rails themselves are the map's: tram_rail tiles on the two rows of the band, painted by tools/gutter.mjs, so nothing is drawn here)
+function Rail:draw() end
 
 return Rail

@@ -7,10 +7,12 @@ local C = require("lib.combat")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
 local Target = require("lib.target")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Thrower = nova.entity(Foe, {
   sprite = "bottle_thrower", anim = "idle_down", tags = { "hurtable", "enemy", "bottle_thrower" },
-  pivot = { 0.5, 0.875 }, hitbox = { -3, -5, 6, 5 },
+  pivot = { 0.5, 0.906 }, hitbox = { -6, -10, 12, 10 },
 })
 
 function Thrower:create()
@@ -93,14 +95,20 @@ function Thrower:update(dt)
   if self.flash > 0 then self:play("hurt_" .. f)
   elseif self.state == "keep" and dist < E.keep_min then self:play("walk_" .. f)
   elseif self.state == "keep" and dist > E.keep_max then self:play("walk_" .. f)
-  elseif self.state == "tell" then self:play("attack_" .. f)
+  elseif self.state == "tell" then self:play("tell_" .. f)       -- (wound up, the arm cocked, flashing)
+  elseif self.state == "recover" and self.t < 0.4 then self:play("attack_" .. f)   -- (the throw)
   else self:play("idle_" .. f) end
   if self.state == "tell" then
-    self.tint = (math.floor(self.t * 14) % 2 == 0) and { 255, 190, 90 } or { 255, 255, 255 }
     self.x = self.x + ((math.floor(self.t * 30) % 2 == 0) and 0.6 or -0.6)
+    self.light = Look.tell
   else
-    self.tint = nil
+    self.light = Look.enemy
   end
+end
+
+function Thrower:draw()
+  nova.Entity.draw(self)
+  if self.state == "tell" then LK.halo(self.x, self.y - 44, 72, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end
 end
 
 return Thrower

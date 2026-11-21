@@ -10,7 +10,7 @@ local ShopData = require("data.shop")
 local Strangers = require("data.strangers")
 local Base = require("lib.fightroom")
 
-local Quiet = nova.scene(Base, { room = "gutter.stranger" })
+local Quiet = nova.scene(Base, { room = "gutter.stranger", look = "indoors" })
 
 local W, H = 960, 540
 local function centered(y, text, size, color)
@@ -101,7 +101,7 @@ function Quiet:draw_ui()
       local x, y, w, h = 90, 300, 780, 190
       nova.ui.rect(x - 3, y - 3, w + 6, h + 6, { 255, 43, 214, 255 })
       nova.ui.rect(x, y, w, h, { 8, 10, 26, 248 })
-      nova.ui.sprite(S.sprite, x + 70, y + 86, { scale = 4.5, frame = 0 })
+      nova.ui.sprite(S.sprite, x + 70, y + 86, { scale = 1.6, frame = 0 })
       nova.ui.text(x + 150, y + 12, S.name .. "  " .. S.title, { font = "pixel", size = 18, color = { 255, 43, 214, 255 }, shadow = true })
       if Talk.stage == "lines" then
         nova.ui.text(x + 150, y + 48, Talk.lines[Talk.i], { font = "pixel", size = 17, color = { 255, 255, 255, 255 }, width = w - 180, line_spacing = 1.45 })
@@ -121,12 +121,14 @@ function Quiet:draw_ui()
       HUD.prompt(380, 440, "interact", self.talked and "say bye" or "talk to " .. S.name)
     end
   elseif self.kind == "walk" then
-    centered(96, "THE SHOP AND THE BANK", 26, { 6, 240, 255, 255 })
+    nova.ui.rect(250, 448, 460, 40, { 5, 6, 15, 205 })
+    centered(452, "THE SHOP AND THE BANK", 26, { 6, 240, 255, 255 })
     for _, c in ipairs(nova.all("counter")) do
       local d = ShopData[c.item]
       local x, y = nova.cam.to_screen(c.x, c.y - 52)
-      nova.ui.text(x - 90, y - 18, d.name, { font = "pixel", size = 13, color = { 255, 228, 94, 255 }, align = "center", width = 180, shadow = true })
-      nova.ui.text(x - 90, y, c.item == "bank" and "4 : 1" or (d.price .. " scrap"), { font = "pixel", size = 12, color = { 255, 255, 255, 255 }, align = "center", width = 180, shadow = true })
+      nova.ui.rect(x - 78, y - 22, 156, 44, { 5, 6, 15, 200 })     -- (a plate: the labels read over the awnings and the floor)
+      nova.ui.text(x - 90, y - 18, d.name, { font = "pixel", size = 15, color = { 255, 228, 94, 255 }, align = "center", width = 180, shadow = true })
+      nova.ui.text(x - 90, y, c.item == "bank" and "4 : 1" or (d.price .. " scrap"), { font = "pixel", size = 15, color = { 255, 255, 255, 255 }, align = "center", width = 180, shadow = true })
     end
     if self.by then
       local d = ShopData[self.by.item]

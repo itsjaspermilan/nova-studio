@@ -1,0 +1,16 @@
+{
+ "start_scene": "test_lab",
+ "lua": "local r = nova.named('runner'); r.x, r.y = 400, 420; nova.spawn('scrapper', 640, 400); nova.spawn('bottle_thrower', 900, 280); nova.spawn('rat_drone', 800, 560); nova.spawn('tout', 700, 250); nova.spawn('mimic_vendor', 960, 440)",
+ "route": [
+  { "wait": 20, "capture": "the lab" },
+  { "hold": ["right"], "frames": 30, "capture": "walking" },
+  { "press": "attack" },
+  { "wait": 4, "capture": "the swing" },
+  { "wait": 50, "capture": "later" },
+  { "press": "dash" },
+  { "wait": 6, "capture": "rolling" }
+ ],
+ "print": ["nova.count('enemy')"],
+ "out": "build/look/lab",
+ "columns": 3
+}

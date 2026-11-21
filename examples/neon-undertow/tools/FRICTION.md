@@ -230,3 +230,34 @@ Same form. Most costly first.
    the Rust test's `play_saved` and two route files each (as slice 3b's save test did).
 
 Top five by cost: 1, 4, 3, 2, 6.
+
+# Art swap (the whole game onto the detailed city style, 2D light, worn terrain and bold characters)
+
+What I wanted, what I tried, what would have made it one step. Most costly first. Everything below was worked round; nothing was left out.
+
+1. **A prop or a line of tiles painted with no base terrain gets a WALL under it, silently.** Wanted: `"r": "tram_rail"` (and `manhole`, `vent`,
+   `cables`) in a `paint` map to lie on the street like the demo's. Tried: the demo's plain names; the room came out with solid wall tiles along every
+   rail (the solid check caught 42 and 72 cells in two rooms; the maker's answer said nothing). Worked round with `"tram_rail on asphalt"` for every
+   non-terrain name. One step: `scene_write` should take the base from the neighbours (or the first terrain used) and warn "x has no ground; used y".
+2. **The wear maker's "two roads cross" hatching covers a whole plaza or yard.** Wanted a worn plaza; got diagonal hatching over every paved
+   rectangle and the whole scrapyard, which reads as a pattern, not as wear. Found only by looking at the frames. Worked round with
+   `"features": ["no hatch"]` on every room. One step: hatching only where two painted streets really cross, or `hatch` off by default.
+3. **No scrapyard, flood or machinery parts.** Wanted wreck piles, tyres, a junk heap, a crane cab and gantry, a print bed, a tram, a roll-up door
+   that is locked / unlocked / open, a training dummy, a bottle and a can that spin, fire. `creature_make crane_arm` gives the drum and the magnet
+   but not the cab. Worked round with `sprite_write` shapes (tools/art_hd.mjs: 13 pieces, about 300 lines of shapes). One step: a `props_make` (or more
+   `tileset_make` props) for junk: wreck, tyre pile, scrap heap, cab, gantry, tram car, roll-up door with states, dummy, bed.
+4. **`sx` and `hitbox` are coupled, and the old art was drawn at 3 and the new at 1.5.** Every hit box in the game was written in sprite pixels at
+   scale 3 (the swings' boxes are derived in `lib/combat.lua`), so the swap had to halve `sx` and double 30 hitboxes by hand, and two measuring routes
+   (`e.sx / 3` in `r_elite_splitting`, `FIRE_SCALE` in `r_thrower`) read the scale. One step: a `hitbox_units = "world"` spec flag (or a sheet-level
+   `scale` so a picture can be redrawn at another density without touching the entity).
+5. **`creature_make rat_drone` is a side view; the game turns the drone to face its charge (`angle`).** A side-view sprite turned 90 degrees lies on
+   its back. Worked round with `flip_x` and no rotation (the drone now faces left or right only). One step: a top-down variant (`view = "top"`) for
+   creatures that move in four directions, or four-way frames like `character_make`.
+6. **Frames of a sheet are numbers.** Every draw call names `frame = 8` for a baton card; re-making `ui` (items_make) could move them. Worked round with
+   `data/art.lua` and `Cards.frame_of`. One step: `frame = "card_baton_rare"` (the sheet already has the name).
+7. **`items_make` has a district card icon but no jinx.** Appended three frames with `sprite_write { append }` (art_hd.mjs, 26 to 28), which is
+   fine, but a sixth family should be one option (`families = [...]`).
+8. **A puddle entity and a puddle tile are two things.** The game's live puddle is an object (132 x 80 units, a gameplay box), the maker's puddle is a
+   terrain; I paint three reflective cells under each object (`tools/paint.mjs`) so they agree. One step: `scene_write` `pools: [{ x, y, w, h }]`.
+9. **`sprite_write` rejects `"outline": null`** (a frame with no outline had to leave the key out) and the film strip `play` cannot take an `out`
+   from the command line, so `tools/look/shoot.mjs` rewrites each route file. Small.

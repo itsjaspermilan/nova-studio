@@ -7,13 +7,16 @@ local R = require("data.rooms")
 local Cards = require("data.cards")
 
 local Card = nova.entity {
-  sprite = "card", anim = "common", tags = { "card" }, velocity = false, pivot = { 0.5, 0.95 }, sx = 0, sy = 0, t = 0, state = "rising",
+  sprite = "ui", tags = { "card" }, velocity = false, pivot = { 0.5, 0.95 }, sx = 0, sy = 0, t = 0, state = "rising",
+  light = { radius = 140, radius_y = 100, color = { 255, 255, 255 }, intensity = 0, y = -20 },
 }
 
 function Card:create()
   self.def = Cards.by_id[self.card_id]
   self.rar = Cards.rarity[self.def.rarity]
-  self:play(self.def.rarity)
+  self.frame = Cards.frame_of(self.def.family, self.def.rarity)
+  local c = self.rar.color
+  self.light = { radius = 140, radius_y = 100, color = { c[1], c[2], c[3] }, intensity = 0, y = -20 }
   self.depth = -self.y
   self.ready = false
 end
@@ -26,22 +29,25 @@ function Card:update(dt)
   if self.state == "rising" then
     local k = math.min(1, self.t / R.rise)
     local e = 1 - (1 - k) * (1 - k)
-    self.sx, self.sy = 3 * e, 3 * e
+    self.sx, self.sy = 1.5 * e, 1.5 * e
+    self.light.intensity = 2.0 * e
     self.alpha = e
     if k >= 1 then self.state, self.ready = "ready", true end
   elseif self.state == "ready" then
-    self.sx, self.sy = 3, 3
+    self.sx, self.sy = 1.5, 1.5
+    self.light.intensity = 2.0
     self.alpha = 1
   elseif self.state == "sinking" then
     self.ready = false
     local k = math.min(1, self.t / R.sink)
-    self.sx, self.sy = 3 * (1 - k), 3 * (1 - k)
+    self.sx, self.sy = 1.5 * (1 - k), 1.5 * (1 - k)
+    self.light.intensity = 2.0 * (1 - k)
     self.alpha = 1 - k
     if k >= 1 then self.state = "gone"; self:destroy() end
   elseif self.state == "taken" then
     self.ready = false
     local k = math.min(1, self.t / 0.35)
-    self.sx, self.sy = 3 + 2 * k, 3 + 2 * k
+    self.sx, self.sy = 1.5 + 1 * k, 1.5 + 1 * k
     self.alpha = 1 - k
     if k >= 1 then self.state = "gone"; self:destroy() end
   end
@@ -76,10 +82,10 @@ function Card:hud()
   local x, y = nova.cam.to_screen(self.x, self.y - 78 * k)
   local fam = Cards.families[self.def.family]
   local col = self.rar.color
-  nova.ui.sprite("icons", x, y - 30, { frame = fam.icon, scale = 2 * k })
+  nova.ui.sprite("ui", x, y - 34, { frame = Cards.frame_of(self.def.family, self.def.rarity), scale = 1.6 * k })
   if k >= 1 then
-    nova.ui.text(x - 70, y - 12, self.def.name, { font = "pixel", size = 12, color = { col[1], col[2], col[3], 255 }, align = "center", width = 140, shadow = true })
-    if self.def.jinx then nova.ui.text(x - 70, y + 2, "JINX!", { font = "pixel", size = 12, color = { 255, 228, 94, 255 }, align = "center", width = 140, shadow = true }) end
+    nova.ui.text(x - 70, y - 12, self.def.name, { font = "pixel", size = 15, color = { col[1], col[2], col[3], 255 }, align = "center", width = 140, shadow = true })
+    if self.def.jinx then nova.ui.text(x - 70, y + 2, "JINX!", { font = "pixel", size = 15, color = { 255, 228, 94, 255 }, align = "center", width = 140, shadow = true }) end
   end
 end
 

@@ -7,10 +7,12 @@ local J = require("lib.juice")
 local C = require("lib.combat")
 local Status = require("lib.status")
 local Target = require("lib.target")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Scrapper = nova.entity {
   sprite = "scrapper", anim = "idle_down", tags = { "hurtable", "enemy", "scrapper" },
-  pivot = { 0.5, 0.875 }, hitbox = { -5, -5, 10, 5 }, sx = 3, sy = 3, velocity = false,
+  pivot = { 0.5, 0.906 }, hitbox = { -10, -10, 20, 10 }, sx = 1.5, sy = 1.5, velocity = false, shadow = true, light = Look.enemy,
 }
 
 function Scrapper:create()
@@ -124,14 +126,15 @@ function Scrapper:update(dt)
   local f = self.facing
   if self.flash > 0 then self:play("hurt_" .. f)
   elseif self.state == "walk" then self:play("walk_" .. f)
-  elseif self.state == "tell" then self:play("attack_" .. f)
+  elseif self.state == "tell" then self:play("tell_" .. f)      -- (the sheet's wind-up: the outline and the pipe flash in the accent)
+  elseif self.state == "swing" or self.state == "recover" then self:play("attack_" .. f)
   else self:play("idle_" .. f) end
   if self.state == "tell" then
-    -- the tell: it brightens and shakes
-    self.tint = (math.floor(self.t * 14) % 2 == 0) and { 255, 150, 235 } or { 255, 255, 255 }
+    -- the tell: it shakes, and its light jumps
     self.x = self.x + ((math.floor(self.t * 30) % 2 == 0) and 0.6 or -0.6)
+    self.light = Look.tell
   else
-    self.tint = nil
+    self.light = Look.enemy
   end
 end
 
@@ -140,11 +143,13 @@ function Scrapper:draw()
   if self.state == "tell" then
     local hx, hy = self:hips()
     local b = C.box(self.facing, E.area)
-    local x, y = nova.cam.to_screen(hx + b[1] * 3, hy + b[2] * 3)
-    local a = 60 + 90 * (math.floor(self.t * 12) % 2)
-    nova.rect(x, y, b[3] * 3, b[4] * 3, { 255, 43, 214, a })
+    local x, y = nova.cam.to_screen(hx + b[1] * C.px, hy + b[2] * C.px)
+    local a = Look.zone.alpha_low + (Look.zone.alpha_high - Look.zone.alpha_low) * (math.floor(self.t * 12) % 2)
+    local z = Look.zone.color
+    nova.rect(x, y, b[3] * C.px, b[4] * C.px, { z[1], z[2], z[3], a }, { blend = "add", lit = false })
   end
   nova.Entity.draw(self)
+  if self.state == "tell" then LK.halo(self.x, self.y - 40, 72, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end
 end
 
 function Scrapper:hud()

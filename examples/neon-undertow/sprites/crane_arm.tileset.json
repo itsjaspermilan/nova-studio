@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tile_width": 84,
+  "tile_height": 84,
+  "solid": [],
+  "names": {
+    "0": "base",
+    "1": "arm",
+    "2": "magnet"
+  },
+  "terrains": []
+}

@@ -1,150 +1,246 @@
 {
   "version": 1,
   "image": "bottle_thrower.png",
-  "frame_width": 32,
-  "frame_height": 32,
+  "frame_width": 96,
+  "frame_height": 96,
   "columns": 16,
-  "frames": 40,
+  "frames": 92,
   "durations_ms": [
-    480,
-    480,
-    120,
-    120,
-    120,
-    120,
-    70,
-    60,
+    220,
+    180,
+    220,
+    180,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
     130,
-    260,
-    480,
-    480,
+    50,
+    80,
     120,
-    120,
-    120,
-    120,
-    70,
-    60,
+    90,
+    170,
+    56,
+    56,
+    56,
+    56,
+    56,
+    100,
+    100,
+    220,
+    180,
+    220,
+    180,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
     130,
-    260,
-    480,
-    480,
+    50,
+    80,
     120,
-    120,
-    120,
-    120,
-    70,
-    60,
+    90,
+    170,
+    56,
+    56,
+    56,
+    56,
+    56,
+    100,
+    100,
+    220,
+    180,
+    220,
+    180,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
     130,
-    260,
-    480,
-    480,
+    50,
+    80,
     120,
-    120,
-    120,
-    120,
-    70,
-    60,
+    90,
+    170,
+    56,
+    56,
+    56,
+    56,
+    56,
+    100,
+    100,
+    220,
+    180,
+    220,
+    180,
+    95,
+    95,
+    95,
+    95,
+    95,
+    95,
     130,
-    260
+    50,
+    80,
+    120,
+    90,
+    170,
+    56,
+    56,
+    56,
+    56,
+    56,
+    100,
+    100
   ],
   "tags": [
     {
       "name": "idle_down",
       "from": 0,
-      "to": 1
+      "to": 3
     },
     {
       "name": "walk_down",
-      "from": 2,
-      "to": 5
+      "from": 4,
+      "to": 9
     },
     {
       "name": "attack_down",
-      "from": 6,
-      "to": 8,
+      "from": 10,
+      "to": 13,
       "loop": false
     },
     {
       "name": "hurt_down",
-      "from": 9,
-      "to": 9,
+      "from": 14,
+      "to": 15,
       "loop": false
     },
     {
+      "name": "roll_down",
+      "from": 16,
+      "to": 20,
+      "loop": false
+    },
+    {
+      "name": "tell_down",
+      "from": 21,
+      "to": 22
+    },
+    {
       "name": "idle_left",
-      "from": 10,
-      "to": 11
+      "from": 23,
+      "to": 26
     },
     {
       "name": "walk_left",
-      "from": 12,
-      "to": 15
+      "from": 27,
+      "to": 32
     },
     {
       "name": "attack_left",
-      "from": 16,
-      "to": 18,
+      "from": 33,
+      "to": 36,
       "loop": false
     },
     {
       "name": "hurt_left",
-      "from": 19,
-      "to": 19,
-      "loop": false
-    },
-    {
-      "name": "idle_right",
-      "from": 20,
-      "to": 21
-    },
-    {
-      "name": "walk_right",
-      "from": 22,
-      "to": 25
-    },
-    {
-      "name": "attack_right",
-      "from": 26,
-      "to": 28,
-      "loop": false
-    },
-    {
-      "name": "hurt_right",
-      "from": 29,
-      "to": 29,
-      "loop": false
-    },
-    {
-      "name": "idle_up",
-      "from": 30,
-      "to": 31
-    },
-    {
-      "name": "walk_up",
-      "from": 32,
-      "to": 35
-    },
-    {
-      "name": "attack_up",
-      "from": 36,
+      "from": 37,
       "to": 38,
       "loop": false
     },
     {
-      "name": "hurt_up",
+      "name": "roll_left",
       "from": 39,
-      "to": 39,
+      "to": 43,
       "loop": false
+    },
+    {
+      "name": "tell_left",
+      "from": 44,
+      "to": 45
+    },
+    {
+      "name": "idle_right",
+      "from": 46,
+      "to": 49
+    },
+    {
+      "name": "walk_right",
+      "from": 50,
+      "to": 55
+    },
+    {
+      "name": "attack_right",
+      "from": 56,
+      "to": 59,
+      "loop": false
+    },
+    {
+      "name": "hurt_right",
+      "from": 60,
+      "to": 61,
+      "loop": false
+    },
+    {
+      "name": "roll_right",
+      "from": 62,
+      "to": 66,
+      "loop": false
+    },
+    {
+      "name": "tell_right",
+      "from": 67,
+      "to": 68
+    },
+    {
+      "name": "idle_up",
+      "from": 69,
+      "to": 72
+    },
+    {
+      "name": "walk_up",
+      "from": 73,
+      "to": 78
+    },
+    {
+      "name": "attack_up",
+      "from": 79,
+      "to": 82,
+      "loop": false
+    },
+    {
+      "name": "hurt_up",
+      "from": 83,
+      "to": 84,
+      "loop": false
+    },
+    {
+      "name": "roll_up",
+      "from": 85,
+      "to": 89,
+      "loop": false
+    },
+    {
+      "name": "tell_up",
+      "from": 90,
+      "to": 91
     }
   ],
   "hitbox": {
-    "x": 13,
-    "y": 23,
-    "w": 6,
-    "h": 5
+    "x": 41,
+    "y": 79,
+    "w": 14,
+    "h": 8
   },
   "pivot": {
-    "x": 16,
-    "y": 28
+    "x": 48,
+    "y": 87
   }
 }

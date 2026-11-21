@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "image": "tram_v.png",
+  "frame_width": 64,
+  "frame_height": 192,
+  "columns": 1,
+  "frames": 1,
+  "frame_duration_ms": 100
+}

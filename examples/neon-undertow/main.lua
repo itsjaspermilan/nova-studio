@@ -3,4 +3,5 @@
 -- run straight from room 1, no Den) are still there: start one with `--start-scene run_start`.
 -- See docs/games/neon-undertow.md in the Nova repository.
 require("lib.meta").load()
+require("lib.look").init()   -- (the pause screen's Effects choice, remembered)
 nova.start("title")

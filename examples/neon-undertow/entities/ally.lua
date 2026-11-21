@@ -6,7 +6,8 @@ local Cards = require("data.cards")
 local N = Cards.num.loop
 
 local Ally = nova.entity {
-  tags = { "ally" }, pivot = { 0.5, 0.875 }, hitbox = { -5, -5, 10, 5 }, sx = 3, sy = 3, velocity = false, tint = { 80, 230, 255 },
+  tags = { "ally" }, pivot = { 0.5, 0.906 }, hitbox = { -10, -10, 20, 10 }, sx = 1.5, sy = 1.5, velocity = false, tint = { 80, 230, 255 }, shadow = true,
+  light = { radius = 90, radius_y = 60, color = { 53, 230, 255 }, intensity = 1.2, y = -30 },
   t = 0, cool = 0.4, kills = 0, strikes = 0, life = 8,
 }
 

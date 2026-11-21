@@ -6,6 +6,9 @@ local Hits = require("lib.hits")
 local F = require("lib.fx")
 local Run = require("lib.run")
 local Cards = require("data.cards")
+local Art = require("data.art")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Sign = nova.entity { tags = { "hurtable", "prop", "sign" }, velocity = false, sx = 1, sy = 1, state = "up", t = 0 }
 
@@ -45,9 +48,16 @@ function Sign:draw()
   local x, y = nova.cam.to_screen(self.x, self.y)
   if self.state == "up" then
     local glow = 0.75 + 0.25 * math.sin(self.t * 5 + self.x)
-    nova.sprite("sign", x, y - H.sign.h / 2, { w = H.sign.w + 16, h = H.sign.h, frame = 0, color = { 255 * glow, 255 * glow, 255 } })
+    local pic = Art.signs[(math.floor(self.x / 48) + math.floor(self.y / 48)) % #Art.signs + 1]
+    local col = (math.floor(self.x / 48) + math.floor(self.y / 48)) % 2 == 0 and Look.accent.magenta or Look.accent.cyan
+    nova.sprite(Art.tiles, x, y - H.sign.h / 2 - 6, { w = 84, h = 84, frame = pic, color = { 255 * glow, 255 * glow, 255 } })
+    LK.halo(self.x, self.y - H.sign.h / 2 - 6, 56, col, 90 * glow)
+    nova.light2d(self.x, self.y - 36, { radius = Look.sign.radius, radius_y = Look.sign.radius * Look.sign.squash, color = col, intensity = Look.sign.intensity * glow })
   else
-    nova.sprite("sign", x, y, { w = H.sign.h, h = H.sign.w, frame = 1 })
+    -- fallen: it lies on the street, dark, with a last spark
+    local pic = Art.signs[(math.floor(self.x / 48) + math.floor(self.y / 48)) % #Art.signs + 1]
+    nova.sprite(Art.tiles, x, y - 8, { w = 84, h = 84, frame = pic, rotation = 1.4, color = { 120, 120, 140 } })
+    if self.t < 0.8 then LK.halo(self.x, self.y - 10, 46, Look.accent.cyan, 200 * (1 - self.t / 0.8)) end
   end
 end
 

@@ -1,8 +1,12 @@
-// Draws the three slice-2 rooms as scene_write arguments (painted tile maps plus placed objects).
-// Run: scripts/env.sh node examples/neon-undertow/tools/rooms.mjs <outdir>; then scene_write each file with @path.
+// Draws the three slice-2 rooms (market_a, market_b, test_lab) as scene_write arguments (painted tile maps plus placed objects).
+// Run: scripts/env.sh node examples/neon-undertow/tools/rooms.mjs <outdir> [--write]  (--write calls scene_write for each and checks the solid cells).
 // A room is a scene file: nothing about its shape is in Lua. (This script is only the way the maps were drawn: the scene files are
 // the truth, edit them in the scene editor or with scene_write.)
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import { PAINT, paintGrid, damageRows } from "./paint.mjs";
+import { compare } from "./solid_check.mjs";
+const root = new URL("../", import.meta.url).pathname;
 const out = process.argv[2];
 fs.mkdirSync(out, { recursive: true });
 const T = 48;
@@ -12,14 +16,17 @@ function rect(g, x0, y0, x1, y1, c) { for (let y = y0; y <= y1; y++) for (let x 
 const px = (col) => col * T + T / 2;   // the middle of a tile column
 const py = (row) => row * T + T / 2;
 
-const PAINT = { "#": "brick_wall", ",": "path", "=": "stone_floor", C: "crate on path", B: "barrel on path", W: "stone_wall on stone_floor", S: "sign on path" };
 
-function writeScene(name, w, h, g, objects) {
-  const scene = {
-    version: 1, width: w * T, height: h * T, background: [5, 6, 15], objects,
-    tilemaps: [{ name: "ground", tileset: "tiles", scale: 3, seed: name.length * 7 + 1, paint: PAINT, tiles: g.map((r) => r.join("")) }],
-  };
+// (the painting is tools/paint.mjs: the district's terrains and props, the same solid cells as before; --write calls scene_write and then checks that)
+const written = [];
+function writeScene(name, w, h, g, objects, damage) {
+  const painted = paintGrid({ name, g, style: "street", seed: name.length * 7 + 1, puddles: objects.filter((o) => o.kind === "puddle").map((o) => [o.x, o.y]) });
+  const tilemap = { name: "ground", tileset: "gutter", scale: 1.5, seed: name.length * 7 + 1, wear: 0.4, district: "gutter market", paint: PAINT, tiles: painted.tiles };
+  if (damage) tilemap.damage = damageRows(w, h, damage);
+  tilemap.features = ["no hatch"];
+  const scene = { version: 1, width: w * T, height: h * T, background: [5, 6, 15], objects: [...objects, ...painted.lights], tilemaps: [tilemap] };
   fs.writeFileSync(`${out}/${name}.json`, JSON.stringify({ name, scene }));
+  written.push(name);
 }
 const marker = (name, col, row) => ({ kind: "marker", name, x: px(col), y: py(row) });
 const puddle = (x, y) => ({ kind: "puddle", x, y });
@@ -50,7 +57,7 @@ const puddle = (x, y) => ({ kind: "puddle", x, y });
     marker("cards", 20, 12),
     puddle(14 * T, 7 * T), puddle(25 * T, 17 * T), puddle(9 * T, 14 * T + 20), puddle(32 * T, 9 * T), puddle(19 * T, 9 * T + 10), puddle(30 * T, 14 * T),
   ];
-  writeScene("market_a", W, H, g, objects);
+  writeScene("market_a", W, H, g, objects, [[1, 1, 8, 6]]);
 }
 
 // ---------------------------------------------------------------- room B: a long street with a side alley, 44 x 22 tiles
@@ -82,7 +89,7 @@ const puddle = (x, y) => ({ kind: "puddle", x, y });
     marker("cards", 22, 11),
     puddle(6 * T, 12 * T), puddle(18 * T, 11 * T + 20), puddle(33 * T, 12 * T + 20), puddle(21 * T, 8 * T + 10), puddle(41 * T, 10 * T + 10),
   ];
-  writeScene("market_b", W, H, g, objects);
+  writeScene("market_b", W, H, g, objects, [[30, 12, 42, 14]]);
 }
 
 // ---------------------------------------------------------------- the card lab: 30 x 18, bare, for the routes that prove cards and enemies
@@ -101,4 +108,10 @@ const puddle = (x, y) => ({ kind: "puddle", x, y });
     marker("sp_a", 24, 8), marker("sp_b", 24, 14), marker("cards", 15, 11),
   ];
   writeScene("test_lab", W, H, g, objects);
+}
+
+if (process.argv.includes("--write")) {
+  for (const name of written) console.log(name + ": " + execFileSync("scripts/nova-tool", ["--project", root.replace(/\/$/, ""), "scene_write", `@${out}/${name}.json`], { encoding: "utf8", cwd: root + "../.." }).split("\n").filter((l) => /warning|error/i.test(l)).join(" "));
+  const bad = compare(written.map((n) => n + ".scene.json"));
+  if (bad) { console.log(`${bad} room(s) differ in what is solid`); process.exitCode = 1; }
 }

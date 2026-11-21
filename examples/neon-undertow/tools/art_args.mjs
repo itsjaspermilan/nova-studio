@@ -1,3 +1,4 @@
+// SUPERSEDED (the 16 px placeholder art): do not run, it would overwrite the detailed sheets. The art is made by art.mjs (the makers) and art_hd.mjs (hand-drawn pieces).
 // Writes the argument files for the hand-drawn placeholder sprites (the makers lack a baton arc, shots, scrap, hearts...).
 // Run: scripts/env.sh node examples/neon-undertow/tools/art_args.mjs <outdir>; then sprite_write each file with @path.
 // Everything the game draws is reached by name (sprites/fx_arc, fx_shot, ...): replace the pictures, not the code.

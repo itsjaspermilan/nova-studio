@@ -10,7 +10,7 @@ local HUD = require("lib.hud")
 local Field = require("lib.field")
 local Base = require("lib.fightroom")
 
-local Boss = nova.scene(Base, { room = "gutter.boss", boss = "mother_coil" })
+local Boss = nova.scene(Base, { room = "gutter.boss", boss = "mother_coil", look = "yard" })
 
 local W = 960
 local function centered(y, text, size, color)
@@ -66,7 +66,7 @@ function Boss:draw_ui()
   nova.ui.rect(x, y, w * math.max(0, c.hp) / c.max_hp, 14, c.open and { 6, 240, 255, 255 } or { 255, 43, 214, 255 })
   nova.ui.rect(x + w * B.half - 1, y - 3, 2, 20, { 255, 255, 255, 255 })
   nova.ui.text(x, y - 24, B.name:upper(), { font = "pixel", size = 18, color = { 255, 255, 255, 255 }, shadow = true })
-  nova.ui.text(x + w - 330, y - 20, B.title, { font = "pixel", size = 12, color = { 190, 200, 230, 255 }, align = "right", width = 330 })
+  nova.ui.text(x + w - 330, y - 20, B.title, { font = "pixel", size = 15, color = { 190, 200, 230, 255 }, align = "right", width = 330 })
   if c.bark_t > 0 and c.bark_text then
     centered(y + 24, "\"" .. c.bark_text .. "\"", 14, { 255, 228, 94, math.min(1, c.bark_t / 0.4) * 255 })
   end

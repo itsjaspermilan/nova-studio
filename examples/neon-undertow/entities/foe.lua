@@ -6,7 +6,10 @@ local P = require("data.player")
 local J = require("lib.juice")
 local Status = require("lib.status")
 
-local Foe = nova.entity { tags = { "hurtable", "enemy" }, velocity = false, sx = 3, sy = 3 }
+local Look = require("data.look")
+
+-- (every enemy is drawn at 1.5 from a 96 px sheet and carries its own small light in the district's accent, a brighter one while it tells)
+local Foe = nova.entity { tags = { "hurtable", "enemy" }, velocity = false, sx = 1.5, sy = 1.5, shadow = true, light = Look.enemy }
 
 function Foe:setup()
   self.hp = self.E.health

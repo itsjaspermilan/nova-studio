@@ -4,9 +4,11 @@ local E = require("data.enemies").bottle_thrower.fire
 local P = require("data.player")
 local J = require("lib.juice")
 local Status = require("lib.status")
+local Look = require("data.look")
 
 local Fire = nova.entity {
-  sprite = "fire", anim = "burn", tags = { "fire" }, velocity = false, pivot = { 0.5, 0.75 }, hitbox = { r = 8 }, life = 2, t = 0,
+  tags = { "fire" }, velocity = false, hitbox = { r = 8 }, life = 2, t = 0,   -- (no picture of its own: `sx` of E.radius / 8 is the hit circle's scale, so the flames are drawn by hand below)
+  light = { radius = Look.fire.radius, radius_y = Look.fire.radius * 0.8, color = Look.fire.color, intensity = Look.fire.intensity, flicker = 0.5, y = -20 },
 }
 
 function Fire:create()
@@ -27,6 +29,14 @@ function Fire:hurt(e, what)
     e:take_hit(E.damage, 0, 0, 0)
     nova.log("fire hurts " .. (e.kind_name or e.name or "enemy"))
   end
+end
+
+function Fire:draw()
+  local x, y = nova.cam.to_screen(self.x, self.y)
+  local frame = math.floor(self.t * 11) % 4
+  local size = E.radius * 2.9
+  nova.sprite("fire", x, y - size * 0.22, { w = size, h = size, frame = frame, alpha = self.alpha or 1, blend = "add", lit = false })
+  nova.sprite("fire", x, y - size * 0.22, { w = size, h = size, frame = (frame + 2) % 4, alpha = 0.55 * (self.alpha or 1) })
 end
 
 function Fire:update(dt)

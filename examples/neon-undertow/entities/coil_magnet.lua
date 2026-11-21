@@ -72,7 +72,8 @@ function Magnet:draw()
   local lift = self.state == "track" and 80 or (self.state == "lock" and 80 * (1 - k) + 6 or 0)
   if boss and boss:is_alive() then D.lane(boss.x, boss.y - 60, self.x, self.y - 34 - lift, 6, { 120, 130, 170, 255 }) end
   local sx, sy = nova.cam.to_screen(self.x, self.y)
-  nova.sprite("coil_magnet", sx, sy - 70 - lift, { w = 96, h = 96, alpha = self.state == "linger" and 1 or 0.7 })
+  nova.sprite("crane_arm", sx, sy - 70 - lift + 8, { w = 126, h = 126, frame = 2 + math.floor(nova.time() * 2.5) % 2, alpha = self.state == "linger" and 1 or 0.85 })
+  nova.light2d(self.x, self.y - 40, { radius = 160, radius_y = 110, color = { 255, 63, 164 }, intensity = self.state == "lock" and 2.4 or 1.4 })
 end
 
 return Magnet

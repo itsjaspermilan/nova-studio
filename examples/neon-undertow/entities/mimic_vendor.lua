@@ -6,10 +6,12 @@ local P = require("data.player")
 local D = require("lib.draw")
 local Foe = require("entities.foe")
 local Target = require("lib.target")
+local Look = require("data.look")
+local LK = require("lib.look")
 
 local Mimic = nova.entity(Foe, {
   sprite = "mimic_vendor", anim = "idle", tags = { "hurtable", "enemy", "solid", "mimic_vendor" },
-  pivot = { 0.5, 0.9 }, hitbox = { -9, -6, 18, 6 },
+  pivot = { 40 / 80, 69 / 80 }, hitbox = { -18, -12, 36, 12 },   -- (the shut frame stands where the tileset's vending machine does)
 })
 
 function Mimic:create()
@@ -62,10 +64,10 @@ function Mimic:update(dt)
   end
 
   if self.flash > 0 then self:play("hit")
-  elseif self.state == "flicker" then self:play("flicker")
+  elseif self.state == "flicker" then self:play("tell")      -- (two angry eyes light in the header)
   elseif self.state == "spit" then self:play("open")
   else self:play("idle") end
-  if self.state == "flicker" then self.tint = (math.floor(self.t * 16) % 2 == 0) and { 255, 170, 240 } or { 255, 255, 255 } else self.tint = nil end
+  self.light = self.state == "flicker" and Look.tell or Look.enemy
 end
 
 -- The lanes the cans will fly along, drawn while it flickers.
@@ -79,6 +81,9 @@ function Mimic:draw()
     end
   end
   nova.Entity.draw(self)
+  if self.state == "flicker" then LK.halo(self.x, self.y - 50, 84, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end
 end
+
+function Mimic:bar_y() return self.y - 100 end
 
 return Mimic
