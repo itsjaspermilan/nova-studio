@@ -48,7 +48,7 @@ function W.warm_cards(seed, mix)
   if tier <= 0 then return out end
   local function pick(rarity, salt)
     local list = {}
-    for _, c in ipairs(Cards.list) do if c.rarity == rarity and c.index <= W.pool_size() then list[#list + 1] = c end end
+    for _, c in ipairs(Cards.list) do if c.rarity == rarity and not c.jinx and c.index <= W.pool_size() then list[#list + 1] = c end end
     if #list == 0 then return nil end
     return list[mix(seed, salt) % #list + 1].id
   end

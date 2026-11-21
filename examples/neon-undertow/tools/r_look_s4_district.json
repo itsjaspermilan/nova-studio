@@ -1,0 +1,59 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end",
+ "route": [
+  {
+   "lua": "require('lib.run').begin(1); require('lib.hits').last_hit = -99; require('lib.juice').slow_t = 0; for _, t in ipairs({ 'scrapper', 'fire', 'decoy', 'ally', 'shot', 'scrap', 'zap', 'barrel', 'bottle', 'can' }) do for _, e in ipairs(nova.all(t)) do e:destroy() end end; local r = nova.named('runner'); r.hp, r.max_hp, r.charge, r.max_charge, r.state, r.blink_t, r.roll_cd = 12, 12, 3, 3, 'free', 0, 0; r.stats.baton_hits = 0; require('lib.hits').dip_t = 0; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 120, 420, 'right'; A = nova.spawn('scrapper', 480, 420); A.hp = 30; A.max_hp = 30; require('lib.status').stun(A, 99); B = nova.spawn('scrapper', 470, 580); B.hp = 30; B.max_hp = 30; require('lib.status').stun(B, 99); C = nova.spawn('scrapper', 520, 700); C.hp = 30; C.max_hp = 30; require('lib.status').stun(C, 99); require('lib.run').add_card('friendly_fire', nova.named('runner'))"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "nova.spawn('can', 400, 420, { dx = 1, dy = 0 }); nova.spawn('enemy_swing', 400, 580, { dir = 'right', damage = 2, area = require('data.enemies').scrapper.area }); nova.spawn('bottle', 380, 700, { sx0 = 380, sy0 = 700, tx = 520, ty = 700, time = 0.3, height = 20 })"
+  },
+  {
+   "wait": 40,
+   "capture": "can, pipe and bottle hit enemies"
+  },
+  {
+   "lua": "CAN = 30 - A.hp; PIPE = 30 - B.hp; BOTTLE = 30 - C.hp"
+  },
+  {
+   "lua": "require('lib.run').begin(1); require('lib.hits').last_hit = -99; require('lib.juice').slow_t = 0; for _, t in ipairs({ 'scrapper', 'fire', 'decoy', 'ally', 'shot', 'scrap', 'zap', 'barrel', 'bottle', 'can' }) do for _, e in ipairs(nova.all(t)) do e:destroy() end end; local r = nova.named('runner'); r.hp, r.max_hp, r.charge, r.max_charge, r.state, r.blink_t, r.roll_cd = 12, 12, 3, 3, 'free', 0, 0; r.stats.baton_hits = 0; require('lib.hits').dip_t = 0; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 120, 420, 'right'; require('lib.run').room_kills = 0; require('lib.run').add_card('loop_trap', nova.named('runner')); A = nova.spawn('scrapper', 400, 420); A.hp = 1; A.max_hp = 1; require('lib.status').stun(A, 99); B = nova.spawn('scrapper', 480, 420); B.hp = 4; B.max_hp = 4; require('lib.status').stun(B, 99); C = nova.spawn('scrapper', 480, 560); C.hp = 30; C.max_hp = 30; require('lib.status').stun(C, 99)"
+  },
+  {
+   "wait": 3
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "A:take_hit(5, 0, 0, 0)"
+  },
+  {
+   "wait": 4,
+   "capture": "the first to die rises"
+  },
+  {
+   "lua": "ALLIES = nova.count('ally'); KILLS0 = require('lib.hits').ally_kills"
+  },
+  {
+   "wait": 70,
+   "capture": "it fights for you"
+  },
+  {
+   "lua": "KILLS1 = require('lib.hits').ally_kills; BDEAD = tostring(not B:is_alive()); ROOM_KILLS = require('lib.run').room_kills; D = nova.spawn('scrapper', 700, 640); D.hp = 1; D.max_hp = 1; require('lib.status').stun(D, 99); D:take_hit(9, 0, 0, 0); ALLIES2 = nova.count('ally')"
+  },
+  {
+   "wait": 520
+  },
+  {
+   "lua": "ALLIES_END = nova.count('ally')"
+  }
+ ],
+ "out": "build/look_s4_district",
+ "columns": 4
+}

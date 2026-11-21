@@ -73,6 +73,8 @@ return {
     -- slice 3b: Mother Coil, the Den, the Workbench
     tell_lanes = 0.7, junk_drag = 0.6, tell_car = 0.7, car_slam = 0.9, tell_magnet = 0.7, magnet_slam = 0.9,
     drum_open = 0.8, drum_clang = 0.5, stripes_on = 0.7, boss_burst = 0.8, boss_die = 0.9, boss_bark = 0.4,
+    -- slice 4: sets, jinxes and the new cards
+    set_done = 0.8, jinx_take = 0.7, brownout = 0.8, phase_slow = 0.7, slug_ready = 0.5, ally_rise = 0.7, key_pay = 0.5, bounty_pay = 0.7,
     printed = 0.7, lullaby_blip = 0.4, menu_move = 0.4, menu_select = 0.6, move_in = 0.7, revive = 0.8, reroll = 0.6, wreck_break = 0.6,
   },
   music = { track = "undertow", volume = 0.3, boss = "mother_coil", boss_volume = 0.55, den = "den", den_volume = 0.5 },

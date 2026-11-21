@@ -1,0 +1,122 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.meta').keys = 0; require('lib.run').begin_chain(5); nova.goto_scene(require('lib.run').chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 3
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "a fight room: +1 key"
+  },
+  {
+   "lua": "K_FIGHT = require('lib.meta').keys; ROOM_KEYS1 = require('lib.run').room_keys; require('lib.run').room = 3; nova.goto_scene('gutter.elite')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.elite' and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "the elite: +3"
+  },
+  {
+   "lua": "K_ELITE = require('lib.meta').keys; require('lib.run').room = 6; nova.goto_scene('gutter.s7_yard')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.s7_yard' and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "the gauntlet: +2"
+  },
+  {
+   "lua": "K_GAUNTLET = require('lib.meta').keys; require('lib.run').room = 7; nova.goto_scene('gutter.boss')"
+  },
+  {
+   "until": "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 30
+  },
+  {
+   "lua": "nova.named('coil'):die()"
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 900,
+   "capture": "the boss: +10"
+  },
+  {
+   "wait": 20
+  },
+  {
+   "lua": "K_BOSS = require('lib.meta').keys; ROOM_KEYS = require('lib.run').room_keys"
+  }
+ ],
+ "print": [
+  "K_FIGHT",
+  "ROOM_KEYS1",
+  "K_ELITE",
+  "K_GAUNTLET",
+  "K_BOSS",
+  "ROOM_KEYS"
+ ]
+}

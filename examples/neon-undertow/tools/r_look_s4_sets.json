@@ -1,0 +1,36 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 324, 420, 'right'; require('lib.run').begin(1)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "require('lib.run').add_card('live_wire', nova.named('runner')); require('lib.run').add_card('tracer', nova.named('runner'))"
+  },
+  {
+   "wait": 10,
+   "capture": "two Volt cards"
+  },
+  {
+   "lua": "require('lib.run').add_card('shock_wake', nova.named('runner'))"
+  },
+  {
+   "wait": 6,
+   "capture": "SET COMPLETE: VOLT (banner and sound)"
+  },
+  {
+   "wait": 40,
+   "capture": "the banner stays a moment"
+  },
+  {
+   "press": "start"
+  },
+  {
+   "wait": 4,
+   "capture": "the pause list: tags and SETS"
+  }
+ ],
+ "out": "build/look_s4_sets",
+ "columns": 4
+}

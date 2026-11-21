@@ -14,7 +14,7 @@ function B.at(x, y, spec, source)
   J.shake(8, 10)
   local hurt = {}
   local p = nova.first("player")
-  if p and p.state ~= "dead" and B.dist(x, y, p) <= spec.radius then
+  if p and p.state ~= "dead" and spec.runner > 0 and B.dist(x, y, p) <= spec.radius then
     if p:take_damage(spec.runner) then hurt[#hurt + 1] = "runner" end
   end
   for _, e in ipairs(nova.all("hurtable")) do

@@ -35,6 +35,7 @@ function Summary:draw_ui()
   local rows = {
     { "Rooms cleared", string.format("%d of 8", s.cleared) },
     { "Time", string.format("%d:%02d", m, math.floor(s.time - m * 60)) },
+    { "Keys from cleared rooms", tostring(s.room_keys or 0) },
     { "Scrap banked as keys", tostring(s.keys) },
   }
   if (s.loose or 0) > 0 then rows[#rows + 1] = { "Loose Change kept", string.format("%d keys", s.loose) } end

@@ -10,6 +10,7 @@ local Elites = require("data.elites")
 local Meta = require("lib.meta")
 local J = require("lib.juice")
 local Work = require("lib.workbench")
+local Rooms = require("data.rooms")
 
 local Run = { active = false }
 
@@ -17,6 +18,10 @@ local function fresh_mods()
   return {
     reach = 1, live_wire = 0, knock = 1, stun = 0, burn = 0, bounces = 0, pellets = 1, tracer = 0, shock = 0, rolls = 1,
     hp = 0, pips = 0, scrap = 1, solder = 0,
+    -- slice 4
+    metro = 0, skim = 0, backhand = 0, slug = 0, incendiary = 0, siphon = 0, smart = 0, afterimage = 0, slipstream = 0, rubber = 0, phase = 0,
+    clot = 0, adrenal = 0, ghost = 0, friendly = 0, brownout = 0, wiring = 0, bounty = 0, loop = 0, open = 0,
+    overclock = 0, regen = 0, choices = 0, crowd = 0, debt = 0,
   }
 end
 
@@ -51,6 +56,14 @@ local function start(seed)
   Run.den_notes = {}
   Run.from_den = false    -- the Den's door began this run (the summary then leads back to the Den)
   Run.moved = {}          -- strangers who moved into the Den during this run
+  Run.room_keys = 0       -- keys the cleared rooms paid this run (kept even on death)
+  Run.room_kills = 0      -- enemies killed in the room now (Bounty Board, Loop Trap)
+  Run.room_hit = false    -- the runner was hurt in the room now (Clot)
+  Run.ghost_used = false  -- Ghost in the Shell was spent
+  Run.hp_cap = nil        -- Red Line's ceiling on the maximum health
+  Run.leak_acc = 0        -- scrap picked up towards the Leak set's next point of health
+  Run.tagc, Run.sets_on = {}, {}
+  Run.set_flash = nil     -- { tag, t }: a set was just completed (the HUD shows the banner while t runs down)
 end
 
 function Run.begin(seed)
@@ -165,19 +178,42 @@ function Run.finish(result)
   Meta.last = result
   Meta.save()
   Run.summary = {
-    result = result, loose = loose, moved = Run.moved, best = Meta.best, den_notes = Run.den_notes, seed = Run.seed, cleared = Run.cleared, time = Run.time, keys = Run.banked, scrap_left = J.scrap,
+    result = result, loose = loose, moved = Run.moved, best = Meta.best, den_notes = Run.den_notes, seed = Run.seed, cleared = Run.cleared, time = Run.time, keys = Run.banked, room_keys = Run.room_keys, scrap_left = J.scrap,
     cards = #Run.cards, card_names = names, rooms = Run.chain and 8 or nil,
   }
   Run.active = false
-  nova.log(string.format("run ends: %s, %d rooms, %.1f s, %d keys banked, %d cards", result, Run.cleared, Run.time, Run.banked, #Run.cards))
+  nova.log(string.format("run ends: %s, %d rooms, %.1f s, %d keys banked, %d keys from rooms, %d cards", result, Run.cleared, Run.time, Run.banked, Run.room_keys, #Run.cards))
 end
 
 start(1) -- (a run exists before any room begins one: the test rooms and routes use it as is)
 Run.active = false
 
-function Run.max_hp() return P.health + Run.mods.hp end
+function Run.max_hp()
+  local m = P.health + Run.mods.hp
+  if Run.hp_cap then m = math.min(m, Run.hp_cap) end
+  return m
+end
+function Run.set_hp_cap(cap)
+  Run.hp_cap = cap
+  if cap and Run.hp then Run.hp = math.min(Run.hp, cap) end
+end
 function Run.max_charge() return P.charge.pips + Run.mods.pips end
 function Run.count(id) return Run.counts[id] or 0 end
+
+-- Tags and sets: how many DIFFERENT held cards carry each tag, and which sets are on (three of a tag; copies of one card count once).
+function Run.recount()
+  local seen, out, on = {}, {}, {}
+  for _, id in ipairs(Run.cards) do
+    if not seen[id] then
+      seen[id] = true
+      for _, t in ipairs(Cards.by_id[id].tags) do out[t] = (out[t] or 0) + 1 end
+    end
+  end
+  for t, n in pairs(out) do on[t] = n >= Cards.set_size end
+  Run.tagc, Run.sets_on = out, on
+end
+function Run.set_count(tag) return Run.tagc[tag] or 0 end
+function Run.set_on(tag) return Run.sets_on[tag] == true end
 
 -- Cards call these (health and charge move with the maximum, so a card that adds a point also heals it).
 function Run.add_max_hp(n)
@@ -210,6 +246,7 @@ end
 function Run.bank(rate)
   local keys = J.scrap // rate
   local taken = keys * rate
+  keys = keys * (1 + Run.mods.debt)       -- (Debt Spiral)
   J.scrap = J.scrap - taken
   Run.scrap = J.scrap
   Meta.keys = Meta.keys + keys
@@ -240,6 +277,8 @@ function Run.grant(id)
   Run.counts[id] = Run.count(id) + 1
   Run.cards[#Run.cards + 1] = id
   c.apply(Run)
+  Run.recount()
+  Meta.see(id)
   nova.log("card held from the start: " .. id)
   return true
 end
@@ -254,12 +293,56 @@ function Run.add_card(id, runner)
   if not Run.can_take(id) then return false end
   local c = Cards.by_id[id]
   Run.take_from(runner)
+  local before = {}
+  for t, v in pairs(Run.sets_on) do before[t] = v end
   Run.counts[id] = Run.count(id) + 1
   Run.cards[#Run.cards + 1] = id
   c.apply(Run)
   Run.give_to(runner)
+  Run.recount()
+  Meta.see(id)
   nova.log("card taken: " .. id .. " (" .. Run.count(id) .. ")")
+  for _, t in ipairs(Cards.set_order) do
+    if Run.sets_on[t] and not before[t] then
+      Run.set_flash = { tag = t, t = 3.2 }
+      nova.sound.play("set_done", { volume = P.sfx.set_done })
+      nova.log("set complete: " .. t .. " (" .. Cards.sets[t].text .. ")")
+    end
+  end
   return true
+end
+
+-- The jinxes the run holds, in the order they were taken.
+function Run.held_jinxes()
+  local out = {}
+  for _, id in ipairs(Run.cards) do if Cards.by_id[id].jinx then out[#out + 1] = id end end
+  return out
+end
+
+-- Take a card back out of the run (the shop's jinx removal): its `remove` undoes what `apply` did. False when the run does not hold it.
+function Run.remove_card(id, runner)
+  local c = Cards.by_id[id]
+  if not c or Run.count(id) <= 0 or not c.remove then return false end
+  Run.take_from(runner)
+  for i = #Run.cards, 1, -1 do if Run.cards[i] == id then table.remove(Run.cards, i); break end end
+  Run.counts[id] = Run.count(id) - 1
+  c.remove(Run)
+  Run.give_to(runner)
+  Run.recount()
+  nova.log("card removed: " .. id)
+  return true
+end
+
+-- The keys a cleared room pays at once, kept even if the run ends in the next room (Debt Spiral doubles them).
+function Run.pay_keys(kind)
+  local n = Rooms.keys[kind] or 0
+  if n <= 0 then return 0 end
+  n = n * (1 + Run.mods.debt)
+  Meta.keys = Meta.keys + n
+  Run.room_keys = Run.room_keys + n
+  Meta.save()
+  nova.log(string.format("room pays %d keys (%s): keys held %d", n, kind, Meta.keys))
+  return n
 end
 
 -- The cards a room offers: `n` different ones from the pool the run's seed picks, never past a card's maximum.
@@ -279,7 +362,7 @@ function Run.offer(n, opts)
   end
   local pool = {}
   local pool_size = Work.pool_size()          -- (Deeper Deck: how many of the cards this player may meet)
-  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max and c.index <= pool_size then pool[#pool + 1] = c end end
+  for _, c in ipairs(Cards.list) do if Run.count(c.id) < c.max and c.index <= pool_size and not c.jinx then pool[#pool + 1] = c end end
   local out, families = {}, {}
   local state = mix(Run.seed, salt)
   local function take(list, i)
@@ -289,11 +372,18 @@ function Run.offer(n, opts)
     families[c.family] = true
   end
   if opts.guarantee then
-    local list = {}
-    for _, c in ipairs(pool) do if c.rarity == opts.guarantee then list[#list + 1] = c end end
-    if #list > 0 then
-      state = mix(state, 777)
-      take(list, state % #list + 1)
+    -- the guaranteed rarity; when the pool holds none (a fresh save's twelve cards have no rare but Second Wind, and a made-up pool may have
+    -- none at all) the next rarity down. Jinxes are never the guaranteed card (they have their own slot, below).
+    local order = ({ rare = { "rare", "uncommon", "common" }, uncommon = { "uncommon", "common" } })[opts.guarantee] or { opts.guarantee }
+    for _, rarity in ipairs(order) do
+      local list = {}
+      for _, c in ipairs(pool) do if c.rarity == rarity then list[#list + 1] = c end end
+      if #list > 0 then
+        state = mix(state, 777)
+        take(list, state % #list + 1)
+        out.guaranteed = rarity
+        break
+      end
     end
   end
   for i = #out + 1, math.min(n, #out + #pool) do
@@ -303,6 +393,24 @@ function Run.offer(n, opts)
     local list = #fresh > 0 and fresh or pool          -- (the pool cannot fill the offer from new families: repeat one)
     take(list, state % #list + 1)
   end
+  -- a jinx may take the last open slot: a seeded chance, more likely later in a run, never in the first offers of a run
+  local jn = Cards.jinx
+  if Run.offers > jn.skip and #out >= 2 then
+    local jp = {}
+    for _, c in ipairs(Cards.list) do if c.jinx and c.index <= pool_size and Run.count(c.id) < c.max then jp[#jp + 1] = c end end
+    if #jp > 0 then
+      local p = math.min(jn.max, jn.base + jn.per_offer * (Run.offers - jn.skip - 1))
+      state = mix(state, 5150)
+      if state % 1000 < p * 1000 then
+        state = mix(state, 5151)
+        out[#out] = jp[state % #jp + 1].id
+        nova.log("a jinx takes the last slot: " .. out[#out])
+      end
+    end
+  end
+  local fresh = false
+  for _, id in ipairs(out) do fresh = Meta.see(id, true) or fresh end
+  if fresh then Meta.save() end
   nova.log("offer " .. Run.offers .. ": " .. table.concat(out, ","))
   return out
 end

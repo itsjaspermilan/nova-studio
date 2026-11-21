@@ -17,8 +17,10 @@ function Sight:draw()
   local x2, y2 = nova.cam.to_screen(hx + o.aim_dx * len, hy + o.aim_dy * len)
   local ready = o.charge + 1e-6 >= P.charge.shot_cost
   local col = ready and { 6, 240, 255, 150 } or { 255, 43, 214, 110 }
-  nova.ui.line(x1, y1, x2, y2, 2, col)
-  nova.ui.sprite("fx_dot", x2, y2, { scale = 2 })
+  local width = 2
+  if o.slug_ready then col, width = { 255, 228, 94, 235 }, 5 end        -- (Overpressure: held long enough, the slug is ready)
+  nova.ui.line(x1, y1, x2, y2, width, col)
+  nova.ui.sprite("fx_dot", x2, y2, { scale = o.slug_ready and 3.5 or 2 })
 end
 
 return Sight

@@ -6,6 +6,7 @@ local P = require("data.player")
 local J = require("lib.juice")
 local C = require("lib.combat")
 local Status = require("lib.status")
+local Target = require("lib.target")
 
 local Scrapper = nova.entity {
   sprite = "scrapper", anim = "idle_down", tags = { "hurtable", "enemy", "scrapper" },
@@ -14,6 +15,7 @@ local Scrapper = nova.entity {
 
 function Scrapper:create()
   self.hp = E.health
+  self.max_hp = E.health
   self.state = "idle"      -- idle | walk | tell | swing | recover | stagger | dead
   self.kind_name = "scrapper"
   self.t = 0
@@ -32,6 +34,9 @@ function Scrapper:move(dx, dy)
   if self:touching("solid") then self.x = x end
   self:slide(0, dy)
   if self:touching("solid") then self.y = y end
+  -- (found by the slice-4 soak: an enemy that began inside a solid thing was pushed out by the engine in one leap, through the wall and off the
+  -- map; a step is never longer than it was asked to be)
+  if math.abs(self.x - x) + math.abs(self.y - y) > math.abs(dx) + math.abs(dy) + 4 then self.x, self.y = x, y end
 end
 
 function Scrapper:take_hit(damage, dx, dy, knock)
@@ -50,6 +55,7 @@ end
 
 function Scrapper:die()
   self.state = "dead"
+  require("lib.hits").on_death(self)
   nova.log("scrapper dies")
   nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2 })
   nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 4 })
@@ -68,11 +74,11 @@ end
 
 function Scrapper:update(dt)
   self.depth = -self.y
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.t = self.t + dt
   self.flash = math.max(0, self.flash - dt)
   if Status.tick(self, dt) and self.state ~= "stagger" then return end  -- (stunned: the knock-back below still slides it)
-  local p = nova.first("player")
+  local p = Target.of(self)
   local dx, dy, dist = 0, 0, 1e9
   if p then dx, dy = p.x - self.x, p.y - self.y; dist = math.sqrt(dx * dx + dy * dy) end
   local s = self.state

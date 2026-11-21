@@ -27,9 +27,10 @@ function Swing:strike()
     if not self.hit[e] and self:overlaps(e) then
       self.hit[e] = true
       local v = C.vec[self.dir]
-      local damage = Hits.baton_damage(e, self.damage)   -- (more when a shot marked it: Tracer)
+      local fresh = e.hp ~= nil and e.max_hp ~= nil and e.hp >= e.max_hp          -- (Skim: a hit on a healthy enemy)
+      local damage = Hits.baton_damage(e, self.damage, self.rhythm)   -- (Metronome, Tracer, the shares)
       local took = e:take_hit(damage, v[1], v[2], self.knockback or 0)
-      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, damage, self.chain) end
+      if took and self.owner and self.owner:is_alive() then self.owner:on_baton_hit(e, damage, self.chain, fresh) end
     end
   end
 end

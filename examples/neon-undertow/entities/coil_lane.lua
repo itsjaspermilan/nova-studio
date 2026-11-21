@@ -22,7 +22,7 @@ function Lane:touches(e, pad)
 end
 
 function Lane:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.t = self.t + dt
   if self.t < L.tell then return end
   if not self.moving then

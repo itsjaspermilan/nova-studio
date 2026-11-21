@@ -12,6 +12,21 @@ function Warn:update(dt)
   self.t = self.t + dt
   if self.t >= self.time then
     local e = nova.spawn(self.kind, self.x, self.y, self.props)
+    -- (an enemy never steps out of the mark into the middle of a stall or a barrel: the nearest free spot instead)
+    if e:touching("solid") then
+      local ox, oy = e.x, e.y
+      local done = false
+      for r = 24, 144, 24 do
+        for k = 0, 7 do
+          local a = k / 8 * math.pi * 2
+          e.x, e.y = ox + math.cos(a) * r, oy + math.sin(a) * r
+          if not e:touching("solid") then done = true; break end
+        end
+        if done then break end
+      end
+      if not done then e.x, e.y = ox, oy end
+      nova.log(string.format("spawn moved out of a solid thing: %.0f,%.0f to %.0f,%.0f", ox, oy, e.x, e.y))
+    end
     if self.elite then require("lib.elite").make(e, self.elite) end   -- (the room's elite: its mark)
     require("lib.fx").burst(self.x, self.y - 20, 3)
     nova.log("spawned " .. self.kind)

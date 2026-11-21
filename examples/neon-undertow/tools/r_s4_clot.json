@@ -1,0 +1,31 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(5); require('lib.run').add_card('clot', nil); nova.goto_scene(require('lib.run').chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "nova.named('runner').hp = 8; require('lib.run').take_from(nova.named('runner')); local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil; "
+  },
+  {
+   "until": "nova.scene_now().state == 'cards'",
+   "max": 400,
+   "capture": "clean room: Clot heals"
+  },
+  {
+   "wait": 20
+  },
+  {
+   "lua": "HP = nova.named('runner').hp; NOTE = tostring(nova.scene_now().heal_note)"
+  }
+ ],
+ "print": [
+  "HP",
+  "NOTE"
+ ]
+}

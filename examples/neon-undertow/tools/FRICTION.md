@@ -205,3 +205,28 @@ Same form. Most costly first.
    that is visibly floor would help a map read at a glance. (Left: the art is being replaced.)
 
 Top five by cost: 1, 2, 4, 7, 5 (then 3, 6).
+
+# Friction log, slice 4 (the other 24 cards, sets, jinxes, keys, the codex)
+
+Same form. Most costly first.
+
+1. **`slide` resolves an entity that starts inside a solid thing by pushing it out in ONE LEAP, through walls and off the map.** Found only by the
+   30-seed soak (an enemy spawned in a stall; a runner that ended a Shock Wake roll inside a vending machine): 3 attempts to find (the log is silent;
+   the run just never ends), fixed by "a step is never longer than it was asked to be" in `Runner:move`, `Foe:move`, `Scrapper:move` and a
+   nudge-out-of-solid in `Warn`. One step: `slide` should refuse a depenetration longer than the move (or return that it did one), and
+   `nova.spawn` could warn "spawned inside a solid thing".
+2. **No time scale.** Phase's "slow the enemies' time" cannot be `nova.time_scale(0.4)` (the runner must stay fast): every hostile entity now asks
+   `J.frozen(self)` and skips 3 frames in 5. It works but touches 11 files. One step: a per-tag or per-entity `time_scale`.
+3. **`play`'s `invincible` restores health after the frame, so one blow bigger than what is left (a tram's 6 and Overclock's +1) still kills.**
+   The soak wraps `Runner:take_damage` to heal just before a blow. One step: `nova.testing.invincible` honoured by the engine's damage path, or
+   `invincible: "block"`.
+4. **A step cannot run Lua every frame**, so the soak wraps the juice tick (`J.tick`) to watch health, charge and enemy positions and to make the
+   runner roll and shoot now and then. Same as slice 1 #2; a `"each_frame": "<lua>"` on the plan would remove the wrapping.
+5. **A spawn prop can be a Lua function** (the second arc of lightning: `nova.spawn("later", 0, 0, { fn = function() ... end })`): it worked first
+   time, but nothing says it may; a one-line note in the guide ("props are plain Lua values, functions included") would save a doubt.
+6. `print` expressions still print errors until the value exists (slice 3a #5): every strip of the new routes has `nil`s and a format error in
+   its early captions.
+7. The play plan has no "start with this save" for a first boot: the codex and the keys-after-a-reboot proofs need two boots, so they go through
+   the Rust test's `play_saved` and two route files each (as slice 3b's save test did).
+
+Top five by cost: 1, 4, 3, 2, 6.

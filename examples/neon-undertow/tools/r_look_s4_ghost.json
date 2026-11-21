@@ -1,0 +1,30 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; require('lib.run').add_card('ghost_in_the_shell', nova.named('runner')); require('lib.run').add_card('adrenal', nova.named('runner'))",
+ "route": [
+  {
+   "wait": 3,
+   "capture": "before"
+  },
+  {
+   "lua": "nova.named('runner').hp = 3; nova.named('runner'):take_damage(9)"
+  },
+  {
+   "wait": 6,
+   "capture": "a killing blow: left on 1, flickering"
+  },
+  {
+   "wait": 20,
+   "capture": "untouchable for 2 s"
+  },
+  {
+   "lua": "nova.named('runner').hp = 4"
+  },
+  {
+   "wait": 6,
+   "capture": "below half health (Adrenal)"
+  }
+ ],
+ "out": "build/look_s4_ghost",
+ "columns": 4
+}

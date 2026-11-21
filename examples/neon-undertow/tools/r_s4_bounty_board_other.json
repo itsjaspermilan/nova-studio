@@ -1,0 +1,45 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(5); require('lib.run').add_card('bounty_board', nil); nova.goto_scene(require('lib.run').chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 3
+  },
+  {
+   "until": "nova.count('enemy') > 0",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "MARKED = 0; for _, e in ipairs(nova.all('enemy')) do if e.bounty then MARKED = MARKED + 1; BM = e else BO = e end end; BOUNTY = BM.bounty; S0 = require('lib.juice').scrap; BO:take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 5,
+   "capture": "another first: no pay"
+  },
+  {
+   "lua": "PAID = require('lib.juice').scrap - S0; BM:take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 5
+  },
+  {
+   "lua": "PAID2 = require('lib.juice').scrap - S0"
+  }
+ ],
+ "print": [
+  "MARKED",
+  "BOUNTY",
+  "PAID",
+  "PAID2"
+ ]
+}

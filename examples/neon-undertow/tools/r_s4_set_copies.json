@@ -1,0 +1,25 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.run').begin(1)",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "lua": "local R = require('lib.run'); for i = 1, 3 do R.add_card('live_wire', nova.named('runner')) end; COPIES = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); local Hd = require('lib.hud'); local C = require('data.cards'); LINE1 = Hd.set_lines(C.by_id.tracer)[1]; R.add_card('tracer', nova.named('runner')); TWO = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); LINE2 = Hd.set_lines(C.by_id.shock_wake)[1]; R.add_card('shock_wake', nova.named('runner')); LINE3 = Hd.set_lines(C.by_id.shock_wake)[1]; THREE = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); FLASH = tostring(R.set_flash and R.set_flash.tag)"
+  },
+  {
+   "wait": 10,
+   "capture": "SET COMPLETE"
+  }
+ ],
+ "print": [
+  "COPIES",
+  "TWO",
+  "THREE",
+  "FLASH",
+  "LINE1",
+  "LINE2",
+  "LINE3"
+ ]
+}

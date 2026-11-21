@@ -1,0 +1,16 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; require('lib.run').add_card('overclock', nova.named('runner'))",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "lua": "local H = require('lib.hits'); local d = 0; for i = 1, 100 do d = d + H.baton_damage({}, 2) end; DEALT = d; nova.named('runner').hp = 12; nova.named('runner'):take_damage(2); HP = nova.named('runner').hp"
+  }
+ ],
+ "print": [
+  "DEALT",
+  "HP"
+ ]
+}

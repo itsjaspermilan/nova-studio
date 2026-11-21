@@ -2,6 +2,8 @@
 local E = require("data.enemies").mimic_vendor.cans
 local P = require("data.player")
 local J = require("lib.juice")
+local Run = require("lib.run")
+local Cards = require("data.cards")
 
 local Can = nova.entity { sprite = "can", anim = "spin", tags = { "can" }, velocity = false, hitbox = { r = 3 }, sx = 3, sy = 3, travelled = 0 }
 
@@ -13,7 +15,7 @@ function Can:pop()
 end
 
 function Can:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   local step = E.speed * dt
   local bx, by = self:slide(self.dx * step, self.dy * step)
   self.travelled = self.travelled + step
@@ -23,6 +25,16 @@ function Can:update(dt)
   if p and p.state ~= "dead" and self:overlaps(p) then
     if p:take_damage(E.damage) then nova.log("can hits runner") end
     return self:pop()
+  end
+  if Run.mods.friendly > 0 then
+    -- Friendly Fire: a can hurts the first other enemy it meets
+    for _, e in ipairs(nova.all("hurtable")) do
+      if e ~= self.owner and not e.prop and e.state ~= "dead" and self:overlaps(e) then
+        e:take_hit(Cards.num.friendly.can, self.dx, self.dy, 0)
+        nova.log("friendly fire: a can hurts " .. (e.kind_name or "an enemy"))
+        return self:pop()
+      end
+    end
   end
   local s = self:touching("solid")      -- (not the machine it came out of)
   if s and s ~= self.owner then return self:pop() end

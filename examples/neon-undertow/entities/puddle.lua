@@ -3,6 +3,7 @@
 local H = require("data.hazards")
 local P = require("data.player")
 local J = require("lib.juice")
+local Run = require("lib.run")
 
 local Puddle = nova.entity { sprite = "puddle", anim = "shimmer", sx = 3, sy = 3, velocity = false, depth = 85, tags = { "puddle" }, live_t = 0 }
 
@@ -27,7 +28,7 @@ function Puddle:update(dt)
   self.live_t = self.live_t - dt
   self.age = (self.age or 0) + dt
   local p = nova.first("player")
-  if p and p.state ~= "dead" and self:holds(p) and self.age >= (self.cool[p] or 0) then
+  if p and p.state ~= "dead" and Run.mods.wiring <= 0 and self:holds(p) and self.age >= (self.cool[p] or 0) then     -- (Bad Wiring: no damage to the runner)
     self.cool[p] = self.age + H.live.every
     if p:take_damage(H.live.damage) then nova.log("live puddle hurts runner") end
   end

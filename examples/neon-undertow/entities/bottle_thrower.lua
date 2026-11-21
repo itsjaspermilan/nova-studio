@@ -6,6 +6,7 @@ local P = require("data.player")
 local C = require("lib.combat")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
+local Target = require("lib.target")
 
 local Thrower = nova.entity(Foe, {
   sprite = "bottle_thrower", anim = "idle_down", tags = { "hurtable", "enemy", "bottle_thrower" },
@@ -32,7 +33,7 @@ function Thrower:on_stun()
 end
 
 function Thrower:throw()
-  local p = nova.first("player")
+  local p = Target.of(self)
   local hx, hy = self:hips()
   local tx, ty = hx + C.vec[self.facing][1] * 200, self.y
   if p then
@@ -48,7 +49,7 @@ end
 
 function Thrower:update(dt)
   if self:tick(dt) then return end
-  local p = nova.first("player")
+  local p = Target.of(self)
   local dx, dy, dist = 0, 0, 1e9
   if p then dx, dy = p.x - self.x, p.y - self.y; dist = math.sqrt(dx * dx + dy * dy) end
   local alive = p and p.state ~= "dead"

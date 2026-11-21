@@ -1821,8 +1821,8 @@ fn the_shop_heals_4_for_20_rerolls_for_15_has_a_shut_jinx_stall_and_the_bank_giv
     assert_eq!(printed(&r, "REROLL2"), "false 25", "once");
     assert_eq!(
         printed(&r, "JINX"),
-        "false 25 Shut: no jinxes yet.",
-        "no jinxes exist: the stall is shut and costs nothing"
+        "false 25 You hold no jinx. Lucky you.",
+        "no jinx held (slice 4: the stall opens when there is one): nothing is sold and nothing is taken"
     );
     assert_eq!(
         printed(&r, "POOR"),
@@ -1844,7 +1844,7 @@ fn the_shop_heals_4_for_20_rerolls_for_15_has_a_shut_jinx_stall_and_the_bank_giv
     assert_eq!(printed(&room, "HEAL_SCRAP"), "30");
     assert_eq!(printed(&room, "HEAL_HP"), "10");
     assert_eq!(printed(&room, "JINX_SCRAP"), "30");
-    assert_eq!(printed(&room, "JINX_TOAST"), "Shut: no jinxes yet.");
+    assert_eq!(printed(&room, "JINX_TOAST"), "You hold no jinx. Lucky you.");
 }
 
 #[test]
@@ -2155,7 +2155,8 @@ fn whole_run(name: &str) -> (Value, Vec<String>) {
     // the bank: 4 scrap to a key
     let scrap = num(&r, "SCRAP_BEFORE_BANK") as i64;
     assert!(scrap > 150, "scrap {scrap}");
-    assert_eq!(num(&r, "KEYS1") as i64, scrap / 4);
+    // (slice 4: the rooms paid keys on the way, so the bank adds to what was held on entering the shop)
+    assert_eq!(num(&r, "KEYS1") as i64, num(&r, "KEYS0") as i64 + scrap / 4);
     assert_eq!(num(&r, "SCRAP_AFTER_BANK") as i64, scrap % 4);
     // the summary: a win, 8 rooms, the keys, 6 cards
     assert_eq!(printed(&r, "END_SCENE"), "summary");
@@ -2622,20 +2623,24 @@ fn the_workbench_buys_with_the_right_keys_never_below_zero_or_past_the_last_tier
     assert_eq!(s(&r, "B4"), "true 60 3", "tier 3 costs 40");
     assert_eq!(s(&r, "B5"), "false 60 3 Fully upgraded.");
     assert!(
-        s(&r, "B6").starts_with("false 0 0 25 keys needed"),
+        s(&r, "B6").starts_with("false 0 0 15 keys needed"),
         "no keys: nothing is bought, nothing goes below zero"
     );
     assert_eq!(
         s(&r, "COSTS").trim(),
-        "thicker_print=12/24/40 warm_start=20/36/60 good_solder=25/45/75 bigger_magazine=20/40 loose_change=15/30/50 familiar_streets=30/50/80 fast_print=100 lullaby_eye=25/45 deeper_deck=25/40/60/90 second_chance=60"
+        "thicker_print=12/24/40 warm_start=14/36/70 good_solder=15/40/80 bigger_magazine=18/50 loose_change=10/30/60 familiar_streets=24/50/90 fast_print=150 lullaby_eye=12/40 deeper_deck=20/45/80/130 second_chance=70"
     );
     let l = run("up_locked");
     assert_eq!(s(&l, "FAST"), "false Locked: after the second district");
-    assert_eq!(s(&l, "DEEP"), "false Locked: more cards coming");
+    assert_eq!(
+        s(&l, "DEEP"),
+        "true Deeper Deck: +6 cards in the pool (18 of 36)",
+        "slice 4: Deeper Deck is for sale"
+    );
     assert_eq!(
         (s(&l, "KEYS"), s(&l, "TIER_F"), s(&l, "TIER_D")),
-        ("500".into(), "0".into(), "0".into()),
-        "nothing was taken"
+        ("480".into(), "0".into(), "1".into()),
+        "Fast Print took nothing; Deeper Deck tier 1 cost 20"
     );
     assert!(s(&l, "NAMES").starts_with("Thicker Print/3 Warm Start/3 Good Solder/3 Bigger Magazine/2 Loose Change/3 Familiar Streets/3 Fast Print/1 LULLABY's Eye/2 Deeper Deck/4 Second Chance/1"), "ten upgrades with their tiers");
 }
@@ -2737,11 +2742,7 @@ fn each_of_the_ten_upgrades_changes_what_it_says() {
     );
     assert_eq!(s(&r, "SEEN0"), "0");
     assert!(num(&r, "SEEN1") > 10.0, "{}", s(&r, "SEEN1"));
-    assert_eq!(
-        s(&r, "BUY"),
-        "false",
-        "the tiers are shown 'more cards coming' and not for sale"
-    );
+    assert_eq!(s(&r, "BUY"), "true", "slice 4: the tiers are for sale");
     // Second Chance: once a run a killing blow leaves him on half health, 2 s untouchable; the second one kills
     let r = run("up_second");
     assert_eq!(
@@ -2995,7 +2996,8 @@ fn the_whole_route_title_den_workbench_eight_rooms_mother_coil_bank_district_cle
         ("den".into(), "win".into(), "1".into(), "win".into()),
         "back in the Den, a win counted, LULLABY's win line"
     );
-    assert_eq!(num(&r, "KEYS_END") as i64, 28 + scrap / 4);
+    // the rooms paid 4 fights x 1, the elite 3, the gauntlet 2 and the boss 10 = 19 keys on the way (slice 4)
+    assert_eq!(num(&r, "KEYS_END") as i64, 28 + 19 + scrap / 4);
     let l = log(&r);
     assert_eq!(count_lines(&l, "mother coil is gone"), 1);
     assert_eq!(count_lines(&l, "run ends: win, 8 rooms"), 1);
@@ -3016,4 +3018,710 @@ fn a_rough_gauge_a_test_player_with_no_dodging_and_no_invincibility_dies_in_room
         assert!(num(&r, "G_ROOM") <= 4.0);
     }
     eprintln!("{}", rows.join("\n"));
+}
+
+// =====================================================================================================================
+// Slice 4: the other 24 cards, tags and sets, jinxes, keys for every cleared room, the codex, the soak. Routes: tools/routes.mjs ("SLICE 4").
+// =====================================================================================================================
+
+fn lines_with(r: &Value, needle: &str) -> usize {
+    count_lines(&log(r), needle)
+}
+
+#[test]
+fn metronome_a_hit_in_the_rhythm_does_plus_one_and_the_window_is_half_a_second() {
+    let r = run("s4_metronome");
+    // a real chain: 2, then +1, then 4+1 (hits about a third of a second apart); a hit a second later is alone: 2
+    assert_eq!(s(&r, "CH"), "10");
+    assert_eq!(s(&r, "LONE"), "2");
+    // the window: gaps of 0.2 s and 0.4 s are inside it, 0.6 s is not
+    assert_eq!(
+        (s(&r, "G02"), s(&r, "G04"), s(&r, "G06")),
+        ("true".into(), "true".into(), "false".into())
+    );
+}
+
+#[test]
+fn skim_the_first_hit_on_a_healthy_enemy_makes_it_leak_one_scrap_a_hit() {
+    let r = run("s4_skim");
+    assert_eq!(s(&r, "LEAKY"), "1");
+    assert_eq!(
+        s(&r, "HURT_LEAKY"),
+        "nil",
+        "a hurt enemy does not start to leak"
+    );
+    assert_eq!(
+        lines_with(&r, "leaks 1 scrap"),
+        3,
+        "the first hit and the two after it"
+    );
+}
+
+#[test]
+fn backhand_a_swing_soon_after_a_roll_also_hits_behind_for_double() {
+    let r = run("s4_backhand");
+    assert_eq!(
+        (s(&r, "REAR"), s(&r, "FRONT"), s(&r, "BACKHANDS")),
+        ("4".into(), "2".into(), "1".into()),
+        "after a real roll: 4 behind, 2 in front"
+    );
+    assert_eq!(
+        (s(&r, "REAR2"), s(&r, "FRONT2"), s(&r, "BACKHANDS2")),
+        ("4".into(), "4".into(), "1".into()),
+        "a second later: only in front"
+    );
+}
+
+#[test]
+fn overpressure_a_held_shot_is_a_slug_7_damage_through_two_for_two_pips() {
+    let r = run("s4_overpressure");
+    assert_eq!(s(&r, "READY"), "true");
+    assert_eq!(
+        (s(&r, "D1"), s(&r, "D2"), s(&r, "D3")),
+        ("7".into(), "7".into(), "0".into()),
+        "two enemies in line, not the third"
+    );
+    assert_eq!(
+        (s(&r, "CH1"), s(&r, "SLUGS")),
+        ("1.00".into(), "1".into()),
+        "3 pips, 2 spent"
+    );
+    assert_eq!(
+        (s(&r, "Q1"), s(&r, "Q2"), s(&r, "CH2"), s(&r, "SLUGS2")),
+        ("3".into(), "0".into(), "2.00".into(), "1".into()),
+        "a short hold is the plain shot: 3, one pip"
+    );
+    assert!(has_sound(&r, "slug_ready"));
+}
+
+#[test]
+fn incendiary_a_shot_leaves_a_2_s_fire_that_burns_enemies_and_never_the_runner() {
+    let r = run("s4_incendiary");
+    assert_eq!(
+        (s(&r, "FIRES"), s(&r, "FRIENDLY")),
+        ("1".into(), "true".into())
+    );
+    assert_eq!(
+        (s(&r, "RHP0"), s(&r, "RHP1")),
+        ("12".into(), "12".into()),
+        "standing in it: no damage"
+    );
+    assert!(
+        num(&r, "HP1") < num(&r, "HP0"),
+        "the enemy burns: {} to {}",
+        s(&r, "HP0"),
+        s(&r, "HP1")
+    );
+    assert_eq!(s(&r, "FIRES_LATE"), "0", "out after 2 s");
+}
+
+#[test]
+fn siphon_a_kill_with_a_shot_refunds_its_pip_a_plain_hit_does_not() {
+    let r = run("s4_siphon");
+    assert_eq!(
+        (s(&r, "KILLED"), s(&r, "CH_KILL")),
+        ("true".into(), "3.00".into())
+    );
+    assert_eq!(
+        (s(&r, "CH_HIT"), s(&r, "S2HP")),
+        ("2.00".into(), "27".into())
+    );
+}
+
+#[test]
+fn smart_round_a_shot_aimed_well_off_curves_onto_the_enemy() {
+    let r = run("s4_smart_round");
+    assert_eq!((s(&r, "MISS"), s(&r, "HIT")), ("30".into(), "27".into()));
+}
+
+#[test]
+fn afterimage_an_enemy_attacks_the_copy_for_1_5_s_then_returns_to_the_runner() {
+    let r = run("s4_afterimage");
+    assert_eq!(s(&r, "DECOYS"), "1");
+    assert_eq!(
+        (s(&r, "TARGET1"), s(&r, "TARGET2")),
+        ("decoy".into(), "decoy".into())
+    );
+    assert_eq!(
+        s(&r, "HP_MID"),
+        "12",
+        "the runner was not touched while the copy took the attention"
+    );
+    assert_eq!(
+        (s(&r, "TARGET3"), s(&r, "DECOYS3"), s(&r, "TARGET4")),
+        ("player".into(), "0".into(), "player".into())
+    );
+}
+
+#[test]
+fn slipstream_30_percent_faster_for_1_5_s_after_a_roll() {
+    let r = run("s4_slipstream");
+    assert_eq!(
+        (s(&r, "SLIP"), s(&r, "SLIP_END")),
+        ("1.50".into(), "0.00".into())
+    );
+    assert_eq!(s(&r, "RATIO"), "1.30");
+    assert!(
+        (num(&r, "string.format('%.1f', BASE)") - num(&r, "string.format('%.1f', AFTER)")).abs()
+            < 0.2
+    );
+}
+
+#[test]
+fn burn_rubber_the_roll_leaves_a_trail_of_fire_that_ignites_enemies_for_1_s() {
+    let r = run("s4_burn_rubber");
+    assert!(num(&r, "TRAIL") >= 3.0, "{}", s(&r, "TRAIL"));
+    assert!(num(&r, "BURN") > 0.0);
+    assert_eq!(s(&r, "RHP"), "12");
+    assert!(num(&r, "S1HP") < 30.0);
+    assert_eq!(s(&r, "TRAIL_LATE"), "0");
+}
+
+#[test]
+fn phase_a_perfect_roll_slows_the_enemies_for_1_s_an_early_hit_does_not() {
+    let r = run("s4_phase");
+    assert_eq!(
+        (s(&r, "EARLY"), s(&r, "LATE"), s(&r, "PERFECT")),
+        ("0.00".into(), "1.00".into(), "1".into())
+    );
+    assert!(
+        num(&r, "SLOWED") < 0.3,
+        "an enemy's clock ran {} in 0.5 s of slowed time",
+        s(&r, "SLOWED")
+    );
+    assert_eq!(
+        (s(&r, "SLOW_END"), s(&r, "NORMAL")),
+        ("0.00".into(), "0.50".into()),
+        "and normally again afterwards"
+    );
+    assert!(has_sound(&r, "phase_slow"));
+}
+
+#[test]
+fn ghost_in_the_shell_a_killing_blow_leaves_1_point_once_a_run() {
+    let r = run("s4_ghost");
+    assert_eq!(
+        (s(&r, "H1"), s(&r, "S1"), s(&r, "B1"), s(&r, "USED")),
+        ("1".into(), "free".into(), "2.0".into(), "true".into())
+    );
+    assert_eq!(
+        (s(&r, "H2"), s(&r, "S2")),
+        ("0".into(), "dead".into()),
+        "the second kills"
+    );
+}
+
+#[test]
+fn adrenal_below_half_health_25_percent_more_damage_and_speed() {
+    let r = run("s4_adrenal");
+    assert_eq!(
+        (s(&r, "FULL"), s(&r, "FULL_SPEED")),
+        ("200".into(), "1".into())
+    );
+    assert_eq!(
+        (s(&r, "LOW"), s(&r, "LOW_SPEED")),
+        ("250".into(), "1.25".into())
+    );
+    assert_eq!(s(&r, "HALF"), "200", "exactly half is not below half");
+}
+
+#[test]
+fn friendly_fire_cans_pipes_and_bottles_hurt_other_enemies() {
+    let r = run("s4_friendly_fire");
+    assert_eq!(
+        (s(&r, "CAN"), s(&r, "PIPE"), s(&r, "BOTTLE")),
+        ("2".into(), "2".into(), "4".into()),
+        "a can 2, a pipe 2, a bottle 3 and its fire 1"
+    );
+    let b = run("s4_friendly_fire_base");
+    assert_eq!(
+        (s(&b, "CAN"), s(&b, "PIPE"), s(&b, "BOTTLE")),
+        ("0".into(), "0".into(), "1".into()),
+        "without the card only the fire hurts"
+    );
+}
+
+#[test]
+fn bad_wiring_a_barrel_blasts_twice_as_wide_and_never_hurts_the_runner() {
+    let r = run("s4_bad_wiring");
+    assert_eq!(
+        (s(&r, "RHP"), s(&r, "S1HP")),
+        ("12".into(), "24".into()),
+        "runner untouched; an enemy 3 tiles away took 6"
+    );
+    let b = run("s4_bad_wiring_base");
+    assert_eq!(
+        (s(&b, "RHP"), s(&b, "S1HP")),
+        ("9".into(), "30".into()),
+        "without it: the runner 80 units away takes 3 and the far enemy nothing"
+    );
+}
+
+#[test]
+fn brownout_all_enemies_are_stunned_1_s_at_20_s_of_the_fight() {
+    let r = run("s4_brownout");
+    assert_eq!(s(&r, "NS0"), "0");
+    assert!(num(&r, "N1") >= 1.0);
+    assert_eq!(s(&r, "N1"), s(&r, "NS1"), "every enemy stunned");
+    assert!(num(&r, "DIP") > 0.3, "the lights dip");
+    assert_eq!(
+        (s(&r, "NS2"), s(&r, "NEXT")),
+        ("0".into(), "40".into()),
+        "1 s later nobody is; the next dip is at 40 s"
+    );
+    assert!(has_sound(&r, "brownout"));
+}
+
+#[test]
+fn bounty_board_one_enemy_is_marked_and_pays_15_only_as_the_rooms_first_kill() {
+    let a = run("s4_bounty_board");
+    assert_eq!(
+        (
+            s(&a, "MARKED"),
+            s(&a, "BOUNTY"),
+            s(&a, "PAID"),
+            s(&a, "PAID2")
+        ),
+        ("1".into(), "15".into(), "15".into(), "15".into())
+    );
+    assert!(has_sound(&a, "bounty_pay"));
+    let b = run("s4_bounty_board_other");
+    assert_eq!(
+        (s(&b, "PAID"), s(&b, "PAID2")),
+        ("0".into(), "0".into()),
+        "another enemy first: no pay"
+    );
+    assert_eq!(lines_with(&b, "bounty lost"), 1);
+}
+
+#[test]
+fn loop_trap_the_first_enemy_to_die_fights_for_you_for_8_s_and_its_kills_count() {
+    let r = run("s4_loop_trap");
+    assert_eq!(s(&r, "ALLIES"), "1");
+    assert_eq!(
+        (s(&r, "KILLS1"), s(&r, "BDEAD"), s(&r, "ROOM_KILLS")),
+        ("1".into(), "true".into(), "2".into()),
+        "the ally killed the next enemy"
+    );
+    assert_eq!(
+        s(&r, "ALLIES2"),
+        "1",
+        "a second death in the room raises no second ally"
+    );
+    assert_eq!(s(&r, "ALLIES_END"), "0", "gone after 8 s");
+    assert_eq!(lines_with(&r, "loop trap:"), 1);
+}
+
+#[test]
+fn open_channel_elites_lose_their_escort_and_bosses_start_at_85_percent() {
+    let a = run("s4_open_channel");
+    let b = run("s4_open_channel_base");
+    assert_eq!((s(&a, "WARN1"), s(&a, "ELITES")), ("1".into(), "1".into()));
+    assert_eq!(
+        s(&b, "WARN1"),
+        "3",
+        "the elite and two Scrappers without the card"
+    );
+    assert_eq!(
+        (
+            s(&run("s4_open_channel_boss"), "HP"),
+            s(&run("s4_open_channel_boss_base"), "HP")
+        ),
+        ("82".into(), "96".into())
+    );
+}
+
+#[test]
+fn clot_a_room_cleared_without_a_hit_heals_a_point() {
+    let a = run("s4_clot");
+    assert_eq!(
+        (s(&a, "HP"), s(&a, "NOTE")),
+        ("9".into(), "+1 health (Clot)".into())
+    );
+    let b = run("s4_clot_hit");
+    assert_eq!((s(&b, "HP"), s(&b, "NOTE")), ("8".into(), "nil".into()));
+}
+
+fn wave_counts(r: &Value) -> Vec<u32> {
+    log(r)
+        .iter()
+        .filter(|(_, t)| {
+            t.starts_with("wave ") && t.contains(": ") && t.contains(" x") && t.contains(" at ")
+        })
+        .map(|(_, t)| {
+            t.split_whitespace()
+                .nth(3)
+                .unwrap()
+                .trim_start_matches('x')
+                .parse()
+                .unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn crowd_pleaser_four_cards_an_offer_and_a_quarter_more_enemies_a_room() {
+    let a = run("s4_crowd_pleaser");
+    let b = run("s4_crowd_pleaser_base");
+    assert_eq!((s(&a, "CARDS"), s(&b, "CARDS")), ("4".into(), "3".into()));
+    let base = wave_counts(&b);
+    let crowd = wave_counts(&a);
+    // the same carry as the room's: 25% more, the fractions carried from row to row
+    let mut frac = 0.0_f64;
+    let want: Vec<u32> = base
+        .iter()
+        .map(|&c| {
+            let total = c as f64 * 1.25 + frac;
+            let n = (total + 1e-9).floor();
+            frac = total - n;
+            n as u32
+        })
+        .collect();
+    assert_eq!(crowd, want, "base {base:?}");
+    assert!(crowd.iter().sum::<u32>() > base.iter().sum::<u32>());
+}
+
+#[test]
+fn debt_spiral_double_keys_and_a_point_lost_at_each_rooms_start() {
+    let r = run("s4_debt_spiral");
+    assert_eq!(s(&r, "HP"), "11", "12 less 1 on entering room 1");
+    assert_eq!(
+        (s(&r, "BANK"), s(&r, "ROOM"), s(&r, "KEYS2")),
+        ("20".into(), "2".into(), "22".into()),
+        "40 scrap banked is 20 keys, not 10; a fight room pays 2, not 1"
+    );
+}
+
+#[test]
+fn overclock_and_red_line_each_gain_and_cost_what_they_say() {
+    let o = run("s4_overclock");
+    assert_eq!(
+        (s(&o, "DEALT"), s(&o, "HP")),
+        ("280".into(), "9".into()),
+        "100 hits of 2 do 280; a 2-point hit does 3"
+    );
+    let r = run("s4_red_line");
+    assert_eq!(
+        (s(&r, "MAX"), s(&r, "HP"), s(&r, "REGEN")),
+        ("8".into(), "8".into(), "1.00".into()),
+        "max health 8; a pip in 1.4 s"
+    );
+    assert_eq!(
+        (s(&r, "MAX2"), s(&r, "MAX3"), s(&r, "REGEN2")),
+        ("8".into(), "14".into(), "0.00".into()),
+        "Plating cannot lift the cap; removing the jinx lifts it and stops the refill"
+    );
+}
+
+#[test]
+fn volt_burn_leak_and_echo_sets_each_switch_on_at_three_different_cards() {
+    let c = run("s4_set_copies");
+    assert_eq!(
+        (
+            s(&c, "COPIES"),
+            s(&c, "TWO"),
+            s(&c, "THREE"),
+            s(&c, "FLASH")
+        ),
+        (
+            "1 false".into(),
+            "2 false".into(),
+            "3 true".into(),
+            "volt".into()
+        ),
+        "three copies of one card are one card"
+    );
+    assert_eq!(
+        (s(&c, "LINE1"), s(&c, "LINE2"), s(&c, "LINE3")),
+        (
+            "SET: 2/3 Volt".into(),
+            "SET: 3/3 Volt - this completes it!".into(),
+            "SET: 3/3 Volt (ON)".into()
+        )
+    );
+    assert_eq!(lines_with(&c, "set complete: volt"), 1);
+    assert!(has_sound(&c, "set_done"), "the flourish");
+    // Volt: the third hit's lightning arcs twice (2 and 2 more)
+    let (v, v0) = (run("s4_set_volt"), run("s4_set_volt_base"));
+    assert_eq!(
+        (s(&v, "D2"), s(&v, "D3"), s(&v, "ON")),
+        ("4".into(), "4".into(), "true".into())
+    );
+    assert_eq!(
+        (s(&v0, "D2"), s(&v0, "D3"), s(&v0, "ON")),
+        ("2".into(), "2".into(), "false".into())
+    );
+    // Burn: a burning enemy explodes on death for 3 within 2 tiles (the neighbour at 10 takes 3; the runner nothing); a cold one does not
+    let (b, b0) = (run("s4_set_burn"), run("s4_set_burn_base"));
+    assert_eq!(
+        (s(&b, "BHP"), s(&b, "EHP"), s(&b, "RHP")),
+        ("7".into(), "10".into(), "12".into())
+    );
+    assert_eq!(s(&b0, "BHP"), "10", "two Burn cards are no set");
+    // Leak: 50 scrap picked up heal 2 points (1 per 20; 10 waiting)
+    let (l, l0) = (run("s4_set_leak"), run("s4_set_leak_base"));
+    assert_eq!(
+        (s(&l, "SCRAP"), s(&l, "HP"), s(&l, "ACC")),
+        ("50".into(), "8".into(), "10".into())
+    );
+    assert_eq!((s(&l0, "HP"), s(&l0, "ACC")), ("6".into(), "0".into()));
+    // Echo: a copy repeats the chain's 2, 2, 4 on the enemy beside it
+    let (e, e0) = (run("s4_set_echo"), run("s4_set_echo_base"));
+    assert_eq!((s(&e, "HP"), s(&e, "ON")), ("22".into(), "true".into()));
+    assert_eq!((s(&e0, "HP"), s(&e0, "ON")), ("30".into(), "false".into()));
+}
+
+#[test]
+fn a_jinx_never_takes_the_first_two_offers_and_turns_up_at_the_stated_rate_later() {
+    let r = run("s4_jinx_offers");
+    let per = |k: &str| -> Vec<f64> { s(&r, k).split(',').map(|v| v.parse().unwrap()).collect() };
+    let j4 = per("J4");
+    assert_eq!((j4[0], j4[1]), (0.0, 0.0), "offers 1 and 2 of a run: never");
+    for (i, n) in j4.iter().enumerate().skip(2) {
+        let k = (i + 1) as f64;
+        let p = (0.10 + 0.05 * (k - 3.0)).min(0.40);
+        let got = n / 600.0;
+        eprintln!(
+            "offer {}: jinx {:.1}% (stated {:.0}%)",
+            i + 1,
+            got * 100.0,
+            p * 100.0
+        );
+        assert!((got - p).abs() < 0.05, "offer {}: {got} against {p}", i + 1);
+    }
+    assert!(
+        per("J0").iter().all(|&n| n == 0.0) && per("J3").iter().all(|&n| n == 0.0),
+        "not in a pool below Deeper Deck 4"
+    );
+    assert_eq!(
+        (s(&r, "TWO_JINX"), s(&r, "HELD_OFFERED")),
+        ("0".into(), "0".into()),
+        "one jinx at most in an offer; a held one is not offered again"
+    );
+}
+
+#[test]
+fn deeper_deck_reveals_six_cards_a_tier_and_both_guarantees_hold_at_every_tier() {
+    let r = run("s4_deck_tiers");
+    assert_eq!(s(&r, "TIERS").trim(), "12 18 24 30 36");
+    assert_eq!(
+        s(&r, "GR_BAD").trim(),
+        "0 0 0 0 0",
+        "the boss's rare, at tiers 0 to 4 (Second Wind is the base pool's rare)"
+    );
+    assert_eq!(s(&r, "GU_BAD").trim(), "0 0 0 0 0", "the elite's uncommon");
+    let new = s(&r, "NEW");
+    let tiers: Vec<&str> = new.split('|').map(|t| t.trim()).collect();
+    for (i, t) in tiers.iter().skip(1).take(4).enumerate() {
+        assert_eq!(t.split(',').count(), 6, "tier {} reveals six: {t}", i + 1);
+    }
+    assert!(
+        tiers[4].ends_with("overclock,red_line,crowd_pleaser,debt_spiral"),
+        "the jinxes come last: {}",
+        tiers[4]
+    );
+    assert!(tiers[1].starts_with("metronome"));
+    assert_eq!(
+        s(&run("s4_deck_buy"), "BUYS"),
+        "true:20:18 true:45:24 true:80:30 true:130:36 false:0:36",
+        "Deeper Deck is bought tier by tier and stops after the fourth"
+    );
+}
+
+#[test]
+fn the_shops_jinx_stall_removes_the_jinx_you_took_last_for_30_scrap() {
+    let r = run("s4_shop_jinx");
+    assert_eq!(s(&r, "NONE"), "false 100 You hold no jinx. Lucky you.");
+    assert_eq!(s(&r, "BEFORE"), "8 1 2");
+    assert_eq!(s(&r, "ONE"), "true 70 Overclock is gone. 0 1");
+    assert_eq!(
+        s(&r, "TWO"),
+        "true 40 Red Line is gone. 12 0",
+        "Red Line's cap lifts with it"
+    );
+    assert_eq!(s(&r, "POOR"), "false 10 Not enough scrap (30). 1");
+    let room = run("s4_shop_jinx_room");
+    assert_eq!(
+        (s(&room, "SCRAP"), s(&room, "HELD"), s(&room, "TOAST")),
+        ("20".into(), "0".into(), "Overclock is gone.".into())
+    );
+    assert_eq!(
+        (s(&room, "SCRAP2"), s(&room, "TOAST2")),
+        ("20".into(), "You hold no jinx. Lucky you.".into())
+    );
+}
+
+#[test]
+fn every_cleared_room_pays_keys_at_once_1_a_fight_3_the_elite_2_the_gauntlet_10_the_boss() {
+    let r = run("s4_keys_kinds");
+    assert_eq!(s(&r, "K_FIGHT"), "1");
+    assert_eq!((num(&r, "K_ELITE") - num(&r, "K_FIGHT")) as i64, 3);
+    assert_eq!((num(&r, "K_GAUNTLET") - num(&r, "K_ELITE")) as i64, 2);
+    assert_eq!((num(&r, "K_BOSS") - num(&r, "K_GAUNTLET")) as i64, 10);
+    assert_eq!(s(&r, "ROOM_KEYS"), "16");
+    assert!(has_sound(&r, "key_pay"));
+}
+
+#[test]
+fn keys_from_cleared_rooms_are_kept_when_the_run_dies_and_are_there_after_a_reboot() {
+    let dir = scratch("keys_death");
+    let r1 = play_saved("keys1", plan_text("s4_keys_death_boot1"), &dir);
+    assert_eq!(
+        (s(&r1, "K_BEFORE"), s(&r1, "K_AFTER")),
+        ("2".into(), "2".into()),
+        "died in room 3 with rooms 1 and 2 cleared: 2 keys, none lost"
+    );
+    assert_eq!(
+        (s(&r1, "SUM_ROOM_KEYS"), s(&r1, "SUM_CLEARED")),
+        ("2".into(), "2".into()),
+        "and the summary says so"
+    );
+    let r2 = play_saved("keys2", plan_text("s4_keys_death_boot2"), &dir);
+    assert_eq!(
+        s(&r2, "K_LOADED"),
+        "2",
+        "in the save after a reboot with the same save folder"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_codex_lists_seen_unseen_and_locked_cards_and_the_seen_ones_survive_a_reboot() {
+    let dir = scratch("codex");
+    let r1 = play_saved("codex1", plan_text("s4_codex_boot1"), &dir);
+    let offered = s(&r1, "OFFERED");
+    assert_eq!(s(&r1, "SEEN_N"), "6");
+    let r2 = play_saved("codex2", plan_text("s4_codex_boot2"), &dir);
+    assert_eq!(s(&r2, "STATE"), "codex");
+    assert_eq!(s(&r2, "SEEN_COUNT"), "6", "the same six after the reboot");
+    for entry in s(&r2, "STATES").split(' ') {
+        let (id, st) = entry.split_once('=').unwrap();
+        let want = if id == "metronome" || id == "overclock" {
+            "locked"
+        } else if offered.split(',').any(|o| o == id) {
+            "seen"
+        } else {
+            "unseen"
+        };
+        assert_eq!(st, want, "{id}");
+    }
+    assert_eq!(
+        (s(&r2, "TIER_METRO"), s(&r2, "TIER_OVER")),
+        ("1".into(), "4".into()),
+        "locked cards say which Deeper Deck tier opens them"
+    );
+    assert_eq!(
+        (s(&r2, "CSEL"), s(&r2, "CLOSED")),
+        ("3".into(), "free".into())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_workbench_costs_fit_the_new_income() {
+    // income: a run that dies in room 4 has cleared rooms 1 to 3 (3 keys); in room 5, rooms 1 to 4 (6 keys); Loose Change comes on top
+    let r = run("workbench_sums");
+    let mut firsts = vec![];
+    let mut total = 0i64;
+    for part in s(&r, "COSTS").split_whitespace() {
+        let (_, costs) = part.split_once('=').unwrap();
+        let v: Vec<i64> = costs.split('/').map(|c| c.parse().unwrap()).collect();
+        firsts.push(v[0]);
+        total += v.iter().sum::<i64>();
+    }
+    let cheapest = *firsts.iter().min().unwrap();
+    assert!(
+        cheapest <= 3 * 4,
+        "a first purchase after two or three early runs of 3 to 6 keys: cheapest tier-1 is {cheapest}"
+    );
+    assert!(
+        firsts.iter().filter(|&&c| c <= 18).count() >= 5,
+        "five of the first tiers can be bought with three runs' keys: {firsts:?}"
+    );
+    eprintln!(
+        "bench total {total} keys: {} runs at 6 keys, {} at 15, {} at 40",
+        total / 6,
+        total / 15,
+        total / 40
+    );
+    assert!(
+        total / 40 >= 25,
+        "the full bench takes dozens of runs even at 40 keys a run: {total}"
+    );
+}
+
+#[test]
+fn the_new_sounds_exist_and_the_routes_play_them() {
+    for sname in [
+        "set_done",
+        "jinx_take",
+        "brownout",
+        "phase_slow",
+        "slug_ready",
+        "ally_rise",
+        "key_pay",
+        "bounty_pay",
+    ] {
+        assert!(
+            folder()
+                .join("sounds")
+                .join(format!("{sname}.wav"))
+                .exists(),
+            "no sounds/{sname}.wav"
+        );
+        assert!(
+            folder()
+                .join("sounds")
+                .join(format!("{sname}.sfx.json"))
+                .exists()
+        );
+    }
+    assert!(has_sound(&run("s4_loop_trap"), "ally_rise"));
+}
+
+// ---- the soak: a whole district on 30 seeds, random cards (jinxes too), invincible, the test player rolling and shooting in fights
+fn soak(seeds: std::ops::RangeInclusive<u32>) {
+    for seed in seeds {
+        let r = run(&format!("soak_{seed}"));
+        assert_eq!(
+            s(&r, "SOAK_BAD"),
+            "",
+            "seed {seed}: {}",
+            s(&r, "SOAK_PICKS")
+        );
+        assert_eq!(
+            (s(&r, "END_SCENE"), s(&r, "WON9")),
+            ("summary".into(), "true".into()),
+            "seed {seed} reached the summary: {}",
+            s(&r, "SOAK_PICKS")
+        );
+        assert!(
+            num(&r, "SOAK_ROLLS") > 20.0 && num(&r, "SOAK_SHOTS") > 5.0,
+            "seed {seed}: the roll and the sidearm ran"
+        );
+    }
+}
+#[test]
+fn soak_seeds_1_to_5() {
+    soak(1..=5)
+}
+#[test]
+fn soak_seeds_6_to_10() {
+    soak(6..=10)
+}
+#[test]
+fn soak_seeds_11_to_15() {
+    soak(11..=15)
+}
+#[test]
+fn soak_seeds_16_to_20() {
+    soak(16..=20)
+}
+#[test]
+fn soak_seeds_21_to_25() {
+    soak(21..=25)
+}
+#[test]
+fn soak_seeds_26_to_30() {
+    soak(26..=30)
 }

@@ -8,6 +8,37 @@ local Cards = require("data.cards")
 local H = {}
 local W, HH = 960, 540
 
+-- "SET: 2/3 Volt" lines for a card's tags: how many different held cards carry the tag (counting this card if it were taken).
+function H.set_lines(d)
+  local out = {}
+  for _, t in ipairs(d.tags) do
+    local have = Run.set_count(t)
+    local would = (Run.count(d.id) > 0) and have or have + 1
+    local name = Cards.sets[t].name
+    local text = string.format("SET: %d/%d %s", math.min(would, Cards.set_size), Cards.set_size, name)
+    if Run.set_on(t) then text = text .. " (ON)" elseif would >= Cards.set_size then text = text .. " - this completes it!" end
+    out[#out + 1] = text
+  end
+  return out
+end
+
+-- A warning frame: yellow and black stripes round a rectangle (jinx cards).
+function H.warning_frame(x, y, w, h, t)
+  local n = math.floor(w / 14)
+  for i = 0, n do
+    local on = (i + math.floor((t or 0) * 4)) % 2 == 0
+    local c = on and { 255, 228, 94, 255 } or { 20, 16, 5, 255 }
+    nova.ui.rect(x - 6 + i * 14, y - 6, 14, 6, c)
+    nova.ui.rect(x - 6 + i * 14, y + h, 14, 6, c)
+  end
+  for j = 0, math.floor(h / 14) do
+    local on = j % 2 == 0
+    local c = on and { 255, 228, 94, 255 } or { 20, 16, 5, 255 }
+    nova.ui.rect(x - 6, y + j * 14, 6, 14, c)
+    nova.ui.rect(x + w, y + j * 14, 6, 14, c)
+  end
+end
+
 function H.prompt(x, y, action, word)
   local label = nova.input.prompt(action)
   local w = nova.ui.text_width(label, { font = "pixel", size = 14 }) + 12
@@ -46,9 +77,10 @@ end
 local function card_panel(card)
   local d, rar = card.def, card.rar
   local fam = Cards.families[d.family]
-  local x, y, w, h = 150, 336, 660, 150
+  local x, y, w, h = 150, 326, 660, 164
   local c = rar.color
   nova.ui.rect(x - 3, y - 3, w + 6, h + 6, { c[1], c[2], c[3], 255 })
+  if d.jinx then H.warning_frame(x - 3, y - 3, w + 6, h + 6, nova.time()) end
   nova.ui.rect(x, y, w, h, { 8, 10, 26, 245 })
   nova.ui.sprite("icons", x + 46, y + 48, { frame = fam.icon, scale = 4 })
   nova.ui.text(x + 6, y + 88, fam.name, { font = "pixel", size = 14, color = { 190, 200, 230, 255 }, align = "center", width = 80 })
@@ -58,7 +90,15 @@ local function card_panel(card)
   local have = Run.count(d.id)
   tags = tags .. "   " .. have .. "/" .. d.max .. " held"
   nova.ui.text(x + 100, y + 42, tags, { font = "pixel", size = 13, color = { 190, 200, 230, 255 } })
-  nova.ui.text(x + 100, y + 68, d.text, { font = "pixel", size = 16, color = { 255, 255, 255, 255 }, width = w - 116, line_spacing = 1.4 })
+  nova.ui.text(x + 100, y + 64, d.text, { font = "pixel", size = 15, color = { 255, 255, 255, 255 }, width = w - 116, line_spacing = 1.3 })
+  local ty = y + 118
+  if d.cost then
+    nova.ui.text(x + 100, ty, "JINX! " .. d.cost, { font = "pixel", size = 12, color = { 255, 228, 94, 255 }, width = w - 116 })
+    ty = ty + 20
+  end
+  for i, line in ipairs(H.set_lines(d)) do
+    nova.ui.text(x + 100, ty + (i - 1) * 18, line, { font = "pixel", size = 13, color = { 255, 140, 60, 255 } })
+  end
   H.prompt(x + w - 120, y + 12, "interact", "take")
 end
 
@@ -71,19 +111,27 @@ local function pause_page()
     if not seen[id] then seen[id] = true; held[#held + 1] = id end
   end
   centered(76, #Run.cards == 0 and "No cards yet." or ("Cards held: " .. #Run.cards), 16, { 190, 200, 230, 255 })
+  local step = math.min(66, math.floor(350 / math.max(1, math.ceil(#held / 2))))
   for i, id in ipairs(held) do
     local d = Cards.by_id[id]
     local rar = Cards.rarity[d.rarity]
     local col = (i - 1) % 2
     local row = math.floor((i - 1) / 2)
-    local x, y = 40 + col * 450, 108 + row * 66
+    local x, y = 40 + col * 450, 100 + row * step
     local c = rar.color
-    nova.ui.rect(x, y, 430, 58, { c[1], c[2], c[3], 255 })
-    nova.ui.rect(x + 2, y + 2, 426, 54, { 12, 14, 34, 255 })
+    nova.ui.rect(x, y, 430, step - 6, { c[1], c[2], c[3], 255 })
+    nova.ui.rect(x + 2, y + 2, 426, step - 10, { 12, 14, 34, 255 })
+    if d.jinx then H.warning_frame(x, y, 430, step - 6, 0) end
     nova.ui.sprite("icons", x + 28, y + 29, { frame = Cards.families[d.family].icon, scale = 2.4 })
-    nova.ui.text(x + 54, y + 6, d.name .. (Run.count(id) > 1 and ("  x" .. Run.count(id)) or ""), { font = "pixel", size = 15, color = { c[1], c[2], c[3], 255 } })
+    local tagtxt = #d.tags > 0 and ("  [" .. table.concat(d.tags, ", ") .. "]") or ""
+    nova.ui.text(x + 54, y + 6, d.name .. (Run.count(id) > 1 and ("  x" .. Run.count(id)) or "") .. tagtxt, { font = "pixel", size = 15, color = { c[1], c[2], c[3], 255 } })
     nova.ui.text(x + 54, y + 26, d.text, { font = "pixel", size = 11, color = { 220, 226, 245, 255 }, width = 366 })
   end
+  local sets = {}
+  for _, t in ipairs(Cards.set_order) do
+    if Run.set_count(t) > 0 then sets[#sets + 1] = string.format("%s %d/%d%s", Cards.sets[t].name, Run.set_count(t), Cards.set_size, Run.set_on(t) and " ON" or "") end
+  end
+  centered(466, #sets > 0 and ("SETS: " .. table.concat(sets, "   ")) or "SETS: none yet (three different cards of one tag)", 14, { 255, 140, 60, 255 })
   centered(486, string.format("scrap %d    seed %d", J.scrap, Run.seed or 0), 14, { 190, 200, 230, 255 })
   H.prompt(380, 508, "start", "resume")
 end
@@ -108,8 +156,19 @@ function H.draw(scene)
   local r = scene.runner
   if not r then return end
   if scene.paused then pause_page(); return end       -- (text is always over rectangles: nothing else may be drawn under the page)
+  if require("lib.hits").dip_t > 0 then nova.ui.rect(0, 0, W, HH, { 0, 0, 10, 190 * math.min(1, require("lib.hits").dip_t / 0.3) }) end   -- (Brownout: the lights dip)
   bars(r)
   H.warn_arrows()
+  if Run.set_flash then
+    local f = Run.set_flash
+    local a = math.min(1, f.t / 0.5) * 255
+    local sd = Cards.sets[f.tag]
+    nova.ui.rect(180, 138, 600, 70, { 20, 10, 30, a * 0.85 })
+    nova.ui.rect(180, 138, 600, 4, { 255, 140, 60, a })
+    nova.ui.rect(180, 204, 600, 4, { 255, 140, 60, a })
+    centered(146, "SET COMPLETE: " .. sd.name:upper(), 28, { 255, 228, 94, a })
+    centered(182, sd.text, 14, { 255, 255, 255, a })
+  end
   if scene.state == "fight" and scene.def and scene.wave_i > 0 then
     centered(14, string.format("WAVE %d / %d", scene.wave_i, #scene.def.waves), 16, { 255, 43, 214, 255 })
   end
@@ -126,7 +185,9 @@ function H.draw(scene)
   if scene.banner_t and scene.banner_t > 0 then
     local a = math.min(1, scene.banner_t / 0.5) * 255
     centered(64, "ROOM CLEARED", 32, { 6, 240, 255, a })
-    centered(104, "+" .. (scene.paid or 0) .. " scrap", 18, { 255, 255, 255, a })
+    local extra = ((scene.keys_paid or 0) > 0) and string.format("   +%d keys", scene.keys_paid) or ""
+    centered(104, "+" .. (scene.paid or 0) .. " scrap" .. extra, 18, { 255, 255, 255, a })
+    if scene.heal_note then centered(128, scene.heal_note, 14, { 120, 255, 160, a }) end
   end
   local x = 16
   x = H.prompt(x, 506, "attack", "baton")

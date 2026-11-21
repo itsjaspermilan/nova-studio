@@ -1,0 +1,24 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 200, 420, 'right'; require('lib.run').add_card('hot_solder', nova.named('runner')); require('lib.run').add_card('incendiary', nova.named('runner')); A = nova.spawn('scrapper', 400, 420); A.hp = 30; A.max_hp = 30; require('lib.status').stun(A, 99); B = nova.spawn('scrapper', 440, 420); B.hp = 10; B.max_hp = 10; require('lib.status').stun(B, 99); C = nova.spawn('scrapper', 400, 600); C.hp = 30; C.max_hp = 30; require('lib.status').stun(C, 99); E = nova.spawn('scrapper', 440, 600); E.hp = 10; E.max_hp = 10; require('lib.status').stun(E, 99); require('lib.status').burn(A, 3, 1)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "A:take_hit(99, 0, 0, 0); C:take_hit(99, 0, 0, 0)"
+  },
+  {
+   "wait": 6,
+   "capture": "a burning one explodes"
+  },
+  {
+   "lua": "BHP = B.hp; EHP = E.hp; RHP = nova.named('runner').hp"
+  }
+ ],
+ "print": [
+  "BHP",
+  "EHP",
+  "RHP"
+ ]
+}

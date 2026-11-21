@@ -25,7 +25,7 @@ function FieldE:create()
 end
 
 function FieldE:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.t = self.t + dt
   if not Field.armed and self.t >= S.charge then
     Field.armed = true

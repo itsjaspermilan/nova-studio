@@ -1004,7 +1004,7 @@ for s = 1, 200 do
   if not u then G_BAD = G_BAD + 1 end
   if fam(o) < #o then G_SAME = G_SAME + 1 end
 end
-UNCOMMON = {}; for _, c in ipairs(C.list) do if c.rarity == 'uncommon' then UNCOMMON[#UNCOMMON + 1] = c.id end end
+UNCOMMON = {}; for _, c in ipairs(C.list) do if c.rarity == 'uncommon' and c.index <= 12 then UNCOMMON[#UNCOMMON + 1] = c.id end end
 UNCOMMON = table.concat(UNCOMMON, ',')
 -- a reroll draws the same offer number again with another salt
 R.begin(77); R.offers = 4; PLAIN = table.concat(R.offer(3), ',')
@@ -1420,12 +1420,12 @@ out("up_eye", { start_scene: "test_lab",
   lua: `local function at(t) ${META}.upgrades.lullaby_eye = t; ${RUN}.begin_chain(5); ${RUN}.room = 2; return tostring(${WORK}.eye_text(${RUN})) end
 E0, E1, E2 = at(0), at(1), at(2); MARK = ${RUN}.chain[4].mark; ${RUN}.room = 7; E_BOSS = ${WORK}.eye_text(${RUN}); ${META}.upgrades.lullaby_eye = 0`,
   route: [{ wait: 2 }], print: ["E0", "E1", "E2", "MARK", "E_BOSS"] });
-// Deeper Deck: the pool is 12 cards plus 6 a tier; a thirteenth card (made up here) is never offered at tier 0 and is at tier 1
+// Deeper Deck: the pool is 12 cards plus 6 a tier; the thirteenth card (Metronome) is never offered at tier 0 and is at tier 1
 out("up_deck", { start_scene: "test_lab",
-  lua: `local C = require('data.cards'); C.list[#C.list + 1] = { id = 'extra', name = 'Extra', family = 'body', rarity = 'common', tags = {}, max = 3, text = '', apply = function() end, index = #C.list + 1 }; C.by_id.extra = C.list[#C.list]
-local function seen(t) ${META}.upgrades.deeper_deck = t; local n = 0; for s = 1, 150 do ${RUN}.begin(s); for _, id in ipairs(${RUN}.offer(3)) do if id == 'extra' then n = n + 1 end end end; return n end
+  lua: `local C = require('data.cards')
+local function seen(t) ${META}.upgrades.deeper_deck = t; local n = 0; for s = 1, 150 do ${RUN}.begin(s); for _, id in ipairs(${RUN}.offer(3)) do if id == 'metronome' then n = n + 1 end end end; return n end
 POOL0 = ${WORK}.pool_size(); SEEN0 = seen(0); ${META}.upgrades.deeper_deck = 1; POOL1 = ${WORK}.pool_size(); SEEN1 = seen(1); ${META}.upgrades.deeper_deck = 4; POOL4 = ${WORK}.pool_size()
-BUY, WHY = ${WORK}.can_buy('deeper_deck'); ${META}.upgrades.deeper_deck = 0; ${RUN}.begin(1)`,
+${META}.keys = 500; ${META}.upgrades.deeper_deck = 1; BUY, WHY = ${WORK}.can_buy('deeper_deck'); ${META}.upgrades.deeper_deck = 0; ${RUN}.begin(1)`,
   route: [{ wait: 2 }], print: ["POOL0", "SEEN0", "POOL1", "SEEN1", "POOL4", "BUY", "WHY"] });
 // Second Chance: once a run a killing blow leaves him on half health with 2 s untouchable; the second kills
 out("up_second", { start_scene: "test_lab", lua: upStart({ second_chance: 1 }, newRun()), route: [...inRoom1,
@@ -1437,7 +1437,7 @@ out("up_loose", { start_scene: "test_lab", lua: upStart({ loose_change: 2 }, `${
   { lua: `${J}.scrap = 100; ${RUN}.take_from(${R0}); KEYS0 = ${META}.keys; ${R0}.hp = 1; ${R0}:take_damage(2)` }, { until: "nova.current_scene() == 'summary'", max: 200 },
   { lua: `KEYS1 = ${META}.keys; LOOSE = ${RUN}.summary.loose; BANKED = ${RUN}.summary.keys` }],
   print: ["KEYS0", "KEYS1", "LOOSE", "BANKED"] });
-// Fast Print is stored but locked ("after the second district"); Deeper Deck's tiers are shown ("more cards coming") and not for sale
+// Fast Print is stored but locked ("after the second district"); Deeper Deck is for sale now (slice 4)
 out("up_locked", { start_scene: "test_lab",
   lua: `${META}.keys = 500; local W = ${WORK}; local a, ta = W.buy('fast_print'); local b, tb = W.buy('deeper_deck'); FAST = tostring(a) .. ' ' .. ta; DEEP = tostring(b) .. ' ' .. tb; KEYS = ${META}.keys
 TIER_F, TIER_D = W.tier('fast_print'), W.tier('deeper_deck'); NAMES = ''; for _, u in ipairs(W.list) do NAMES = NAMES .. u.name .. '/' .. #u.costs .. ' ' end`,
@@ -1593,4 +1593,296 @@ for (const seed of [3, 7, 11, 20, 31]) {
   withLook("look_cleared", { start_scene: "summary", lua: `${META}.runs = 3; ${RUN}.begin_chain(3); ${RUN}.cleared = 8; ${RUN}.banked = 71; ${RUN}.add_card('plating'); ${RUN}.add_card('scatter'); ${RUN}.time = 402; ${RUN}.moved = { 'patch' }; ${RUN}.from_den = true; ${RUN}.won = true; ${RUN}.finish('win'); nova.goto_scene('summary')`,
     route: [{ wait: 60, capture: "district cleared" }] }, { out: "build/look_cleared" });
   withLook("look_title", { start_scene: "title", lua: `${META}.started = true`, route: [{ wait: 30, capture: "the title (a save exists)" }, { hold: ["down"], frames: 4 }, { wait: 3 }, { press: "interact" }, { wait: 4, capture: "new game: the confirm" }] }, { out: "build/look_title", columns: 2 });
+}
+
+// =====================================================================================================================
+// SLICE 4: the other 24 cards, tags and sets, jinxes, keys for every cleared room, the codex.
+// Each card has a route (prints the numbers its rule says); `S4` keeps the steps so the look routes can play several cards in one strip.
+// =====================================================================================================================
+const HITS = "require('lib.hits')";
+const park = `${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}`;
+const stillFoe = (v, x, y, hp = 30, kind = "scrapper") => `${v} = nova.spawn('${kind}', ${x}, ${y}); ${v}.hp = ${hp}; ${v}.max_hp = ${hp}; ${STATUS}.stun(${v}, 99)`;
+const reset4 = `${RUN}.begin(1); ${HITS}.last_hit = -99; ${J}.slow_t = 0; for _, t in ipairs({ 'scrapper', 'fire', 'decoy', 'ally', 'shot', 'scrap', 'zap', 'barrel', 'bottle', 'can' }) do for _, e in ipairs(nova.all(t)) do e:destroy() end end; local r = ${R0}; r.hp, r.max_hp, r.charge, r.max_charge, r.state, r.blink_t, r.roll_cd = 12, 12, 3, 3, 'free', 0, 0; r.stats.baton_hits = 0; ${HITS}.dip_t = 0`;
+const S4 = {};
+const card4 = (name, def) => { S4[name] = def; out(`s4_${name}`, { start_scene: "test_lab", ...(def.plan || {}), lua: `${park}; ${def.lua}`, route: def.route, print: def.print }); };
+const stand = (x = 324, y = 420, face = "right") => labPlace(x, y, face);
+
+// ---- Metronome: a hit in the rhythm does +1 a copy. A real chain (0.37 s between hits) gets +1 on hits 2 and 3, a hit a second later gets none;
+// and the window itself: gaps of 0.2 and 0.4 s are in it, 0.6 s is out.
+card4("metronome", { lua: `${stand()}; ${dum("d1", 400, 420)}; ${give("metronome")}`,
+  route: [{ wait: 3 }, ...chain3, { lua: `CH = ${tot("d1")}` }, { wait: 60 }, { press: "attack" }, { wait: 30, capture: "a lone hit: no rhythm" }, { lua: `LONE = nova.named('d1').last_damage; local H = ${HITS}
+local function gap(g) H.last_hit = H.clock - g; return tostring(H.rhythm()) end; G02, G04, G06 = gap(0.2), gap(0.4), gap(0.6)` }],
+  print: ["CH", "LONE", "G02", "G04", "G06"] });
+// ---- Skim: the first hit on a healthy enemy makes it leak 1 scrap for each hit it takes; a hurt enemy does not start to leak
+card4("skim", { lua: `${stand()}; ${stillFoe("S1", 400, 420)}; ${stillFoe("S2", 400, 560, 30)}; S2.hp = 20; ${give("skim")}`,
+  route: [{ wait: 3 }, ...chain3, { lua: "LEAKY = tostring(S1.leaky); HP1 = S1.hp" }, { lua: `${stand(324, 560)}` }, { wait: 40 }, { press: "attack" }, { wait: 30, capture: "a hurt enemy does not leak" }, { lua: "HURT_LEAKY = tostring(S2.leaky)" }],
+  print: ["LEAKY", "HP1", "HURT_LEAKY"] });
+// ---- Backhand: swing within 0.4 s of a roll and the swing also hits behind, for double; no roll, no rear swing
+card4("backhand", { lua: `${stand(200, 420)}; ${give("backhand")}; ${dum("d2", 1300, 420)}`,
+  route: [{ wait: 3 },
+    { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 }, { until: "nova.named('runner').state ~= 'roll'", max: 40 },
+    { lua: `local r = ${R0}; ${dum("d1", "r.x - 70", "r.y")}; ${dum("d2", "r.x + 66", "r.y")}` }, { press: "attack" }, { wait: 25, capture: "after a roll: hit in front and behind" },
+    { lua: `REAR = ${tot("d1")}; FRONT = ${tot("d2")}; BACKHANDS = ${R0}.stats.backhands` }, { wait: 60 },
+    { press: "attack" }, { wait: 30, capture: "no roll: only in front" }, { lua: `REAR2 = ${tot("d1")}; FRONT2 = ${tot("d2")}; BACKHANDS2 = ${R0}.stats.backhands` }],
+  print: ["REAR", "FRONT", "BACKHANDS", "REAR2", "FRONT2", "BACKHANDS2"] });
+// ---- Overpressure: held 0.7 s the shot is a slug: 7 damage, through 2 enemies in line (not a third), 2 pips; a short hold is the plain shot
+card4("overpressure", { lua: `${stand()}; ${dum("d1", 480, 420)}; ${dum("d2", 540, 420)}; ${dum("d3", 600, 420)}; ${give("overpressure")}`,
+  route: [{ wait: 3 }, { hold: ["ranged"], frames: 46, capture: "held: the sight line goes gold" }, { lua: `READY = tostring(${R0}.slug_ready)` }, { wait: 1 }, { wait: 30, capture: "the slug" },
+    { lua: `D1 = ${tot("d1")}; D2 = ${tot("d2")}; D3 = ${tot("d3")}; CH1 = string.format('%.2f', ${R0}.charge); SLUGS = ${R0}.stats.slugs` },
+    { lua: `nova.named('d1').total = 0; nova.named('d2').total = 0; ${R0}.charge = 3; ${R0}.shot_cd = 0` }, { wait: 10 }, ...shoot,
+    { lua: `Q1 = ${tot("d1")}; Q2 = ${tot("d2")}; CH2 = string.format('%.2f', ${R0}.charge); SLUGS2 = ${R0}.stats.slugs` }],
+  print: ["READY", "D1", "D2", "D3", "CH1", "SLUGS", "Q1", "Q2", "CH2", "SLUGS2"] });
+// ---- Incendiary: a shot leaves a fire for 2 s that sets the enemy alight and never burns the runner
+card4("incendiary", { lua: `${stand()}; ${stillFoe("S1", 520, 420)}; ${give("incendiary")}`,
+  route: [{ wait: 3 }, ...shoot, { lua: `FIRES = nova.count('fire'); BURN = S1.burn_t or 0; HP0 = S1.hp; local f = nova.first('fire'); FRIENDLY = tostring(f and f.friendly); ${R0}.x, ${R0}.y = f.x, f.y; RHP0 = ${R0}.hp` }, { wait: 30, capture: "the fire, and the runner standing in it" },
+    { lua: `HP1 = S1.hp; RHP1 = ${R0}.hp` }, { wait: 110 }, { lua: `FIRES_LATE = nova.count('fire')` }],
+  print: ["FIRES", "FRIENDLY", "RHP0", "RHP1", "HP0", "HP1", "FIRES_LATE"] });
+// ---- Siphon: a kill with a shot gives its pip back (a shot that does not kill does not)
+card4("siphon", { lua: `${stand()}; ${stillFoe("S1", 520, 420, 3)}; ${stillFoe("S2", 520, 560, 30)}; ${give("siphon")}`,
+  route: [{ wait: 3 }, ...shoot, { lua: `KILLED = tostring(not S1:is_alive()); CH_KILL = string.format('%.2f', ${R0}.charge); ${stand(324, 560)}; ${R0}.charge = 3; ${R0}.shot_cd = 0` }, { wait: 10 }, ...shoot,
+    { lua: `CH_HIT = string.format('%.2f', ${R0}.charge); S2HP = S2.hp` }],
+  print: ["KILLED", "CH_KILL", "CH_HIT", "S2HP"] });
+// ---- Smart Round: a shot aimed 17 degrees off curves onto the enemy; without the card it misses
+const smartShot = [{ lua: `local r = ${R0}; r.aim_dx, r.aim_dy = math.cos(-0.5), math.sin(-0.5); r.shot_cd = 0; r.charge = 3; r:fire()` }, { wait: 5, capture: "it bends" }, { wait: 45 }];
+card4("smart_round", { lua: `${stand()}; ${stillFoe("S1", 600, 340)}`,
+  route: [{ wait: 3 }, ...smartShot, { lua: `MISS = S1.hp; ${give("smart_round")}` }, ...smartShot, { lua: `HIT = S1.hp` }],
+  print: ["MISS", "HIT"] });
+// ---- Afterimage: the roll leaves a copy; an enemy goes for it for 1.5 s, then for the runner again
+card4("afterimage", { lua: `${stand(400, 420, "left")}; ${give("afterimage")}; SC = nova.spawn('scrapper', 640, 420); SC.hp = 40; SC.max_hp = 40`, plan: { invincible: false },
+  route: [{ wait: 2 }, { hold: ["left"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 }, { wait: 20, capture: "the copy stays, the runner rolls away" },
+    { lua: `DECOYS = nova.count('decoy'); TARGET1 = SC.target_kind; DX = string.format('%.0f', nova.first('decoy').x)` }, { wait: 50, capture: "it goes for the copy" }, { lua: `TARGET2 = SC.target_kind; HP_MID = ${R0}.hp` },
+    { wait: 40 }, { lua: `TARGET3 = SC.target_kind; DECOYS3 = nova.count('decoy')` }, { wait: 20, capture: "the copy is gone: back to the runner" }, { lua: `TARGET4 = SC.target_kind; HP_END = ${R0}.hp` }],
+  print: ["DECOYS", "TARGET1", "DX", "TARGET2", "HP_MID", "TARGET3", "DECOYS3", "TARGET4"] });
+// ---- Slipstream: 30% faster for 1.5 s after a roll
+card4("slipstream", { lua: `${stand(120, 420)}; ${give("slipstream")}`,
+  route: [{ wait: 2 }, { lua: `X0 = ${R0}.x` }, { hold: ["right"], frames: 30 }, { lua: `BASE = ${R0}.x - X0; ${R0}.x = 120` },
+    { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 }, { until: "nova.named('runner').state ~= 'roll'", max: 40 },
+    { lua: `X1 = ${R0}.x; SLIP = string.format('%.2f', ${R0}.slip_t)` }, { hold: ["right"], frames: 30, capture: "faster" }, { lua: `FAST = ${R0}.x - X1; ${R0}.x = 120` }, { wait: 100 },
+    { lua: `X2 = ${R0}.x; SLIP_END = string.format('%.2f', ${R0}.slip_t)` }, { hold: ["right"], frames: 30 }, { lua: `AFTER = ${R0}.x - X2; RATIO = string.format('%.2f', FAST / BASE)` }],
+  print: ["string.format('%.1f', BASE)", "string.format('%.1f', FAST)", "SLIP", "SLIP_END", "string.format('%.1f', AFTER)", "RATIO"] });
+// ---- Burn Rubber: the roll leaves a 1 s trail of fire (never hurting the runner) that sets enemies alight
+card4("burn_rubber", { lua: `${stand(200, 420)}; ${stillFoe("S1", 290, 420)}; ${give("burn_rubber")}`,
+  route: [{ wait: 2 },
+    { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 }, { until: "nova.named('runner').state ~= 'roll'", max: 40, capture: "the trail" },
+    { lua: `TRAIL = nova.count('fire'); BURN = S1.burn_t or 0; RHP = ${R0}.hp` }, { wait: 20, capture: "burning" }, { lua: `S1HP = S1.hp` }, { wait: 100 }, { lua: `TRAIL_LATE = nova.count('fire')` }],
+  print: ["TRAIL", "BURN", "RHP", "S1HP", "TRAIL_LATE"] });
+// ---- Phase: an attack landing in the last 0.1 s of the roll's untouchable time slows the enemies for 1 s; an early one does not
+card4("phase", { lua: `${stand(300, 420)}; ${give("phase")}; SC = nova.spawn('scrapper', 900, 800); SC.hp = 99; SC.max_hp = 99; SC.state = 'recover'; SC.t = 0`,
+  route: [{ wait: 2 }, { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 },
+    { until: "nova.named('runner').roll_t >= 0.04", max: 20 }, { lua: `local ok = ${R0}:take_damage(2); EARLY = string.format('%.2f', ${J}.slow_t)` },
+    { until: "nova.named('runner').roll_t >= 0.14", max: 20 }, { lua: `${R0}:take_damage(2); LATE = string.format('%.2f', ${J}.slow_t); PERFECT = ${R0}.stats.perfect; T0 = SC.t` }, { wait: 30, capture: "time slows for the enemies" },
+    { lua: `SLOWED = string.format('%.2f', SC.t - T0); T1 = SC.t` }, { wait: 60 }, { lua: `SLOW_END = string.format('%.2f', ${J}.slow_t); T2 = SC.t` }, { wait: 30 }, { lua: `NORMAL = string.format('%.2f', SC.t - T2)` }],
+  print: ["EARLY", "LATE", "PERFECT", "SLOWED", "SLOW_END", "NORMAL"] });
+// ---- Ghost in the Shell: once a run a killing blow leaves 1 point and 2 s untouchable; the second kills
+card4("ghost", { lua: `${give("ghost_in_the_shell")}`, plan: {},
+  route: [{ wait: 2 }, { lua: `${R0}.hp = 3; ${R0}:take_damage(9); H1 = ${R0}.hp; S1 = ${R0}.state; B1 = string.format('%.1f', ${R0}.blink_t); USED = tostring(${RUN}.ghost_used)` }, { wait: 130 },
+    { lua: `${R0}:take_damage(9); H2 = ${R0}.hp; S2 = ${R0}.state` }],
+  print: ["H1", "S1", "B1", "USED", "H2", "S2"] });
+// ---- Adrenal: below half health +25% damage and speed
+card4("adrenal", { lua: `${give("adrenal")}`,
+  route: [{ wait: 2 }, { lua: `local H = ${HITS}; local function tot100() local d = 0; for i = 1, 100 do d = d + H.baton_damage({}, 2) end; return d end
+${R0}.hp = 12; FULL = tot100(); FULL_SPEED = ${R0}:speed_mult(); ${R0}.hp = 5; LOW = tot100(); LOW_SPEED = ${R0}:speed_mult(); ${R0}.hp = 6; HALF = tot100()` }],
+  print: ["FULL", "FULL_SPEED", "LOW", "LOW_SPEED", "HALF"] });
+// ---- Friendly Fire: a can, a pipe swing and a bottle hurt other enemies (a control without the card first)
+const ffSteps = [{ wait: 2 }, { lua: `nova.spawn('can', 400, 420, { dx = 1, dy = 0 }); nova.spawn('enemy_swing', 400, 580, { dir = 'right', damage = 2, area = require('data.enemies').scrapper.area }); nova.spawn('bottle', 380, 700, { sx0 = 380, sy0 = 700, tx = 520, ty = 700, time = 0.3, height = 20 })` }, { wait: 40, capture: "can, pipe and bottle hit enemies" },
+  { lua: `CAN = 30 - A.hp; PIPE = 30 - B.hp; BOTTLE = 30 - C.hp` }];
+card4("friendly_fire", { lua: `${stand(120, 420)}; ${stillFoe("A", 480, 420)}; ${stillFoe("B", 470, 580)}; ${stillFoe("C", 520, 700)}; ${give("friendly_fire")}`, route: ffSteps, print: ["CAN", "PIPE", "BOTTLE"] });
+out("s4_friendly_fire_base", { start_scene: "test_lab", lua: `${park}; ${stand(120, 420)}; ${stillFoe("A", 480, 420)}; ${stillFoe("B", 470, 580)}; ${stillFoe("C", 520, 700)}`, route: ffSteps, print: ["CAN", "PIPE", "BOTTLE"] });
+// ---- Bad Wiring: a barrel blasts twice as wide and does not hurt the runner (control: 3 to the runner, nothing at 150)
+const wiring = (card) => ({ start_scene: "test_lab", lua: `${park}; ${stand(500, 500)}; ${stillFoe("S1", 500, 270)}; ${card ? give("bad_wiring") : ""}; BAR = nova.spawn('barrel', 500, 420)`,
+  route: [{ wait: 3 }, { lua: "BAR:take_hit(1, 1, 0, 0)" }, { wait: 90, capture: "the blast" }, { lua: `RHP = ${R0}.hp; S1HP = S1.hp` }], print: ["RHP", "S1HP"] });
+out("s4_bad_wiring", wiring(true)); out("s4_bad_wiring_base", wiring(false));
+// ---- Brownout / Bounty Board / Loop Trap / Open Channel / Clot / Crowd Pleaser / Debt Spiral: in the real rooms
+const roomRun = (seed, extra) => `${META}.upgrades = {}; ${RUN}.begin_chain(${seed}); ${extra}; nova.goto_scene(${RUN}.chain[1].scene)`;
+const fight1 = [...inRoom1, { until: "nova.count('enemy') > 0", max: 200 }, { wait: 3 }];
+card4("brownout", { lua: roomRun(5, give("brownout").replace("nova.named('runner')", "nil")), route: [...fight1,
+  { lua: `local S = nova.scene_now(); S.fight_t = 19.9; N0 = nova.count('enemy'); NS0 = 0; for _, e in ipairs(nova.all('enemy')) do if (e.stun_t or 0) > 0 then NS0 = NS0 + 1 end end` }, { wait: 12, capture: "the lights dip: everyone stunned" },
+  { lua: `N1 = nova.count('enemy'); NS1 = 0; for _, e in ipairs(nova.all('enemy')) do if (e.stun_t or 0) > 0 then NS1 = NS1 + 1 end end; DIP = string.format('%.2f', ${HITS}.dip_t)` }, { wait: 75 },
+  { lua: `NS2 = 0; for _, e in ipairs(nova.all('enemy')) do if (e.stun_t or 0) > 0 then NS2 = NS2 + 1 end end; NEXT = nova.scene_now().next_dip` }],
+  print: ["NS0", "N1", "NS1", "DIP", "NS2", "NEXT"] });
+const bountyRoute = (markedFirst) => ({ start_scene: "test_lab", lua: roomRun(5, give("bounty_board").replace("nova.named('runner')", "nil")), route: [...fight1,
+  { wait: 3 }, { lua: `MARKED = 0; for _, e in ipairs(nova.all('enemy')) do if e.bounty then MARKED = MARKED + 1; BM = e else BO = e end end; BOUNTY = BM.bounty; S0 = ${J}.scrap; ${markedFirst ? "BM" : "BO"}:take_hit(99, 0, 0, 0)` },
+  { wait: 5, capture: markedFirst ? "the marked one first: 15 scrap" : "another first: no pay" }, { lua: `PAID = ${J}.scrap - S0; ${markedFirst ? "BO" : "BM"}:take_hit(99, 0, 0, 0)` }, { wait: 5 }, { lua: `PAID2 = ${J}.scrap - S0` }], print: ["MARKED", "BOUNTY", "PAID", "PAID2"] });
+out("s4_bounty_board", bountyRoute(true)); out("s4_bounty_board_other", bountyRoute(false));
+card4("loop_trap", { lua: `${stand(120, 420)}; ${RUN}.room_kills = 0; ${give("loop_trap")}; ${stillFoe("A", 400, 420, 1)}; ${stillFoe("B", 480, 420, 4)}; ${stillFoe("C", 480, 560, 30)}`,
+  route: [{ wait: 3 }, { lua: "A:take_hit(5, 0, 0, 0)" }, { wait: 4, capture: "the first to die rises" }, { lua: `ALLIES = nova.count('ally'); KILLS0 = ${HITS}.ally_kills` }, { wait: 70, capture: "it fights for you" },
+    { lua: `KILLS1 = ${HITS}.ally_kills; BDEAD = tostring(not B:is_alive()); ROOM_KILLS = ${RUN}.room_kills; ${stillFoe("D", 700, 640, 1)}; D:take_hit(9, 0, 0, 0); ALLIES2 = nova.count('ally')` }, { wait: 520 }, { lua: `ALLIES_END = nova.count('ally')` }],
+  print: ["ALLIES", "KILLS0", "KILLS1", "BDEAD", "ROOM_KILLS", "ALLIES2", "ALLIES_END"] });
+const openRoute = (card) => ({ start_scene: "test_lab", lua: `${META}.upgrades = {}; ${RUN}.begin_chain(5); ${card ? give("open_channel").replace("nova.named('runner')", "nil") : ""}; ${RUN}.room = 3; nova.goto_scene('gutter.elite')`,
+  route: [{ until: "nova.current_scene() == 'gutter.elite' and nova.named('runner') ~= nil", max: 40 }, { until: "nova.count('warn') > 0", max: 200 }, { lua: `WARN1 = nova.count('warn')` }, { wait: 70, capture: "the first wave" }, { lua: `ENEMIES1 = nova.count('enemy'); ELITES = 0; for _, e in ipairs(nova.all('enemy')) do if e.elite then ELITES = ELITES + 1 end end` },
+  ], print: ["WARN1", "ENEMIES1", "ELITES"] });
+out("s4_open_channel", openRoute(true)); out("s4_open_channel_base", openRoute(false));
+const bossHp = (card) => ({ start_scene: "test_lab", lua: `${META}.upgrades = {}; ${RUN}.begin_chain(5); ${card ? give("open_channel").replace("nova.named('runner')", "nil") : ""}; ${RUN}.room = 7; nova.goto_scene('gutter.boss')`,
+  route: [{ until: "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil", max: 40 }, { wait: 5 }, { lua: `HP = ${COIL}.hp; MAX = ${COIL}.max_hp` }], print: ["HP", "MAX"] });
+out("s4_open_channel_boss", bossHp(true)); out("s4_open_channel_boss_base", bossHp(false));
+const clotRoute = (hit) => ({ start_scene: "test_lab", lua: roomRun(5, give("clot").replace("nova.named('runner')", "nil")), route: [...inRoom1,
+  { lua: `${R0}.hp = 8; ${RUN}.take_from(${R0}); local S = nova.scene_now(); S.state = 'fight'; S.wave_i = #S.def.waves; S.countdown = nil; ${hit ? `${RUN}.room_hit = true` : ""}` }, { until: "nova.scene_now().state == 'cards'", max: 400, capture: hit ? "hit in the room: no heal" : "clean room: Clot heals" },
+  { wait: 20 }, { lua: `HP = ${R0}.hp; NOTE = tostring(nova.scene_now().heal_note)` }], print: ["HP", "NOTE"] });
+out("s4_clot", clotRoute(false)); out("s4_clot_hit", clotRoute(true));
+// killing every enemy as it appears: the room's waves, their pay and the cards
+const killLoop = { repeat: 300, until: "nova.scene_now().state == 'cards'", steps: [{ until: "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'", max: 90, may_time_out: true }, { lua: killAll }, { wait: 4 }] };
+const crowdRoute = (card) => ({ start_scene: "test_lab", lua: roomRun(11, card ? give("crowd_pleaser").replace("nova.named('runner')", "nil") : ""), route: [...inRoom1, killLoop, { wait: 60, capture: "the cards" }, { lua: `CARDS = nova.count('card')` }], print: ["CARDS"] });
+out("s4_crowd_pleaser", crowdRoute(true)); out("s4_crowd_pleaser_base", crowdRoute(false));
+out("s4_debt_spiral", { start_scene: "test_lab", lua: roomRun(5, `${give("debt_spiral").replace("nova.named('runner')", "nil")}; ${META}.keys = 0`), route: [...inRoom1,
+  { lua: `HP = ${R0}.hp; ${J}.scrap = 40; BANK = ${RUN}.bank(4); KEYS = ${META}.keys; ROOM = ${RUN}.pay_keys('fight'); KEYS2 = ${META}.keys` }], print: ["HP", "BANK", "ROOM", "KEYS2"] });
+// ---- Overclock, Red Line
+card4("overclock", { lua: `${give("overclock")}`, route: [{ wait: 2 }, { lua: `local H = ${HITS}; local d = 0; for i = 1, 100 do d = d + H.baton_damage({}, 2) end; DEALT = d; ${R0}.hp = 12; ${R0}:take_damage(2); HP = ${R0}.hp` }], print: ["DEALT", "HP"] });
+card4("red_line", { lua: `${give("red_line")}`, route: [{ wait: 2 }, { lua: `MAX = ${R0}.max_hp; HP = ${R0}.hp; ${R0}.charge = 0` }, { wait: 84 }, { lua: `REGEN = string.format('%.2f', ${R0}.charge); ${give("plating")}; MAX2 = ${R0}.max_hp` },
+  { lua: `${RUN}.remove_card('red_line', ${R0}); MAX3 = ${R0}.max_hp; ${R0}.charge = 0` }, { wait: 84 }, { lua: `REGEN2 = string.format('%.2f', ${R0}.charge)` }], print: ["MAX", "HP", "REGEN", "MAX2", "MAX3", "REGEN2"] });
+
+// ---- sets: three different cards of one tag; copies of one card count once
+out("s4_set_copies", { start_scene: "test_lab", lua: `${RUN}.begin(1)`, route: [{ wait: 2 }, { lua: `local R = ${RUN}; for i = 1, 3 do R.add_card('live_wire', ${R0}) end; COPIES = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); local Hd = require('lib.hud'); local C = require('data.cards'); LINE1 = Hd.set_lines(C.by_id.tracer)[1]; R.add_card('tracer', ${R0}); TWO = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); LINE2 = Hd.set_lines(C.by_id.shock_wake)[1]; R.add_card('shock_wake', ${R0}); LINE3 = Hd.set_lines(C.by_id.shock_wake)[1]; THREE = R.set_count('volt') .. ' ' .. tostring(R.set_on('volt')); FLASH = tostring(R.set_flash and R.set_flash.tag)` }, { wait: 10, capture: "SET COMPLETE" }], print: ["COPIES", "TWO", "THREE", "FLASH", "LINE1", "LINE2", "LINE3"] });
+const voltPlan = (set) => ({ start_scene: "test_lab", lua: `${labPlace(324, 420)}; ${dum("d1", 400, 420)}; ${dum("d2", 400, 310)}; ${dum("d3", 400, 530)}; ${give("live_wire")}; ${set ? `${give("tracer")}; ${give("shock_wake")}` : ""}`,
+  route: [{ wait: 3 }, ...chain3, { wait: 20, capture: set ? "the second arc" : "one arc" }, { lua: `D2 = ${tot("d2")}; D3 = ${tot("d3")}; ON = tostring(${RUN}.set_on('volt'))` }], print: ["D2", "D3", "ON"] });
+out("s4_set_volt", voltPlan(true)); out("s4_set_volt_base", voltPlan(false));
+const burnSet = (set) => ({ start_scene: "test_lab", lua: `${park}; ${stand(200, 420)}; ${set ? `${give("hot_solder")}; ${give("incendiary")}; ${give("burn_rubber")}` : `${give("hot_solder")}; ${give("incendiary")}`}; ${stillFoe("A", 400, 420, 30)}; ${stillFoe("B", 440, 420, 10)}; ${stillFoe("C", 400, 600, 30)}; ${stillFoe("E", 440, 600, 10)}; ${STATUS}.burn(A, 3, 1)`,
+  route: [{ wait: 3 }, { lua: "A:take_hit(99, 0, 0, 0); C:take_hit(99, 0, 0, 0)" }, { wait: 6, capture: "a burning one explodes" }, { lua: `BHP = B.hp; EHP = E.hp; RHP = ${R0}.hp` }], print: ["BHP", "EHP", "RHP"] });
+out("s4_set_burn", burnSet(true)); out("s4_set_burn_base", burnSet(false));
+const leakSet = (set) => ({ start_scene: "test_lab", lua: `${park}; ${stand()}; ${set ? `${give("skim")}; ${give("siphon")}; ${give("deep_pockets")}` : `${give("skim")}; ${give("siphon")}`}; ${R0}.hp = 6; ${RUN}.take_from(${R0}); ${J}.scrap = 0`,
+  route: [{ wait: 2 }, { repeat: 5, steps: [{ lua: scrapDrop }, { wait: 40 }] }, { wait: 30, capture: "scrap picked up: Leak heals" }, { lua: `SCRAP = ${J}.scrap; HP = ${R0}.hp; ACC = ${RUN}.leak_acc` }], print: ["SCRAP", "HP", "ACC"] });
+out("s4_set_leak", leakSet(true)); out("s4_set_leak_base", leakSet(false));
+const echoSet = (set) => ({ start_scene: "test_lab", lua: `${park}; ${labPlace(324, 420)}; ${dum("d1", 400, 420)}; ${set ? `${give("afterimage")}; ${give("loop_trap")}; ${give("ghost_in_the_shell")}` : `${give("afterimage")}; ${give("loop_trap")}`}; nova.spawn('afterimage', 330, 560, { life = 9 }); ${stillFoe("S1", 380, 600)}`,
+  route: [{ wait: 3 }, ...chain3, { wait: 10, capture: "the copy hits too" }, { lua: `HP = S1.hp; ON = tostring(${RUN}.set_on('echo'))` }], print: ["HP", "ON"] });
+out("s4_set_echo", echoSet(true)); out("s4_set_echo_base", echoSet(false));
+
+// ---- jinxes in the offers: never in the first two offers of a run, at the stated rate after, never in a base pool; the guarantees at each tier
+out("s4_jinx_offers", { start_scene: "test_lab",
+  lua: `local R, C, M = ${RUN}, require('data.cards'), ${META}
+local function counts(tier, seeds, offers)
+  M.upgrades.deeper_deck = tier; local per = {}; for k = 1, offers do per[k] = 0 end
+  for s = 1, seeds do R.begin(s); for k = 1, offers do for _, id in ipairs(R.offer(3)) do if C.by_id[id].jinx then per[k] = per[k] + 1 end end end end
+  return table.concat(per, ',')
+end
+J4 = counts(4, 600, 10); J0 = counts(0, 100, 10); J3 = counts(3, 100, 10)
+-- one jinx maximum at the end of the offer; a held jinx is not offered again
+local both = 0; M.upgrades.deeper_deck = 4
+for s = 1, 400 do R.begin(s); R.offers = 5; local o = R.offer(3); local n = 0; for _, id in ipairs(o) do if C.by_id[id].jinx then n = n + 1 end end; if n > 1 then both = both + 1 end end
+TWO_JINX = both
+R.begin(3); R.counts.overclock = 1; R.counts.red_line = 1; R.counts.crowd_pleaser = 1; R.counts.debt_spiral = 1; HELD_OFFERED = 0
+for k = 1, 30 do R.offers = 5; for _, id in ipairs(R.offer(3)) do if C.by_id[id].jinx then HELD_OFFERED = HELD_OFFERED + 1 end end end
+M.upgrades.deeper_deck = 0; R.begin(1)`,
+  route: [{ wait: 2 }], print: ["J4", "J0", "J3", "TWO_JINX", "HELD_OFFERED"] });
+// Deeper Deck: each tier reveals six more cards; the boss's rare and the elite's uncommon guarantee hold at every tier
+out("s4_deck_tiers", { start_scene: "test_lab",
+  lua: `local R, C, M = ${RUN}, require('data.cards'), ${META}
+TIERS = ''; GR_BAD = ''; GU_BAD = ''; NEW = ''
+for t = 0, 4 do
+  M.upgrades.deeper_deck = t
+  local seen, n = {}, 0
+  for s = 1, 300 do R.begin(s); for k = 1, 4 do for _, id in ipairs(R.offer(3)) do if not seen[id] then seen[id] = true; n = n + 1 end end end end
+  TIERS = TIERS .. n .. ' '
+  local bad_r, bad_u = 0, 0
+  for s = 1, 300 do
+    R.begin(s); local o = R.offer(3, { guarantee = 'rare' }); local ok = false
+    for _, id in ipairs(o) do if C.by_id[id].rarity == 'rare' and not C.by_id[id].jinx then ok = true end end
+    if not ok or C.by_id[o[1]].jinx then bad_r = bad_r + 1 end
+    R.begin(s); o = R.offer(3, { guarantee = 'uncommon' }); ok = false
+    for _, id in ipairs(o) do if C.by_id[id].rarity == 'uncommon' then ok = true end end
+    if not ok or C.by_id[o[1]].jinx then bad_u = bad_u + 1 end
+  end
+  GR_BAD = GR_BAD .. bad_r .. ' '; GU_BAD = GU_BAD .. bad_u .. ' '
+  local names = {}; for _, c in ipairs(C.list) do if c.index > 12 + 6 * (t - 1) and c.index <= 12 + 6 * t and t > 0 then names[#names + 1] = c.id end end
+  NEW = NEW .. table.concat(names, ',') .. ' | '
+end
+M.upgrades.deeper_deck = 0; R.begin(1)`,
+  route: [{ wait: 2 }], print: ["TIERS", "GR_BAD", "GU_BAD", "NEW"] });
+// buying Deeper Deck, tier by tier
+out("s4_deck_buy", { start_scene: "test_lab", lua: `local W, M = ${WORK}, ${META}; M.upgrades = {}; M.keys = 400; local out = {}
+for t = 1, 5 do local before = M.keys; local ok = W.buy('deeper_deck'); out[#out + 1] = tostring(ok) .. ':' .. (before - M.keys) .. ':' .. W.pool_size() end
+BUYS = table.concat(out, ' '); M.upgrades = {}; M.keys = 0`, route: [{ wait: 2 }], print: ["BUYS"] });
+// the shop's jinx stall: nothing to remove, then one removed for 30 scrap (the one taken last), and Red Line's cap lifts
+out("s4_shop_jinx", { start_scene: "test_lab", lua: `${RUN}.begin_chain(5); local r = ${R0}; ${J}.scrap = 100; local S = ${SHOP}
+local ok0, t0 = S.buy('jinx', r); NONE = tostring(ok0) .. ' ' .. ${J}.scrap .. ' ' .. t0
+${RUN}.add_card('red_line', r); ${RUN}.add_card('overclock', r); BEFORE = r.max_hp .. ' ' .. ${RUN}.mods.overclock .. ' ' .. #${RUN}.held_jinxes()
+local ok1, t1 = S.buy('jinx', r); ONE = tostring(ok1) .. ' ' .. ${J}.scrap .. ' ' .. t1 .. ' ' .. ${RUN}.mods.overclock .. ' ' .. #${RUN}.held_jinxes()
+local ok2, t2 = S.buy('jinx', r); TWO = tostring(ok2) .. ' ' .. ${J}.scrap .. ' ' .. t2 .. ' ' .. r.max_hp .. ' ' .. #${RUN}.held_jinxes()
+${J}.scrap = 10; ${RUN}.add_card('debt_spiral', r); local ok3, t3 = S.buy('jinx', r); POOR = tostring(ok3) .. ' ' .. ${J}.scrap .. ' ' .. t3 .. ' ' .. #${RUN}.held_jinxes()`,
+  route: [{ wait: 2 }], print: ["NONE", "BEFORE", "ONE", "TWO", "POOR"] });
+out("s4_shop_jinx_room", { start_scene: "gutter.walk", route: [{ wait: 5 }, { lua: `${RUN}.begin_chain(5); ${RUN}.add_card('overclock', ${R0}); ${J}.scrap = 50` }, { walk_to: "shop_jinx", who: "runner", max: 900 }, { wait: 2, capture: "at the jinx stall" }, { press: "interact" }, { wait: 6, capture: "the jinx is gone" },
+  { lua: `SCRAP = ${J}.scrap; HELD = ${RUN}.count('overclock'); TOAST = nova.scene_now().toast` }, { press: "interact" }, { wait: 6 }, { lua: `SCRAP2 = ${J}.scrap; TOAST2 = nova.scene_now().toast` }], print: ["SCRAP", "HELD", "TOAST", "SCRAP2", "TOAST2"] });
+
+// ---- keys: every cleared room pays at once (1 fight, 3 elite, 2 gauntlet, 10 boss), kept on death; the bank on top
+out("s4_keys_kinds", { start_scene: "test_lab", lua: `${META}.upgrades = {}; ${META}.keys = 0; ${RUN}.begin_chain(5); nova.goto_scene(${RUN}.chain[1].scene)`,
+  route: [...inRoom1, killLoop, { wait: 30, capture: "a fight room: +1 key" }, { lua: `K_FIGHT = ${META}.keys; ROOM_KEYS1 = ${RUN}.room_keys; ${RUN}.room = 3; nova.goto_scene('gutter.elite')` },
+    { until: "nova.current_scene() == 'gutter.elite' and nova.named('runner') ~= nil", max: 40 }, killLoop, { wait: 30, capture: "the elite: +3" }, { lua: `K_ELITE = ${META}.keys; ${RUN}.room = 6; nova.goto_scene('gutter.s7_yard')` },
+    { until: "nova.current_scene() == 'gutter.s7_yard' and nova.named('runner') ~= nil", max: 40 }, killLoop, { wait: 30, capture: "the gauntlet: +2" }, { lua: `K_GAUNTLET = ${META}.keys; ${RUN}.room = 7; nova.goto_scene('gutter.boss')` },
+    { until: "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil", max: 40 }, { wait: 30 }, { lua: "nova.named('coil'):die()" }, { until: "nova.scene_now().state == 'cards'", max: 900, capture: "the boss: +10" }, { wait: 20 },
+    { lua: `K_BOSS = ${META}.keys; ROOM_KEYS = ${RUN}.room_keys` }], print: ["K_FIGHT", "ROOM_KEYS1", "K_ELITE", "K_GAUNTLET", "K_BOSS", "ROOM_KEYS"] });
+const leaveRoom = [{ wait: 48 }, { walk_to: "card", who: "runner", max: 900 }, { press: "interact" }, { wait: 8 }, { walk_to: "door_out", who: "runner", max: 1500 }, { wait: 4 }];
+out("s4_keys_death_boot1", { start_scene: "title", lua: `${META}.keys = 0`, route: [{ wait: 25 }, { press: "interact" }, ...denWake, { walk_to: "rundoor", who: "runner", max: 900 }, { press: "interact" },
+    { until: `nova.current_scene() == ${RUN}.chain[1].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 2 }, killLoop, ...leaveRoom,
+    { until: `nova.current_scene() == ${RUN}.chain[2].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 2 }, killLoop, ...leaveRoom,
+    { until: `nova.current_scene() == ${RUN}.chain[3].scene and nova.named('runner') ~= nil`, max: 60 }, { wait: 5 }, { lua: `K_BEFORE = ${META}.keys; ${R0}.hp = 1; ${R0}:take_damage(2)` }, { until: "nova.current_scene() == 'summary'", max: 200, capture: "died in room 3: the summary lists the keys" },
+    { lua: `K_AFTER = ${META}.keys; SUM_ROOM_KEYS = ${RUN}.summary.room_keys; SUM_CLEARED = ${RUN}.summary.cleared` }],
+  print: ["K_BEFORE", "K_AFTER", "SUM_ROOM_KEYS", "SUM_CLEARED"] });
+out("s4_keys_death_boot2", { start_scene: "title", route: [{ wait: 25 }, { lua: `K_LOADED = ${META}.keys; RUNS = ${META}.runs` }], print: ["K_LOADED", "RUNS"] });
+
+// ---- the codex: seen cards are saved; the Den's terminal lists seen, unseen and locked cards
+out("s4_codex_boot1", { start_scene: "test_lab", lua: `${META}.upgrades = {}; ${META}.seen_cards = {}; ${RUN}.begin(7); local ids = {}; for k = 1, 2 do for _, id in ipairs(${RUN}.offer(3)) do ids[#ids + 1] = id end end; table.sort(ids); OFFERED = table.concat(ids, ',')`, route: [{ wait: 2 }, { lua: `SEEN_N = 0; for _ in pairs(${META}.seen_cards) do SEEN_N = SEEN_N + 1 end` }], print: ["OFFERED", "SEEN_N"] });
+out("s4_codex_boot2", { start_scene: "den", route: [...denWake, { lua: "OFFERED_SEEN = ''" }, { walk_to: "codex", who: "runner", max: 900 }, { wait: 3, capture: "at the codex" }, { press: "interact" }, { wait: 4, capture: "the codex: the first card" },
+    { lua: `local D = ${DENS}; local C = require('data.cards'); STATE = D.state; local l = {}; for _, id in ipairs({ 'live_wire', 'long_reach', 'riot_stock', 'hot_solder', 'ricochet', 'scatter', 'tracer', 'shock_wake', 'second_wind', 'plating', 'capacitor', 'deep_pockets', 'metronome', 'overclock' }) do l[#l + 1] = id .. '=' .. D:card_state(C.by_id[id]) end; STATES = table.concat(l, ' '); SEEN_COUNT = 0; for _ in pairs(${META}.seen_cards) do SEEN_COUNT = SEEN_COUNT + 1 end; TIER_OVER = D:tier_needed(C.by_id.overclock); TIER_METRO = D:tier_needed(C.by_id.metronome)` },
+    { hold: ["down"], frames: 4 }, { wait: 3 }, { hold: ["down"], frames: 4 }, { wait: 3, capture: "scrolling" }, { lua: `CSEL = ${DENS}.csel` }, { press: "dash" }, { wait: 4 }, { lua: `CLOSED = ${DENS}.state` }],
+  print: ["STATE", "STATES", "SEEN_COUNT", "TIER_OVER", "TIER_METRO", "CSEL", "CLOSED"] });
+
+// ---- the soak: a whole district on 30 seeds with random cards (from the whole list, jinxes too), invincible. A monitor wraps the juice tick:
+// every frame it checks health and charge are not negative and no enemy is alive far off the map, and now and then it rolls and shoots (so the
+// roll and sidearm cards run too). The route must reach the summary: the rooms clear, the doors open, the boss falls.
+const SOAK_LUA = `SOAK_BAD = ''; SOAK_FRAMES = 0; SOAK_ROLLS = 0; SOAK_SHOTS = 0
+-- (the test player's "invincible" puts health back after the frame, so a single blow bigger than what is left, a tram and Overclock's +1, would still kill: it is healed just before any blow)
+local RC = require('entities.runner'); local otd = RC.take_damage
+RC.take_damage = function(self, n) if self.hp ~= nil and self.hp <= n + 6 then self.hp = self.max_hp end return otd(self, n) end
+local Jx = require('lib.juice'); local orig = Jx.tick
+Jx.tick = function()
+  orig()
+  SOAK_FRAMES = SOAK_FRAMES + 1
+  local r = nova.named('runner'); local sc = nova.scene_now()
+  if r and r.hp and r.state ~= 'dead' then
+    if r.hp < 0 or r.charge < -1e-6 or r.charge ~= r.charge then SOAK_BAD = SOAK_BAD .. string.format('runner hp %s charge %s in %s; ', tostring(r.hp), tostring(r.charge), nova.current_scene()) end
+    if SOAK_FRAMES % 70 == 0 and r.state == 'free' and r.roll_cd <= 0 and nova.count('enemy') > 0 then r:start_roll(); SOAK_ROLLS = SOAK_ROLLS + 1 end
+    if SOAK_FRAMES % 113 == 0 and r.state == 'free' then
+      local e = nova.nearest(r.x, r.y, 'enemy')
+      if e then local dx, dy = e.x - r.x, e.y - 14 - (r.y - 14); local l = math.sqrt(dx * dx + dy * dy)
+        if l > 1 then r.aim_dx, r.aim_dy = dx / l, dy / l; r.aim_t = (SOAK_FRAMES % 226 == 0) and 1 or 0; r.shot_cd = 0; r:fire(); SOAK_SHOTS = SOAK_SHOTS + 1 end end
+    end
+  end
+  if sc and sc.w then
+    for _, e in ipairs(nova.all('enemy')) do
+      if e.state ~= 'dead' and (e.x < -100 or e.x > sc.w + 100 or e.y < -100 or e.y > sc.h + 100) then SOAK_BAD = SOAK_BAD .. string.format('%s off the map at %.0f,%.0f; ', tostring(e.kind_name), e.x, e.y) end
+    end
+  end
+end
+function RANDCARD()
+  local C = require('data.cards'); local R = ${RUN}; local list = {}
+  for _, c in ipairs(C.list) do if R.can_take(c.id) then list[#list + 1] = c.id end end
+  local id = list[math.random(#list)]; R.add_card(id, nova.named('runner')); SOAK_PICKS = (SOAK_PICKS or '') .. id .. ','
+end`;
+for (let seed = 1; seed <= 30; seed++) {
+  const w = wholeRun(seed);
+  const route = [{ lua: SOAK_LUA }];
+  for (const st of w.route) {
+    if (st.lua && /^ROOM\d = nova\.current_scene\(\); KIND\d/.test(st.lua)) route.push({ lua: "RANDCARD(); RANDCARD()" });
+    route.push(st);
+  }
+  out(`soak_${seed}`, { ...w, route, print: ["SOAK_BAD", "SOAK_FRAMES", "SOAK_ROLLS", "SOAK_SHOTS", "END_SCENE", "SUM", "SOAK_PICKS", "WON9"] });
+}
+
+// ---- strips to look at (slice 4): the new cards a few to a strip (build/look_s4_*), a set completing, a jinx on the floor, the codex
+{
+  const group = (names) => names.flatMap((n) => [{ lua: `${reset4}; ${park}; ${S4[n].lua}` }, { wait: 3 }, ...S4[n].route]);
+  const lab = (name, names, extra = {}) => out(`look_s4_${name}`, { start_scene: "test_lab", lua: park, route: group(names), out: `build/look_s4_${name}`, columns: 4, ...extra });
+  lab("baton", ["metronome", "skim", "backhand"]);
+  lab("sidearm", ["overpressure", "incendiary", "siphon", "smart_round"]);
+  lab("roll", ["afterimage", "burn_rubber", "phase"]);
+  lab("district", ["friendly_fire", "loop_trap"]);
+  out("look_s4_wiring", { ...JSON.parse(fs.readFileSync(`${dir}/r_s4_bad_wiring.json`, "utf8")), route: [{ wait: 3, capture: "a barrel, a runner close, an enemy at 3 tiles" }, { lua: "BAR:take_hit(1, 1, 0, 0)" }, { wait: 40, capture: "the fuse: the ring is twice as wide" }, { wait: 50, capture: "the blast: the runner untouched" }], out: "build/look_s4_wiring", columns: 3 });
+  out("look_s4_ghost", { start_scene: "test_lab", lua: `${park}; ${give("ghost_in_the_shell")}; ${give("adrenal")}`, route: [{ wait: 3, capture: "before" }, { lua: `${R0}.hp = 3; ${R0}:take_damage(9)` }, { wait: 6, capture: "a killing blow: left on 1, flickering" }, { wait: 20, capture: "untouchable for 2 s" }, { lua: `${R0}.hp = 4` }, { wait: 6, capture: "below half health (Adrenal)" }], out: "build/look_s4_ghost", columns: 4 });
+  out("look_s4_brownout", { ...JSON.parse(fs.readFileSync(`${dir}/r_s4_brownout.json`, "utf8")), route: [...fight1, { wait: 10, capture: "a fight" }, { lua: "nova.scene_now().fight_t = 19.9" }, { wait: 8, capture: "the lights dip" }, { wait: 14, capture: "everyone stunned" }, { wait: 40, capture: "the lights are back" }], out: "build/look_s4_brownout", columns: 4 });
+  out("look_s4_bounty", { ...JSON.parse(fs.readFileSync(`${dir}/r_s4_bounty_board.json`, "utf8")), route: [...fight1, { wait: 10, capture: "one enemy carries a $15 tag" }, { lua: "for _, e in ipairs(nova.all('enemy')) do if e.bounty then e:take_hit(99, 0, 0, 0) end end" }, { wait: 6, capture: "killed first: paid" }], out: "build/look_s4_bounty", columns: 3 });
+  out("look_s4_sets", { start_scene: "test_lab", lua: `${park}; ${stand()}; ${RUN}.begin(1)`, route: [{ wait: 3 }, { lua: `${give("live_wire")}; ${give("tracer")}` }, { wait: 10, capture: "two Volt cards" }, { lua: give("shock_wake") }, { wait: 6, capture: "SET COMPLETE: VOLT (banner and sound)" }, { wait: 40, capture: "the banner stays a moment" }, { press: "start" }, { wait: 4, capture: "the pause list: tags and SETS" }], out: "build/look_s4_sets", columns: 4 });
+  out("look_s4_volt", { ...JSON.parse(fs.readFileSync(`${dir}/r_s4_set_volt.json`, "utf8")), route: [{ wait: 3 }, ...chain3.slice(0, 5), { wait: 4, capture: "the first arc" }, { wait: 6, capture: "the second arc (Volt set)" }, { wait: 20 }], out: "build/look_s4_volt", columns: 3 });
+  // a jinx on the floor: a card spot with a warning ring, the panel with its cost and the set line
+  out("look_s4_jinx", { start_scene: "test_lab", lua: `${park}; ${RUN}.begin(1); ${give("live_wire")}; ${give("tracer")}; local at = nova.named('cards'); nova.spawn('card', at.x - 160, at.y, { card_id = 'overclock' }); nova.spawn('card', at.x, at.y, { card_id = 'shock_wake' }); nova.spawn('card', at.x + 160, at.y, { card_id = 'debt_spiral' }); ${R0}.x, ${R0}.y = at.x - 160, at.y + 40; nova.scene_now().state = 'cards'`,
+    route: [{ wait: 60, capture: "three cards: two jinxes with warning rings" }, { wait: 4, capture: "standing by Overclock: its cost" }, { lua: `${R0}.x = nova.named('cards').x` }, { wait: 5, capture: "by Shock Wake: this completes the set" }], out: "build/look_s4_jinx", columns: 3 });
+  out("look_s4_codex", { start_scene: "den", lua: `${META}.upgrades.deeper_deck = 1; ${META}.seen_cards = { live_wire = true, scatter = true, plating = true, metronome = true }; ${META}.last = 'dead'; ${META}.started = true`, route: [...denWake, { walk_to: "codex", who: "runner", max: 900 }, { wait: 3, capture: "the terminal beside LULLABY's screen" }, { press: "interact" }, { wait: 4, capture: "the codex: a seen card" },
+    { hold: ["down"], frames: 4 }, { wait: 3, capture: "unseen: ???" }, ...Array.from({ length: 14 }, () => [{ hold: ["down"], frames: 4 }, { wait: 2 }]).flat(), { wait: 3, capture: "a locked card (greyed, its tier)" }, ...Array.from({ length: 7 }, () => [{ hold: ["down"], frames: 4 }, { wait: 2 }]).flat(), { wait: 3, capture: "a jinx, locked" }], out: "build/look_s4_codex", columns: 3 });
 }

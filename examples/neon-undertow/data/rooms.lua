@@ -11,4 +11,6 @@ return {
   rise = 0.7,                 -- seconds a card takes to rise
   sink = 0.5,                 -- and to sink
   banner = 2.4,               -- seconds the "cleared" banner stays
+  -- keys a cleared room pays at once, kept even if the run ends in the next room (the bank and Loose Change come on top)
+  keys = { fight = 1, elite = 3, gauntlet = 2, boss = 10 },
 }

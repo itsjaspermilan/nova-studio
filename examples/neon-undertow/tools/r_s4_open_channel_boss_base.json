@@ -1,0 +1,20 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(5); ; require('lib.run').room = 7; nova.goto_scene('gutter.boss')",
+ "route": [
+  {
+   "until": "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 5
+  },
+  {
+   "lua": "HP = nova.named('coil').hp; MAX = nova.named('coil').max_hp"
+  }
+ ],
+ "print": [
+  "HP",
+  "MAX"
+ ]
+}

@@ -5,6 +5,7 @@ local E = require("data.enemies").mimic_vendor
 local P = require("data.player")
 local D = require("lib.draw")
 local Foe = require("entities.foe")
+local Target = require("lib.target")
 
 local Mimic = nova.entity(Foe, {
   sprite = "mimic_vendor", anim = "idle", tags = { "hurtable", "enemy", "solid", "mimic_vendor" },
@@ -36,7 +37,7 @@ end
 
 function Mimic:update(dt)
   if self:tick(dt) then return end
-  local p = nova.first("player")
+  local p = Target.of(self)
   local dist = 1e9
   if p and p.state ~= "dead" then dist = self:distance_to(p) end
   local s = self.state

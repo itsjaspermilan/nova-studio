@@ -3,6 +3,7 @@ local P = require("data.player")
 local J = require("lib.juice")
 local Run = require("lib.run")
 local E = require("data.enemies").scrap
+local Hits = require("lib.hits")
 
 local Scrap = nova.entity {
   sprite = "scrap", anim = "spin", tags = { "scrap" }, pivot = { 0.5, 0.5 }, hitbox = { -6, -6, 12, 12 }, sx = 3, sy = 3,
@@ -21,7 +22,8 @@ function Scrap:update(dt)
   self.depth = -self.y
   local p = nova.first("player")
   if p and self.t >= E.pickup_delay and self:overlaps(p) then
-    Run.add_scrap(1)       -- (through the run's multiplier: Deep Pockets)
+    local got = Run.add_scrap(1)       -- (through the run's multiplier: Deep Pockets)
+    Hits.after_scrap(got)               -- (the Leak set heals 1 point for every 20)
     nova.sound.play("scrap", { volume = P.sfx.scrap, pitch = 1 + 0.06 * (J.scrap % 5) })
     nova.log("scrap " .. J.scrap)
     nova.spawn("fx", self.x, self.y, { sprite = "fx_spark", anim = "spark", scale = 2 })

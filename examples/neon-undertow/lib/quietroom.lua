@@ -126,13 +126,13 @@ function Quiet:draw_ui()
       local d = ShopData[c.item]
       local x, y = nova.cam.to_screen(c.x, c.y - 52)
       nova.ui.text(x - 90, y - 18, d.name, { font = "pixel", size = 13, color = { 255, 228, 94, 255 }, align = "center", width = 180, shadow = true })
-      nova.ui.text(x - 90, y, c.item == "bank" and "4 : 1" or (d.shut and "shut" or (d.price .. " scrap")), { font = "pixel", size = 12, color = { 255, 255, 255, 255 }, align = "center", width = 180, shadow = true })
+      nova.ui.text(x - 90, y, c.item == "bank" and "4 : 1" or (d.price .. " scrap"), { font = "pixel", size = 12, color = { 255, 255, 255, 255 }, align = "center", width = 180, shadow = true })
     end
     if self.by then
       local d = ShopData[self.by.item]
-      local lines = d.shut or d.text
+      local lines = d.text
       if self.by.item == "bank" then lines = d.text .. string.format("\nScrap %d -> %d keys. Keys held %d.", J.scrap, J.scrap // d.rate, require("lib.meta").keys) end
-      panel(d.name, lines, (not d.shut) and (self.by.item == "bank" and "bank it" or "buy") or nil)
+      panel(d.name, lines, (self.by.item == "bank" and "bank it" or "buy"))
     end
   end
   if self.toast_t > 0 and self.toast then

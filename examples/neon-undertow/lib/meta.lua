@@ -22,13 +22,14 @@ function Meta.reset()
   Meta.talks = {}        -- how many times each Den resident and the screen were talked to
   Meta.warm_pick = ""    -- Warm Start's chosen card (tier 3)
   Meta.started = false   -- the game has been played (the title says Continue)
+  Meta.seen_cards = {}   -- every card that was ever offered or held (the Den's codex lists them)
 end
 Meta.reset()
 
 function Meta.tier(id) return Meta.upgrades[id] or 0 end
 
 local FIELDS = { "keys", "runs", "wins", "best", "prints" }
-local TABLES = { "met", "upgrades", "moved_in", "seen_in", "lines", "talks" }
+local TABLES = { "met", "upgrades", "moved_in", "seen_in", "lines", "talks", "seen_cards" }
 
 function Meta.load()
   local t = nova.save.get(KEY)
@@ -54,6 +55,14 @@ function Meta.save()
   end
   nova.save.set(KEY, t)
   nova.save.flush()
+end
+
+-- A card was seen (offered, or held). True when it is new; the save is written then unless `quiet` (the caller saves).
+function Meta.see(id, quiet)
+  if Meta.seen_cards[id] then return false end
+  Meta.seen_cards[id] = true
+  if not quiet then Meta.save() end
+  return true
 end
 
 -- "New game": everything forgotten, on disk too.

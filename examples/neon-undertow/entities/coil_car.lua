@@ -36,7 +36,7 @@ function Car:slam()
 end
 
 function Car:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.t = self.t + dt
   if self.t < self.delay then return end
   if not self.started then

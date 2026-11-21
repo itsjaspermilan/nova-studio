@@ -24,7 +24,14 @@ function S.buy(item, runner)
     nova.log(string.format("shop: reroll the next offer for %d", d.price))
     return true, "The next offer will be drawn again."
   elseif item == "jinx" then
-    return false, d.shut
+    local held = Run.held_jinxes()
+    if #held == 0 then return false, d.none end
+    if J.scrap < d.price then return false, string.format("Not enough scrap (%d).", d.price) end
+    local id = held[#held]
+    Run.spend(d.price)
+    Run.remove_card(id, runner)
+    nova.log(string.format("shop: jinx %s removed for %d", id, d.price))
+    return true, require("data.cards").by_id[id].name .. " is gone."
   elseif item == "bank" then
     local keys, taken = Run.bank(d.rate)
     if keys == 0 then return false, string.format("%d scrap makes a key.", d.rate) end

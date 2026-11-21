@@ -5,6 +5,8 @@ local J = require("lib.juice")
 local D = require("lib.draw")
 local P = require("data.player")
 local Blast = require("lib.blast")
+local Run = require("lib.run")
+local Cards = require("data.cards")
 
 local Barrel = nova.entity { tags = { "hurtable", "solid", "prop", "barrel" }, velocity = false, sx = 1, sy = 1, t = 0, state = "idle" }
 
@@ -31,7 +33,12 @@ function Barrel:update(dt)
       self.state = "dead"
       local x, y = self.x, self.y
       self:destroy()
-      Blast.at(x, y, H, self)
+      if Run.mods.wiring > 0 then
+        -- Bad Wiring: twice as wide, and it does not hurt the runner
+        Blast.at(x, y, { radius = H.radius * Cards.num.wiring.reach, runner = 0, enemy = H.enemy, prop = H.prop }, self)
+      else
+        Blast.at(x, y, H, self)
+      end
     end
   end
 end
@@ -39,8 +46,9 @@ end
 function Barrel:draw()
   if self.state == "fuse" then
     local on = math.floor(self.t * 12) % 2 == 0
-    D.disc(self.x, self.y, H.radius, { 255, 138, 43, on and 55 or 25 })
-    D.ring(self.x, self.y, H.radius, { 255, 138, 43, on and 255 or 150 }, 5, 40)
+    local r = H.radius * (Run.mods.wiring > 0 and Cards.num.wiring.reach or 1)
+    D.disc(self.x, self.y, r, { 255, 138, 43, on and 55 or 25 })
+    D.ring(self.x, self.y, r, { 255, 138, 43, on and 255 or 150 }, 5, 40)
   end
   local x, y = nova.cam.to_screen(self.x, self.y)
   local lit = self.state == "fuse" and math.floor(self.t * 12) % 2 == 0

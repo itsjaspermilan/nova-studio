@@ -65,6 +65,12 @@ After every fight room: the doors lock open, the room pays **scrap** (the run's 
 take one with A. Between districts: a short walk-through room with a shop (spend scrap: heal, reroll, remove a jinx) and the bank
 (turn scrap into **keys**, the permanent money, at 4 to 1; unbanked scrap is lost on death).
 
+**Keys (changed in slice 4).** Keys no longer come only from banking after the boss (a new player who died in room 4 would earn nothing and could never
+buy an upgrade). Every cleared room pays keys at once, kept even if the run ends in the next room: 1 for a fight room, 3 for the elite, 2 for the
+gauntlet, 10 for the boss (the stranger's room and the shop pay nothing). The bank (4 scrap to a key) and Loose Change stay as they were, on top. A run
+that dies in room 4 has earned 3 keys, one that dies in room 5 earned 6; the summary lists the keys from rooms and the keys banked. The Workbench's costs
+(data/upgrades.lua) are tuned against that: the cheapest first tier is 10 keys, the full bench 1210.
+
 Rooms are **scene files**, drawn by hand in the scene editor's format (painted tile maps plus placed objects). Each room slot of a
 district has **three layouts**; a run picks one per slot from the run's seed, and picks the enemy waves from that slot's wave table.
 That is 21 fight layouts, 1 stranger room and 1 boss arena per district. Rooms are bigger than the screen: 30x18 to 44x26 tiles at
@@ -86,7 +92,7 @@ tag switches on that tag's **set bonus**.
 **Baton**
 1. *Live Wire* [Volt]: the third hit chains lightning to 2 enemies within 3 tiles for 2 damage.
 2. *Long Reach*: the baton's arc is 30% wider and longer.
-3. *Metronome*: each hit in a chain that lands within 0.25 s of the last does +1 damage.
+3. *Metronome*: each hit in a chain that lands within 0.5 s of the last does +1 damage. (Slice 4: 0.5 s, not 0.25 s: the chain's own beat is 0.37 s, so 0.25 could never happen.)
 4. *Riot Stock* : the third hit also stuns for 0.6 s; knock-back doubled.
 5. *Hot Solder* [Burn]: hits set enemies alight: 1 damage a second for 3 s.
 6. *Skim* [Leak]: the first hit on a full-health enemy makes it leak: it drops 1 scrap for each hit it takes.
@@ -130,6 +136,15 @@ tag switches on that tag's **set bonus**.
 34. *Red Line*: charge refills by itself, but your maximum health is 8.
 35. *Crowd Pleaser*: +1 card choice from now on, +25% enemies.
 36. *Debt Spiral*: double keys banked this run; lose 1 point at each room's start.
+
+**Slice 4 decisions where this was silent:** a set counts three *different* cards of the tag (copies of one card count once); Overpressure is
+5 + 2 damage a copy, pierces copies + 1, held 0.7 s, 2 pips (a plain shot if fewer than 2 pips); Incendiary lasts 2 s + 1 s a copy and also sets enemies
+alight; Siphon, Burn Rubber and the district hacks are once-only except where listed; Slipstream and Afterimage and Adrenal stack to 2; Backhand's behind
+swing is the double one (the front swing is normal) and must start within 0.4 s of a roll; Phase slows enemies, their shots and attacks to 40% for 1 s (the
+runner keeps full speed); Bounty Board pays only if the marked enemy is the room's first kill; Loop Trap's ally hits for 2 every 0.7 s; Red Line refills a pip
+every 1.4 s; Crowd Pleaser adds 25% more enemies with the fractions carried between rows; Debt Spiral doubles the keys of rooms and the bank and never
+takes the last point; Brownout dips the lights every 20 s of a fight. Scatter and Capacitor are common, Second Wind stays rare (the base pool needs one for
+Mother Coil's guarantee). Jinxes may take the last slot of an offer from offer 3 of a run (10%, +5% an offer, at most 40%) and are the last cards of Deeper Deck.
 
 **Set bonuses** (three of a tag): Volt: lightning arcs twice. Burn: burning enemies explode on death for 3 in 2 tiles.
 Leak: scrap pickups heal 1 point per 20. Echo: your afterimage and risen allies copy your baton hits.

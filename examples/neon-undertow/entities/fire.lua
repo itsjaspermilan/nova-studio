@@ -3,6 +3,7 @@
 local E = require("data.enemies").bottle_thrower.fire
 local P = require("data.player")
 local J = require("lib.juice")
+local Status = require("lib.status")
 
 local Fire = nova.entity {
   sprite = "fire", anim = "burn", tags = { "fire" }, velocity = false, pivot = { 0.5, 0.75 }, hitbox = { r = 8 }, life = 2, t = 0,
@@ -12,7 +13,7 @@ function Fire:create()
   self.sx, self.sy = E.radius / 8, E.radius / 8
   self.depth = 90
   self.cool = {}
-  nova.sound.play("fire_start", { volume = P.sfx.fire_start })
+  if not self.quiet then nova.sound.play("fire_start", { volume = P.sfx.fire_start }) end
   nova.log(string.format("fire burns at %.0f,%.0f", self.x, self.y))
 end
 
@@ -34,9 +35,12 @@ function Fire:update(dt)
   self.alpha = self.t > self.life - 0.4 and math.max(0, (self.life - self.t) / 0.4) or 1
   if self.t >= self.life then nova.log("fire out"); return self:destroy() end
   local p = nova.first("player")
-  if p and p.state ~= "dead" and self:overlaps(p) then self:hurt(p, "runner") end
+  if not self.friendly and p and p.state ~= "dead" and self:overlaps(p) then self:hurt(p, "runner") end     -- (a friendly fire, Incendiary's or Burn Rubber's, never burns the runner)
   for _, e in ipairs(nova.all("hurtable")) do
-    if self:overlaps(e) then self:hurt(e, "enemy") end
+    if self:overlaps(e) then
+      self:hurt(e, "enemy")
+      if self.friendly and not e.prop and e.state ~= "dead" then Status.burn(e, 3, 1) end   -- ... and sets enemies alight
+    end
   end
 end
 

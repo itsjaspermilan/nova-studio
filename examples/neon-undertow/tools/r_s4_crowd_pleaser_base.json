@@ -1,0 +1,40 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(11); ; nova.goto_scene(require('lib.run').chain[1].scene)",
+ "route": [
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "wait": 3
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 60,
+   "capture": "the cards"
+  },
+  {
+   "lua": "CARDS = nova.count('card')"
+  }
+ ],
+ "print": [
+  "CARDS"
+ ]
+}

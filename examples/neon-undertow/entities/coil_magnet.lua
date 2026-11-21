@@ -35,7 +35,7 @@ function Magnet:impact()
 end
 
 function Magnet:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.t = self.t + dt
   local p = nova.first("player")
   if self.state == "track" then

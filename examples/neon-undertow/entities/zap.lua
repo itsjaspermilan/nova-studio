@@ -19,7 +19,8 @@ function Zap:draw()
     local x = px + (qx - px) * k
     local y = py + (qy - py) * k
     if i < n then x = x + ((i * 7 + math.floor(self.t * 60)) % 5 - 2) * 5; y = y + ((i * 11 + math.floor(self.t * 60)) % 5 - 2) * 5 end
-    nova.ui.line(lx, ly, x, y, 3, { 6, 240, 255, 255 * fade })
+    local c = self.color or { 6, 240, 255 }
+    nova.ui.line(lx, ly, x, y, 3, { c[1], c[2], c[3], 255 * fade })
     nova.ui.line(lx, ly, x, y, 1, { 255, 255, 255, 255 * fade })
     lx, ly = x, y
   end

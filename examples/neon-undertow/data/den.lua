@@ -10,7 +10,7 @@ return {
   sizes = {
     bed = { w = 156, h = 84, solid = false }, screen = { w = 108, h = 108, solid = true },
     bench = { w = 192, h = 96, solid = true }, door = { w = 72, h = 144, solid = false },
-    stall = { w = 144, h = 96, solid = true },
+    stall = { w = 144, h = 96, solid = true }, codex = { w = 84, h = 96, solid = true },
   },
 
   -- the line shown while you wake on the bed: by what brought you here ("first" the first boot, "dead" after a death, "win" after a win).

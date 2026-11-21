@@ -28,13 +28,14 @@ function Foe:move(dx, dy)
   local _, by2 = self:slide(0, dy)
   if by2 then hit = true end
   if self:touching("solid") then self.y = y; hit = true end
+  if math.abs(self.x - x) + math.abs(self.y - y) > math.abs(dx) + math.abs(dy) + 4 then self.x, self.y = x, y; hit = true end   -- (never a leap: see Scrapper:move)
   return hit
 end
 
 -- Frozen by a hit-stop? Counts the timers, applies status. True means: do nothing else this frame.
 function Foe:tick(dt)
   self.depth = -self.y
-  if J.frozen() then return true end
+  if J.frozen(self) then return true end
   self.t = self.t + dt
   self.flash = math.max(0, self.flash - dt)
   return Status.tick(self, dt)
@@ -52,6 +53,7 @@ end
 
 function Foe:die()
   self.state = "dead"
+  require("lib.hits").on_death(self)
   nova.log(self.kind_name .. " dies")
   nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2 })
   nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 4 })

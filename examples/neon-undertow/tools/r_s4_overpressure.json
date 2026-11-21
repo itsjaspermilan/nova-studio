@@ -1,0 +1,59 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 324, 420, 'right'; do local d = nova.named('d1'); d.x, d.y = 480, 420 end; do local d = nova.named('d2'); d.x, d.y = 540, 420 end; do local d = nova.named('d3'); d.x, d.y = 600, 420 end; require('lib.run').add_card('overpressure', nova.named('runner'))",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 46,
+   "capture": "held: the sight line goes gold"
+  },
+  {
+   "lua": "READY = tostring(nova.named('runner').slug_ready)"
+  },
+  {
+   "wait": 1
+  },
+  {
+   "wait": 30,
+   "capture": "the slug"
+  },
+  {
+   "lua": "D1 = nova.named('d1').total; D2 = nova.named('d2').total; D3 = nova.named('d3').total; CH1 = string.format('%.2f', nova.named('runner').charge); SLUGS = nova.named('runner').stats.slugs"
+  },
+  {
+   "lua": "nova.named('d1').total = 0; nova.named('d2').total = 0; nova.named('runner').charge = 3; nova.named('runner').shot_cd = 0"
+  },
+  {
+   "wait": 10
+  },
+  {
+   "hold": [
+    "ranged"
+   ],
+   "frames": 6
+  },
+  {
+   "wait": 14
+  },
+  {
+   "lua": "Q1 = nova.named('d1').total; Q2 = nova.named('d2').total; CH2 = string.format('%.2f', nova.named('runner').charge); SLUGS2 = nova.named('runner').stats.slugs"
+  }
+ ],
+ "print": [
+  "READY",
+  "D1",
+  "D2",
+  "D3",
+  "CH1",
+  "SLUGS",
+  "Q1",
+  "Q2",
+  "CH2",
+  "SLUGS2"
+ ]
+}

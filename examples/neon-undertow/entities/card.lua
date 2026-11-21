@@ -51,6 +51,15 @@ function Card:draw()
   local k = (self.state == "rising") and math.min(1, self.t / R.rise) or (self.state == "ready" and 1 or 0)
   local col = self.rar.color
   local near = self.near
+  if self.state ~= "gone" and self.def.jinx then
+    -- a jinx: a warning ring of yellow and black dashes
+    for i = 0, 23 do
+      local ang = i / 24 * math.pi * 2
+      local x, y = nova.cam.to_screen(self.x + math.cos(ang) * 52, self.y + math.sin(ang) * 52 * 0.8)
+      local on = (i + math.floor(self.t * 4)) % 2 == 0
+      nova.rect(x - 4, y - 4, 8, 8, on and { 255, 228, 94, 255 } or { 20, 16, 5, 255 })
+    end
+  end
   if self.state ~= "gone" then
     local a = (near and 255 or 170) * math.max(k, 0.2)
     D.disc(self.x, self.y, 40 * math.max(k, 0.3), { col[1], col[2], col[3], 40 })
@@ -70,6 +79,7 @@ function Card:hud()
   nova.ui.sprite("icons", x, y - 30, { frame = fam.icon, scale = 2 * k })
   if k >= 1 then
     nova.ui.text(x - 70, y - 12, self.def.name, { font = "pixel", size = 12, color = { col[1], col[2], col[3], 255 }, align = "center", width = 140, shadow = true })
+    if self.def.jinx then nova.ui.text(x - 70, y + 2, "JINX!", { font = "pixel", size = 12, color = { 255, 228, 94, 255 }, align = "center", width = 140, shadow = true }) end
   end
 end
 

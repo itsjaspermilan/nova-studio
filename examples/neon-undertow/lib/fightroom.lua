@@ -9,6 +9,9 @@ local R = require("data.rooms")
 local Waves = require("data.waves")
 local HUD = require("lib.hud")
 local Elite = require("lib.elite")
+local Hits = require("lib.hits")
+local Status = require("lib.status")
+local Cards = require("data.cards")
 
 local Room = nova.scene { room = "market_a", first = false }
 
@@ -42,6 +45,16 @@ function Room:enter()
   nova.pause(false)
   nova.music.play(P.music.track, { volume = P.music.volume })
   nova.log("entered " .. self.room)
+  Run.room_kills, Run.room_hit, self.crowd_frac, self.bounty_set = 0, false, 0, false
+  self.next_dip = Cards.num.brownout.every
+  Hits.dip_t = 0
+  -- Debt Spiral: a point lost at the start of every room (never the last one)
+  if Run.mods.debt > 0 and self.runner and not (self.entry and self.entry.kind == "walk") then
+    local r = self.runner
+    r.hp = math.max(1, r.hp - 1)
+    Run.hp = r.hp
+    nova.log("debt spiral takes a point (health " .. r.hp .. ")")
+  end
   if self.entry then nova.log(string.format("room %d of 8: %s (%s)", math.min(self.entry.index, 8), self.entry.kind, self.room)) end
 end
 
@@ -79,20 +92,38 @@ function Room:spawn_wave(i)
   local w = self.def.waves[i]
   nova.sound.play("wave_warn", { volume = P.sfx.wave_warn })
   nova.log("wave " .. i .. " warns")
-  for _, row in ipairs(w.rows) do
+  -- Open Channel: a wave with an elite in it comes without the elite's escort
+  local rows = w.rows
+  if Run.mods.open > 0 then
+    local has = false
+    for _, row in ipairs(rows) do if row.elite then has = true end end
+    if has then
+      rows = {}
+      for _, row in ipairs(w.rows) do if row.elite then rows[#rows + 1] = row end end
+      nova.log("open channel: the elite comes alone")
+    end
+  end
+  for _, row in ipairs(rows) do
     local pt = self.points[row.at]
     if not pt then error("data/waves.lua: room " .. self.room .. " has no spawn point named " .. row.at) end
     local kind, mark = row.kind, nil
     if row.elite then kind, mark = self.entry.elite_kind, self.entry.mark end
-    for k = 1, row.count do
+    local count = row.count
+    if Run.mods.crowd > 0 then
+      -- Crowd Pleaser: 25% more enemies (the fractions are carried to the next row, so a room's total is exact)
+      local total = count * (1 + Cards.num.crowd.share * Run.mods.crowd) + self.crowd_frac
+      count = math.floor(total + 1e-9)
+      self.crowd_frac = total - count
+    end
+    for k = 1, count do
       local ox, oy = 0, 0
-      if row.count > 1 then
-        local a = (k - 1) / row.count * math.pi * 2 + 0.6
+      if count > 1 then
+        local a = (k - 1) / count * math.pi * 2 + 0.6
         ox, oy = math.cos(a) * R.spawn_ring, math.sin(a) * R.spawn_ring * 0.8
       end
       nova.spawn("warn", pt.x + ox, pt.y + oy, { kind = kind, time = R.warn, elite = (k == 1) and mark or nil })
     end
-    nova.log(string.format("wave %d: %s x%d at %s", i, kind, row.count, row.at))
+    nova.log(string.format("wave %d: %s x%d at %s", i, kind, count, row.at))
   end
 end
 
@@ -113,11 +144,25 @@ function Room:clear()
   end
   self.banner_t = R.banner
   nova.log("room pays " .. self.paid .. " scrap")
+  -- every cleared room pays keys at once (kept even if the run ends next room), by the kind of room
+  self.keys_paid = 0
+  if self.entry then self.keys_paid = Run.pay_keys(self.entry.kind) end
+  if self.keys_paid > 0 then nova.sound.play("key_pay", { volume = P.sfx.key_pay }) end
+  -- Clot: a room cleared without being hit heals
+  self.heal_note = nil
+  if Run.mods.clot > 0 and not Run.room_hit and self.runner and self.runner.hp < self.runner.max_hp then
+    local r = self.runner
+    local before = r.hp
+    r.hp = math.min(r.max_hp, r.hp + Run.mods.clot)
+    Run.hp = r.hp
+    self.heal_note = string.format("+%d health (Clot)", r.hp - before)
+    nova.log(string.format("clot heals %d (a clean room)", r.hp - before))
+  end
 end
 
 function Room:rise_cards()
   self.state = "cards"
-  local ids = Run.offer(R.cards, { guarantee = self.def.guarantee })
+  local ids = Run.offer(R.cards + Run.mods.choices, { guarantee = self.def.guarantee })
   local at = self.points.cards
   local n = #ids
   for i, id in ipairs(ids) do
@@ -127,9 +172,21 @@ function Room:rise_cards()
   nova.log("cards rise: " .. table.concat(ids, ","))
 end
 
+function Room:brownout()
+  local N = Cards.num.brownout
+  local n = 0
+  for _, e in ipairs(nova.all("enemy")) do
+    if e.state ~= "dead" then Status.stun(e, N.stun); n = n + 1 end
+  end
+  Hits.dip_t = N.dip
+  nova.sound.play("brownout", { volume = P.sfx.brownout })
+  nova.log(string.format("brownout: the lights dip, %d enemies stunned for %.1f s", n, N.stun))
+end
+
 function Room:take(card)
   local id = card.card_id
   Run.add_card(id, self.runner)
+  if Cards.by_id[id].jinx then nova.sound.play("jinx_take", { volume = P.sfx.jinx_take }) end
   card:taken()
   for _, c in ipairs(nova.all("card")) do if c ~= card then c:sink() end end
   nova.sound.play("card_take", { volume = P.sfx.card_take })
@@ -177,8 +234,28 @@ function Room:update(dt)
   Run.time = Run.time + dt
   if self.state == "fight" then self.fight_t = self.fight_t + dt end
   self.banner_t = math.max(0, self.banner_t - dt)
+  if Run.set_flash then
+    Run.set_flash.t = Run.set_flash.t - dt
+    if Run.set_flash.t <= 0 then Run.set_flash = nil end
+  end
   self:camera(dt)
   local s = self.state
+  -- Brownout: every 20 s of a fight the lights dip and every enemy is stunned
+  if Run.mods.brownout > 0 and (s == "fight" or s == "boss") and self.fight_t >= self.next_dip then
+    self.next_dip = self.next_dip + Cards.num.brownout.every
+    self:brownout()
+  end
+  -- Bounty Board: once the first enemies are out, one of them carries the mark
+  if Run.mods.bounty > 0 and not self.bounty_set and s == "fight" and nova.count("enemy") > 0 then
+    self.bounty_set = true
+    local list = {}
+    for _, e in ipairs(nova.all("enemy")) do if e.state ~= "dead" and e.kind_name ~= "tout" then list[#list + 1] = e end end
+    if #list > 0 then
+      local e = list[Run.mix(Run.seed, Run.room * 7 + 3) % #list + 1]
+      e.bounty = Cards.num.bounty.pay
+      nova.log("bounty: " .. e.kind_name .. " is marked for " .. e.bounty)
+    end
+  end
   if s == "intro" then
     if self.t >= R.doors_shut_at then
       self:shut_doors()

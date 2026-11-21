@@ -35,7 +35,7 @@ function Tram:flatten(e, what)
 end
 
 function Tram:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   local scene = nova.scene_now()
   local calm = scene and (scene.state == "cards" or scene.state == "done")   -- (the fight is won: no new crossings)
   if self.state ~= "cross" then

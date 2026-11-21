@@ -6,6 +6,7 @@ local P = require("data.player")
 local D = require("lib.draw")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
+local Target = require("lib.target")
 
 local Drone = nova.entity(Foe, {
   sprite = "rat_drone", anim = "idle", tags = { "hurtable", "enemy", "rat_drone" },
@@ -49,7 +50,7 @@ function Drone:update(dt)
     if self.state == "stunned" then self:play("hit") end
     return
   end
-  local p = nova.first("player")
+  local p = Target.of(self)
   local dx, dy, dist = 0, 0, 1e9
   if p then dx, dy = p.x - self.x, p.y - self.y; dist = math.sqrt(dx * dx + dy * dy) end
   local alive = p and p.state ~= "dead"

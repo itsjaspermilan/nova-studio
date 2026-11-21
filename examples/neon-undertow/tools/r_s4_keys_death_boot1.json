@@ -1,0 +1,153 @@
+{
+ "start_scene": "title",
+ "lua": "require('lib.meta').keys = 0",
+ "route": [
+  {
+   "wait": 25
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'free' or nova.scene_now().state == 'movein'",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "walk_to": "rundoor",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 2
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[2].scene and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 2
+  },
+  {
+   "repeat": 300,
+   "until": "nova.scene_now().state == 'cards'",
+   "steps": [
+    {
+     "until": "nova.count('enemy') > 0 or nova.scene_now().state == 'cards'",
+     "max": 90,
+     "may_time_out": true
+    },
+    {
+     "lua": "for _, e in ipairs(nova.all('enemy')) do e:take_hit(99, 0, 0, 0) end"
+    },
+    {
+     "wait": 4
+    }
+   ]
+  },
+  {
+   "wait": 48
+  },
+  {
+   "walk_to": "card",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 8
+  },
+  {
+   "walk_to": "door_out",
+   "who": "runner",
+   "max": 1500
+  },
+  {
+   "wait": 4
+  },
+  {
+   "until": "nova.current_scene() == require('lib.run').chain[3].scene and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 5
+  },
+  {
+   "lua": "K_BEFORE = require('lib.meta').keys; nova.named('runner').hp = 1; nova.named('runner'):take_damage(2)"
+  },
+  {
+   "until": "nova.current_scene() == 'summary'",
+   "max": 200,
+   "capture": "died in room 3: the summary lists the keys"
+  },
+  {
+   "lua": "K_AFTER = require('lib.meta').keys; SUM_ROOM_KEYS = require('lib.run').summary.room_keys; SUM_CLEARED = require('lib.run').summary.cleared"
+  }
+ ],
+ "print": [
+  "K_BEFORE",
+  "K_AFTER",
+  "SUM_ROOM_KEYS",
+  "SUM_CLEARED"
+ ]
+}

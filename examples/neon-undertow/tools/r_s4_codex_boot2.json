@@ -1,0 +1,84 @@
+{
+ "start_scene": "den",
+ "route": [
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'free' or nova.scene_now().state == 'movein'",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "OFFERED_SEEN = ''"
+  },
+  {
+   "walk_to": "codex",
+   "who": "runner",
+   "max": 900
+  },
+  {
+   "wait": 3,
+   "capture": "at the codex"
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 4,
+   "capture": "the codex: the first card"
+  },
+  {
+   "lua": "local D = nova.scene_now(); local C = require('data.cards'); STATE = D.state; local l = {}; for _, id in ipairs({ 'live_wire', 'long_reach', 'riot_stock', 'hot_solder', 'ricochet', 'scatter', 'tracer', 'shock_wake', 'second_wind', 'plating', 'capacitor', 'deep_pockets', 'metronome', 'overclock' }) do l[#l + 1] = id .. '=' .. D:card_state(C.by_id[id]) end; STATES = table.concat(l, ' '); SEEN_COUNT = 0; for _ in pairs(require('lib.meta').seen_cards) do SEEN_COUNT = SEEN_COUNT + 1 end; TIER_OVER = D:tier_needed(C.by_id.overclock); TIER_METRO = D:tier_needed(C.by_id.metronome)"
+  },
+  {
+   "hold": [
+    "down"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "down"
+   ],
+   "frames": 4
+  },
+  {
+   "wait": 3,
+   "capture": "scrolling"
+  },
+  {
+   "lua": "CSEL = nova.scene_now().csel"
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "wait": 4
+  },
+  {
+   "lua": "CLOSED = nova.scene_now().state"
+  }
+ ],
+ "print": [
+  "STATE",
+  "STATES",
+  "SEEN_COUNT",
+  "TIER_OVER",
+  "TIER_METRO",
+  "CSEL",
+  "CLOSED"
+ ]
+}

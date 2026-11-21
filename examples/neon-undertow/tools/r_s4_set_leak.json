@@ -1,0 +1,32 @@
+{
+ "start_scene": "test_lab",
+ "lua": "do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end; local r = nova.named('runner'); r.x, r.y, r.facing = 324, 420, 'right'; require('lib.run').add_card('skim', nova.named('runner')); require('lib.run').add_card('siphon', nova.named('runner')); require('lib.run').add_card('deep_pockets', nova.named('runner')); nova.named('runner').hp = 6; require('lib.run').take_from(nova.named('runner')); require('lib.juice').scrap = 0",
+ "route": [
+  {
+   "wait": 2
+  },
+  {
+   "repeat": 5,
+   "steps": [
+    {
+     "lua": "for i = 1, 8 do nova.spawn('scrap', nova.named('runner').x, nova.named('runner').y - 6, {}) end"
+    },
+    {
+     "wait": 40
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "scrap picked up: Leak heals"
+  },
+  {
+   "lua": "SCRAP = require('lib.juice').scrap; HP = nova.named('runner').hp; ACC = require('lib.run').leak_acc"
+  }
+ ],
+ "print": [
+  "SCRAP",
+  "HP",
+  "ACC"
+ ]
+}

@@ -4,6 +4,8 @@ local H = require("data.hazards")
 local P = require("data.player")
 local Hits = require("lib.hits")
 local F = require("lib.fx")
+local Run = require("lib.run")
+local Cards = require("data.cards")
 
 local Sign = nova.entity { tags = { "hurtable", "prop", "sign" }, velocity = false, sx = 1, sy = 1, state = "up", t = 0 }
 
@@ -18,7 +20,7 @@ end
 -- The puddles touching the square the sign lands on (their boxes overlap it).
 function Sign:touching_puddles()
   local out = {}
-  local reach = H.sign.touch
+  local reach = H.sign.touch * (Run.mods.wiring > 0 and Cards.num.wiring.reach or 1)     -- (Bad Wiring: twice as wide)
   for _, p in ipairs(nova.all("puddle")) do
     if math.abs(p.x - self.x) <= reach + H.puddle.w / 2 and math.abs(p.y - self.y) <= reach + H.puddle.h / 2 then out[#out + 1] = p end
   end

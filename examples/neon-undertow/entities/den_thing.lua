@@ -5,7 +5,7 @@ local Dd = require("data.den")
 local Meta = require("lib.meta")
 local Strangers = require("data.strangers")
 
-local SPRITE = { bed = "den_bed", screen = "den_screen", bench = "den_bench", door = "den_door", stall = "den_stall" }
+local SPRITE = { bed = "den_bed", screen = "den_screen", bench = "den_bench", codex = "den_screen", door = "den_door", stall = "den_stall" }
 
 local Thing = nova.entity { tags = { "den_thing", "solid" }, velocity = false, sx = 1, sy = 1, thing = "bed", who = "", t = 0 }
 
@@ -27,7 +27,7 @@ function Thing:draw()
   local frame = 0
   if self.thing == "screen" then frame = (math.floor(self.t * 3) % 11 == 0) and 1 or 0 end
   if self.thing == "stall" then frame = self:lives_here() and 1 or 0 end
-  nova.sprite(name, x, y - self.h / 2, { w = self.w, h = self.h, frame = frame })
+  nova.sprite(name, x, y - self.h / 2, { w = self.w, h = self.h, frame = frame, color = self.thing == "codex" and { 255, 200, 120 } or nil })
   if self.thing == "door" then
     nova.sprite("solid", x, y - self.h / 2, { w = self.w * 0.5, h = self.h * 0.75, color = { 6, 240, 255, 40 + 30 * math.sin(self.t * 4) } })
   end

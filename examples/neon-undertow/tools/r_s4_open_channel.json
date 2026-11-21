@@ -1,0 +1,29 @@
+{
+ "start_scene": "test_lab",
+ "lua": "require('lib.meta').upgrades = {}; require('lib.run').begin_chain(5); require('lib.run').add_card('open_channel', nil); require('lib.run').room = 3; nova.goto_scene('gutter.elite')",
+ "route": [
+  {
+   "until": "nova.current_scene() == 'gutter.elite' and nova.named('runner') ~= nil",
+   "max": 40
+  },
+  {
+   "until": "nova.count('warn') > 0",
+   "max": 200
+  },
+  {
+   "lua": "WARN1 = nova.count('warn')"
+  },
+  {
+   "wait": 70,
+   "capture": "the first wave"
+  },
+  {
+   "lua": "ENEMIES1 = nova.count('enemy'); ELITES = 0; for _, e in ipairs(nova.all('enemy')) do if e.elite then ELITES = ELITES + 1 end end"
+  }
+ ],
+ "print": [
+  "WARN1",
+  "ENEMIES1",
+  "ELITES"
+ ]
+}

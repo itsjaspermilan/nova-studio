@@ -8,6 +8,7 @@ local P = require("data.player")
 local J = require("lib.juice")
 local F = require("lib.fx")
 local Field = require("lib.field")
+local Run = require("lib.run")
 
 local Coil = nova.entity {
   tags = { "hurtable", "solid", "boss", "mother_coil" }, velocity = false, sx = 1, sy = 1, state = "dormant", t = 0, flash = 0,
@@ -16,6 +17,11 @@ local Coil = nova.entity {
 function Coil:create()
   self.kind_name = "mother_coil"
   self.max_hp, self.hp = B.health, B.health
+  if Run.mods.open > 0 then
+    -- Open Channel: a boss starts at 85% of her health (the bar and the half-health stripes follow the maximum)
+    self.hp = math.ceil(B.health * 0.85)
+    nova.log("open channel: " .. B.name .. " starts at " .. self.hp .. " of " .. self.max_hp)
+  end
   -- (the box reaches a little below the floor's top edge so a shot, which stops at the wall tiles above it, still touches her)
   self.hitbox = { -B.cab.w / 2, -B.cab.h, B.cab.w, B.cab.h + 28 }
   self.depth = -self.y
@@ -142,7 +148,7 @@ function Coil:die()
 end
 
 function Coil:update(dt)
-  if J.frozen() then return end
+  if J.frozen(self) then return end
   self.flash = math.max(0, self.flash - dt)
   self.bark_t = math.max(0, self.bark_t - dt)
   local s = self.state
