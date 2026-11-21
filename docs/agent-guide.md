@@ -149,6 +149,16 @@ person has `roll_<dir>` besides idle, walk, attack and hurt, and every city crea
 `examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
 `play` at game scale on a dark street, not in the sheet.
 
+**Worn ground.** A layer painted with a detailed tileset is worn by default (`wear` 0.35): worn variants of the floor
+tiles, cracks, potholes, patches, road markings fitted to the roads, grime at walls, drips on wall faces, damp and dust,
+gathered by a wear map from the `seed` so one end of a room is nearly whole and another wrecked. Steer it with `wear` (0
+plain to 1 wrecked, or per terrain), `damage` (rows like `tiles`: `#` wrecks a cell, `-` keeps it clean) or a legend entry
+such as `"X": "broken asphalt"`, `features` (`["cracks", "markings"]` only, or `["no litter"]`), `district` (each wears its
+own way; the Spire hardly at all) and `solid_damage` (rubble and deep holes block; otherwise all of it is decoration).
+The answer lists every feature with its tiles: put enemies and cover by them, then `play` and check that the characters
+still read on the worst of it. A Gutter Market street: `"wear": 0.4, "district": "gutter market"`, with `damage` on the
+corner the story says is wrecked.
+
 ## The shortest path to a checked 3D game
 
 `examples/starter-3d` is this path done once (`project_create { "name": "My Game", "template": "3d" }` copies it): a hero
