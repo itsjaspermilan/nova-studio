@@ -11,6 +11,7 @@ return function(spec)
     velocity = false, -- this file moves it
     speed = spec.speed or 60,
     hp = spec.hp or 3,
+    shadow = spec.shadow == nil and true or spec.shadow, -- a soft shadow under it (a hover drone's falls further down)
   }
 
   function Enemy:create()
