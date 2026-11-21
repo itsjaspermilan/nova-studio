@@ -11,7 +11,12 @@ use wgpu::util::DeviceExt;
 use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
 mod custom;
+mod fx2d;
 pub use custom::{MAX_SHADED_DRAWS, MaterialVertex};
+pub use fx2d::{
+    Blend2d, Fx2d, Fx2dFrame, Light2d, MAX_LIGHTS_2D, MAX_MIRRORED, Rain2d, Reflect2d,
+    SHADOW_STYLE, Shape2d, Style2d,
+};
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -272,6 +277,9 @@ pub struct Look {
     /// Edge smoothing (FXAA, done at the world picture's own resolution and before it is scaled up to the screen), 0 (none) to 1 (full). It
     /// costs a few texture reads on the pixels that sit on an edge and almost nothing on the rest.
     pub fxaa: f32,
+    /// A colour grade: what the darks and the lights are multiplied by (linear; [1, 1, 1] leaves them alone), blended by brightness.
+    /// A night street: blue darks, warm lights.
+    pub grade: [[f32; 3]; 2],
 }
 
 impl Default for Look {
@@ -288,14 +296,20 @@ impl Default for Look {
             ao_radius: 0.8,
             blur: 0.0,
             fxaa: 0.0,
+            grade: [[1.0; 3]; 2],
         }
     }
 }
 
 impl Look {
+    fn graded(&self) -> bool {
+        self.grade.iter().flatten().any(|v| (v - 1.0).abs() > 1e-4)
+    }
+
     /// Whether the picture needs the finishing pass (an outline or a colour adjustment; the toon ramp is in the mesh shader).
     pub fn needs_post(&self) -> bool {
-        self.outline.is_some()
+        self.graded()
+            || self.outline.is_some()
             || (self.exposure - 1.0).abs() > 1e-4
             || (self.saturation - 1.0).abs() > 1e-4
             || self.vignette > 0.0
@@ -331,6 +345,8 @@ pub struct Lighting {
     pub terrain: Terrain,
     /// Opt-in quality settings; the world's pipelines are rebuilt when they change (`nova.graphics`, the manifest's `graphics`).
     pub quality: Quality,
+    /// The 2D effects of this frame (lights, added light, shadows, reflections, rain); None when a game asks for none.
+    pub fx2d: Option<Fx2d>,
 }
 
 impl Default for Lighting {
@@ -355,6 +371,7 @@ impl Default for Lighting {
             wind: Wind::default(),
             terrain: Terrain::default(),
             quality: Quality::default(),
+            fx2d: None,
         }
     }
 }
@@ -1037,6 +1054,8 @@ pub struct Gfx {
     depth_resolve_layout: wgpu::BindGroupLayout,
     /// Materials and custom shaders.
     extras: custom::Extras,
+    /// The 2D effects (lights, added light, shadows, reflections, rain).
+    fx2d: fx2d::Fx2dGpu,
 }
 
 /// The picture and its smaller copies, one after another (each half the size, averaged with see-through texels counting
@@ -1594,7 +1613,7 @@ impl Gfx {
             uniform_layout("blit uniform layout", wgpu::ShaderStages::FRAGMENT);
         let blit_uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("blit uniform"),
-            size: 96,
+            size: 128,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -2320,6 +2339,14 @@ impl Gfx {
             .contains(wgpu::Features::TIMESTAMP_QUERY)
             .then(|| GpuTimer::new(&device, &queue));
 
+        let fx2d = fx2d::Fx2dGpu::new(
+            &device,
+            &queue,
+            world_format,
+            samples,
+            &sprite_view_layout,
+            &texture_layout,
+        );
         let extras = custom::Extras::new(
             &device,
             &queue,
@@ -2410,6 +2437,7 @@ impl Gfx {
             depth_resolve_pipeline,
             depth_resolve_layout,
             extras,
+            fx2d,
         }
     }
 
@@ -3160,6 +3188,14 @@ impl Gfx {
                 look.blur.clamp(0.0, 1.0),
                 look.fxaa.clamp(0.0, 1.0),
                 if self.quality.hdr { 1.0 } else { 0.0 },
+                look.grade[0][0],
+                look.grade[0][1],
+                look.grade[0][2],
+                if look.graded() { 1.0 } else { 0.0 },
+                look.grade[1][0],
+                look.grade[1][1],
+                look.grade[1][2],
+                0.0,
             ];
             self.queue
                 .write_buffer(&self.blit_uniform, 0, bytemuck::cast_slice(&blit));
@@ -3449,6 +3485,10 @@ impl Gfx {
         self.sprites_text
             .write(&self.device, &self.queue, bytemuck::cast_slice(input.text));
         self.apply_mesh_ops(input.mesh_ops);
+        if let Some(fx) = &input.lighting.fx2d {
+            self.fx2d
+                .prepare(&self.device, &self.queue, &fx.0, world_size);
+        }
         for (id, image) in input.texture_ops {
             self.set_shader_texture(*id, image);
         }
@@ -3622,6 +3662,13 @@ impl Gfx {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
+        // 2D effects: the light map and the mirror for the reflections, before the world is drawn
+        let fx2d = input.lighting.fx2d.as_ref().map(|f| f.0.as_ref());
+        if let Some(fx) = fx2d {
+            stats.draw_calls +=
+                self.fx2d
+                    .encode_before(&mut encoder, fx, &self.sprite_view_group, &self.atlas);
+        }
         for (cascade, shadow_models) in shadow_lists.iter().enumerate().filter(|_| shadow_pass) {
             let shadow_globals = match self.cascade_globals.get(cascade) {
                 Some((_, group)) if plans.len() > 1 => group,
@@ -3758,7 +3805,16 @@ impl Gfx {
                 pass.draw(0..3, 0..1);
                 stats.draw_calls += 1;
             }
-            if world_runs.is_empty() {
+            if let Some(fx) = fx2d {
+                stats.draw_calls += self.fx2d.draw_world(
+                    self,
+                    &mut pass,
+                    fx,
+                    input.sprites_back.len(),
+                    &world_runs,
+                );
+                stats.sprites += input.sprites_back.len() as u32;
+            } else if world_runs.is_empty() {
                 let back = draw_sprites(
                     &mut pass,
                     &self.sprite_pipeline,
@@ -3874,6 +3930,9 @@ impl Gfx {
                     stats.draw_calls += calls;
                     stats.triangles += triangles;
                 }
+            }
+            if fx2d.is_some() {
+                stats.draw_calls += self.fx2d.draw_rain(self, &mut pass);
             }
         }
         if let (Some(m), true) = (&self.msaa, look.reads_depth()) {

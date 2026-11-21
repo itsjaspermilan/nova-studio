@@ -716,11 +716,18 @@ function Entity:draw()
     c[1], c[2], c[3] = tint and tint[1] or 255, tint and tint[2] or 255, tint and tint[3] or 255
     c[4] = floor(255 * self.alpha)
     draw_opts.shader, draw_opts.params, draw_opts.textures = self.shader, self.shader_params, self.shader_textures
+    -- 2D effects: `blend = "add"` (a glow that adds light; a model's `blend` is a true/false of its own), `lit = false` (not darkened by
+    -- nova.ambient2d)
+    local blend = self.blend
+    draw_opts.blend = type(blend) == "string" and blend or nil
+    draw_opts.lit = self.lit
+    draw_opts.foot = nil
     local id = sprite_id(sprite)
     local x, y = self.x, self.y
     local pivot = rawget(self, "pivot") or cls.__pivot
+    local iw, ih
     if pivot then
-      local iw, ih = raw.image_size(id)
+      iw, ih = raw.image_size(id)
       local dx, dy = pivot_shift(pivot, iw, ih, dsx, dsy, self.angle)
       x, y = x + dx, y + dy
     end
@@ -728,8 +735,40 @@ function Entity:draw()
       nova.ui.sprite(id, x, y, draw_opts)
     else
       local w, h = nova.view()
-      nova.sprite(id, x - (W.cam.x - w * 0.5), y - (W.cam.y - h * 0.5), draw_opts)
+      local ox, oy = W.cam.x - w * 0.5, W.cam.y - h * 0.5
+      -- where it stands: its position when a pivot puts the feet there, else the bottom of the picture
+      local feet = self.y
+      if not pivot then
+        iw, ih = raw.image_size(id)
+        feet = self.y + ih * math.abs(dsy) * 0.5
+      end
+      if pivot then draw_opts.foot = feet - oy end
+      local shadow = self.shadow
+      if shadow then
+        -- a soft ellipse under the feet, as wide as the hitbox (or half the picture); shadow = { w = 30, h = 10, alpha = 0.5, y = 2 } to set it
+        local sw, sh, alpha, sy = nil, nil, 0.45, 0
+        if type(shadow) == "table" then sw, sh, alpha, sy = shadow.w, shadow.h, shadow.alpha or alpha, shadow.y or 0 end
+        if not sw then
+          local hb = rawget(self, "hitbox") or cls.__hitbox
+          if hb and hb[3] then sw = hb[3] * math.abs(self.sx) * 1.5 + 6
+          else
+            iw = iw or raw.image_size(id)
+            sw = iw * math.abs(self.sx) * 0.55
+          end
+        end
+        sh = sh or sw * 0.38
+        raw.shadow2d(self.x - ox, feet - oy + sy, sw * 0.5, sh * 0.5, alpha * self.alpha)
+      end
+      nova.sprite(id, x - ox, y - oy, draw_opts)
     end
+  end
+  -- `light = { radius = 90, color = {r, g, b}, intensity = 1.5, flicker = 0, x = 0, y = -20 }`: a 2D light that goes where the entity goes
+  -- (x and y move it from the entity's position), seen when the scene has nova.ambient2d
+  local light = self.light
+  if light and not model then
+    local screen = self.screen
+    if screen == nil then screen = cls.__screen end
+    if not screen then raw.light_at(self.x, self.y, light) end
   end
 end
 
@@ -2173,6 +2212,11 @@ function Emitter:draw()
   local iw, ih
   if sprite then iw, ih = raw.image_size(sprite) end
   local col = sprite and particle_opts.color or particle_color
+  -- 2D effects: `blend = "add"` (sparks that add light), `shape = "soft"` (glowing dots) or "disc"
+  local shape = spec.shape
+  local round = shape == "soft" or shape == "disc"
+  local shape_opts = (spec.blend or round) and { blend = spec.blend, soft = shape == "soft" } or nil
+  particle_opts.blend = spec.blend
   for i = 1, ps.n do
     local p = ps[i]
     local t = p.age / p.life
@@ -2189,8 +2233,10 @@ function Emitter:draw()
       if self.screen then nova.ui.sprite(sprite, x, y, particle_opts) else nova.sprite(sprite, x, y, particle_opts) end
     elseif self.screen then
       nova.ui.rect(x - size * 0.5, y - size * 0.5, size, size, col)
+    elseif round then
+      nova.circle(x, y, size * 0.5, col, shape_opts)
     else
-      nova.rect(x - size * 0.5, y - size * 0.5, size, size, col)
+      nova.rect(x - size * 0.5, y - size * 0.5, size, size, col, shape_opts)
     end
   end
 end
@@ -2815,7 +2861,7 @@ local function build_scene(scene, data, file)
     local solid = {}
     for _, t in ipairs(tm.solid) do solid[t] = true end
     local ts = tm.tileset
-    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, scale = ts.scale, tiles = tm.tiles })
+    local map = raw.tilemap_create({ image = ts.image, tile_width = ts.tile_width, tile_height = ts.tile_height, scale = ts.scale, tiles = tm.tiles, reflect = tm.reflect })
     named(tm, spawn(Tilemap, tm.x, tm.y, { map = map, solid = solid, depth = tm.depth }))
   end
   for _, t in ipairs(data.texts) do
@@ -3082,9 +3128,18 @@ end
 -- rain (streaks); the flakes are a fixed pattern that wraps round the camera as it moves and falls with `nova.time()`, so nothing is spawned or
 -- kept, and they stop while the game is paused. `nova.weather()` clears it. Options: kind, count (300), radius (22 m round the camera), height (16 m),
 -- fall (m/s: 2.2 for snow, 20 for rain), drift (sideways, m/s), size (0.07 for snow), sprite (a picture in sprites/fx/ for each flake, else a soft disc), color ({255, 255, 255, 210}).
+-- In 2D, `nova.weather{ rain = 0.5, wind = 0.3, color = {r, g, b, a} }` (rain from 0 to 1): streaks and splash rings drawn by the renderer over the
+-- world and under the HUD, made from nothing but their number (no Lua per drop).
 local weather = nil
 function nova.weather(opts)
-  if not opts then weather = nil return end
+  if not opts then weather = nil raw.rain2d(nil) return end
+  if opts.rain ~= nil then
+    if type(opts.rain) ~= "number" then error("weather rain is a number from 0 to 1 (in 2D; kind = \"rain\" is the 3D rain)", 2) end
+    weather = nil
+    raw.rain2d(opts.rain, opts.wind, opts.color)
+    return
+  end
+  raw.rain2d(nil)
   local kind = opts.kind or "snow"
   local snow = kind ~= "rain"
   weather = {
@@ -3134,6 +3189,10 @@ end
 local function frame_draw()
   local bg = W.background
   if bg then nova.clear(bg[1], bg[2], bg[3]) end
+  do -- (where the 2D view is, for 2D lights given in world coordinates and rain that stays on the ground)
+    local vw, vh = nova.view()
+    raw.view_origin(W.cam.x - vw * 0.5, W.cam.y - vh * 0.5)
+  end
   local list = W.list
   local n = 0
   for i = 1, #list do

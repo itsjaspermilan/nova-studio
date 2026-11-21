@@ -12,6 +12,8 @@ struct Blit {
     depth: vec4<f32>,         // x: near, y: far of the camera, z: fog starts, w: fog is complete (0: no fog)
     glow: vec4<f32>,          // x: bloom strength, y: ambient occlusion strength, z: its reach in metres, w: bloom threshold
     lens: vec4<f32>,          // x: pixels of the world picture one metre spans at one metre away, y: speed blur (0: none), z: FXAA strength (0: none), w: 1 when the world picture is HDR (16-bit float, unclamped light)
+    grade_low: vec4<f32>,     // rgb: what the darks are multiplied by (linear), w: 1 when there is a grade
+    grade_high: vec4<f32>,    // rgb: what the lights are multiplied by
 };
 @group(0) @binding(0) var<uniform> blit: Blit;
 @group(1) @binding(0) var source: texture_2d<f32>;
@@ -200,6 +202,11 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     if (abs(blit.grade.y - 1.0) > 1e-4) {
         let grey = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
         rgb = max(mix(vec3<f32>(grey), rgb, blit.grade.y), vec3<f32>(0.0));
+    }
+    if (blit.grade_low.w > 0.0) {
+        // a split grade: the darks toward one colour, the lights toward another, blended by brightness
+        let l = clamp(dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+        rgb = rgb * mix(blit.grade_low.rgb, blit.grade_high.rgb, smoothstep(0.0, 0.6, sqrt(l)));
     }
     if (blit.grade.z > 0.0) {
         let p = in.uv * 2.0 - vec2<f32>(1.0, 1.0);

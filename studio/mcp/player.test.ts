@@ -170,6 +170,16 @@ describe("a picture and its twin", () => {
     expect(renderLine({ ...facts, shadows: null })).toContain("shadows OFF");
     expect(renderLine({ ...facts, light: { ...facts.light, direction: [0, -0.7, 0.7] } })).toContain("the sun is in front of the camera");
   });
+
+  it("says in words which 2D effects a flat frame was drawn with", () => {
+    const fx2d = { ambient: [92, 100, 150], lights: 128, lights_asked: 140, dropped: 4, max_lights: 128, added: 3, shadows: 5, reflections: true, reflective_tiles: 38, mirrored: 6, rain: 0.45, bloom: 0.55, low: false, off: [] };
+    const line = renderLine({ three_d: false, fx2d })!;
+    expect(line).toContain("2D lighting ON (ambient about 114 of 255, 128 lights in view of at most 128; CAPPED: 132 were in view, the 4 farthest from the middle were dropped)");
+    expect(line).toContain("5 shadows; 3 sprites adding light; reflections ON (38 reflective tiles in view, 6 things mirrored in them); rain 0.45; bloom 0.55");
+    const off = renderLine({ three_d: false, fx2d: { ...fx2d, ambient: null, lights: 0, dropped: 0, lights_asked: 2, reflections: false, rain: null, bloom: 0, off: ["rain"] } })!;
+    expect(off).toContain("2D lighting OFF (2 lights were asked for, but they show only with nova.ambient2d)");
+    expect(off).toContain("reflections OFF (38 reflective tiles in view; nova.reflections {} turns them on); no rain; no bloom; switched off by nova.effects: rain");
+  });
 });
 
 describe.skipIf(!built)("the test player", () => {

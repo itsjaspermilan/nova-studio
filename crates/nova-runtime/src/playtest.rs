@@ -154,7 +154,7 @@ pub enum Target {
 }
 
 /// What `overlay` can draw over the pictures.
-pub const OVERLAYS: [&str; 3] = ["hitboxes", "solids", "names"];
+pub const OVERLAYS: [&str; 4] = ["hitboxes", "solids", "names", "lights"];
 
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
@@ -1934,7 +1934,7 @@ impl Playtest {
         }
         if !self.plan.overlay.is_empty() {
             self.notes.push(format!(
-                "overlay: drawn over every picture of this run: {} (hitboxes green, solid things and tiles red, names white); 2D entities only",
+                "overlay: drawn over every picture of this run: {} (hitboxes green, solid things and tiles red, names white, 2D lights yellow); 2D only",
                 self.plan.overlay.join(", ")
             ));
         }

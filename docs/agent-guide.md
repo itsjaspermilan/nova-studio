@@ -147,7 +147,10 @@ which for a person or a creature). The detailed style has twice the pixels at th
 layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox); a detailed
 person has `roll_<dir>` besides idle, walk, attack and hurt, and every city creature a `tell` frame to show before it hurts.
 `examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
-`play` at game scale on a dark street, not in the sheet.
+`play` at game scale on a dark street, not in the sheet. Its street takes its night look from light: `scenes/street.lua` sets
+a night ambient, puddle reflections, rain and a little bloom in four lines, the lamps and signs are `light` objects in the
+scene file (`entities/light.lua`), and the runner has `shadow = true` and a light of its own (docs/project-format.md, "2D
+light, shadows, reflections and rain").
 
 ## The shortest path to a checked 3D game
 
@@ -218,6 +221,7 @@ What the makers do not have, make with `model_write` in the same style (flat fac
 | a sound effect | `sound_report`: no warnings, a level within about 10 dB of the others it plays beside |
 | music | `sound_report`: "loop seam: matches", and 6 to 10 dB under the effects in the mix table |
 | a 3D clip | `model_preview` with `strip`: the pose reads in both rows, and the standing foot's "lowest" row reads about 0.000 (its sole on the ground; the "joint" row is its ankle) |
+| 2D light and weather (`nova.ambient2d`, `nova.light2d` or an entity's `light`, `blend = "add"`, `shadow = true`, `nova.reflections`, `nova.weather { rain }`, `nova.look`'s bloom and grade) | `play`'s `render:` line names each one that is on: the ambient, the lights in view (and CAPPED when there were more than 128), shadows, sprites adding light, reflections (reflective tiles in view, things mirrored in them), rain, bloom; `"overlay": ["lights"]` draws each light's reach; `"compare": "nova.ambient2d(nil)"` (each_frame when the scene sets it every frame) measures what one changes. Look at a full-size picture (`out`): light is judged by eye |
 | the whole game | `check` says "no errors", and one `play` route goes from the first screen to the last |
 
 ## The traps
