@@ -101,7 +101,7 @@ up to eight sine waves over the ground. The shaders lift every vertex of a model
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
 (a car's weight on a hill). A model that must stay rigid (a vehicle) is drawn with `rigid = true`: it is lifted by the height under its origin only, and the game tilts it
 (Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
-few metres, and a ground made of a grid of squares (`scripts/rally/land.mjs`) rather than one big quad. The slope of a wave is up to
+few metres, and a ground made of a grid of squares (`land_make`, `studio/mcp/makers/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's
 track editor, `docs/track-editor.md`, with the cross-section and colours of
@@ -189,8 +189,8 @@ case-insensitive systems.
   its mipmaps average out to that grey, so the grain fades by itself and its repeat does not show. It costs one more texture read
   a pixel, on the models that have one only (`fs_detail` in `mesh.wgsl`); it needs a base colour picture, and it is not drawn on
   see-through or skinned models, on models lit by their material (`"materials"`) or drawn with a custom shader. Pine Ridge Rally's
-  ground (`scripts/rally/land.mjs`) and roads (the track editor's `"textured": true`, `docs/track-editor.md`) use both, with
-  pictures made by `scripts/rally/surfaces.mjs`.
+  ground (`land_make`) and roads (the track editor's `"textured": true`, `docs/track-editor.md`) use both, with
+  pictures made by `surface_make` (`studio/mcp/makers/surface.mjs`).
 - **Scripts:** Lua 5.4.
 - **Keyframe animations:** `animations/<name>.anim.json` (see [Keyframe animations](#keyframe-animations-animationsnameanimjson)), checked when the project loads.
 
@@ -1376,6 +1376,33 @@ The options you pass to `play` apply on top (volume and pitch multiply; a `pan` 
 
 A sound at a place (`at = { x, y, z }`, see `nova.sound.play`) takes `falloff`: `"smooth"` (the default, a square law), `"linear"`, `"natural"` (loud close up, a long fade; it
 still reaches nothing at `range`) or `"none"` (full volume to the range; only the pan follows). `nova.sound.set(id, { at = ..., falloff = ... })` steers it.
+
+### Engines and driving: `require("nova.engine_sound")`
+
+An opt-in module of the runtime (`crates/nova-runtime/lua/engine_sound.lua`, loaded only by a game that requires it, like `nova.timers`
+and `nova.anim`): a car's engine played from the loops `engine_make` writes, and the driving sounds `driving_sounds_make` writes.
+
+```lua
+local engine_sound = require("nova.engine_sound")
+self.engine = engine_sound.new(require("engines.car"))   -- the profile engine_make wrote (engines/car.lua); { volume, rival, surface } may follow
+-- every step:
+self.engine:update(dt, { rpm = rpm, throttle = t, speed = v, slip = s, surface = "road", lift = body_y, scrape = 0 })
+self.engine:shift("up")                                    -- at a gear change: the engine stops pulling a moment; the gearbox's sound
+```
+
+An engine has loops at fixed revs (the profile's `cycles`: a loop of 65536 samples holding that many engine cycles is at cycles x 80.75 rpm),
+each in two layers, throttle down (`eng_<sound>_<k>`) and lifted (`eng_<sound>_off_<k>`). The two bands either side of the revs play,
+crossfaded, each at the pitch that makes it the engine's note; the layers crossfade by how hard the engine pulls (the throttle, less a
+gear change, less the limiter: `"cut"`, `"soft"` or `"governor"`). Only the loops that are heard play. Beside it: the tyres on the
+`surface` (`engine_sound.SURFACES`: road, gravel, dirt, snow, sand, rough, each a loop, gain, pitch range and how much a slide adds), the
+squeal when sliding on tarmac, the wind with the square of the speed, a turbo's breath with the boost and its blow-off when lifting under
+boost, pops on the overrun, an old gearbox's whine, a `thump` when `lift` jumps, the `scrape_loop` while `scrape` is above 0. `rpm` may be
+`rev` instead (0 at idle to 1 at the limit). `engine:state()` gives the heard rpm and load; `engine:silence()` stops its loops until the next
+update (paused, or a rival out of earshot); `engine:stop()`. A rival (`rival = true`) plays only its throttle-down loops, placed at the
+`x`, `y`, `z` given to update (it pans and fades with distance, 90 m at most) and bent by `doppler`. `engine_sound.cars(cars, player, dt)`
+does all of that for a race's list of cars (each with `engine`, the fields update takes, and `velx`, `velz`), with a `whoosh` as a rival
+passes close and fast. First written for Pine Ridge Rally (whose own `lib/audio.lua` is the same model with its own course settings);
+`examples/starter-racing` uses the module.
 
 ## Languages (`locales/<code>.json`)
 

@@ -325,6 +325,11 @@ describe("project_create with a template", () => {
     expect(text(use("project_create", { name: "My 3D", template: "3d" }, three))).toContain("as a copy of examples/starter-3d");
     for (const f of ["main.lua", "entities/hero.lua", "entities/ground.lua", "models/hero.glb", "models/ground.glb", "scenes/garden.scene.json", "music/garden.song.json"]) expect(existsSync(join(three, f)), `3d/${f}`).toBe(true);
     expect(readdirSync(three)).not.toContain("build");
+    // the racing starter: the car, its engine (loops and profile), the road and land, the scene
+    const racing = join(dir, "racing");
+    expect(text(use("project_create", { name: "My Racer", template: "racing" }, racing))).toContain("as a copy of examples/starter-racing");
+    for (const f of ["main.lua", "entities/car.lua", "scenes/race.lua", "scenes/race.scene.json", "models/car.glb", "models/road_ring.glb", "models/land.glb", "engines/car.lua", "sounds/eng_car_1.wav", "sounds/tyre_road.wav", "textures/road.png"]) expect(existsSync(join(racing, f)), `racing/${f}`).toBe(true);
+    expect(JSON.parse(readFileSync(join(racing, "nova.json"), "utf8")).input.throttle).toContain("axis:r2");
     // the platformer keeps its input action for jumping
     expect(JSON.parse(readFileSync(join(dir, "platformer/nova.json"), "utf8")).input.jump).toContain("key:KeyZ");
     use("project_create", { name: "Plain" }, join(dir, "plain"));

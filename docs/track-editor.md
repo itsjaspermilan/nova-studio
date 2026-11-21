@@ -70,7 +70,7 @@ With `"textured": true` in the track file the ribbon gets texture coordinates an
 The cross-section changes too: the verge slopes down into the ground (no skirt), a loose road's colours run into one another
 instead of stepping, and asphalt gets a narrow painted line at each edge, a broken one down the middle and a shoulder of gravel.
 The project must have the two pictures (without them the road is drawn in its colours, with a warning): copy Pine Ridge Rally's,
-or make your own to the same layout (`scripts/rally/surfaces.mjs` draws them from noise; `ROAD_SHEET` in
+or make your own to the same layout (the MCP tool `surface_make` draws them from noise, and `road_make` makes them when a project has none; `ROAD_SHEET` in
 `scripts/lib/trackgen.mjs` is the layout). `scripts/rally/roads.mjs` makes every road of a project again from its track files.
 Without `textured` the road is what it always was: flat colours, no pictures needed.
 

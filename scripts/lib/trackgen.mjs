@@ -508,7 +508,7 @@ const CROSS = [[-6, -5.02, "verge"], [-5.02, -4.14, "line"], [-4.14, 4.14, "road
 
 // ---- the road with its surface pictures ("textured": true in the track file) -----------------------------------------------------------
 // The same ribbon with texture coordinates, naming two pictures of the project by `uri` (every road shares them; Pine Ridge Rally's are
-// made by scripts/rally/surfaces.mjs, which draws the sheet this layout describes):
+// made by surface_make (studio/mcp/makers/surface.mjs), which draws the sheet this layout describes):
 // - `textures/road.png`, the sheet: along it (v) is 64 m of road, repeating; across it (u) is a column 192 texels wide for each kind of
 //   road (the whole 12 m from edge to edge) and then two narrow strips of paint, a solid line and a broken one. It multiplies the
 //   vertex colours below, which stay the road's colours, and its alpha cuts the outer edge ragged;

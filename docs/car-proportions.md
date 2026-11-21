@@ -70,7 +70,7 @@ Archetypes to build, each from its ratios: wagon, sedan, hatchback, minivan, big
 coupes from the Challenger and Mustang). Switch-class means the same shapes, with smooth subdivided panels, real wheel arches, PBR
 paint and baked contact shadows, and a texture only where it earns its place (trim lines, lamps, grilles).
 
-## The blueprint cars, second pass (2026-11-19): `scripts/rally/carkit.mjs` and `blueprint-cars.mjs`
+## The blueprint cars, second pass (2026-11-19): `scripts/rally/carkit.mjs` and `blueprint-cars.mjs` (now Nova's `car_make`: `studio/mcp/makers/car/`)
 
 `car_gt` (the modern coupe, 4768 x 1852 x 1383 mm) and `car_offroad` (the short 4x4 wagon, 4060 x 1690 x 1885 mm) were made again from nothing, because the
 first pass (next section) came out faceted with its details laid on top. What changed:

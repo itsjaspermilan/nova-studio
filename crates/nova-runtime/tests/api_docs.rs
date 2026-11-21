@@ -38,9 +38,17 @@ for k, v in pairs(nova.Entity) do
   if type(v) == "function" and type(k) == "string" and k:sub(1, 2) ~= "__" then nova.log("M " .. k) end
 end
 "#;
+    // the opt-in modules (`require("nova.engine_sound")`): documented as namespaces with `"module": true`, walked by requiring them
+    let mut walker = walker.to_string();
+    for m in documented().iter().filter(|e| e["module"] == true) {
+        let name = m["name"].as_str().expect("name");
+        walker.push_str(&format!(
+            "do local m = require(\"{name}\"); nova.log(\"T {name}\"); local ks = {{}}; for k, v in pairs(m) do if type(v) == \"function\" then ks[#ks + 1] = k end end; table.sort(ks); for _, k in ipairs(ks) do nova.log(\"F {name}.\" .. k) end end\n"
+        ));
+    }
     let vfs: Rc<dyn Vfs> = Rc::new(MemVfs::new(vec![
         ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
-        ("main.lua", walker.as_bytes().to_vec()),
+        ("main.lua", walker.into_bytes()),
     ]));
     let mut game = Game::load(vfs).expect("loads");
     game.upload(&mut NullUploader::default());

@@ -30,6 +30,7 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | write Lua, `nova.json` | `write_file`, `read_file` | |
 | **get art fast: the makers** | `tileset_make`, `character_make`, `creature_make`, `items_make` (one `palette` for all) | the same picture as `sprite_preview`; ordinary sprites you can then change |
 | **get 3D art fast: the 3D makers** | `character3d_make` (a rigged person with seven clips), `prop3d_make` (trees, rocks, ruins, a house, gems: 26 kinds), `ground3d_make` (ground from a character map), `creature3d_make` | the same picture as `model_preview` (a clip strip for the animated ones); ordinary models and one-line entity files |
+| **a racing game's parts: the racing makers** | `car_make` (a car by body type and options, or a traced `spec`), `blueprint_trace` (a drawing into numbers), `prop3d_make` with the detailed kinds (trees by species and season, rocks, barriers, tyres, stands, arches, spectators), `surface_make` (ground and road pictures), `road_make` (a route's road), `land_make` (textured ground), `engine_make` (an engine's loops by the revs and its profile), `driving_sounds_make` (tyres, wind, turbo, gear changes) | a contact sheet of the car from three sides; the props' sheet; the pictures side by side; each engine band's firing and the `sound_report` |
 | lay out a map from terrains | `scene_write` with `"paint"` | the map; edges and corners chosen for you |
 | get sound fast | `sfx_write { "purpose": "hit" }`, `song_make { "mood": "dungeon" }` | the `sound_report`, free of warnings |
 | draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
@@ -219,6 +220,26 @@ song_make        { "name": "garden", "mood": "calm village" }
 What the makers do not have, make with `model_write` in the same style (flat faces, one palette), or read a made
 `.model.json`, change it and write it back. A walk for a model of your own: a clip with
 `"walk": { "legs": ["foot_l", "foot_r"], "stride": 10, "arms": ["arm_l", "arm_r"], "event": "step" }`.
+
+## The shortest path to a checked racing game
+
+`examples/starter-racing` is this path done once (`project_create { "name": "My Racer", "template": "racing" }` copies it). Make the
+car first and look at it: `car_make { "name": "car", "type": "hot_hatch", "paint": "#c8322b" }` answers with its wheel parts and their
+places, the wheel radius (the wheels' spin is distance / radius) and a picture from three sides; another `type` or `seed`, or `length`,
+`height`, `wheel` and `ride_height` in metres, give another car, clamped where the body stops fitting. Then the course:
+`road_make { "name": "ring", "control": [...], "textured": true }` lays the road through [x, z] points (keep bends wider than about 15 m)
+and makes the road pictures; `land_make { "name": "land", "ground": "grass" }` the ground under it; `prop3d_make` with detailed kinds the
+trackside (`conifer`, `boulder`, `tyre_stack`, `cone`, `grandstand`, `arch` with `style: "detailed"`, `spectator`). Write the
+scene with `scene_write`: the land and road entities at 0, 0, 0, the car on the start line (its `ry` along the road), a `checkpoint`
+marker at each control point with its `order` (the level stays in the scene file; Lua makes the road's middle line from the markers), the
+props beside the road. The sound: `engine_make` from a recipe (layout, displacement, aspiration, fuel, idle, limit, character) and
+`driving_sounds_make`; in the car's Lua `local engine_sound = require("nova.engine_sound")`, `self.engine = engine_sound.new(require("engines.car"))`
+and every step `self.engine:update(dt, { rpm = rpm, throttle = t, speed = v, surface = on_road and "road" or "rough" })`, with
+`self.engine:shift("up")` at each gear change. Check it: `check`, then `play` with a route that turns on an autopilot and waits
+`until` a lap is counted (`{ "lua": "nova.named('car').autopilot = true" }, { "until": "nova.scene_now().laps >= 1", "max": 3000 }`)
+with `audio: true`, look at the pictures (the car on the road, the camera behind it), read `sounds started` (the engine bands, tyre_road,
+wind_loop) and give the recording to `sound_report` (no clipping, no clicks). The starter's play test does exactly this
+(`crates/nova-runtime/tests/playtest_player.rs`, `the_racing_starter_drives_a_lap`).
 
 ## How to verify each kind of thing
 

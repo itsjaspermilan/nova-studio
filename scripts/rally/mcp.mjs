@@ -8,6 +8,12 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const GAME = join(root, "examples/pine-ridge-rally");
 
+/// The project a script was asked to write into (`--project folder`), or the game itself.
+export function projectArg(argv = process.argv) {
+  const at = argv.indexOf("--project");
+  return at >= 0 ? resolve(argv[at + 1]) : GAME;
+}
+
 export async function connect(project = GAME) {
   const server = spawn(join(root, "scripts/nova-mcp.sh"), [], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, NOVA_PROJECT: project } });
   let buffer = "";
@@ -49,8 +55,8 @@ export async function connect(project = GAME) {
 }
 
 /// Runs `main(nova)` against a fresh connection and always closes it.
-export async function withServer(main) {
-  const nova = await connect();
+export async function withServer(main, project = projectArg()) {
+  const nova = await connect(project);
   try {
     await main(nova);
   } finally {

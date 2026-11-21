@@ -144,6 +144,7 @@ const TEMPLATES: Record<string, { folder: string; what: string }> = {
   topdown: { folder: "starter-topdown", what: "a walking hero seen from above, two rooms, solid tiles and things, a door each way" },
   platformer: { folder: "starter-platformer", what: "seen from the side: run and jump with coyote time, one-way platforms, a moving hazard, a pickup, a door to a second scene" },
   "3d": { folder: "starter-3d", what: "third person in 3D: a rigged hero that walks, runs and jumps (clips blended by speed, footsteps from clip events), a follow camera that keeps clear of walls and tree crowns, a small garden of ruins on made ground, gems to collect, one song" },
+  racing: { folder: "starter-racing", what: "a racing game in 3D: one car (car_make) on a short textured circuit (road_make, land_make) with trackside props, an engine heard by the revs through nova.engine_sound (engine_make, driving_sounds_make), a six-speed automatic box, a chase camera, laps timed; an autopilot drives it for tests" },
 };
 
 tool(
