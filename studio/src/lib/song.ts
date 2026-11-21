@@ -97,8 +97,12 @@ export interface Track {
   echo?: number;
   echoTime?: number;
   echoFeedback?: number;
-  /// Drum tracks: "chip" (the original) or "studio".
-  kit?: "chip" | "studio" | "samples";
+  /// Side-chain style ducking (0 to 1): on every kick (pitch 36 on any drum track that is heard) the track dips by this much and
+  /// swells back over about half a beat: the pump of dance music and synthwave, and room for the kick.
+  duck?: number;
+  /// Drum tracks: "chip" (the original), "studio", or "punch" (big modern drums: a kick with a sub and a beater, a snare with a
+  /// clap and a gated room, bright short hats).
+  kit?: "chip" | "studio" | "punch" | "samples";
   /// The "samples" kit: which sound file each drum plays, by the drum's pitch number as text (`"36": "sounds/kick.wav"`). A drum with no file is silent.
   pads?: Record<string, string>;
   /// The "fm" instrument: the modulator's pitch as a multiple of the note (0.25 to 8) and how strongly it bends the tone (0 to 12; it fades as the note rings).
@@ -365,7 +369,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /// The voice fields' names and ranges.
 const VOICE_RANGES: [keyof Track, number, number][] = [
   ["unison", 1, 7], ["detune", 0, 60], ["cutoff", 0, 20000], ["resonance", 0, 0.9], ["sweep", 0, 1], ["sub", 0, 1], ["vibrato", 0, 0.5], ["reverb", 0, 1], ["echo", 0, 1], ["echoTime", 1, 16], ["echoFeedback", 0, 0.85],
-  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1], ["wtPos", 0, 1], ["root", 0, 127],
+  ["fmRatio", 0.25, 8], ["fmIndex", 0, 12], ["damping", 0, 1], ["brightness", 0, 1], ["wtPos", 0, 1], ["root", 0, 127], ["duck", 0, 1],
 ];
 
 export type Parsed = { ok: true; song: Song } | { ok: false; error: string };
@@ -410,7 +414,7 @@ export function parseSong(text: string): Parsed {
       (voice as Record<string, number>)[key] = clamp(v, lo, hi);
     }
     if (t.kit !== undefined) {
-      if (t.kit !== "chip" && t.kit !== "studio" && t.kit !== "samples") return { ok: false, error: `${at}.kit must be "chip", "studio" or "samples"` };
+      if (t.kit !== "chip" && t.kit !== "studio" && t.kit !== "punch" && t.kit !== "samples") return { ok: false, error: `${at}.kit must be "chip", "studio", "punch" or "samples"` };
       voice.kit = t.kit;
     }
     if (t.color !== undefined) {
@@ -905,8 +909,8 @@ export function envelope(t: number, hold: number, a: number, d: number, s: numbe
 /// Whether a track uses the fuller voice (anything beyond one plain oscillator or the chip drums).
 export function isRich(t: Track): boolean {
   if (t.kind === "synth" && isInstrument(t.wave)) return false;
-  if (t.kind === "drums") return t.kit === "studio" || (t.reverb ?? 0) > 0;
-  return (t.unison ?? 1) > 1 || (t.cutoff ?? 0) > 0 || (t.sub ?? 0) > 0 || (t.vibrato ?? 0) > 0 || (t.reverb ?? 0) > 0;
+  if (t.kind === "drums") return t.kit === "studio" || t.kit === "punch" || (t.reverb ?? 0) > 0 || (t.duck ?? 0) > 0;
+  return (t.unison ?? 1) > 1 || (t.cutoff ?? 0) > 0 || (t.sub ?? 0) > 0 || (t.vibrato ?? 0) > 0 || (t.reverb ?? 0) > 0 || (t.duck ?? 0) > 0;
 }
 
 /// The correction that rounds off a saw or square's jump, so the high harmonics do not fold back as hiss (PolyBLEP).
@@ -1026,6 +1030,99 @@ export function studioDrumHit(pitch: number, rate = RATE): Float32Array {
     default:
       return drumHit(pitch, rate);
   }
+}
+
+/// One drum hit of the "punch" kit: big, modern drums in layers (the 1980s gated sound that synthwave is built on). Each is a
+/// transient, a body and a tail: the kick a beater click, a sine body falling from 160 to 48 Hz and a sub; the snare a crack of
+/// noise, two tones, a clap and a dense room that is cut off short (gated); the hats ring-modulated metal, high-passed.
+export function punchDrumHit(pitch: number, rate = RATE): Float32Array {
+  const rng = mulberry32(pitch * 7877 + 3);
+  const noise = () => rng() * 2 - 1;
+  const make = (seconds: number, fn: (t: number) => number) => {
+    const out = new Float32Array(Math.max(1, Math.round(seconds * rate)));
+    for (let i = 0; i < out.length; i++) out[i] = fn(i / rate);
+    const fade = Math.min(out.length, Math.round(0.004 * rate));
+    for (let i = 0; i < fade; i++) out[out.length - 1 - i] = out[out.length - 1 - i]! * (i / fade);
+    return out;
+  };
+  // a gated room: dense noise shaped by the hit's own level, held, then shut at `gate` seconds
+  const gated = (t: number, gate: number, f: Svf) => {
+    f.step(noise(), 2400, rate, 0.6);
+    const shape = t < 0.006 ? t / 0.006 : t < gate ? 0.75 + 0.25 * Math.exp(-(t - 0.006) * 6) : Math.exp(-(t - gate) * 160);
+    return f.low * shape;
+  };
+  const metal = (t: number, f: Svf, high: number) => {
+    // two square partials ring-modulated: dense, inharmonic, metallic
+    const a = Math.sin(2 * Math.PI * 3150 * t) > 0 ? 1 : -1, b = Math.sin(2 * Math.PI * 4870 * t) > 0 ? 1 : -1;
+    f.step(a * b * 0.6 + noise() * 0.5, high, rate, 0.8);
+    return f.high;
+  };
+  switch (pitch) {
+    case 36: { // kick: beater click + body falling 174 -> 64 Hz (the drop is what a small speaker plays), soft-clipped
+      let phase = 0;
+      const click = new Svf();
+      return make(0.4, (t) => {
+        phase += (64 + 110 * Math.exp(-t * 26)) / rate;
+        click.step(noise(), 4200, rate, 0.9);
+        const body = Math.sin(2 * Math.PI * phase) * Math.exp(-t * 9);
+        const beat = click.band * Math.exp(-t * 300) * 1.1 + Math.sin(2 * Math.PI * 1100 * t) * Math.exp(-t * 180) * 0.25;
+        return softClip(body * 1.25 + beat, 2.2) * 0.9;
+      });
+    }
+    case 38: case 39: { // snare (and clap): crack, two tones, clap bursts, a gated room
+      const crack = new Svf(), room = new Svf(), clap = new Svf();
+      const clapOnly = pitch === 39;
+      return make(0.36, (t) => {
+        crack.step(noise(), 5200, rate, 0.7);
+        clap.step(noise(), 1300, rate, 1.4);
+        const tones = clapOnly ? 0 : Math.sin(2 * Math.PI * (200 - 30 * Math.min(1, t * 25)) * t) * 0.6 * Math.exp(-t * 30) + Math.sin(2 * Math.PI * 330 * t) * 0.2 * Math.exp(-t * 40);
+        const bursts = (t < 0.03 ? Math.exp(-((t % 0.0095) * 300)) : 0) * 0.9;
+        const c = (crack.high * 0.7 + crack.band * 0.5) * Math.exp(-t * (clapOnly ? 60 : 38));
+        return softClip(tones + c + clap.band * (bursts + (clapOnly ? 0.5 : 0.25) * Math.exp(-t * 14)) * 1.4 + gated(t, 0.24, room) * 0.55, 1.6) * 0.85;
+      });
+    }
+    case 42: { // closed hat
+      const f = new Svf();
+      return make(0.07, (t) => metal(t, f, 8000) * Math.exp(-t * 70) * 0.55);
+    }
+    case 46: { // open hat
+      const f = new Svf();
+      return make(0.42, (t) => metal(t, f, 7200) * Math.exp(-t * 7) * 0.42);
+    }
+    case 45: { // tom: a body falling 140 -> 90 Hz with a gated room
+      let phase = 0;
+      const room = new Svf();
+      return make(0.42, (t) => {
+        phase += (90 + 50 * Math.exp(-t * 18)) / rate;
+        return softClip(Math.sin(2 * Math.PI * phase) * Math.exp(-t * 7) + gated(t, 0.22, room) * 0.3, 1.5) * 0.85;
+      });
+    }
+    case 49: { // crash: long metal and noise
+      const f = new Svf();
+      return make(2.2, (t) => (metal(t, f, 5000) * 0.6 + noise() * 0.25) * Math.exp(-t * 2.1) * 0.5);
+    }
+    default:
+      return studioDrumHit(pitch, rate);
+  }
+}
+
+/// How much each sample of a song is turned down by a ducking track (1: not at all): a dip on every heard kick, `depth` deep,
+/// reached in 5 ms and gone over about half a beat. Kicks near the end dip the start too (the song loops).
+export function duckCurve(song: Song, kicks: number[], depth: number, total: number, rate: number): Float32Array {
+  const out = new Float32Array(total).fill(1);
+  if (!kicks.length || depth <= 0) return out;
+  const sorted = [...kicks].sort((a, b) => a - b);
+  const fall = 0.005 * rate;
+  const back = (0.5 * 60) / song.bpm * rate; // (half a beat)
+  let next = 0; // (the first kick after i)
+  for (let i = 0; i < total; i++) {
+    while (next < sorted.length && sorted[next]! <= i) next++;
+    // the last kick at or before i, else the last one of the loop before
+    const since = next > 0 ? i - sorted[next - 1]! : i + total - sorted[sorted.length - 1]!;
+    const dip = since < fall ? since / fall : Math.exp(-(since - fall) / (back / 3));
+    out[i] = 1 - depth * dip;
+  }
+  return out;
 }
 
 /// A room: eight comb filters and four all-passes per side (the classic Freeverb layout), fed the mix of both channels.
@@ -1224,6 +1321,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
   const right = new Float32Array(total);
   const hitCache = new Map<number, Float32Array>();
   const studioCache = new Map<number, Float32Array>();
+  const punchCache = new Map<number, Float32Array>();
   const padCache = new Map<string, Float32Array>();
   const buses = song.buses ?? [];
   const busBuf = buses.map((b) => (b.mute ? null : { l: new Float32Array(total), r: new Float32Array(total) }));
@@ -1232,6 +1330,10 @@ export function renderSong(source: Song, rate = RATE): Sound {
   const sendL = anyRoom ? new Float32Array(total) : null;
   const sendR = anyRoom ? new Float32Array(total) : null;
   const richSong = song.tracks.some((t) => isAudible(song, t) && isRich(t));
+  // where the heard kicks fall, for the tracks that duck under them
+  const kicks = song.tracks.some((t) => isAudible(song, t) && (t.duck ?? 0) > 0)
+    ? song.tracks.filter((t) => isAudible(song, t) && t.kind === "drums").flatMap((t) => t.notes.filter((n) => n.pitch === 36 && n.vel > 0).map((n) => Math.round((song.tempos?.length ? stepTime(song, n.step) : n.step * stepSec) * rate) % Math.max(1, total)))
+    : [];
   song.tracks.forEach((track, ti) => {
     if (!isAudible(song, track)) return;
     const pan = clamp(track.pan, -1, 1);
@@ -1247,7 +1349,8 @@ export function renderSong(source: Song, rate = RATE): Sound {
     const sends = (track.sends ?? []).map((s) => ({ at: busOf(s.bus), level: clamp(s.level, 0, 1) })).filter((s) => s.at >= 0 && s.level > 0 && busBuf[s.at]);
     // a track that is routed to a muted bus is not heard (its sends still reach other buses)
     const dest = route >= 0 ? busBuf[route] ?? null : { l: left, r: right };
-    const temp = chain.length > 0 || sends.length > 0 || !dest;
+    const duck = clamp(track.duck ?? 0, 0, 1);
+    const temp = chain.length > 0 || sends.length > 0 || !dest || (duck > 0 && kicks.length > 0);
     const outL = temp ? new Float32Array(total) : dest!.l;
     const outR = temp ? new Float32Array(total) : dest!.r;
     const sendNow = send > 0 && !chain.length && !!dest;
@@ -1294,10 +1397,10 @@ export function renderSong(source: Song, rate = RATE): Sound {
         continue;
       }
       if (track.kind === "drums") {
-        const studio = track.kit === "studio";
-        const cache = studio ? studioCache : hitCache;
+        const kit = track.kit === "studio" || track.kit === "punch" ? track.kit : "chip";
+        const cache = kit === "studio" ? studioCache : kit === "punch" ? punchCache : hitCache;
         let hit = cache.get(n.pitch);
-        if (!hit) cache.set(n.pitch, (hit = studio ? studioDrumHit(n.pitch, rate) : drumHit(n.pitch, rate)));
+        if (!hit) cache.set(n.pitch, (hit = kit === "studio" ? studioDrumHit(n.pitch, rate) : kit === "punch" ? punchDrumHit(n.pitch, rate) : drumHit(n.pitch, rate)));
         for (let k = 0; k < hit.length; k++) mix(startIndex + k, hit[k]! * n.vel, nl, nr);
         continue;
       }
@@ -1334,6 +1437,13 @@ export function renderSong(source: Song, rate = RATE): Sound {
     }
     if (temp) {
       const [pl, pr] = chain.length ? applyFx(chain, outL, outR, rate) : [outL, outR];
+      if (duck > 0 && kicks.length) {
+        const curve = duckCurve(song, kicks, duck, total, rate);
+        for (let i = 0; i < total; i++) {
+          pl[i] = pl[i]! * curve[i]!;
+          pr[i] = pr[i]! * curve[i]!;
+        }
+      }
       for (let i = 0; i < total; i++) {
         if (dest) {
           dest.l[i] = dest.l[i]! + pl[i]!;

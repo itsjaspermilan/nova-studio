@@ -2,6 +2,9 @@
 // the same parameters and seed always give the same samples.
 
 import type { Sound } from "./wav";
+import { cleanLayer, FINISH_RANGES, layerToJson, nearest, renderRich, type SfxFinish, type SfxLayer } from "./sfx-layers";
+
+export type { SfxLayer } from "./sfx-layers";
 
 export type Wave = "square" | "saw" | "sine" | "triangle" | "noise";
 export const WAVES: Wave[] = ["square", "saw", "sine", "triangle", "noise"];
@@ -37,7 +40,24 @@ export interface SfxParams {
   highpass: number;
   volume: number;
   seed: number;
+  /// The fuller effect (lib/sfx-layers.ts): when given, these layers are the sound and the plain voice above is not played
+  /// (`volume` and `seed` still apply). Up to 8.
+  layers?: SfxLayer[];
+  /// The finish over the whole sound, layered or plain: saturation, a short room and its size, stereo width (0 to 1 each).
+  drive?: number;
+  reverb?: number;
+  room?: number;
+  width?: number;
 }
+
+/// The keys of an effect beyond the plain voice's sliders.
+export const RICH_KEYS = ["layers", "drive", "reverb", "room", "width"] as const;
+
+/// A layered effect's `volume` is a gain on its layers (they rarely add up to full scale): it may go to 4, and the peak is kept under full scale.
+export const MAX_LAYERED_VOLUME = 4;
+
+/// Whether an effect uses anything beyond the plain voice (then it renders through lib/sfx-layers.ts).
+export const isRichSfx = (p: SfxParams) => !!p.layers?.length || !!p.drive || !!p.reverb || !!p.width;
 
 export const DEFAULTS: SfxParams = {
   wave: "square", freq: 440, freqLimit: 0, slide: 0, slideDelta: 0, duty: 0.5, dutySweep: 0, vibratoDepth: 0, vibratoSpeed: 8,
@@ -45,7 +65,7 @@ export const DEFAULTS: SfxParams = {
 };
 
 /// Slider ranges, so the editor and the randomiser agree on what is sensible.
-export const RANGES: Record<Exclude<keyof SfxParams, "wave" | "seed" | "arpNotes">, { min: number; max: number; step: number; label: string; unit?: string }> = {
+export const RANGES: Record<Exclude<keyof SfxParams, "wave" | "seed" | "arpNotes" | (typeof RICH_KEYS)[number]>, { min: number; max: number; step: number; label: string; unit?: string }> = {
   freq: { min: 40, max: 3000, step: 1, label: "Pitch", unit: "Hz" },
   freqLimit: { min: 0, max: 3000, step: 1, label: "Lowest pitch", unit: "Hz" },
   slide: { min: -4, max: 4, step: 0.05, label: "Slide", unit: "oct/s" },
@@ -79,6 +99,15 @@ export function mulberry32(seed: number) {
 export const MAX_SECONDS = 4;
 
 export function render(params: SfxParams, rate = SAMPLE_RATE): Sound {
+  if (!isRichSfx(params)) return renderPlain(params, rate);
+  const finish: SfxFinish = { drive: params.drive, reverb: params.reverb, room: params.room, width: params.width };
+  const layers = params.layers?.length ? params.layers : null;
+  const dry = layers ? null : renderPlain(params, rate).channels[0]!;
+  return { rate, channels: renderRich(layers, dry, finish, params.volume, params.seed, MAX_SECONDS, rate) };
+}
+
+/// The plain voice: one oscillator, one envelope, two one-pole filters (sfxr's model). Old files render exactly as they always did.
+function renderPlain(params: SfxParams, rate: number): Sound {
   const p = params;
   const seconds = Math.min(MAX_SECONDS, p.attack + p.sustain + p.decay);
   const total = Math.max(1, Math.round(seconds * rate));
@@ -185,8 +214,52 @@ export function cleanArpNotes(v: unknown): number[] | undefined {
   return (v as number[]).slice(0, 16).map((n) => Math.max(-36, Math.min(36, n)));
 }
 
+/// The fuller keys of an effect (`layers` and the finish) checked and made whole; throws with what is wrong. Only the keys given are set.
+export function cleanRich(v: Record<string, unknown>): Partial<Pick<SfxParams, (typeof RICH_KEYS)[number]>> {
+  const out: Partial<Pick<SfxParams, (typeof RICH_KEYS)[number]>> = {};
+  for (const [k, r] of Object.entries(FINISH_RANGES) as [keyof SfxFinish, { min: number; max: number }][]) {
+    const n = v[k];
+    if (n === undefined) continue;
+    if (typeof n !== "number" || !Number.isFinite(n)) throw new Error(`${k} is a number from ${r.min} to ${r.max}`);
+    out[k] = clamp(n, r.min, r.max);
+  }
+  if (v.layers !== undefined) {
+    if (!Array.isArray(v.layers) || v.layers.length > 8) throw new Error('layers is a list of up to 8 layers, like [{ "wave": "noise", "filter": "bandpass", "cutoff": 3000, "cutoffEnd": 600, "decay": 0.2 }, { "wave": "sine", "freq": 55, "pitch": 24, "decay": 0.3 }]');
+    out.layers = v.layers.map((l, i) => cleanLayer(l, `layers[${i}]`));
+  }
+  return out;
+}
+
 export function toJson(params: SfxParams): string {
-  return `${JSON.stringify({ version: 1, ...params }, null, 2)}\n`;
+  const { layers, drive, reverb, room, width, ...plain } = params;
+  const finish = { ...(drive ? { drive } : {}), ...(reverb ? { reverb } : {}), ...(reverb && room !== undefined ? { room } : {}), ...(width ? { width } : {}) };
+  // a layered effect keeps only what it plays: its master volume, seed, finish and layers
+  if (layers?.length) return `${JSON.stringify({ version: 1, volume: plain.volume, seed: plain.seed, ...finish, layers: layers.map(layerToJson) }, null, 2)}\n`;
+  return `${JSON.stringify({ version: 1, ...plain, ...finish }, null, 2)}\n`;
+}
+
+/// The keys an effect file may have, for a message about a misspelt one.
+export const SFX_KEYS = ["version", "wave", "seed", "arpNotes", ...Object.keys(RANGES), ...RICH_KEYS];
+
+/// An effect file read, or why it cannot be: unknown keys, a bad layer.
+export function parseSfx(text: string): { ok: true; params: SfxParams } | { ok: false; error: string } {
+  let v: Record<string, unknown>;
+  try {
+    v = JSON.parse(text) as Record<string, unknown>;
+  } catch (e) {
+    return { ok: false, error: `not valid JSON: ${e instanceof Error ? e.message : e}` };
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "an effect is a JSON object" };
+  const unknown = Object.keys(v).find((k) => !SFX_KEYS.includes(k));
+  if (unknown) return { ok: false, error: `it has "${unknown}", which an effect does not have${nearest(unknown, SFX_KEYS)}` };
+  const p = fromJson(text);
+  if (!p) return { ok: false, error: "it is not a sound effect" };
+  try {
+    cleanRich(v);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true, params: p };
 }
 
 export function fromJson(text: string): SfxParams | null {
@@ -202,6 +275,10 @@ export function fromJson(text: string): SfxParams | null {
     }
     const notes = cleanArpNotes(v.arpNotes);
     if (notes) out.arpNotes = notes;
+    // (a fuller effect: a bad layer makes the whole file unreadable rather than half of it played)
+    Object.assign(out, cleanRich(v));
+    // (a layered effect's volume is a gain on its layers before the finish: up to 4, the peak kept under full scale)
+    if (out.layers?.length && typeof v.volume === "number" && Number.isFinite(v.volume)) out.volume = clamp(v.volume, 0, MAX_LAYERED_VOLUME);
     return out;
   } catch {
     return null;

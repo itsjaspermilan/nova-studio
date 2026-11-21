@@ -314,6 +314,9 @@
 
       {#if generator}
         <p class="dim small">Saving writes <code>{wavPath}</code> next to these settings. Play it in a game with <code>nova.sound.play("{fromPath.slice(fromPath.lastIndexOf("/") + 1).replace(/\.sfx\.json$/, "")}")</code>.</p>
+        {#if params.layers?.length}
+          <p class="dim small">This sound is made of {params.layers.length} layers{params.drive || params.reverb || params.width ? ", with drive, room or width over them" : ""}. The sliders below are the plain voice, which a layered sound does not play (only Volume does): the layers are kept as they are when you save. Change them in the <code>.sfx.json</code> file or with the <code>sfx_write</code> tool.</p>
+        {/if}
         <div class="presets">
           <span class="dim">Start from</span>
           {#each Object.keys(PRESETS) as name (name)}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNote, addTrack, changeNote, drumHit, drumTrack, echoOf, envelope, isAudible, setMaster, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
+import { addNote, addTrack, changeNote, drumHit, drumTrack, echoOf, punchDrumHit, envelope, isAudible, setMaster, midiFreq, newSong, noteAt, noteName, parseSong, removeNote, removeTrack, renderSong, serializeSong, setLength, setTempo, songSeconds, stepSeconds, studioDrumHit, synthTrack, transpose, updateTrack, type Song } from "./song";
 import { frames, peak } from "./wav";
 
 const empty = (over: Partial<Song> = {}): Song => ({ version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [synthTrack("a")], ...over });
@@ -437,5 +437,41 @@ describe("the sample drum kit", () => {
       j.tracks[0].pads = bad;
       expect(parseSong(JSON.stringify(j)).ok, JSON.stringify(bad)).toBe(false);
     }
+  });
+});
+
+describe("ducking under the kick, and the punch kit", () => {
+  const song = (duck: number, kit?: "punch"): Song => ({
+    version: 1, bpm: 120, stepsPerBeat: 4, length: 16,
+    tracks: [
+      { ...synthTrack("pad", "saw"), unison: 2, detune: 5, attack: 0.01, sustain: 1, release: 0.05, volume: 0.4, duck, notes: [{ step: 0, len: 16, pitch: 57, vel: 0.8 }] },
+      { ...drumTrack(), ...(kit ? { kit } : {}), volume: 0, notes: [0, 4, 8, 12].map((step) => ({ step, len: 1, pitch: 36, vel: 0.9 })) },
+    ],
+  });
+  const rmsAt = (s: ReturnType<typeof renderSong>, from: number, to: number) => {
+    const x = s.channels[0]!;
+    let e = 0;
+    for (let i = Math.round(from * s.rate); i < Math.round(to * s.rate); i++) e += x[i]! ** 2;
+    return Math.sqrt(e / ((to - from) * s.rate));
+  };
+  it("dips a ducking track just after each kick and lets it swell back before the next", () => {
+    const plain = renderSong(song(0)), ducked = renderSong(song(0.6));
+    // (a kick every half second: just after one the pad is down, 0.4 s after it is back; both pads are the fuller voice, so only the ducking differs)
+    expect(rmsAt(ducked, 0.505, 0.535) / rmsAt(plain, 0.505, 0.535)).toBeLessThan(0.6);
+    expect(rmsAt(ducked, 0.9, 0.98) / rmsAt(plain, 0.9, 0.98)).toBeGreaterThan(0.85);
+    // (the drum track itself is silent here, volume 0: the dip is the ducking alone)
+    expect(serializeSong(song(0.6))).toContain('"duck": 0.6');
+    const back = parseSong(serializeSong(song(0.6)));
+    expect(back.ok && back.song.tracks[0]!.duck).toBe(0.6);
+  });
+  it("plays the punch kit: a kick that ends in silence, a gated snare that stops short", () => {
+    const kick = punchDrumHit(36), snare = punchDrumHit(38);
+    expect(kick.length).toBeGreaterThan(1000);
+    expect(Math.abs(kick[kick.length - 1]!)).toBeLessThan(0.01);
+    // the gate: loud at 0.2 s, near silence by 0.3 s
+    const at = (t: number) => Math.max(...Array.from(snare.subarray(Math.round(t * 44100), Math.round(t * 44100) + 441), Math.abs));
+    expect(at(0.2)).toBeGreaterThan(at(0.3) * 8);
+    expect(parseSong(JSON.stringify(song(0, "punch"))).ok).toBe(true);
+    expect(parseSong(JSON.stringify({ ...song(0), tracks: [{ ...song(0).tracks[1], kit: "rock" }] }))).toMatchObject({ ok: false, error: expect.stringContaining('"chip", "studio", "punch" or "samples"') });
   });
 });

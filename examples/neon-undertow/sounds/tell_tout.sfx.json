@@ -1,26 +1,32 @@
 {
   "version": 1,
-  "wave": "sine",
-  "freq": 660,
-  "freqLimit": 0,
-  "slide": 0,
-  "slideDelta": 0,
-  "duty": 0.5,
-  "dutySweep": 0,
-  "vibratoDepth": 0,
-  "vibratoSpeed": 8,
-  "arpSemitones": 0,
-  "arpTime": 0.1,
-  "attack": 0.01,
-  "sustain": 0.2,
-  "decay": 0.2,
-  "punch": 0,
-  "lowpass": 20000,
-  "highpass": 150,
-  "volume": 0.4,
+  "volume": 0.602,
   "seed": 1,
-  "arpNotes": [
-    5,
-    9
+  "drive": 0.1,
+  "reverb": 0.2,
+  "room": 0.35,
+  "width": 0.4,
+  "layers": [
+    {
+      "wave": "sine",
+      "freq": 660,
+      "attack": 0.01,
+      "hold": 0.09,
+      "decay": 0.06,
+      "volume": 0.4,
+      "fm": 1.5,
+      "fmRatio": 2
+    },
+    {
+      "wave": "sine",
+      "freq": 1109.98,
+      "start": 0.11,
+      "attack": 0.01,
+      "hold": 0.12,
+      "decay": 0.15,
+      "volume": 0.4,
+      "fm": 1.5,
+      "fmRatio": 2
+    }
   ]
 }

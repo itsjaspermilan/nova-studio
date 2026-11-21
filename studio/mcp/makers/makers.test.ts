@@ -262,13 +262,26 @@ describe("sounds and songs by what they are for", () => {
       for (const seed of [1, 2, 3]) {
         const said = text(use("sfx_write", { name: `${purpose}_${seed}`, purpose, seed }));
         expect(said, `${purpose} seed ${seed}`).not.toContain("WARNING");
+        // built like a produced sound: layered, and not one the report calls toy-like
+        expect(said, `${purpose} seed ${seed}`).not.toContain("toy-like");
+        expect(JSON.parse(bytes(`sounds/${purpose}_${seed}.sfx.json`).toString()).layers.length, purpose).toBeGreaterThan(1);
       }
       expect(bytes(`sounds/${purpose}_1.wav`).equals(bytes(`sounds/${purpose}_2.wav`)), `${purpose}: another seed is another sound`).toBe(false);
     }
     again("sfx_write", { name: "step_grass_2", purpose: "step_grass", seed: 2 }, ["sounds/step_grass_2.wav", "sounds/step_grass_2.sfx.json"]);
-    // a purpose is a starting point: params still change it, and the file is an ordinary effect
-    use("sfx_write", { name: "low", purpose: "coin", params: { freq: 500 } });
-    expect(JSON.parse(bytes("sounds/low.sfx.json").toString()).freq).toBe(500);
+    // a purpose is a starting point: the finish and the layers still change it, and the file is an ordinary effect
+    use("sfx_write", { name: "low", purpose: "coin", params: { volume: 0.3, reverb: 0.4 } });
+    expect(JSON.parse(bytes("sounds/low.sfx.json").toString())).toMatchObject({ volume: 0.3, reverb: 0.4 });
+    // the plain voice's keys would change nothing in a layered effect: refused, not ignored
+    expect(() => use("sfx_write", { name: "low", purpose: "coin", params: { freq: 500 } })).toThrow(/made of layers.*"freq" would change nothing/);
+    // the old purposes are all still there, with the new ones
+    for (const p of ["step_grass", "step_stone", "sword_swing", "hit", "hurt", "pickup", "coin", "door", "chest_open", "jump", "land", "ui_move", "ui_select", "enemy_die", "locked", "powerup", "explosion", "laser", "heavy_hit", "whoosh", "shot", "zap", "tell", "alarm", "death", "metal_hit", "glass"]) expect(PURPOSE_NAMES).toContain(p);
+    // a misspelt key, of the effect or of a layer, is refused with the nearest one
+    expect(() => use("sfx_write", { name: "x", params: { revrb: 0.2 } })).toThrow(/"revrb", which the synth does not have \(did you mean "reverb"\?\)/);
+    expect(() => use("sfx_write", { name: "x", params: { layers: [{ wave: "noise", cutof: 300 }] } })).toThrow(/layers\[0\] has "cutof", which a layer does not have \(did you mean "cutoff"\?\)/);
+    // a level to match: the volume is found for it
+    const matched = text(use("sfx_write", { name: "quiet_hit", purpose: "hit", loudness: -24 }));
+    expect(matched).toMatch(/volume [\d.]+ for loudness -2[34]\.\d \(asked -24\)/);
     expect(() => use("sfx_write", { name: "x", purpose: "sneeze" })).toThrow(/unknown purpose 'sneeze'. Purposes: step_grass/);
   });
 
@@ -280,14 +293,19 @@ describe("sounds and songs by what they are for", () => {
       expect(said, mood).toMatch(/loop seam: matches|the end meets the start/);
       const parsed = parseSong(bytes(`music/${name}.song.json`).toString());
       if (!parsed.ok) throw new Error(parsed.error);
-      expect(parsed.song.tracks.map((t) => t.name)).toEqual(["melody", "harmony", "bass", "drums"]);
+      expect(parsed.song.tracks.map((t) => t.name).filter((n) => n !== "arp")).toEqual(["melody", "harmony", "bass", "drums"]);
+      expect(parsed.song.tracks.some((t) => t.name === "arp"), mood).toBe(mood.startsWith("synthwave"));
+      // the fuller voices, not the chip voice and the chip kit: and the report finds nothing to advise
+      expect(parsed.song.tracks.find((t) => t.name === "bass")!.wave, mood).toBe("saw");
+      expect(["studio", "punch"]).toContain(parsed.song.tracks.find((t) => t.kind === "drums")!.kit);
+      expect(said, mood).not.toContain("advice:");
       for (const t of parsed.song.tracks) {
         expect(t.notes.length, `${mood} ${t.name}`).toBeGreaterThan(2);
         expect(t.notes.some((n) => n.step === 0), `${mood} ${t.name} starts on the first step`).toBe(true);
         for (const n of t.notes) expect(n.step + n.len).toBeLessThanOrEqual(parsed.song.length);
       }
       // the bass stays where a small speaker can play it
-      expect(Math.min(...parsed.song.tracks[2]!.notes.map((n) => n.pitch))).toBeGreaterThanOrEqual(43);
+      expect(Math.min(...parsed.song.tracks.find((t) => t.name === "bass")!.notes.map((n) => n.pitch))).toBeGreaterThanOrEqual(43);
       // it can be given back to song_write as it is
       expect(() => use("song_write", { name: `${name}_again`, song: bytes(`music/${name}.song.json`).toString() })).not.toThrow();
     }

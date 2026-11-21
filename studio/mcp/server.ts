@@ -28,10 +28,11 @@ import { planScene } from "./plan3d";
 import { ignoredPlace, playGame, ROUTE_HELP } from "./play";
 import { MOVED, nearest, nestedWarnings, unknownKeys } from "./keys";
 import { previewSprite, writeSprite } from "./sprites";
-import { PRESETS, DEFAULTS, RANGES, WAVES, cleanArpNotes, fromJson as sfxFromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
+import { PRESETS, DEFAULTS, MAX_LAYERED_VOLUME, RANGES, RICH_KEYS, WAVES, cleanArpNotes, cleanRich, fromJson as sfxFromJson, parseSfx, render, toJson, type SfxParams } from "../src/lib/sfx";
+import { FINISH_RANGES, LAYER_FILTERS, LAYER_RANGES, LAYER_WAVES, nearest as nearestKey } from "../src/lib/sfx-layers";
 import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
 import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrack } from "../src/lib/song";
-import { analyse, describe, mixTable, spectrogram, stack, type Source } from "./sound";
+import { analyse, describe, heardLevel, mixTable, spectrogram, stack, type Source } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene, roomWarning } from "./scenes";
 import { expandPaint } from "./makers/terrain-paint";
@@ -337,12 +338,20 @@ tool(
     "What they mean: the sound lasts attack + sustain + decay seconds (at most 4). `freq` is the pitch in Hz at the start (440 is the A above middle C; 880 an octave up); `slide` bends it by octaves per second (negative falls: a laser, a fall), `freqLimit` cuts the sound off when the pitch falls below it. " +
     "For the `noise` wave `freq` is how often the noise takes a new random value, so it sets the colour, not a pitch, and most of the energy lies below about half of it: 3000 (the top) is a bright crunch (a hit, an explosion, steps on gravel), 800 to 1500 a duller rattle, and below about 200 a rumble of slow thuds that small speakers cannot play (a footstep at freq 30 to 70 is nearly inaudible on a handheld: use 1500 to 3000 with a short decay, and a `highpass` of 500 or more for a hiss). " +
     "`arpSemitones` jumps the pitch once after `arpTime` seconds (a coin: 12). For a little tune give `arpNotes`, semitones from `freq`, one every `arpTime` seconds after the first note: { \"freq\": 523, \"arpTime\": 0.11, \"arpNotes\": [4, 7, 12], \"sustain\": 0.4 } is a four-note rising fanfare (one envelope over the whole tune; for separate notes with their own attack write a short song with song_write and play it as a sound). " +
-    "`punch` adds a loud start, `lowpass` and `highpass` (Hz) soften or thin it, `duty` is the square wave's width (0.5 hollow, 0.1 thin and nasal). It returns the sound_report of what it made (level, where the energy sits, warnings). In Lua: nova.sound.play(\"<name>\", { volume = 0.8, pitch = 1.1 }).",
+    "`punch` adds a loud start, `lowpass` and `highpass` (Hz) soften or thin it, `duty` is the square wave's width (0.5 hollow, 0.1 thin and nasal). " +
+    "That plain voice is one oscillator and one envelope, the sound of an old console. For a produced sound give `layers` (up to 8; then the plain voice is not played, and `volume`, 0 to 4, is a gain on the layers before the finish; the peak is kept under full scale): each layer is one source with its own start, envelope, pitch envelope and moving filter, and a modern hit is three of them: a transient (5 to 20 ms of bright noise or a click), a body (a tone with a pitch drop, or filtered noise) and a tail, often with a sub under it. A layer: " +
+    `wave (${LAYER_WAVES.join("|")}; noise is white, pink is darker, crackle is sparse clicks, freq of them a second), filter (${LAYER_FILTERS.join("|")}; giving cutoff alone means lowpass), ` +
+    Object.entries(LAYER_RANGES).map(([k, r]) => `${k} ${r.min}..${r.max} (${r.what})`).join(", ") + ". " +
+    "Saw and square layers are band-limited (no folding whistles). `decay` is the time to fall to -60 dB, an exponential ring like a real one. " +
+    'Over the whole sound (plain or layered): ' + Object.entries(FINISH_RANGES).map(([k, r]) => `\`${k}\` ${r.min}..${r.max} (${r.what})`).join(", ") + ". " +
+    'A punchy hit: { "volume": 0.7, "drive": 0.3, "reverb": 0.12, "width": 0.4, "layers": [{ "wave": "noise", "filter": "highpass", "cutoff": 3500, "hold": 0, "decay": 0.03, "volume": 0.5 }, { "wave": "sine", "freq": 90, "pitch": 24, "pitchTime": 0.025, "hold": 0.02, "decay": 0.22, "volume": 0.8 }, { "wave": "noise", "filter": "bandpass", "cutoff": 2500, "cutoffEnd": 500, "q": 1.2, "hold": 0.01, "decay": 0.18, "volume": 0.5 }] }. ' +
+    "A misspelt key, here or in a layer, is refused with the nearest one. It returns the sound_report of what it made (level, where the energy sits, its make-up, warnings, and advice on what a thin or toy-like sound lacks). In Lua: nova.sound.play(\"<name>\", { volume = 0.8, pitch = 1.1 }); `vary = 0.05` there changes pitch and level a little each play.",
   {
     name: { type: "string" },
     purpose: { type: "string", description: `What the sound is for: ${PURPOSE_NAMES.join(", ")}. A tuned effect that passes sound_report as it is; \`params\` still change it.` },
     seed: { type: "number", description: "With a purpose: another seed is a variant of the same effect (a little higher or lower, shorter or longer), so three footsteps need not sound alike." },
     preset: { type: "string" },
+    loudness: { type: "number", description: "The level it should be heard at (LUFS for a sound of 0.45 s or more, else dB RMS of its loud parts, as sound_report measures; a hit is about -14 to -18, a menu tick -20 to -24): the `volume` is found to match it. Handy when remaking a sound so it keeps its place in the mix." },
     params: { type: "object" },
   },
   ["name"],
@@ -351,27 +360,48 @@ tool(
     const name = safeName(a.name, "Sound");
     const base = a.purpose !== undefined ? purposeParams(a.purpose, a.seed) : a.preset ? PRESETS[String(a.preset)] : DEFAULTS;
     if (!base) throw new Error(`unknown preset '${a.preset}' (${Object.keys(PRESETS).join(", ")})`);
-    const known = new Set([...Object.keys(RANGES), "wave", "seed", "arpNotes"]);
+    const known = new Set([...Object.keys(RANGES), "wave", "seed", "arpNotes", ...RICH_KEYS]);
     const unknown = Object.keys(a.params ?? {}).filter((k) => !known.has(k));
-    if (unknown.length) throw new Error(`params has "${unknown.join('", "')}", which the synth does not have (it has ${[...known].join(", ")})`);
-    const p: SfxParams = { ...base, ...(a.params ?? {}) };
+    if (unknown.length) throw new Error(`params has "${unknown.join('", "')}", which the synth does not have${nearestKey(unknown[0]!, [...known])} (it has ${[...known].join(", ")})`);
+    const given = (a.params ?? {}) as Record<string, unknown>;
+    const p: SfxParams = { ...base, ...given, ...cleanRich(given) } as SfxParams;
+    if (given.layers !== undefined && !(p.layers?.length)) delete p.layers;
+    // a layered effect does not play the plain voice, so its keys would change nothing: say so rather than ignore them
+    const plainGiven = Object.keys(given).filter((k) => k !== "volume" && k !== "seed" && !(RICH_KEYS as readonly string[]).includes(k));
+    if (p.layers?.length && plainGiven.length) throw new Error(`this effect is made of layers (${a.purpose !== undefined ? `the purpose "${a.purpose}" is` : "params.layers is"}), so the plain voice's "${plainGiven.join('", "')}" would change nothing. Change it with \`volume\`, \`drive\`, \`reverb\`, \`room\`, \`width\`, or give \`layers\` (read sounds/<name>.sfx.json for the purpose's own and give them back changed); or leave out the purpose for a plain effect.`);
     if (!WAVES.includes(p.wave)) throw new Error(`wave must be one of ${WAVES.join(", ")}`);
     for (const [k, r] of Object.entries(RANGES)) {
       const v = (p as any)[k];
       if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${k} must be a number`);
-      (p as any)[k] = Math.min(r.max, Math.max(r.min, v));
+      const max = k === "volume" && p.layers?.length ? MAX_LAYERED_VOLUME : r.max;
+      (p as any)[k] = Math.min(max, Math.max(r.min, v));
     }
     if (p.arpNotes !== undefined) {
       const notes = cleanArpNotes(p.arpNotes);
       if (!notes) throw new Error('arpNotes is a list of semitones from freq, like [4, 7, 12] (up to 16 notes)');
       p.arpNotes = notes;
     }
+    // a level to match: the volume is found by halving the gap (with drive, volume and level do not move together)
+    let matched = "";
+    if (a.loudness !== undefined) {
+      const want = Number(a.loudness);
+      if (!(want >= -48 && want <= -3)) throw new Error('"loudness" is the level to be heard at, -48 to -3 (LUFS for a sound of 0.45 s or more, else dB RMS of its loud parts, as sound_report\'s mix table measures)');
+      let lo = Math.log(0.005), hi = Math.log(p.layers?.length ? MAX_LAYERED_VOLUME : 1);
+      for (let i = 0; i < 14; i++) {
+        const mid = (lo + hi) / 2;
+        if (heardLevel(render({ ...p, volume: Math.exp(mid) })) < want) lo = mid;
+        else hi = mid;
+      }
+      p.volume = Math.round(Math.exp((lo + hi) / 2) * 1000) / 1000;
+      const got = heardLevel(render(p));
+      matched = Math.abs(got - want) > 1 ? `NOTE: asked for loudness ${want}, the nearest it gets is ${got.toFixed(1)} (volume ${p.volume}); ${got < want ? "add `drive` or a louder layer" : "lower a layer"}.\n` : `volume ${p.volume} for loudness ${got.toFixed(1)} (asked ${want})\n`;
+    }
     const sound = render(p);
     const bytes = encodeWav(sound);
     put(root, `sounds/${name}.sfx.json`, toJson(p));
     put(root, `sounds/${name}.wav`, bytes);
     const report = describe(analyse(`sounds/${name}.wav`, sound, { source: { sfx: p } }));
-    return `sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s\n${report}`;
+    return `${matched}sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s\n${report}`;
   },
 );
 
@@ -402,9 +432,9 @@ function loadSound(root: string, given: string): { name: string; sound: Sound; m
   const name = file.startsWith(root + sep) ? relative(root, file) : file;
   const music = /(^|\/)music\//.test(name) || /\.song\.json$/.test(name);
   if (/\.sfx\.json$/i.test(file)) {
-    const p = sfxFromJson(readFileSync(file, "utf8"));
-    if (!p) throw new Error(`${name} is not a sound effect file`);
-    return { name, sound: render(p), music, file };
+    const parsed = parseSfx(readFileSync(file, "utf8"));
+    if (!parsed.ok) throw new Error(`${name}: ${parsed.error}`);
+    return { name, sound: render(parsed.params), music, file };
   }
   if (/\.song\.json$/i.test(file)) {
     const parsed = parseSong(readFileSync(file, "utf8"));
@@ -503,7 +533,7 @@ tool(
   "Write a song: `music/<name>.song.json` (the music editor's step sequencer) and the `music/<name>.ogg` the game streams. `song`: " +
     '{ "version": 1, "bpm": 40-240, "stepsPerBeat": 1-8, "length": steps (a bar is stepsPerBeat*4), "tracks": [ { "name", "kind": "synth"|"drums", "wave": "square|saw|triangle|sine|noise", "duty", "attack", "decay", "sustain", "release", "volume": 0-1, "pan": -1..1, "mute": false, "notes": [ { "step", "len", "pitch": midi (60 = middle C), "vel": 0-1 } ] } ] }. ' +
     "What each kind of track needs: a **synth** track needs `name`, `kind` and `notes` (wave defaults to square; attack, decay, sustain, release, volume, pan have the editor's defaults); a **drums** track needs only `name`, `kind` and `notes`: it has no wave, and a note's pitch picks the drum: 36 kick, 38 snare, 39 clap, 42 closed hat, 46 open hat, 45 tom, 49 crash (its length does not matter). A note needs `step` and `pitch`; `len` defaults to 1 step and `vel` to 0.8. " +
-    "Synth tracks can take a fuller voice (leave these out for the plain chip sound): \"unison\" 1-7 detuned oscillators spread \"detune\" cents (0-60) across the stereo field, \"cutoff\" Hz low-pass with \"resonance\" 0-0.9 and \"sweep\" 0-1 (the note's envelope opens the filter by up to three octaves: plucks, bass), \"sub\" 0-1 (a sine an octave down), \"vibrato\" 0-0.5 semitones, and \"reverb\" 0-1 (the share sent to the song's room). Drum tracks can set \"kit\": \"studio\" (a kick with a click and weight, a snare with a tone and rattle, metallic hats) instead of the chip kit, and a \"reverb\" send. The song can have \"room\": { \"size\": 0-1, \"damping\": 0-1, \"mix\": 0-2 } for the reverb (default 0.55, 0.4, 1). " +
+    "Synth tracks can take a fuller voice (leave these out for the plain chip sound): \"unison\" 1-7 detuned oscillators spread \"detune\" cents (0-60) across the stereo field, \"cutoff\" Hz low-pass with \"resonance\" 0-0.9 and \"sweep\" 0-1 (the note's envelope opens the filter by up to three octaves: plucks, bass), \"sub\" 0-1 (a sine an octave down), \"vibrato\" 0-0.5 semitones, and \"reverb\" 0-1 (the share sent to the song's room). Drum tracks can set \"kit\": \"studio\" (a kick with a click and weight, a snare with a tone and rattle, metallic hats) or \"punch\" (big layered drums: a beater click on a falling kick, a snare with a clap and a gated room, ring-modulated hats; the synthwave sound) instead of the chip kit, and a \"reverb\" send. Any track can \"duck\" 0-1 under the kick (it dips on every kick, pitch 36, and swells back over half a beat: side-chain pumping). The song can have \"master\": { \"volume\": 1, \"fx\": [{ \"type\": \"compressor\", \"params\": { \"threshold\": -16, \"ratio\": 2.5 } }], \"limit\": -1, \"lufs\": -16 } (a chain on the mix, a peak ceiling in dB, a loudness target). The plain chip voice and the chip kit are what makes a song sound like an old console: sound_report says which tracks still use them. The song can have \"room\": { \"size\": 0-1, \"damping\": 0-1, \"mix\": 0-2 } for the reverb (default 0.55, 0.4, 1). " +
     "The song loops without a gap. In Lua: nova.music.play(\"<name>\").",
   { name: { type: "string" }, song: { type: ["object", "string"] } },
   ["name", "song"],

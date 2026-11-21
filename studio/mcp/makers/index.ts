@@ -157,7 +157,7 @@ export function registerMakers(h: Host): Record<string, Args> {
   h.tool(
     "song_make",
     `Make a short looping song from a mood: ${MOOD_NAMES.map((n) => `"${n}" (${MOODS[n]!.what})`).join("; ")}. ` +
-      "It writes `music/<name>.song.json` and the `.ogg` the game streams, exactly as song_write does: a melody, a bass, a harmony part and drums that follow one chord progression and come round to the start. " +
+      "It writes `music/<name>.song.json` and the `.ogg` the game streams, exactly as song_write does: a melody, a bass, a harmony part (and in the synthwave moods a fast arpeggio) and drums that follow one chord progression and come round to the start, in the fuller voices (detuned saws through moving filters, a sub, echo and room, the studio or punch drum kit, ducking under the kick, a compressor and limiter on the master), not the chip voice. " +
       "`key` (\"C\", \"A minor\") and `tempo` (beats a minute) change it; `seed` gives another tune in the same mood. It returns the song's sound_report (level, loop seam, warnings) and its picture. " +
       'The song is an ordinary one afterwards: read_file the .song.json, change notes or instruments, and give it to song_write. In Lua: nova.music.play("<name>", { volume = 0.35 }).',
     {

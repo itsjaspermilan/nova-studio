@@ -30,52 +30,101 @@ interface Mood {
   bass: Rhythm;
   /// Which note of the chord the bass plays on each of its notes: 0 the root, 4 the fifth above, 7 the octave.
   bassLine: number[];
-  drums: { kick: number[]; snare: number[]; hat: number[]; hatVel: number; crash?: boolean };
+  drums: { kick: number[]; snare: number[]; hat: number[]; hatVel: number; crash?: boolean; open?: number[]; clap?: boolean };
   bars: number;
+  /// The fuller voices (song.ts): the harmony part's and the bass's instrument, the drum kit and its room send. Every mood has them: the
+  /// plain chip voice and the chip kit are what makes a song sound like an old console (docs/sound-for-agents.md).
+  harmonyVoice: Record<string, unknown>;
+  bassVoice: Record<string, unknown>;
+  kit: "studio" | "punch";
+  drumReverb: number;
+  /// Synthwave: a fast arpeggio of the bar's chord, and held pads under it (then the harmony part is the pad).
+  arp?: Record<string, unknown>;
+  room?: { size: number; damping: number; mix: number };
 }
 
 export const MOODS: Record<string, Mood> = {
   "calm village": {
     what: "gentle and unhurried, for a village or a home", minor: false, key: "g", bpm: 96, chords: [0, 5, 3, 4, 0, 5, 3, 4], bars: 8,
-    lead: { wave: "triangle", attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.2, volume: 0.42, vibrato: 0.06, reverb: 0.25 },
+    lead: { wave: "triangle", attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.2, volume: 0.42, vibrato: 0.06, reverb: 0.25, unison: 2, detune: 6, cutoff: 3200 },
+    harmonyVoice: { wave: "saw", unison: 3, detune: 12, cutoff: 1100, attack: 0.25, decay: 0.3, sustain: 0.7, release: 0.5, volume: 0.13, reverb: 0.4 },
+    bassVoice: { wave: "saw", cutoff: 420, sweep: 0.25, sub: 0.4, attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.1, volume: 0.36 },
+    kit: "studio", drumReverb: 0.12,
     rhythms: [[[0, 4], [4, 2], [6, 2], [8, 6], [14, 2]], [[0, 6], [6, 2], [8, 4], [12, 4]], [[0, 2], [2, 2], [4, 4], [8, 8]], [[0, 4], [4, 4], [8, 2], [10, 2], [12, 4]]],
     harmony: "held", bass: [[0, 6], [8, 6]], bassLine: [0, 4],
     drums: { kick: [0], snare: [], hat: [4, 12], hatVel: 0.3 },
   },
   "adventure field": {
     what: "bright and striding, for the open map", minor: false, key: "c", bpm: 132, chords: [0, 3, 4, 0, 5, 3, 4, 4], bars: 8,
-    lead: { wave: "square", duty: 0.5, attack: 0.008, decay: 0.12, sustain: 0.55, release: 0.1, volume: 0.3 },
+    lead: { wave: "square", duty: 0.5, attack: 0.008, decay: 0.12, sustain: 0.55, release: 0.1, volume: 0.3, unison: 2, detune: 8, cutoff: 4200, sweep: 0.3, reverb: 0.18, echo: 0.2, echoTime: 3 },
+    harmonyVoice: { wave: "saw", cutoff: 1500, sweep: 0.6, attack: 0.005, decay: 0.15, sustain: 0.25, release: 0.1, volume: 0.17, pan: -0.3, reverb: 0.25 },
+    bassVoice: { wave: "saw", unison: 2, detune: 6, cutoff: 600, sweep: 0.5, sub: 0.4, attack: 0.005, decay: 0.12, sustain: 0.5, release: 0.06, volume: 0.36, duck: 0.2 },
+    kit: "studio", drumReverb: 0.1,
     rhythms: [[[0, 2], [2, 2], [4, 2], [6, 2], [8, 4], [12, 2], [14, 2]], [[0, 3], [3, 3], [6, 2], [8, 4], [12, 4]], [[0, 2], [2, 1], [3, 1], [4, 4], [8, 2], [10, 2], [12, 4]], [[0, 4], [4, 2], [6, 2], [8, 3], [11, 3], [14, 2]]],
     harmony: "broken", bass: [[0, 2], [2, 2], [4, 2], [6, 2], [8, 2], [10, 2], [12, 2], [14, 2]], bassLine: [0, 0, 4, 0, 0, 0, 4, 7],
     drums: { kick: [0, 8, 10], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], hatVel: 0.35 },
   },
   dungeon: {
     what: "slow, low and uneasy, for caves and ruins", minor: true, key: "d", bpm: 84, chords: [0, 5, 3, 4, 0, 5, 6, 4], bars: 8,
-    lead: { wave: "triangle", attack: 0.03, decay: 0.3, sustain: 0.5, release: 0.3, volume: 0.42, reverb: 0.5 },
+    lead: { wave: "triangle", attack: 0.03, decay: 0.3, sustain: 0.5, release: 0.3, volume: 0.42, reverb: 0.5, unison: 2, detune: 7, echo: 0.25, echoTime: 6 },
+    harmonyVoice: { wave: "saw", unison: 4, detune: 14, cutoff: 800, attack: 0.5, decay: 0.4, sustain: 0.7, release: 0.8, volume: 0.13, reverb: 0.5 },
+    bassVoice: { wave: "saw", cutoff: 330, sweep: 0.3, sub: 0.5, attack: 0.02, decay: 0.3, sustain: 0.6, release: 0.2, volume: 0.36 },
+    kit: "studio", drumReverb: 0.3,
     rhythms: [[[0, 8], [8, 4], [12, 4]], [[0, 6], [6, 6], [12, 4]], [[0, 4], [4, 4], [8, 8]], [[0, 12], [12, 4]]],
     harmony: "held", bass: [[0, 4], [6, 2], [8, 6]], bassLine: [0, 0, 4],
     drums: { kick: [0, 10], snare: [], hat: [8], hatVel: 0.25 },
   },
   boss: {
     what: "fast and driving, for a fight", minor: true, key: "e", bpm: 156, chords: [0, 0, 5, 6, 0, 0, 3, 4], bars: 8,
-    lead: { wave: "saw", attack: 0.005, decay: 0.1, sustain: 0.6, release: 0.08, volume: 0.26, cutoff: 3200 },
+    lead: { wave: "saw", attack: 0.005, decay: 0.1, sustain: 0.6, release: 0.08, volume: 0.26, cutoff: 3200, unison: 3, detune: 14, sweep: 0.3, reverb: 0.15 },
+    harmonyVoice: { wave: "saw", cutoff: 1400, sweep: 0.6, attack: 0.005, decay: 0.12, sustain: 0.2, release: 0.08, volume: 0.17, pan: -0.3, reverb: 0.2 },
+    bassVoice: { wave: "saw", unison: 2, detune: 8, cutoff: 500, sweep: 0.6, sub: 0.3, attack: 0.004, decay: 0.1, sustain: 0.4, release: 0.05, volume: 0.36, duck: 0.3 },
+    kit: "punch", drumReverb: 0.12,
     rhythms: [[[0, 1], [1, 1], [2, 2], [4, 2], [6, 2], [8, 1], [9, 1], [10, 2], [12, 4]], [[0, 2], [2, 2], [4, 1], [5, 1], [6, 2], [8, 3], [11, 3], [14, 2]], [[0, 3], [3, 3], [6, 2], [8, 2], [10, 2], [12, 2], [14, 2]]],
     harmony: "broken", bass: [[0, 1], [2, 1], [4, 1], [6, 1], [8, 1], [10, 1], [12, 1], [14, 1]], bassLine: [0, 0, 7, 0, 0, 0, 7, 4],
     drums: { kick: [0, 4, 8, 12], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], hatVel: 0.4, crash: true },
   },
   title: {
     what: "open and hopeful, for the title screen", minor: false, key: "f", bpm: 108, chords: [0, 4, 5, 2, 3, 0, 3, 4], bars: 8,
-    lead: { wave: "square", duty: 0.5, attack: 0.01, decay: 0.18, sustain: 0.55, release: 0.16, volume: 0.3, vibrato: 0.08, reverb: 0.3 },
+    lead: { wave: "square", duty: 0.5, attack: 0.01, decay: 0.18, sustain: 0.55, release: 0.16, volume: 0.3, vibrato: 0.08, reverb: 0.3, unison: 2, detune: 8, cutoff: 3600, echo: 0.2, echoTime: 3 },
+    harmonyVoice: { wave: "saw", cutoff: 1600, sweep: 0.5, attack: 0.005, decay: 0.2, sustain: 0.3, release: 0.15, volume: 0.16, pan: -0.3, reverb: 0.35 },
+    bassVoice: { wave: "saw", cutoff: 500, sweep: 0.35, sub: 0.4, attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.1, volume: 0.36, duck: 0.2 },
+    kit: "studio", drumReverb: 0.15,
     rhythms: [[[0, 6], [6, 2], [8, 4], [12, 4]], [[0, 4], [4, 4], [8, 6], [14, 2]], [[0, 2], [2, 2], [4, 4], [8, 8]], [[0, 3], [3, 3], [6, 2], [8, 8]]],
     harmony: "broken", bass: [[0, 4], [4, 4], [8, 4], [12, 4]], bassLine: [0, 4, 7, 4],
     drums: { kick: [0, 8], snare: [12], hat: [4, 6, 12, 14], hatVel: 0.3 },
   },
   "victory jingle": {
     what: "a short fanfare for a win (three bars; it loops like any song, so stop it or play it once as you need)", minor: false, key: "c", bpm: 140, chords: [0, 3, 0], bars: 3,
-    lead: { wave: "square", duty: 0.5, attack: 0.005, decay: 0.1, sustain: 0.6, release: 0.12, volume: 0.32 },
+    lead: { wave: "square", duty: 0.5, attack: 0.005, decay: 0.1, sustain: 0.6, release: 0.12, volume: 0.32, unison: 2, detune: 8, cutoff: 5000, reverb: 0.3 },
+    harmonyVoice: { wave: "saw", unison: 3, detune: 12, cutoff: 1800, attack: 0.02, decay: 0.3, sustain: 0.6, release: 0.3, volume: 0.13, reverb: 0.35 },
+    bassVoice: { wave: "saw", cutoff: 550, sweep: 0.4, sub: 0.4, attack: 0.005, decay: 0.2, sustain: 0.6, release: 0.1, volume: 0.36 },
+    kit: "studio", drumReverb: 0.2,
     rhythms: [[[0, 2], [2, 2], [4, 2], [6, 2], [8, 4], [12, 4]], [[0, 3], [3, 1], [4, 4], [8, 4], [12, 4]], [[0, 12], [12, 4]]],
     harmony: "held", bass: [[0, 4], [4, 4], [8, 8]], bassLine: [0, 4, 0],
     drums: { kick: [0, 8], snare: [4, 12, 14], hat: [], hatVel: 0.3, crash: true },
+  },
+  synthwave: {
+    what: "driving synthwave for a fight: a fast bright arpeggio, a detuned saw lead and bass that pump with the kick, big gated drums, wide pads", minor: true, key: "a", bpm: 118, chords: [0, 5, 2, 6, 0, 5, 3, 4], bars: 8,
+    lead: { wave: "saw", attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.15, volume: 0.2, unison: 3, detune: 12, cutoff: 3400, sweep: 0.25, vibrato: 0.08, reverb: 0.3, echo: 0.22, echoTime: 3, echoFeedback: 0.35, pan: 0.05 },
+    rhythms: [[[0, 4], [4, 2], [6, 2], [8, 6], [14, 2]], [[0, 3], [3, 3], [6, 2], [8, 4], [12, 4]], [[0, 6], [6, 2], [8, 2], [10, 2], [12, 4]], [[0, 8], [8, 4], [12, 4]]],
+    harmony: "held", bass: [[0, 2], [2, 2], [4, 2], [6, 2], [8, 2], [10, 2], [12, 2], [14, 2]], bassLine: [0, 7, 0, 7, 0, 7, 0, 7],
+    drums: { kick: [0, 4, 8, 12], snare: [4, 12], hat: [2, 6, 10, 14], hatVel: 0.42, crash: true, open: [14], clap: true },
+    harmonyVoice: { wave: "saw", unison: 5, detune: 18, cutoff: 1500, resonance: 0.1, attack: 0.3, decay: 0.4, sustain: 0.8, release: 0.6, volume: 0.13, reverb: 0.45, duck: 0.5 },
+    bassVoice: { wave: "saw", unison: 2, detune: 7, cutoff: 420, resonance: 0.2, sweep: 0.55, sub: 0.3, attack: 0.003, decay: 0.12, sustain: 0.45, release: 0.05, volume: 0.38, duck: 0.35 },
+    arp: { wave: "square", unison: 2, detune: 6, cutoff: 1900, resonance: 0.25, sweep: 0.7, attack: 0.002, decay: 0.1, sustain: 0.15, release: 0.05, volume: 0.17, reverb: 0.25, echo: 0.3, echoTime: 3, echoFeedback: 0.4, duck: 0.25 },
+    kit: "punch", drumReverb: 0.15, room: { size: 0.6, damping: 0.35, mix: 1 },
+  },
+  "synthwave night": {
+    what: "slow, dreamy synthwave for a hub or a night street: soft arpeggios through echo, wide pads that breathe with the kick, a warm bass", minor: true, key: "d", bpm: 92, chords: [0, 5, 3, 6, 0, 5, 3, 4], bars: 8,
+    lead: { wave: "triangle", attack: 0.03, decay: 0.3, sustain: 0.6, release: 0.4, volume: 0.3, unison: 2, detune: 8, cutoff: 2600, vibrato: 0.1, reverb: 0.45, echo: 0.3, echoTime: 6, echoFeedback: 0.4 },
+    rhythms: [[[0, 6], [6, 2], [8, 8]], [[0, 4], [4, 4], [8, 6], [14, 2]], [[0, 8], [8, 4], [12, 4]], [[0, 12], [12, 4]]],
+    harmony: "held", bass: [[0, 3], [3, 3], [6, 2], [8, 3], [11, 3], [14, 2]], bassLine: [0, 0, 7, 0, 0, 4],
+    drums: { kick: [0, 8], snare: [4, 12], hat: [2, 6, 10, 14], hatVel: 0.3, open: [14] },
+    harmonyVoice: { wave: "saw", unison: 5, detune: 20, cutoff: 1100, attack: 0.6, decay: 0.5, sustain: 0.8, release: 0.9, volume: 0.14, reverb: 0.55, duck: 0.4 },
+    bassVoice: { wave: "saw", unison: 2, detune: 6, cutoff: 360, sweep: 0.35, sub: 0.55, attack: 0.01, decay: 0.3, sustain: 0.6, release: 0.15, volume: 0.36, duck: 0.25 },
+    arp: { wave: "saw", cutoff: 1300, sweep: 0.6, attack: 0.003, decay: 0.15, sustain: 0.1, release: 0.1, volume: 0.13, reverb: 0.35, echo: 0.35, echoTime: 3, echoFeedback: 0.45, pan: 0.2, duck: 0.2 },
+    kit: "punch", drumReverb: 0.25, room: { size: 0.75, damping: 0.45, mix: 1 },
   },
 };
 
@@ -140,7 +189,7 @@ export function makeSong(a: Args): { song: Record<string, unknown>; said: string
     barNotes.push({ rhythm, degrees });
   }
 
-  const harmony: NoteSpec[] = [], bass: NoteSpec[] = [], drums: NoteSpec[] = [];
+  const harmony: NoteSpec[] = [], bass: NoteSpec[] = [], drums: NoteSpec[] = [], arp: NoteSpec[] = [];
   for (let bar = 0; bar < bars; bar++) {
     const chord = mood.chords[bar]!, s0 = bar * BAR;
     // harmony below the melody: the chord's three notes, held or one after another
@@ -154,7 +203,10 @@ export function makeSong(a: Args): { song: Record<string, unknown>; said: string
     });
     for (const k of mood.drums.kick) drums.push({ step: s0 + k, len: 1, pitch: 36, vel: 0.85 });
     for (const sn of mood.drums.snare) drums.push({ step: s0 + sn, len: 1, pitch: 38, vel: 0.7 });
-    for (const hh of mood.drums.hat) drums.push({ step: s0 + hh, len: 1, pitch: 42, vel: mood.drums.hatVel });
+    for (const hh of mood.drums.hat) drums.push({ step: s0 + hh, len: 1, pitch: (mood.drums.open ?? []).includes(hh) ? 46 : 42, vel: mood.drums.hatVel });
+    if (mood.drums.clap) for (const sn of mood.drums.snare) drums.push({ step: s0 + sn, len: 1, pitch: 39, vel: 0.5 });
+    // the arpeggio: the chord's notes an octave over the harmony, up and down in sixteenths
+    if (mood.arp) for (let i = 0; i < BAR; i++) arp.push({ step: s0 + i, len: 1, pitch: triad[[0, 1, 2, 1][i % 4]!]! + 12 + (i % 8 >= 4 && i % 4 === 2 ? 12 : 0), vel: i % 4 === 0 ? 0.8 : 0.6 });
     // a fill into the turn of the loop
     if (bar === bars - 1 && bars === 8 && mood.drums.snare.length) for (const st of [13, 14, 15]) drums.push({ step: s0 + st, len: 1, pitch: st === 15 ? 38 : 45, vel: 0.6 });
     if (mood.drums.crash && bar === 0) drums.push({ step: 0, len: 1, pitch: 49, vel: 0.5 });
@@ -163,15 +215,19 @@ export function makeSong(a: Args): { song: Record<string, unknown>; said: string
     version: 1, bpm, stepsPerBeat: 4, length,
     tracks: [
       { name: "melody", kind: "synth", ...mood.lead, notes: lead },
-      { name: "harmony", kind: "synth", wave: "triangle", attack: mood.harmony === "held" ? 0.06 : 0.01, decay: 0.2, sustain: 0.5, release: 0.2, volume: mood.harmony === "held" ? 0.2 : 0.24, pan: -0.25, reverb: 0.3, notes: harmony },
-      { name: "bass", kind: "synth", wave: "triangle", attack: 0.01, decay: 0.15, sustain: 0.7, release: 0.08, volume: 0.5, notes: bass },
-      { name: "drums", kind: "drums", volume: 0.5, notes: drums },
+      ...(mood.arp ? [{ name: "arp", kind: "synth", ...mood.arp, notes: arp }] : []),
+      { name: "harmony", kind: "synth", pan: -0.25, ...mood.harmonyVoice, notes: harmony },
+      { name: "bass", kind: "synth", ...mood.bassVoice, notes: bass },
+      { name: "drums", kind: "drums", wave: "noise", volume: 0.5, kit: mood.kit, reverb: mood.drumReverb, notes: drums },
     ],
+    ...(mood.room ? { room: mood.room } : {}),
+    // glue on the mix: a gentle compressor and a ceiling a decibel under full scale
+    master: { volume: 1, fx: [{ type: "compressor", params: { threshold: -16, ratio: 2.5, attack: 12, release: 140, makeup: 1.5 } }], limit: -1 },
   };
   const names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
   const numerals = ["I", "II", "III", "IV", "V", "VI", "VII"];
   return {
     song,
-    said: `"${MOOD_NAMES.find((n) => MOODS[n] === mood)}" in ${names[pc]} ${minor ? "minor" : "major"} at ${bpm} beats a minute, ${bars} bars (${length} steps), seed ${seed}; chords by bar: ${mood.chords.map((c) => numerals[c]).join(" ")}; tracks: melody (${lead.length} notes), harmony, bass, drums. It is an ordinary song: read music/<name>.song.json and give it back to song_write to change a note, an instrument or the tempo.`,
+    said: `"${MOOD_NAMES.find((n) => MOODS[n] === mood)}" in ${names[pc]} ${minor ? "minor" : "major"} at ${bpm} beats a minute, ${bars} bars (${length} steps), seed ${seed}; chords by bar: ${mood.chords.map((c) => numerals[c]).join(" ")}; tracks: melody (${lead.length} notes), ${mood.arp ? "arp, " : ""}harmony, bass, drums (the ${mood.kit} kit). It is an ordinary song: read music/<name>.song.json and give it back to song_write to change a note, an instrument or the tempo.`,
   };
 }

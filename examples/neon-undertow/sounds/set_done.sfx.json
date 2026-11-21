@@ -1,28 +1,99 @@
 {
   "version": 1,
-  "wave": "square",
-  "freq": 523,
-  "freqLimit": 0,
-  "slide": 0,
-  "slideDelta": 0,
-  "duty": 0.4,
-  "dutySweep": 0,
-  "vibratoDepth": 0,
-  "vibratoSpeed": 8,
-  "arpSemitones": 0,
-  "arpTime": 0.09,
-  "attack": 0.005,
-  "sustain": 0.5,
-  "decay": 0.5,
-  "punch": 0,
-  "lowpass": 20000,
-  "highpass": 0,
-  "volume": 0.5,
+  "volume": 2.419,
   "seed": 1,
-  "arpNotes": [
-    4,
-    7,
-    12,
-    16
+  "drive": 0.1,
+  "reverb": 0.3,
+  "room": 0.5,
+  "width": 0.6,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0.004,
+      "decay": 0.015,
+      "volume": 0.54,
+      "filter": "bandpass",
+      "cutoff": 5600
+    },
+    {
+      "wave": "sine",
+      "freq": 523,
+      "hold": 0.005,
+      "decay": 0.55,
+      "volume": 0.3,
+      "fm": 2.2,
+      "fmRatio": 3,
+      "fmDecay": 0.165
+    },
+    {
+      "wave": "sine",
+      "freq": 658.94,
+      "start": 0.08,
+      "hold": 0.005,
+      "decay": 0.55,
+      "volume": 0.3,
+      "fm": 2.2,
+      "fmRatio": 3,
+      "fmDecay": 0.165
+    },
+    {
+      "wave": "sine",
+      "freq": 783.61,
+      "start": 0.16,
+      "hold": 0.005,
+      "decay": 0.55,
+      "volume": 0.3,
+      "fm": 2.2,
+      "fmRatio": 3,
+      "fmDecay": 0.165
+    },
+    {
+      "wave": "sine",
+      "freq": 1046,
+      "start": 0.24,
+      "hold": 0.005,
+      "decay": 0.55,
+      "volume": 0.3,
+      "fm": 2.2,
+      "fmRatio": 3,
+      "fmDecay": 0.165
+    },
+    {
+      "wave": "sine",
+      "freq": 1317.88,
+      "start": 0.32,
+      "hold": 0.005,
+      "decay": 0.55,
+      "volume": 0.3,
+      "fm": 2.2,
+      "fmRatio": 3,
+      "fmDecay": 0.165
+    },
+    {
+      "wave": "saw",
+      "freq": 262,
+      "start": 0.32,
+      "hold": 0.02,
+      "decay": 0.6,
+      "volume": 0.3,
+      "unison": 3,
+      "detune": 14,
+      "filter": "lowpass",
+      "cutoff": 5000,
+      "cutoffEnd": 1500
+    },
+    {
+      "wave": "saw",
+      "freq": 392,
+      "start": 0.32,
+      "hold": 0.02,
+      "decay": 0.6,
+      "volume": 0.22,
+      "unison": 3,
+      "detune": 14,
+      "filter": "lowpass",
+      "cutoff": 5000,
+      "cutoffEnd": 1500
+    }
   ]
 }

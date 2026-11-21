@@ -96,7 +96,7 @@ const FRAME = ["rows", "name", "copy", "flip", "rotate", "recolor", "silhouette"
 const SHAPE = ["rect", "line", "circle", "ellipse", "color", "fill"];
 const ANIMATION = ["name", "from", "to", "direction", "loop"];
 const SONG = ["version", "bpm", "stepsPerBeat", "length", "tracks", "room", "master", "beatsPerBar", "markers", "buses", "tempos", "meters", "loop"];
-const TRACK = ["name", "kind", "wave", "duty", "attack", "decay", "sustain", "release", "volume", "pan", "mute", "solo", "notes", "unison", "detune", "cutoff", "resonance", "sweep", "sub", "vibrato", "reverb", "echo", "kit"];
+const TRACK = ["name", "kind", "wave", "duty", "attack", "decay", "sustain", "release", "volume", "pan", "mute", "solo", "notes", "unison", "detune", "cutoff", "resonance", "sweep", "sub", "vibrato", "reverb", "echo", "echoTime", "echoFeedback", "kit", "duck", "fx", "bus", "sends", "color", "patterns", "clips", "automation", "pads", "sample", "root", "fmRatio", "fmIndex", "damping", "brightness", "wtPos", "formula"];
 const NOTE = ["step", "len", "pitch", "vel", "pan", "bend", "cut", "room"];
 
 /// The warnings for the nested structures of one tool call (a tileset inside a scene, a sprite frame, a song's track).

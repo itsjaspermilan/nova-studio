@@ -197,3 +197,39 @@ fn a_group_that_is_wrong_is_refused_by_name() {
         "{log:?}"
     );
 }
+
+#[test]
+fn vary_changes_each_play_without_touching_the_games_random_numbers() {
+    // the same seed gives the same math.random numbers whether or not sounds are played with `vary`
+    let main = |vary: bool| {
+        format!(
+            r#"
+math.randomseed(11)
+for i = 1, 5 do nova.sound.play("a", {{ volume = 0.8{} }}) end
+nova.sound.play("steps"{})
+nova.log(tostring(math.random(1000000)))
+local ok, err = pcall(nova.sound.play, "a", {{ vary = 2 }})
+nova.log(tostring(ok) .. " " .. tostring(err))
+"#,
+            if vary { ", vary = 0.1" } else { "" },
+            if vary { ", { vary = 0.05 }" } else { "" }
+        )
+    };
+    let files = || {
+        vec![
+            ("sounds/a.wav", wav()),
+            (
+                "sounds/steps.group.json",
+                br#"{"sounds":["a"],"pitch":[0.9,1.1]}"#.to_vec(),
+            ),
+        ]
+    };
+    let (plain, e1) = run_with(files(), &main(false));
+    let (varied, e2) = run_with(files(), &main(true));
+    assert!(e1.is_none() && e2.is_none(), "{e1:?} {e2:?}");
+    assert_eq!(plain[0], varied[0], "math.random went on as without vary");
+    assert!(
+        varied[1].starts_with("false") && varied[1].contains("vary is a number from 0 to 0.5"),
+        "{varied:?}"
+    );
+}

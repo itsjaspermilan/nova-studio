@@ -1,22 +1,48 @@
 {
   "version": 1,
-  "wave": "noise",
-  "freq": 1400,
-  "freqLimit": 0,
-  "slide": -1.4,
-  "slideDelta": 0,
-  "duty": 0.5,
-  "dutySweep": 0,
-  "vibratoDepth": 0,
-  "vibratoSpeed": 8,
-  "arpSemitones": 0,
-  "arpTime": 0.1,
-  "attack": 0.004,
-  "sustain": 0.15,
-  "decay": 0.7,
-  "punch": 0.3,
-  "lowpass": 2500,
-  "highpass": 60,
-  "volume": 0.5,
-  "seed": 1
+  "volume": 0.544,
+  "seed": 1,
+  "drive": 0.5,
+  "reverb": 0.25,
+  "room": 0.6,
+  "width": 0.6,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0.004,
+      "decay": 0.04,
+      "volume": 0.9,
+      "filter": "bandpass",
+      "cutoff": 3500
+    },
+    {
+      "wave": "sine",
+      "freq": 62,
+      "hold": 0.01,
+      "decay": 0.7,
+      "pitch": 24,
+      "pitchTime": 0.06
+    },
+    {
+      "wave": "pink",
+      "hold": 0.04,
+      "decay": 1,
+      "volume": 0.7,
+      "filter": "lowpass",
+      "cutoff": 5000,
+      "cutoffEnd": 250,
+      "filterTime": 0.6
+    },
+    {
+      "wave": "crackle",
+      "freq": 30,
+      "start": 0.05,
+      "hold": 0.1,
+      "decay": 0.7,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 2500,
+      "q": 0.8
+    }
+  ]
 }
