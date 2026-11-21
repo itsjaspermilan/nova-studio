@@ -1,0 +1,173 @@
+{
+ "start_scene": "test_lab",
+ "invincible": true,
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560)"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "wait": 5
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C1 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T1 = nova.named('runner').stats.baton_hits"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560)"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "until": "nova.named('runner').state ~= 'roll'",
+   "max": 40
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C2 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T2 = nova.named('runner').stats.baton_hits"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560)"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "until": "nova.named('runner').state ~= 'roll'",
+   "max": 40
+  },
+  {
+   "wait": 4
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C3 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T3 = nova.named('runner').stats.baton_hits"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560)"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "until": "nova.named('runner').state ~= 'roll'",
+   "max": 40
+  },
+  {
+   "wait": 8
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C4 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T4 = nova.named('runner').stats.baton_hits"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560)"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "until": "nova.named('runner').state ~= 'roll'",
+   "max": 40
+  },
+  {
+   "wait": 14
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C5 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T5 = nova.named('runner').stats.baton_hits"
+  },
+  {
+   "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; r.state, r.roll_cd, r.chain, r.chain_window, r.roll_end, r.dash_used, r.roll_attack, r.blink_t, r.f = 'free', 0, 0, 0, -99, false, false, 0, 0\nrequire('lib.juice').hold = 0; require('lib.hits').last_hit = -99; for _, s in ipairs(nova.all('swing')) do s:destroy() end\nif DA_D then DA_D:destroy() end\nDA_D = nova.spawn('dummy', 410, 560); r.x = 330"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "wait": 60
+  },
+  {
+   "lua": "local d = DA_D; C6 = string.format('%d %d %d', d.last_damage, d.hits, nova.named('runner').stats.dash_attacks or 0); T6 = nova.named('runner').stats.baton_hits"
+  }
+ ],
+ "print": [
+  "C1",
+  "C2",
+  "C3",
+  "C4",
+  "C5",
+  "C6",
+  "T1",
+  "T5"
+ ]
+}

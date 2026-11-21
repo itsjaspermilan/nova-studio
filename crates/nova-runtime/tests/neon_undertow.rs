@@ -3062,12 +3062,12 @@ fn backhand_a_swing_soon_after_a_roll_also_hits_behind_for_double() {
     let r = run("s4_backhand");
     assert_eq!(
         (s(&r, "REAR"), s(&r, "FRONT"), s(&r, "BACKHANDS")),
-        ("4".into(), "2".into(), "1".into()),
-        "after a real roll: 4 behind, 2 in front"
+        ("4".into(), "5".into(), "1".into()),
+        "after a real roll: 4 behind (the baton's hit 1, doubled), 5 in front (the swing after a roll is the dash attack now)"
     );
     assert_eq!(
         (s(&r, "REAR2"), s(&r, "FRONT2"), s(&r, "BACKHANDS2")),
-        ("4".into(), "4".into(), "1".into()),
+        ("4".into(), "7".into(), "1".into()),
         "a second later: only in front"
     );
 }
@@ -3729,19 +3729,19 @@ fn soak_seeds_26_to_30() {
 // ---- the feel pass: the runner runs, the baton covers more, the roll goes further ----------------------------------------------------
 
 #[test]
-fn the_runner_runs_at_235_units_a_second_with_the_run_clip_and_dust_at_the_start_and_a_sharp_turn()
+fn the_runner_runs_at_310_units_a_second_with_the_run_clip_and_dust_at_the_start_and_a_sharp_turn()
 {
     let r = run("feel_run");
     // (the speed from the frames in the middle of the run: ten frames' distance, per second)
     let s = samples(&r);
     let per_second = (s[40].0 - s[30].0) / 10.0 * 60.0;
     assert!(
-        (per_second - 235.0).abs() <= 1.0,
-        "he ran {per_second} units a second, not 235"
+        (per_second - 310.0).abs() <= 1.0,
+        "he ran {per_second} units a second, not 310"
     );
     let dx = num(&r, "string.format('%.1f', RUN_DX)");
     assert!(
-        (220.0..=236.0).contains(&dx),
+        (295.0..=311.0).contains(&dx),
         "a second of holding right covered {dx} units"
     );
     assert!(
@@ -4113,4 +4113,153 @@ fn unstick_steps_out_onto_floor_never_into_a_wall() {
     let r = play("unstick_wall", plan.to_string());
     assert_eq!(s(&r, "UWALL"), "false", "{}", s(&r, "string.format"));
     assert_eq!(s(&r, "USOLID"), "false");
+}
+
+// ---- feel pass 2: the runner runs at 310 (the feet match the ground) and the dash attack ----------------------------------------------
+
+#[test]
+fn the_run_speed_is_310_and_the_feet_match_the_ground_one_stride_per_cycle_of_the_clip() {
+    let r = run("dash_feet");
+    assert_eq!(printed(&r, "require('data.player').run_speed"), "310");
+    // the clip plays faster by 310 / 235, so the cycle (8 frames drawn at 45 ms) is 0.273 s
+    let k = num(&r, "string.format('%.3f', nova.named('runner').anim_speed)");
+    assert!((k - 310.0 / 235.0).abs() < 0.002, "the clip speed was {k}");
+    // (the frame, x and clip after every frame; the cycle's start is where the frame number falls back)
+    let rows: Vec<(i64, f64, String)> = printed(&r, "table.concat(FR")
+        .split(' ')
+        .map(|s| {
+            let p: Vec<&str> = s.split(',').collect();
+            (
+                p[0].parse().unwrap(),
+                p[1].parse().unwrap(),
+                p[2].to_string(),
+            )
+        })
+        .collect();
+    let run: Vec<&(i64, f64, String)> = rows.iter().filter(|r| r.2 == "run_right").collect();
+    let wraps: Vec<f64> = run
+        .windows(2)
+        .filter(|w| w[1].0 < w[0].0)
+        .map(|w| w[1].1)
+        .collect();
+    assert!(
+        wraps.len() >= 4,
+        "{} cycles in a second and a half",
+        wraps.len()
+    );
+    let stride = (wraps[wraps.len() - 1] - wraps[0]) / (wraps.len() - 1) as f64;
+    // the sheet's stride: 84.6 units of ground a cycle (8 x 45 ms at 235 units a second)
+    assert!(
+        (stride - 84.6).abs() <= 3.0,
+        "one cycle of the feet covered {stride} units of ground, not 84.6"
+    );
+    // and the speed itself: ten frames' distance
+    let xs: Vec<f64> = run.iter().map(|r| r.1).collect();
+    let v = (xs[40] - xs[30]) / 10.0 * 60.0;
+    assert!((v - 310.0).abs() <= 1.0, "he ran {v} units a second");
+}
+
+#[test]
+fn attack_during_a_roll_or_within_0_15_s_after_it_is_the_dash_attack_later_is_the_first_hit() {
+    let r = run("dash_attack");
+    // (the dummy's last damage, how many times it was hit, the dash attacks so far)
+    assert_eq!(
+        printed(&r, "C1"),
+        "5 1 1",
+        "pressed during the roll: the dash attack"
+    );
+    assert_eq!(printed(&r, "C2"), "5 1 2", "pressed as the roll ends");
+    assert_eq!(printed(&r, "C3"), "5 1 3", "0.07 s after the roll");
+    assert_eq!(printed(&r, "C4"), "5 1 4", "0.13 s after the roll");
+    assert_eq!(
+        printed(&r, "C5"),
+        "2 1 4",
+        "0.23 s after the roll: the normal first hit, and no new dash attack"
+    );
+    assert_eq!(printed(&r, "C6"), "2 1 4", "no roll: the normal first hit");
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "dash attack starts"), 4);
+    assert_eq!(count_lines(&l, "attack 1 starts"), 2);
+    assert_eq!(count_lines(&l, "attack 2 starts"), 0);
+}
+
+#[test]
+fn the_dash_attack_is_150_by_130_for_5_with_a_knock_back_of_320_hits_each_enemy_once_and_the_lunge_is_not_untouchable()
+ {
+    let r = run("dash_attack_area");
+    // the slash's rectangle (the picture's, taken from the box that hurts): 150 long, 130 wide, 12 from the hips
+    assert_eq!(printed(&r, "SWR"), "150,130,12");
+    assert_eq!(printed(&r, "SW_DASH"), "true");
+    assert_eq!(printed(&r, "UNT0"), "false", "the lunge is not untouchable");
+    assert_eq!(printed(&r, "LUNGE_STATE"), "dashatk");
+    // what the Scrapper was given: 5 damage and a knock-back of 320
+    assert_eq!(printed(&r, "TH").trim(), "5:320");
+    // three dummies in the box, each hit once for 5; three just outside it (past the end, past the side, behind him) not at all
+    assert_eq!(printed(&r, "HITS_IN"), "111");
+    assert_eq!(printed(&r, "DMG_IN"), "5,5,5");
+    assert_eq!(printed(&r, "OUT_HITS"), "000");
+    // the roll covered 201.6 and the lunge 1.6 tiles (76.8) more
+    let d = num(&r, "string.format('%.1f', X_END - 100)");
+    assert!(
+        (d - (4.2 * 48.0 + 1.6 * 48.0)).abs() <= 4.0,
+        "roll and lunge covered {d}"
+    );
+    let pushed = num(&r, "string.format('%.1f', SC_X2 - 440)");
+    assert!(pushed > 30.0, "the Scrapper was pushed {pushed} units");
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "dash attack hit: 5 damage"), 4, "{l:?}");
+}
+
+#[test]
+fn the_dash_attack_cannot_chain_into_itself_and_the_chain_after_it_starts_from_hit_1() {
+    let r = run("dash_attack_chain");
+    assert_eq!(printed(&r, "UNT_LUNGE"), "false");
+    assert_eq!(printed(&r, "CHAIN_AFTER"), "1", "after it, hit 1");
+    assert_eq!(
+        printed(&r, "FIRST_TOTAL"),
+        "7",
+        "5 from the dash attack, 2 from hit 1"
+    );
+    assert_eq!(printed(&r, "DASHES1"), "1");
+    // pressed again soon after a roll that already had its dash attack: the ordinary first hit, not a second dash attack
+    assert_eq!(printed(&r, "STATE_AGAIN"), "attack");
+    assert_eq!(printed(&r, "CHAIN_AGAIN"), "1");
+    assert_eq!(printed(&r, "DASHES2"), "1", "one dash attack a roll");
+    let l = log(&r);
+    assert_eq!(count_lines(&l, "dash attack starts"), 1);
+    assert_eq!(count_lines(&l, "attack 1 starts"), 2);
+}
+
+#[test]
+fn cards_on_the_dash_attack_long_reach_scales_its_box_once_hot_solder_burns_riot_stock_and_live_wire_are_the_third_hits()
+ {
+    let r = run("dash_attack_cards");
+    // 150 x 130 grown by 30% once: 195 x 169 (the baton's one rule)
+    assert_eq!(printed(&r, "SWR"), "195,169,12");
+    assert_eq!(
+        printed(&r, "BURN"),
+        "true",
+        "Hot Solder: baton hits set it alight"
+    );
+    assert_eq!(printed(&r, "ZAPS"), "0");
+    assert_eq!(
+        printed(&r, "OTHER_HITS"),
+        "0",
+        "Live Wire is the third hit's: nothing was zapped"
+    );
+}
+
+#[test]
+fn the_dash_attack_never_puts_the_runner_in_a_wall_from_any_spot_off_a_wall_in_eight_directions_in_three_rooms()
+ {
+    for name in ["dash_walls_a", "dash_walls_b", "dash_walls_c"] {
+        let r = run(name);
+        assert_eq!(printed(&r, "WALL_BAD"), "", "{name}");
+        assert_eq!(
+            num(&r, "DASHES"),
+            24.0,
+            "{name}: every case made its dash attack"
+        );
+        assert!(num(&r, "WALL_FRAMES") > 1400.0, "{name}");
+    }
 }

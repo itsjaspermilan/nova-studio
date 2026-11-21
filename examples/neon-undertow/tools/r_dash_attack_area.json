@@ -1,0 +1,56 @@
+{
+ "start_scene": "test_lab",
+ "invincible": true,
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 100, 560, 'right'; do local d = nova.named('d1'); d.x, d.y = 1300, 120 end; do local d = nova.named('d2'); d.x, d.y = 1300, 420 end; do local d = nova.named('d3'); d.x, d.y = 1300, 760 end\nlocal s = nova.spawn('scrapper', 440, 560); s.hp = 30; s.max_hp = 30; require('lib.status').stun(s, 99); SC = s; TH = ''\nlocal th = s.take_hit; s.take_hit = function(self, d, dx, dy, k) TH = TH .. d .. ':' .. tostring(k) .. ' '; return th(self, d, dx, dy, k) end\nIN1 = nova.spawn('dummy', 420, 520); IN2 = nova.spawn('dummy', 420, 600); IN3 = nova.spawn('dummy', 430, 540)\nOUT_FAR = nova.spawn('dummy', 580, 546); OUT_SIDE = nova.spawn('dummy', 420, 440); OUT_BACK = nova.spawn('dummy', 250, 600)",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "press": "dash"
+  },
+  {
+   "until": "nova.named('runner').state == 'roll'",
+   "max": 10
+  },
+  {
+   "wait": 6
+  },
+  {
+   "press": "attack"
+  },
+  {
+   "until": "nova.count('swing') > 0",
+   "max": 60
+  },
+  {
+   "lua": "local s = nova.first('swing'); SWR = string.format('%.0f,%.0f,%.0f', s.rect.along, s.rect.across, s.rect.x0 - s.x); SW_DASH = tostring(s.dash); UNT0 = tostring(nova.named('runner').untouchable); LUNGE_STATE = nova.named('runner').state; X_SW = nova.named('runner').x"
+  },
+  {
+   "wait": 40,
+   "capture": "the dash attack"
+  },
+  {
+   "lua": "X_END = nova.named('runner').x; HITS_IN = IN1.hits .. IN2.hits .. IN3.hits; DMG_IN = IN1.total .. ',' .. IN2.total .. ',' .. IN3.total; OUT_HITS = OUT_FAR.hits .. OUT_SIDE.hits .. OUT_BACK.hits"
+  },
+  {
+   "wait": 25,
+   "capture": "settled"
+  },
+  {
+   "lua": "SC_X2 = SC.x"
+  }
+ ],
+ "print": [
+  "SWR",
+  "SW_DASH",
+  "UNT0",
+  "LUNGE_STATE",
+  "TH",
+  "HITS_IN",
+  "DMG_IN",
+  "OUT_HITS",
+  "string.format('%.1f', X_END - 100)",
+  "string.format('%.1f', SC_X2 - 440)"
+ ]
+}

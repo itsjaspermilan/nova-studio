@@ -56,7 +56,7 @@ function Den:leave() require("lib.look").leave() end
 function Den:camera(dt)
   local r = self.runner
   if not r or not r:is_alive() then return end
-  local k = 1 - math.exp(-9 * dt)
+  local k = 1 - math.exp(-P.camera_follow * dt)
   self.cx = self.cx + (r.x - self.cx) * k
   self.cy = self.cy + (r.y - 24 - self.cy) * k
   nova.cam.set(math.max(VIEW_W / 2, math.min(self.w - VIEW_W / 2, self.cx)), math.max(VIEW_H / 2, math.min(self.h - VIEW_H / 2, self.cy)))

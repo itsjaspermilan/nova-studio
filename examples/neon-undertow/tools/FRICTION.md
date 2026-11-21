@@ -321,3 +321,27 @@ What I wanted, what I tried, what would have made it one step. Most costly first
    routes that cross a door use `through(...)` and `idle()` (tools/routes.mjs); the input-ignored proof uses `press` steps.
 9. **`play`'s `lua` runs after the scene's `enter`, so a route cannot choose the run's seed for a room it starts in** (`start_scene: "gutter.elite"` runs
    `begin_chain()` with a random seed in `enter`, then the route's `lua` begins another): the new routes read the room's own `scene_now().entry` instead.
+
+## Feel pass 2 (2026-11-21): run speed 310 and the dash attack
+
+1. **A clip's speed has no documented knob.** The run clip is drawn for 235 units a second, so at 310 the feet skate unless the clip plays faster. `self:play(tag, opts)`
+   takes only `restart`; the way is the entity field `anim_speed` (framework.lua, one line in docs/project-format.md), and neither the `api` tool nor `nova-api.json`
+   lists it. Found by reading framework.lua. One step: a `speed` option on `play`, or `anim_speed` in `api`'s "Entity methods". (The game now sets it every frame from
+   `run_speed`, `run_cycle` and `run_stride` in data/player.lua, and a test counts the strides.)
+2. **A hold that is blocked reports nothing.** A route that holds `right` for a second ran 227 units, not 310, because the test room's dummy (solid) stood in the way
+   at x 456; the hold "did something", so no warning. Two wrong test numbers were chased before the cause was seen. One step: say when an entity's x did not change for
+   most of a `hold` ("the hold moved him 227 of the 310 a second he runs; blocked by dummy"), or let `always` name a position.
+3. **The hitbox overlay draws every decoration's hitbox.** The roll's after-images (`ghost`, a copy of the runner's sprite) carried the sprite's feet box, so a dash
+   attack with 5 of them drew a stack of green boxes over the slash's own. Fixed in the game (a ghost has no hitbox now), but any copy-of-a-sprite effect has this;
+   an `overlay` that skips entities with no tags would show only what can hurt or block.
+4. **The test harness keeps only some of a route file's keys** (`plan_text` in neon_undertow.rs: `route`, `start_scene`, `lua`, `print`, `invincible`, `seed`, `frames`),
+   so `always` and `record` cannot be used in a test route and the "never in a wall" check is a wrapped `update` that counts bad frames into a global. Works, but it is
+   a second way to write what `always` does. One step: pass `always` and `record` through.
+5. **Adding a clip to the maker renumbers frames in three of the four directions** (a sheet is four blocks, one per direction, each with every clip). Nothing here read
+   frame numbers (everything plays tags), but a route that printed `frame` would have changed value. Worth a line in the maker's docs.
+6. **Worktree agents start with no `studio/node_modules` and no `target/`** (both ignored), so `scripts/nova-tool` failed with "rolldown: No such file" and the first
+   cargo build took three minutes. Symlinking both from the main checkout worked. Also, in a worktree the shell refuses a command that mixes a heredoc, `git` and a
+   path ("too complex to verify"), so files were written with the Write tool and commands kept single.
+7. **`sfx_write` clips easily with `punch`**: a whoosh with `punch` 0.7 at volume 0.55 clipped 60 samples (the warning said so, with the setting to change: good).
+   A rising noise sweep that ends abruptly (a swell, then a cut) is how the dash attack's "whoosh-crack" is made with one envelope; two layers (a whoosh and a crack)
+   would need two sounds started together, which `nova.sound.play` can do, but the preset list has no "whip".

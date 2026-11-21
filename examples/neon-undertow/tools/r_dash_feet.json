@@ -1,0 +1,21 @@
+{
+ "start_scene": "test_room",
+ "lua": "local r = nova.named('runner'); r.x, r.y, r.facing = 200, 520, 'right'; r.hp = 99; for _, e in ipairs(nova.all('enemy')) do e:destroy() end\nlocal R = nova.named('runner'); FR = {}; local orig = R.update; R.update = function(self, dt) orig(self, dt); FR[#FR+1] = string.format('%d,%.2f,%s', self.frame, self.x, tostring(self._anim and self._anim.tag)) end",
+ "route": [
+  {
+   "wait": 3
+  },
+  {
+   "hold": [
+    "right"
+   ],
+   "frames": 100,
+   "capture": "running"
+  }
+ ],
+ "print": [
+  "table.concat(FR, ' ')",
+  "require('data.player').run_speed",
+  "string.format('%.3f', nova.named('runner').anim_speed)"
+ ]
+}
