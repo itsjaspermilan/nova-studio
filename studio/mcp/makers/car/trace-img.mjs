@@ -1,4 +1,4 @@
-// Tiny PNG tools for tracing blueprints: decode, crop/zoom with a coordinate grid, silhouettes.
+// Tiny PNG tools for tracing blueprints (blueprint_trace, makers/trace.ts; first scripts/blueprint-trace): decode, crop/zoom with a coordinate grid, silhouettes.
 import { readFileSync, writeFileSync } from "node:fs";
 import { inflateSync, deflateSync } from "node:zlib";
 
@@ -53,7 +53,8 @@ export class Canvas {
   save(path) { save(path, this.w, this.h, this.rgb); }
 }
 /// A zoomed crop of the image with a grid in model units. cal = { ox, oy, k (pixels per unit), sx (+1: u grows to the right, -1: to the left) }; v always grows upward.
-export function view(img, out, [x0, y0, x1, y1], zoom, cal, step = 1, draw = null) {
+/// `out` is a file to save it at, or null to hand the canvas to `done` instead.
+export function view(img, out, [x0, y0, x1, y1], zoom, cal, step = 1, draw = null, done = null) {
   const w = Math.round((x1 - x0) * zoom), h = Math.round((y1 - y0) * zoom), c = new Canvas(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const g = img.g[Math.min(img.h - 1, (y0 + y / zoom) | 0) * img.w + Math.min(img.w - 1, (x0 + x / zoom) | 0)]; const i = (y * w + x) * 3; c.rgb[i] = c.rgb[i + 1] = c.rgb[i + 2] = g; }
   const X = (u) => (cal.ox + cal.sx * u * cal.k - x0) * zoom, ky = cal.ky ?? cal.k, Y = (v) => (cal.oy - v * ky - y0) * zoom;
@@ -64,7 +65,8 @@ export function view(img, out, [x0, y0, x1, y1], zoom, cal, step = 1, draw = nul
     for (let v = Math.ceil(v0 / step) * step; v <= v1; v += step) { const major = Math.abs(v / (step * 5) - Math.round(v / (step * 5))) < 1e-6; c.line(0, Y(v), w, Y(v), major ? [0, 0, 255] : [150, 150, 255], major ? 0.55 : 0.3); if (major || zoom * ky * step > 30) c.text(2, Y(v) + 2, Math.round(v * 10) / 10, [0, 0, 200]); }
   }
   if (draw) draw(c, X, Y);
-  c.save(out);
+  if (out) c.save(out);
+  if (done) done(c);
 }
 /// Everything reachable from the border of the rectangle through light pixels is "outside"; returns a mask (1 = the drawing and what it encloses).
 export function solid(img, [x0, y0, x1, y1], thr = 150) {

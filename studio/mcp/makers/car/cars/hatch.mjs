@@ -1,5 +1,5 @@
 // `car_hatch`: a modern five-door hatchback (4460 x 1795 x 1440 mm, wheelbase 2725, track 1570/1580) modelled from build/blueprints/hatch.png with the
-// kit's one smooth body and cut-outs, the way `gt()` is. Numbers read off the drawing with scripts/blueprint-trace (cal in hatch.trace.json). No badges or lettering.
+// kit's one smooth body and cut-outs, the way `gt()` is. Numbers read off the drawing with blueprint_trace (cal in hatch.trace.json). No badges or lettering.
 import { CHROME, DARK, GLASS, PAINT, RUBBER, STEEL, TRIM, archLiner, archOutline, assemble, bar, box, buildBody, cyl, ellipse, glassOf, hexa, inset, lattice, mirrorX, path, pebble, r2, rect, rounded, rrect, shade, spokeWindows, stroke, wheel } from "../kit.mjs";
 
 export function hatch(paint = "#8c1420") {
