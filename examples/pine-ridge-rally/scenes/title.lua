@@ -484,7 +484,7 @@ function Title:garage_menu()
       st.held, st.hold_t, step = down, 0, down
     else
       st.hold_t = st.hold_t + dt
-      if st.hold_t >= 0.4 then st.hold_t, step = st.hold_t - 0.13, down end
+      if st.hold_t >= 0.4 then st.hold_t, step = st.hold_t - 0.17, down end
     end
   else
     st.held = 0
@@ -525,7 +525,7 @@ function Title:garage_menu()
     status, colour = "Costs " .. state.money(car.price) .. " coins.", C.gold
     action = "BUY IT"
   else
-    status, colour = "Costs " .. state.money(car.price) .. ": " .. state.money(car.price - coins) .. " more coins to go.", C.red
+    status, colour = "Costs " .. state.money(car.price) .. ". Needs " .. state.money(car.price - coins) .. " more.", C.red
     action = ""
   end
   local stats = { "column", gap = 4 }

@@ -77,8 +77,8 @@ function garage.update(st, dt, stick_x, stick_y)
   if active then st.idle = 0 else st.idle = st.idle + dt end
   local target, rate
   if math.abs(stick_x) > 0.15 then
-    -- (right turns the car so that its front goes to the right: a larger angle turns it to the viewer's left, so the stick's sign is flipped)
-    target, rate = -stick_x * garage.HAND, 9
+    -- (right drags the side that faces you to the right: the car's front, seen from the front, goes to the right with a positive turn)
+    target, rate = stick_x * garage.HAND, 9
   elseif st.idle < garage.IDLE then
     target, rate = 0, 2.2            -- coasts to a stop
   else

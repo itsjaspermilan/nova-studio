@@ -1374,3 +1374,358 @@ fn a_stage_turns_from_gravel_to_tarmac() {
         "{log:?}"
     );
 }
+
+// ---- the car select (the garage, and choosing the car before a race): lib/garage.lua, scenes/title.lua -------------------------
+
+/// The carousel's order: the makes in `state.makes`' order, the cheapest car first within a make.
+const SHOWROOM: [&str; 13] = [
+    "car_city",
+    "car_hatch",
+    "car_s14",
+    "car_s15",
+    "car_hatch_r",
+    "car_rally",
+    "car_gt",
+    "car_gt2",
+    "car_offroad",
+    "car_suv",
+    "car_pickup",
+    "car_muscle",
+    "car_truck",
+];
+
+/// Through the menus to the car select as the step before a rally stage (the mode, the stage, then the cars), on the car the save drove last.
+fn open_car_select(g: &mut Game) {
+    for _ in 0..30 {
+        frame(g, &[]);
+    }
+    tap(g, "key:Enter"); // Rally -> its stages
+    tap(g, "key:Enter"); // the first stage -> the cars
+}
+
+/// What the stage shows (F3 in the car select logs it): `speed` (the turn, radians a second), `angle`, `tilt`, `hand` (1 while the right
+/// stick has the car), `car` and `make`.
+fn garage_stat(g: &mut Game) -> std::collections::HashMap<String, String> {
+    tap(g, "key:F3");
+    let line = g
+        .take_log()
+        .into_iter()
+        .rev()
+        .find(|l| l.starts_with("garage: speed="))
+        .expect("the car select answers F3");
+    line["garage: ".len()..]
+        .split_whitespace()
+        .filter_map(|kv| kv.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+fn shown_car(g: &mut Game) -> String {
+    garage_stat(g)["car"].clone()
+}
+
+fn number(stat: &std::collections::HashMap<String, String>, key: &str) -> f32 {
+    stat[key].parse().unwrap()
+}
+
+fn screen(g: &Game) -> String {
+    g.lua_text("nova.scene_now().screen")
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+}
+
+fn the_car_chosen(g: &Game) -> String {
+    g.lua_text("require('lib.state').current_car().id")
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+}
+
+#[test]
+fn every_car_has_a_make_and_every_make_a_logo_file() {
+    let g = load();
+    g.run_lua(
+        "local state = require('lib.state')
+         for _, c in ipairs(state.cars) do nova.log('car ' .. c.id .. ' ' .. tostring(c.make)) end
+         for _, m in ipairs(state.makes) do nova.log('make ' .. m.id .. ' ' .. m.logo .. ' ' .. #m.color) end
+         for i, c in ipairs(state.showroom()) do nova.log('showroom ' .. i .. ' ' .. c.id) end",
+        "makes",
+    )
+    .unwrap();
+    let log = g.take_log();
+    let makes: Vec<Vec<&str>> = log
+        .iter()
+        .filter_map(|l| l.strip_prefix("make "))
+        .map(|l| l.split(' ').collect())
+        .collect();
+    assert!(
+        (6..=8).contains(&makes.len()),
+        "about seven makes: {makes:?}"
+    );
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
+    for m in &makes {
+        assert_eq!(m[2], "3", "{m:?}: a colour");
+        let file = folder.join("sprites").join(format!("{}.png", m[1]));
+        assert!(file.exists(), "the logo of {} is {file:?}", m[0]);
+        assert!(
+            file.metadata().unwrap().len() > 1000,
+            "{file:?} is a picture"
+        );
+    }
+    let cars: Vec<Vec<&str>> = log
+        .iter()
+        .filter_map(|l| l.strip_prefix("car "))
+        .map(|l| l.split(' ').collect())
+        .collect();
+    assert_eq!(cars.len(), 13);
+    for c in &cars {
+        assert!(
+            makes.iter().any(|m| m[0] == c[1]),
+            "{} has a make that is in the table: {c:?}",
+            c[0]
+        );
+    }
+    for m in &makes {
+        assert!(cars.iter().any(|c| c[1] == m[0]), "no car is a {}", m[0]);
+    }
+    let showroom: Vec<&str> = log
+        .iter()
+        .filter_map(|l| l.strip_prefix("showroom "))
+        .map(|l| l.split(' ').nth(1).unwrap())
+        .collect();
+    assert_eq!(showroom, SHOWROOM, "the carousel's order");
+}
+
+#[test]
+fn left_and_right_move_the_car_select_one_car_and_wrap_round() {
+    let mut g = load();
+    open_car_select(&mut g);
+    assert_eq!(
+        shown_car(&mut g),
+        "car_gt",
+        "it opens on the car last driven"
+    );
+    tap(&mut g, "key:ArrowRight");
+    assert_eq!(shown_car(&mut g), "car_gt2", "right is the next card");
+    tap(&mut g, "key:ArrowLeft");
+    tap(&mut g, "key:ArrowLeft");
+    assert_eq!(shown_car(&mut g), "car_rally", "left is the one before");
+    tap(&mut g, "key:ArrowRight");
+    // the last car, and one more
+    for _ in 0..6 {
+        tap(&mut g, "key:ArrowRight");
+    }
+    assert_eq!(shown_car(&mut g), "car_truck", "the end of the row");
+    tap(&mut g, "key:ArrowRight");
+    assert_eq!(shown_car(&mut g), "car_city", "wraps to the first");
+    tap(&mut g, "key:ArrowLeft");
+    assert_eq!(
+        shown_car(&mut g),
+        "car_truck",
+        "and back round the other way"
+    );
+    // a round of all thirteen is where it began
+    for _ in 0..13 {
+        tap(&mut g, "key:ArrowRight");
+    }
+    assert_eq!(shown_car(&mut g), "car_truck");
+    // the pad's d-pad does the same
+    tap(&mut g, "pad:dpad_right");
+    assert_eq!(shown_car(&mut g), "car_city");
+}
+
+#[test]
+fn holding_right_keeps_moving_through_the_cars() {
+    let mut g = load();
+    open_car_select(&mut g);
+    g.take_log();
+    for _ in 0..90 {
+        frame(&mut g, &["key:ArrowRight"]);
+    }
+    let log = g.take_log();
+    let moves = log
+        .iter()
+        .filter(|l| l.starts_with("garage: shows "))
+        .count();
+    assert!(
+        (5..=9).contains(&moves),
+        "one at once, a pause, then one every sixth of a second: {moves}"
+    );
+}
+
+#[test]
+fn the_shoulder_buttons_jump_to_the_next_make() {
+    let mut g = load();
+    open_car_select(&mut g);
+    assert_eq!(garage_stat(&mut g)["make"], "apex");
+    tap(&mut g, "pad:r1");
+    assert_eq!(garage_stat(&mut g)["make"], "kestrel");
+    tap(&mut g, "pad:r1");
+    let s = garage_stat(&mut g);
+    assert_eq!(
+        (s["make"].as_str(), s["car"].as_str()),
+        ("cairn", "car_offroad"),
+        "the make's first car"
+    );
+    // (Cairn has three cars: moving on inside it, R still goes to the next make's first)
+    tap(&mut g, "key:ArrowRight");
+    tap(&mut g, "pad:r1");
+    let s = garage_stat(&mut g);
+    assert_eq!(
+        (s["make"].as_str(), s["car"].as_str()),
+        ("mammut", "car_muscle")
+    );
+    tap(&mut g, "pad:r1");
+    assert_eq!(garage_stat(&mut g)["make"], "sora", "wraps round the makes");
+    tap(&mut g, "pad:l1");
+    assert_eq!(garage_stat(&mut g)["make"], "mammut", "L goes back a make");
+    tap(&mut g, "pad:l1");
+    tap(&mut g, "pad:l1");
+    assert_eq!(garage_stat(&mut g)["make"], "kestrel");
+}
+
+#[test]
+fn the_right_stick_turns_the_shown_car_and_it_returns_to_the_slow_turn() {
+    let mut g = load();
+    open_car_select(&mut g);
+    let slow_speed = 2.0 * std::f32::consts::PI / 20.0;
+    // on its own it turns once in twenty seconds
+    for _ in 0..60 {
+        frame(&mut g, &[]);
+    }
+    let slow = garage_stat(&mut g);
+    assert!(
+        (number(&slow, "speed").abs() - slow_speed).abs() < 0.02,
+        "the slow turn: {slow:?}"
+    );
+    assert_eq!(slow["hand"], "0");
+    // the stick spins it, far faster, and the log says the hand has it
+    let before = number(&slow, "angle");
+    for _ in 0..30 {
+        frame_with(&mut g, &[("axis:right_x", 1.0)]);
+    }
+    let held = garage_stat(&mut g);
+    assert_eq!(held["hand"], "1");
+    assert!(
+        (number(&held, "angle") - before).abs() > 0.8,
+        "half a second of the stick turns it a good way: {before} -> {}",
+        held["angle"]
+    );
+    // the other way turns it back
+    let mid = number(&held, "angle");
+    for _ in 0..60 {
+        frame_with(&mut g, &[("axis:right_x", -1.0)]);
+    }
+    assert!(
+        number(&garage_stat(&mut g), "angle") < mid,
+        "left turns it the other way"
+    );
+    // up and down tip the view a little, within limits
+    for _ in 0..240 {
+        frame_with(&mut g, &[("axis:right_y", 1.0)]);
+    }
+    let tipped = number(&garage_stat(&mut g), "tilt");
+    assert!(
+        (0.1..=0.35).contains(&tipped),
+        "tipped, but only a little: {tipped}"
+    );
+    for _ in 0..240 {
+        frame_with(&mut g, &[("axis:right_y", -1.0)]);
+    }
+    let up = number(&garage_stat(&mut g), "tilt");
+    assert!(
+        (-0.1..=0.0).contains(&up),
+        "and not far the other way: {up}"
+    );
+    // let go: it coasts, and after about three seconds eases back into the slow turn (and the view back level)
+    g.take_log();
+    for _ in 0..(60 * 2) {
+        frame(&mut g, &[]);
+    }
+    assert_eq!(
+        garage_stat(&mut g)["hand"],
+        "1",
+        "still the hand's for a while"
+    );
+    for _ in 0..(60 * 12) {
+        frame(&mut g, &[]);
+    }
+    let log = g.take_log();
+    assert!(
+        log.iter().any(|l| l.starts_with("garage: slow turn")),
+        "{log:?}"
+    );
+    let back = garage_stat(&mut g);
+    assert_eq!(back["hand"], "0");
+    assert!(
+        (number(&back, "speed").abs() - slow_speed).abs() < 0.02,
+        "back in the slow turn: {back:?}"
+    );
+    assert!(number(&back, "tilt").abs() < 0.02, "and level: {back:?}");
+}
+
+#[test]
+fn the_car_select_buys_cars_and_a_car_of_yours_goes_on_to_the_race() {
+    let mut g = load();
+    g.run_lua("require('lib.state').UNLOCK_ALL_VEHICLES = false", "t")
+        .unwrap();
+    open_car_select(&mut g);
+    // the save owns the Apex GT and the Outback; the next card is the Kestrel GT2, which is not yours
+    tap(&mut g, "key:ArrowRight");
+    assert_eq!(shown_car(&mut g), "car_gt2");
+    tap(&mut g, "key:Enter"); // "buy it?"
+    assert!(
+        !g.take_log().iter().any(|l| l.starts_with("garage: bought")),
+        "the first A only asks"
+    );
+    tap(&mut g, "key:ArrowLeft"); // (moving away drops the question)
+    tap(&mut g, "key:ArrowRight");
+    tap(&mut g, "key:Enter");
+    assert!(
+        !g.take_log().iter().any(|l| l.starts_with("garage: bought")),
+        "and the question starts again"
+    );
+    tap(&mut g, "key:Enter"); // bought
+    let log = g.take_log();
+    assert!(
+        log.iter()
+            .any(|l| l == "garage: bought car_gt2 for 9000 coins, 991000 left"),
+        "{log:?}"
+    );
+    // now it is yours: A picks it and goes on, to the page with everything on it (a rally has no laps to choose)
+    tap(&mut g, "key:Enter");
+    let log = g.take_log();
+    assert!(log.iter().any(|l| l == "garage: chose car_gt2"), "{log:?}");
+    assert_eq!(screen(&g), "confirm");
+    assert_eq!(the_car_chosen(&g), "car_gt2");
+    // B goes back to the cars, and B again to the stages
+    tap(&mut g, "key:Escape");
+    assert_eq!(screen(&g), "garage");
+    tap(&mut g, "key:Escape");
+    assert_eq!(screen(&g), "track");
+}
+
+#[test]
+fn a_car_you_cannot_afford_is_not_bought() {
+    let mut extra = serde_json::Map::new();
+    extra.insert("coins".into(), serde_json::json!(100));
+    let mut g = load_with(extra);
+    g.run_lua("require('lib.state').UNLOCK_ALL_VEHICLES = false", "t")
+        .unwrap();
+    open_car_select(&mut g);
+    tap(&mut g, "key:ArrowRight");
+    assert_eq!(shown_car(&mut g), "car_gt2");
+    tap(&mut g, "key:Enter");
+    tap(&mut g, "key:Enter");
+    let log = g.take_log();
+    assert!(
+        !log.iter().any(|l| l.starts_with("garage: bought")),
+        "{log:?}"
+    );
+    let note = g.lua_text("nova.scene_now().note").unwrap();
+    assert!(note.contains("Not enough coins"), "{note}");
+    // backing out leaves the car that was chosen before
+    tap(&mut g, "key:Escape");
+    assert_eq!(the_car_chosen(&g), "car_gt");
+}
