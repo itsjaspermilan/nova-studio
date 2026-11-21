@@ -53,6 +53,9 @@ export interface SfxParams {
 /// The keys of an effect beyond the plain voice's sliders.
 export const RICH_KEYS = ["layers", "drive", "reverb", "room", "width"] as const;
 
+/// A layered effect's `volume` is a gain on its layers (they rarely add up to full scale): it may go to 4, and the peak is kept under full scale.
+export const MAX_LAYERED_VOLUME = 4;
+
 /// Whether an effect uses anything beyond the plain voice (then it renders through lib/sfx-layers.ts).
 export const isRichSfx = (p: SfxParams) => !!p.layers?.length || !!p.drive || !!p.reverb || !!p.width;
 
@@ -274,6 +277,8 @@ export function fromJson(text: string): SfxParams | null {
     if (notes) out.arpNotes = notes;
     // (a fuller effect: a bad layer makes the whole file unreadable rather than half of it played)
     Object.assign(out, cleanRich(v));
+    // (a layered effect's volume is a gain on its layers before the finish: up to 4, the peak kept under full scale)
+    if (out.layers?.length && typeof v.volume === "number" && Number.isFinite(v.volume)) out.volume = clamp(v.volume, 0, MAX_LAYERED_VOLUME);
     return out;
   } catch {
     return null;

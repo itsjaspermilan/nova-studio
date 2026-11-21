@@ -134,7 +134,10 @@ export function cleanLayer(v: unknown, at = "layer"): SfxLayer {
 /// The keys of a layer that differ from the defaults (what a file keeps).
 export function layerToJson(l: SfxLayer): Record<string, unknown> {
   const out: Record<string, unknown> = { wave: l.wave };
+  const filterKeys = ["cutoff", "cutoffEnd", "filterTime", "q"];
   for (const k of Object.keys(LAYER_DEFAULTS) as (keyof typeof LAYER_DEFAULTS)[]) {
+    // (a layer without a filter keeps no filter settings: a cutoff alone would read back as a low-pass)
+    if (l.filter === "none" && filterKeys.includes(k)) continue;
     if (l[k] !== LAYER_DEFAULTS[k]) out[k] = l[k];
   }
   if (l.filter !== "none" && out.filter === undefined) out.filter = l.filter;

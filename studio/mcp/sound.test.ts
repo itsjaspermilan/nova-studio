@@ -1,10 +1,10 @@
 // sound_report's make-up and advice: what an agent who cannot listen is told about a thin or toy-like sound.
 import { describe, expect, it } from "vitest";
-import { DEFAULTS, render, type SfxParams } from "../src/lib/sfx";
+import { DEFAULTS, fromJson, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { cleanLayer } from "../src/lib/sfx-layers";
 import { drumTrack, parseSong, renderSong, synthTrack, type Song } from "../src/lib/song";
 import { analyse, describe as words, heardLevel } from "./sound";
-import { PURPOSES } from "./makers/sound";
+import { PURPOSES, purposeParams } from "./makers/sound";
 
 const report = (p: SfxParams) => analyse("x", render(p), { source: { sfx: p } });
 
@@ -41,6 +41,17 @@ describe("the make-up of a sound and the advice on it", () => {
     const p = (layer: Record<string, unknown>): SfxParams => ({ ...DEFAULTS, volume: 0.6, layers: [cleanLayer({ wave: "sine", hold: 0.3, decay: 0.2, ...layer })] });
     expect(report(p({ wave: "saw", freq: 220 })).character.harmonic).toBe(true);
     expect(report(p({ freq: 300, fm: 6, fmRatio: 1.41 })).character.harmonic).toBe(false);
+  });
+
+  it("writes every purpose and variant so that its file renders back to the same sound", () => {
+    for (const name of Object.keys(PURPOSES)) {
+      for (const seed of [1, 2, 3]) {
+        const p = purposeParams(name, seed);
+        const back = fromJson(toJson(p))!;
+        expect(toJson(back), `${name} ${seed}`).toBe(toJson(p));
+        expect(render(back).channels[0], `${name} ${seed}`).toEqual(render(p).channels[0]);
+      }
+    }
   });
 
   it("measures the level a sound is heard at as the mix table does", () => {

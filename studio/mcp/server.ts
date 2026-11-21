@@ -28,7 +28,7 @@ import { planScene } from "./plan3d";
 import { ignoredPlace, playGame, ROUTE_HELP } from "./play";
 import { MOVED, nearest, nestedWarnings, unknownKeys } from "./keys";
 import { previewSprite, writeSprite } from "./sprites";
-import { PRESETS, DEFAULTS, RANGES, RICH_KEYS, WAVES, cleanArpNotes, cleanRich, fromJson as sfxFromJson, parseSfx, render, toJson, type SfxParams } from "../src/lib/sfx";
+import { PRESETS, DEFAULTS, MAX_LAYERED_VOLUME, RANGES, RICH_KEYS, WAVES, cleanArpNotes, cleanRich, fromJson as sfxFromJson, parseSfx, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { FINISH_RANGES, LAYER_FILTERS, LAYER_RANGES, LAYER_WAVES, nearest as nearestKey } from "../src/lib/sfx-layers";
 import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
 import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, synthTrack } from "../src/lib/song";
@@ -339,7 +339,7 @@ tool(
     "For the `noise` wave `freq` is how often the noise takes a new random value, so it sets the colour, not a pitch, and most of the energy lies below about half of it: 3000 (the top) is a bright crunch (a hit, an explosion, steps on gravel), 800 to 1500 a duller rattle, and below about 200 a rumble of slow thuds that small speakers cannot play (a footstep at freq 30 to 70 is nearly inaudible on a handheld: use 1500 to 3000 with a short decay, and a `highpass` of 500 or more for a hiss). " +
     "`arpSemitones` jumps the pitch once after `arpTime` seconds (a coin: 12). For a little tune give `arpNotes`, semitones from `freq`, one every `arpTime` seconds after the first note: { \"freq\": 523, \"arpTime\": 0.11, \"arpNotes\": [4, 7, 12], \"sustain\": 0.4 } is a four-note rising fanfare (one envelope over the whole tune; for separate notes with their own attack write a short song with song_write and play it as a sound). " +
     "`punch` adds a loud start, `lowpass` and `highpass` (Hz) soften or thin it, `duty` is the square wave's width (0.5 hollow, 0.1 thin and nasal). " +
-    "That plain voice is one oscillator and one envelope, the sound of an old console. For a produced sound give `layers` (up to 8; then the plain voice is not played, and `volume` scales the layers): each layer is one source with its own start, envelope, pitch envelope and moving filter, and a modern hit is three of them: a transient (5 to 20 ms of bright noise or a click), a body (a tone with a pitch drop, or filtered noise) and a tail, often with a sub under it. A layer: " +
+    "That plain voice is one oscillator and one envelope, the sound of an old console. For a produced sound give `layers` (up to 8; then the plain voice is not played, and `volume`, 0 to 4, is a gain on the layers before the finish; the peak is kept under full scale): each layer is one source with its own start, envelope, pitch envelope and moving filter, and a modern hit is three of them: a transient (5 to 20 ms of bright noise or a click), a body (a tone with a pitch drop, or filtered noise) and a tail, often with a sub under it. A layer: " +
     `wave (${LAYER_WAVES.join("|")}; noise is white, pink is darker, crackle is sparse clicks, freq of them a second), filter (${LAYER_FILTERS.join("|")}; giving cutoff alone means lowpass), ` +
     Object.entries(LAYER_RANGES).map(([k, r]) => `${k} ${r.min}..${r.max} (${r.what})`).join(", ") + ". " +
     "Saw and square layers are band-limited (no folding whistles). `decay` is the time to fall to -60 dB, an exponential ring like a real one. " +
@@ -373,7 +373,8 @@ tool(
     for (const [k, r] of Object.entries(RANGES)) {
       const v = (p as any)[k];
       if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${k} must be a number`);
-      (p as any)[k] = Math.min(r.max, Math.max(r.min, v));
+      const max = k === "volume" && p.layers?.length ? MAX_LAYERED_VOLUME : r.max;
+      (p as any)[k] = Math.min(max, Math.max(r.min, v));
     }
     if (p.arpNotes !== undefined) {
       const notes = cleanArpNotes(p.arpNotes);
@@ -385,7 +386,7 @@ tool(
     if (a.loudness !== undefined) {
       const want = Number(a.loudness);
       if (!(want >= -48 && want <= -3)) throw new Error('"loudness" is the level to be heard at, -48 to -3 (LUFS for a sound of 0.45 s or more, else dB RMS of its loud parts, as sound_report\'s mix table measures)');
-      let lo = Math.log(0.005), hi = Math.log(1);
+      let lo = Math.log(0.005), hi = Math.log(p.layers?.length ? MAX_LAYERED_VOLUME : 1);
       for (let i = 0; i < 14; i++) {
         const mid = (lo + hi) / 2;
         if (heardLevel(render({ ...p, volume: Math.exp(mid) })) < want) lo = mid;

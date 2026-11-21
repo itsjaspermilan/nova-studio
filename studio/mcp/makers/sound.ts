@@ -80,8 +80,10 @@ export function purposeParams(purpose: unknown, seed: unknown): SfxParams {
     for (const l of p.layers ?? []) {
       l.freq = Math.round(l.freq * pitch * 100) / 100;
       l.decay = Math.round(l.decay * length * 1000) / 1000;
-      l.cutoff = Math.round(l.cutoff * bright);
-      if (l.cutoffEnd > 0) l.cutoffEnd = Math.round(l.cutoffEnd * bright);
+      if (l.filter !== "none") {
+        l.cutoff = Math.round(l.cutoff * bright);
+        if (l.cutoffEnd > 0) l.cutoffEnd = Math.round(l.cutoffEnd * bright);
+      }
     }
     p.seed = s;
   }
