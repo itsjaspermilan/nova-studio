@@ -267,6 +267,52 @@ return S"#,
     );
 }
 
+/// A body knocked into a thick wall at speed, and into a corner, stops against it, frame after frame, and never ends up
+/// in it or beyond it: the room's floor is x < 64 and y < 64, with a wall three tiles thick on the right and below.
+#[test]
+fn a_body_knocked_into_a_thick_wall_or_a_corner_at_speed_stays_in_the_room() {
+    let mut g = project(vec![
+        (
+            "entities/box.lua",
+            "return nova.entity { hitbox = { -10, -10, 20, 20 } }",
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  local t = {}
+  for r = 0, 6 do t[r + 1] = {} for c = 0, 6 do t[r + 1][c + 1] = (c >= 4 or r >= 4) and 0 or -1 end end
+  nova.tilemap { image = 'dot', tile_width = 4, tile_height = 4, scale = 4, solid = { 0 }, tiles = t }
+  self.a = nova.spawn('box', 30, 30)
+  self.b = nova.spawn('box', 30, 30)
+end
+function S:update()
+  -- knock-back: 1500 units a second to the right; into the corner: 1200 a second down and right
+  self.a:slide(25, 0)
+  self.b:slide(20, 20)
+  local worst = 0
+  for _, e in ipairs({ self.a, self.b }) do
+    local x0, y0, x1, y1 = e:bounds()
+    worst = math.max(worst, x1 - 64, y1 - 64)
+    if nova.solid_at(x1 - 0.01, y1 - 0.01) then worst = 999 end
+  end
+  self.worst = math.max(self.worst or -999, worst)
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 60);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    g.run_lua(
+        "local s = nova.scene_now(); nova.log(string.format('%.1f %.1f %.1f %.1f %.2f', s.a.x, s.a.y, s.b.x, s.b.y, s.worst))",
+        "t",
+    )
+    .unwrap();
+    // flush against the wall (x 54: its box ends at 64), and in the corner; never a unit into the wall
+    assert_eq!(g.take_log(), ["54.0 30.0 54.0 54.0 0.00"]);
+}
+
 /// `hitbox_units = "world"`: the drawing's scale leaves the box alone (a negative sx still mirrors it); without it the
 /// box is in the sprite's pixels and scaled, as before.
 #[test]
