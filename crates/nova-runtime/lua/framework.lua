@@ -3032,7 +3032,30 @@ do
     if not range then return default end
     return range[1] + (range[2] - range[1]) * math.random()
   end
+  -- `vary` (0 to 0.5): each play a little higher or lower (pitch times 1 +- vary) and a little quieter (volume down to 1 - vary), so a
+  -- sound played over and over is not a machine gun of copies. Its own random numbers (a small xorshift), so math.random and with it
+  -- a seeded run go on exactly as without it.
+  local vary_state = 0x2545F491
+  local function vary_random()
+    local x = vary_state
+    x = x ~ ((x << 13) & 0xFFFFFFFF)
+    x = x ~ (x >> 17)
+    x = x ~ ((x << 5) & 0xFFFFFFFF)
+    vary_state = x & 0xFFFFFFFF
+    return vary_state / 4294967296
+  end
+  local function with_vary(opts)
+    if not (opts and opts.vary) then return opts end
+    local v = opts.vary
+    if type(v) ~= "number" or v < 0 or v > 0.5 then error("sound.play: vary is a number from 0 to 0.5 (0.05 is a little), not " .. tostring(v), 3) end
+    local o = {}
+    for k, x in pairs(opts) do if k ~= "vary" then o[k] = x end end
+    o.pitch = (opts.pitch or 1) * (1 + (vary_random() * 2 - 1) * v)
+    o.volume = (opts.volume or 1) * (1 - vary_random() * v)
+    return o
+  end
   function nova.sound.play(name, opts)
+    opts = with_vary(opts)
     local g = type(name) == "string" and group_of(name) or nil
     if not g then return plain_play(name, opts) end
     local n = #g.sounds

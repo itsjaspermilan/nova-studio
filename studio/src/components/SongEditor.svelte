@@ -682,8 +682,8 @@
   const secs = $derived(songSeconds(song).toFixed(1));
   const slider = (label: string, key: "attack" | "decay" | "sustain" | "release" | "volume" | "pan" | "duty", min: number, max: number, step: number) => ({ label, key, min, max, step });
   // the fuller voice: optional fields, shown with their defaults (0 or 1 means off)
-  const voice = (label: string, key: "unison" | "detune" | "cutoff" | "resonance" | "sweep" | "sub" | "vibrato" | "reverb", min: number, max: number, step: number, off: number) => ({ label, key, min, max, step, off });
-  const VOICE = [voice("Unison", "unison", 1, 7, 1, 1), voice("Detune", "detune", 0, 60, 1, 0), voice("Cutoff", "cutoff", 0, 12000, 50, 0), voice("Resonance", "resonance", 0, 0.9, 0.01, 0), voice("Sweep", "sweep", 0, 1, 0.01, 0), voice("Sub", "sub", 0, 1, 0.01, 0), voice("Vibrato", "vibrato", 0, 0.5, 0.01, 0), voice("Reverb", "reverb", 0, 1, 0.01, 0)];
+  const voice = (label: string, key: "unison" | "detune" | "cutoff" | "resonance" | "sweep" | "sub" | "vibrato" | "reverb" | "duck", min: number, max: number, step: number, off: number) => ({ label, key, min, max, step, off });
+  const VOICE = [voice("Unison", "unison", 1, 7, 1, 1), voice("Detune", "detune", 0, 60, 1, 0), voice("Cutoff", "cutoff", 0, 12000, 50, 0), voice("Resonance", "resonance", 0, 0.9, 0.01, 0), voice("Sweep", "sweep", 0, 1, 0.01, 0), voice("Sub", "sub", 0, 1, 0.01, 0), voice("Vibrato", "vibrato", 0, 0.5, 0.01, 0), voice("Reverb", "reverb", 0, 1, 0.01, 0), voice("Duck", "duck", 0, 1, 0.01, 0)];
   const SLIDERS = [slider("Attack", "attack", 0, 1, 0.005), slider("Decay", "decay", 0, 1, 0.005), slider("Sustain", "sustain", 0, 1, 0.01), slider("Release", "release", 0, 2, 0.01), slider("Volume", "volume", 0, 1, 0.01), slider("Pan", "pan", -1, 1, 0.05)];
   // the status bar
   $effect(() => {
@@ -828,7 +828,7 @@
           {/if}
         {:else}
           <label>Kit
-            <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" | "samples" })}><option value="chip">chip</option><option value="studio">studio</option><option value="samples">your sounds</option></select>
+            <select value={current.kit ?? "chip"} onchange={(e) => setTrack({ kit: e.currentTarget.value as "chip" | "studio" | "punch" | "samples" })}><option value="chip">chip</option><option value="studio">studio</option><option value="punch">punch</option><option value="samples">your sounds</option></select>
           </label>
           {#if current.kit === "samples"}
             <p class="dim small">Pick the sound file each drum plays (WAV files in the project). A drum with none is silent.</p>

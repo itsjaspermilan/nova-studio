@@ -6,7 +6,7 @@ import { integratedLufs } from "../src/lib/loudness";
 import { newRaster, type Raster, type Rgba } from "../src/lib/pixels";
 import { fft } from "../src/lib/spectrum";
 import type { SfxParams } from "../src/lib/sfx";
-import { DRUMS, expandClips, renderSong, type Song } from "../src/lib/song";
+import { DRUMS, expandClips, isInstrument, renderSong, type Song } from "../src/lib/song";
 import type { Sound } from "../src/lib/wav";
 import { DIM, fill, fit, INK, label, PAPER } from "./draw";
 
@@ -47,6 +47,264 @@ export interface Analysis {
   /// columns of dB by frequency bin, for the picture
   stft: { columns: Float32Array[]; size: number; hop: number };
   mono: Float32Array;
+  /// What it is made of (lib/sound.ts `character`): what makes a sound read as an old console's or as a produced one.
+  character: Character;
+  /// For an effect: what it lacks against a produced game sound, each with what to add (empty for music and runs).
+  advice: string[];
+}
+
+/// The make-up of a sound, measured: the numbers behind "it sounds like a chip".
+export interface Character {
+  /// From the first sound to the loudest 5 ms.
+  attackMs: number;
+  /// The first 20 ms are brighter or noisier than the rest: a click or crack that the ear takes as the moment of impact.
+  transient: boolean;
+  /// Spectral lines within 30 dB of the strongest (100 Hz to 12 kHz).
+  partials: number;
+  /// Those lines sit on whole multiples of the lowest one (a buzzy square or saw is harmonic; metal and bells are not).
+  harmonic: boolean;
+  /// How noisy the sounding moments are, 0 a pure tone to 1 white noise (the mean flatness of each moment's spectrum).
+  noise: number;
+  /// How much the spectrum's shape changes from one 20 ms to the next, in dB (0: frozen; a sweeping filter or falling pitch: 3 and up).
+  movement: number;
+  /// The spectral centroid at the end over that at the start (below 1: it darkens, as real impacts and whooshes do).
+  darkening: number;
+  /// Stereo: the side's energy over the middle's (0: mono).
+  width: number;
+  /// Share of the energy below 150 Hz (the thump under an impact).
+  low: number;
+  /// From the loudest moment to 40 dB below it.
+  tailMs: number;
+  /// The fall: "exponential" (a natural ring), "linear" (straight down), "cut" (stops short), or "" when it does not fall.
+  fall: string;
+}
+
+/// Measures a sound's make-up from its samples (the STFT columns `analyse` made, power per bin).
+export function character(sound: Sound, mono: Float32Array, columns: Float32Array[], size: number, hop: number): Character {
+  const rate = sound.rate, n = mono.length;
+  const binHz = rate / size;
+  // a 5 ms envelope
+  const w5 = Math.max(1, Math.round(rate * 0.005));
+  const env: number[] = [];
+  for (let i = 0; i < n; i += w5) {
+    let e = 0;
+    const end = Math.min(n, i + w5);
+    for (let k = i; k < end; k++) e += mono[k]! * mono[k]!;
+    env.push(Math.sqrt(e / Math.max(1, end - i)));
+  }
+  const top = Math.max(1e-12, ...env);
+  const first = env.findIndex((e) => e > top * 0.01);
+  const peakAt = env.indexOf(top);
+  const attackMs = first >= 0 ? (peakAt - first) * 5 : 0;
+  let tail = peakAt;
+  while (tail < env.length && env[tail]! > top * 0.01) tail++;
+  const tailMs = (tail - peakAt) * 5;
+  // the shape of the fall: compare the level halfway through the fall with what a straight line (in amplitude) or an exponential would give
+  let fall = "";
+  // (from where it last stood within 6 dB of its peak: a held sound is judged on its fall, not its hold)
+  let held = peakAt;
+  for (let i = peakAt; i < tail; i++) if (env[i]! >= top * 0.5) held = i;
+  const after = env.slice(held, tail);
+  if (after.length >= 6) {
+    const mid = after[Math.floor(after.length / 2)]! / after[0]!;
+    const lastBits = env.slice(tail - 2, tail + 1).map((e) => e / top);
+    const cutShort = (lastBits[0] ?? 0) > 0.08 && (env[tail + 1] ?? 0) / top < 0.005;
+    fall = cutShort ? "cut" : mid > 0.3 ? "linear" : "exponential";
+  }
+  // the sounding columns, in bands of a third of an octave from 100 Hz to 12 kHz
+  const bands: [number, number][] = [];
+  for (let f = 100; f < 12000; f *= 2 ** (1 / 3)) bands.push([Math.max(1, Math.floor(f / binHz)), Math.max(1, Math.floor((f * 2 ** (1 / 3)) / binHz))]);
+  const colEnergy = columns.map((c) => {
+    let e = 0;
+    for (let k = 1; k < c.length; k++) e += c[k]!;
+    return e;
+  });
+  const loudest = Math.max(1e-30, ...colEnergy);
+  const sounding = columns.map((_, i) => colEnergy[i]! > loudest * 1e-3);
+  const shape = columns.map((c) => {
+    const v = bands.map(([a, b]) => {
+      let e = 0;
+      for (let k = a; k <= Math.min(b, c.length - 1); k++) e += c[k]!;
+      return 10 * Math.log10(e / Math.max(1, b - a + 1) + 1e-30);
+    });
+    const m = Math.max(...v);
+    return v.map((x) => Math.max(-50, x - m));
+  });
+  const gap = Math.max(1, Math.round((0.02 * rate) / hop));
+  let flux = 0, fluxN = 0;
+  for (let i = 0; i + gap < columns.length; i++) {
+    if (!sounding[i] || !sounding[i + gap]) continue;
+    let d = 0;
+    for (let b = 0; b < bands.length; b++) d += Math.abs(shape[i + gap]![b]! - shape[i]![b]!);
+    flux += d / bands.length;
+    fluxN++;
+  }
+  // per-column noisiness and centroid. Noisiness is the flatness inside each band of a third of an octave (a filtered noise is
+  // flat within its bands even when the filter tilts the whole; a tone or a stack of harmonics is a few spikes), weighted by
+  // the band's energy, over 2: white noise reads about 1, a square wave near 0.
+  const wide: [number, number][] = [];
+  // (thirds of an octave from 40 Hz, merged at the bottom until each band has 12 bins or more: three times the width of a window's main lobe, so one pure line in a band reads as a line)
+  let from = Math.max(1, Math.floor(40 / binHz));
+  for (let f = 40; f < 14000; f *= 2 ** (1 / 3)) {
+    const b = Math.floor((f * 2 ** (1 / 3)) / binHz);
+    if (b - from >= 11 && b < size / 2) {
+      wide.push([from, b]);
+      from = b + 1;
+    }
+  }
+  const flat: number[] = [], flatWeight: number[] = [], cent: number[] = [];
+  // (the noisiness is read from the loud moments only, those within 3 dB of the loudest: there the window sits inside the sound)
+  const loudCol = Math.max(0, ...columns.map((c, i) => (sounding[i] ? colEnergy[i]! : 0)));
+  columns.forEach((c, i) => {
+    if (!sounding[i]) return;
+    let wsum = 0, tot = 0;
+    for (let k = 1; k < c.length; k++) {
+      tot += c[k]!;
+      wsum += c[k]! * k * binHz;
+    }
+    let num = 0, den = 0;
+    for (const [a, b] of wide) {
+      let lg = 0, lin = 0;
+      for (let k = a; k <= b; k++) {
+        lg += Math.log(c[k]! + 1e-30);
+        lin += c[k]!;
+      }
+      const m = b - a + 1;
+      if (lin <= 0) continue;
+      num += lin * (Math.exp(lg / m) / (lin / m));
+      den += lin;
+    }
+    flat.push(den > 0 ? Math.min(1, num / den / 0.56) : 0);
+    flatWeight.push(tot >= loudCol * 0.5 ? tot : 0);
+    cent.push(tot > 0 ? wsum / tot : 0);
+  });
+  // (weighted by each moment's energy: the moments where the window only catches the start or the end are smeared)
+  const weightSum = flatWeight.reduce((s, x) => s + x, 0);
+  const noise = weightSum > 0 ? flat.reduce((s, x, i) => s + x * flatWeight[i]!, 0) / weightSum : 0;
+  const third = Math.max(1, Math.floor(cent.length / 3));
+  const avg = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / Math.max(1, xs.length);
+  const darkening = cent.length >= 3 ? avg(cent.slice(-third)) / Math.max(1, avg(cent.slice(0, third))) : 1;
+  // a transient: the highs (above about 2.5 kHz) of the first 15 ms stand out against the next 45 ms by much more than the sound
+  // as a whole does (a crack or click over a body), and are loud enough to hear
+  let transient = false;
+  {
+    let peakAbs = 1e-9;
+    for (let i = 0; i < n; i++) peakAbs = Math.max(peakAbs, Math.abs(mono[i]!));
+    let onset = 0;
+    while (onset < n && Math.abs(mono[onset]!) < peakAbs * 0.03) onset++;
+    const a = Math.exp((-2 * Math.PI * 2500) / rate);
+    let hp = 0, prev = onset > 0 ? mono[onset - 1]! : 0;
+    const h0 = Math.round(0.015 * rate), h1 = Math.round(0.06 * rate);
+    let hfHead = 0, hfAfter = 0, allHead = 0, allAfter = 0;
+    for (let i = onset; i < Math.min(n, onset + h1); i++) {
+      hp = a * (hp + mono[i]! - prev);
+      prev = mono[i]!;
+      if (i - onset < h0) {
+        hfHead += hp * hp;
+        allHead += mono[i]! * mono[i]!;
+      } else {
+        hfAfter += hp * hp;
+        allAfter += mono[i]! * mono[i]!;
+      }
+    }
+    if (allHead > 0 && hfHead / allHead >= 0.02) transient = allAfter <= 0 || hfAfter <= 0 || hfHead / hfAfter / (allHead / allAfter) >= 2.5;
+  }
+  // partials of the mean spectrum
+  const mean = new Float64Array(size / 2 + 1);
+  columns.forEach((c, i) => {
+    if (sounding[i]) for (let k = 0; k < c.length; k++) mean[k]! += c[k]!;
+  });
+  const lo = Math.max(2, Math.floor(100 / binHz)), hi = Math.min(size / 2 - 2, Math.floor(12000 / binHz));
+  let strongest = 0;
+  for (let k = lo; k <= hi; k++) strongest = Math.max(strongest, mean[k]!);
+  const peaks: number[] = [];
+  for (let k = lo; k <= hi; k++) {
+    if (mean[k]! >= strongest * 1e-3 && mean[k]! > mean[k - 1]! && mean[k]! >= mean[k + 1]! && mean[k]! > 4 * Math.min(mean[k - 2]!, mean[k + 2]!)) {
+      if (peaks.length && k - peaks[peaks.length - 1]! < 3) continue;
+      peaks.push(k);
+    }
+  }
+  // (each line's frequency finer than a bin: the parabola through the three bins round it)
+  const fine = peaks.map((k) => {
+    const a = Math.log(mean[k - 1]! + 1e-30), b = Math.log(mean[k]! + 1e-30), c = Math.log(mean[k + 1]! + 1e-30);
+    return k + Math.max(-0.5, Math.min(0.5, (a - c) / (2 * (a - 2 * b + c) || 1)));
+  });
+  const base = fine[0];
+  const harmonic = !!base && fine.length >= 2 && fine.every((k) => {
+    const r = k / base;
+    return Math.round(r) >= 1 && Math.abs(r / Math.round(r) - 1) < 0.03;
+  });
+  // stereo and low end
+  let side = 0, mid = 0;
+  if (sound.channels.length === 2) {
+    const [l, r] = sound.channels as [Float32Array, Float32Array];
+    for (let i = 0; i < n; i++) {
+      const m = (l[i]! + r[i]!) / 2, s = (l[i]! - r[i]!) / 2;
+      mid += m * m;
+      side += s * s;
+    }
+  }
+  let lowE = 0, all = 0;
+  for (let k = 1; k < mean.length; k++) {
+    all += mean[k]!;
+    if (k * binHz < 150) lowE += mean[k]!;
+  }
+  return {
+    attackMs, transient, partials: peaks.length, harmonic, noise, movement: fluxN ? flux / fluxN : 0, darkening,
+    width: mid > 0 ? side / mid : 0, low: all > 0 ? lowE / all : 0, tailMs, fall,
+  };
+}
+
+/// What a song lacks against produced game music, read from its settings and its measured width: each with the field to set.
+export function adviseSong(c: Character, song: Song): string[] {
+  const out: string[] = [];
+  const live = song.tracks.filter((t) => !t.mute && (t.notes.length || t.clips?.length));
+  const chip = live.filter((t) => t.kind === "synth" && !isInstrument(t.wave) && (t.unison ?? 1) <= 1 && !((t.cutoff ?? 0) > 0));
+  if (chip.length) out.push(`${chip.map((t) => `"${t.name}"`).join(", ")} ${chip.length > 1 ? "use" : "uses"} the plain chip voice (one oscillator, nothing moving): the main reason a song sounds like an old console. Give a lead or pad \`unison\` 3 to 5 with \`detune\` 10 to 20, a \`cutoff\` with \`sweep\`, and a \`reverb\` send.`);
+  const lowest = live.filter((t) => t.kind === "synth" && t.notes.length).sort((x, y) => Math.min(...x.notes.map((n) => n.pitch)) - Math.min(...y.notes.map((n) => n.pitch)))[0];
+  const triBass = lowest && lowest.wave === "triangle" && Math.min(...lowest.notes.map((n) => n.pitch)) < 55 ? [lowest] : [];
+  if (triBass.length) out.push(`${triBass.map((t) => `"${t.name}"`).join(", ")}: a triangle bass is the NES's bass. A produced bass is a saw (or two detuned) through a low-pass that opens on each note: \`"wave": "saw", "unison": 2, "detune": 8, "cutoff": 400, "sweep": 0.5, "sub": 0.5\`.`);
+  const chipDrums = live.filter((t) => t.kind === "drums" && (t.kit ?? "chip") === "chip");
+  if (chipDrums.length) out.push(`${chipDrums.map((t) => `"${t.name}"`).join(", ")} ${chipDrums.length > 1 ? "use" : "uses"} the chip drum kit (a blip and a burst of held noise): set \`"kit": "studio"\` (or \`"punch"\` for big gated drums) and a little \`reverb\`.`);
+  if (!live.some((t) => (t.reverb ?? 0) > 0) && !(song.buses ?? []).some((b) => (b.reverb ?? 0) > 0)) out.push("no room at all: give the lead, pads and snare a `reverb` send (0.15 to 0.4).");
+  const kicks = live.filter((t) => t.kind === "drums").reduce((s, t) => s + t.notes.filter((n) => n.pitch === 36).length, 0);
+  const driving = kicks / Math.max(1, song.length / (song.stepsPerBeat * 4)) >= 3; // (three kicks a bar or more: music that drives)
+  if (driving && !live.some((t) => (t.duck ?? 0) > 0) && live.length >= 3) out.push("nothing makes room for the kick: give the bass and pads `duck` 0.3 to 0.6 (they dip on every kick and swell back: the pump of dance music and synthwave).");
+  if (song.master?.limit === undefined && !(song.master?.fx ?? []).some((f) => f.type === "compressor")) out.push('no glue on the mix: `"master": { "volume": 1, "limit": -1, "fx": [{ "type": "compressor", "params": { "threshold": -14, "ratio": 2.5, "attack": 15, "release": 150 } }] }` evens it out and lets it be louder without clipping.');
+  if (c.width < 0.01) out.push(`nearly mono (side/middle ${c.width.toFixed(3)}): pan the harmony and hats a little apart, and unison voices spread across the field.`);
+  return out;
+}
+
+/// What a short effect lacks against a produced game sound, in words, each with what to add: the advice an agent who cannot
+/// listen needs to go from "a chip blip" to "a hit". `sfx` names the settings when the effect's file is known.
+export function adviseEffect(c: Character, seconds: number, sfx: SfxParams | undefined, loudStart: boolean): string[] {
+  const out: string[] = [];
+  const layered = !!sfx?.layers?.length;
+  const plain = !!sfx && !layered;
+  const impact = loudStart && seconds < 1.5;
+  const tonal = c.noise < 0.15;
+  const onlyNoise = c.noise > 0.8 && c.partials <= 1 && c.low < 0.05;
+  const toy: string[] = [];
+  if (tonal && c.partials <= 2 && c.movement < 2) toy.push("one or two steady partials");
+  else if (tonal && c.partials >= 6 && c.harmonic) toy.push("a buzzy stack of harmonics (a raw square or saw)");
+  if (c.noise < 0.05 && !c.transient) toy.push("no noise at all");
+  if (onlyNoise) toy.push("noise with nothing under it");
+  if (impact && !c.transient) toy.push("no transient");
+  if (c.movement < 1 && seconds >= 0.08) toy.push("a frozen spectrum");
+  if (c.width < 0.002) toy.push("mono");
+  if (c.fall === "linear" || c.fall === "cut") toy.push(c.fall === "cut" ? "it stops short instead of ringing out" : "a straight-line fade instead of a ring");
+  if (plain && sfx!.wave === "noise") toy.push("held-step noise (an 8-bit console's noise channel)");
+  if (toy.length >= 3) out.push(`toy-like (it reads as an old console's sound): ${toy.join(", ")}.`);
+  if (impact && !c.transient) out.push(`no transient: nothing marks the moment of impact. Add a layer of noise or a click 5 to 20 ms long at the start: { "wave": "noise", "filter": "highpass", "cutoff": 3000, "decay": 0.02, "volume": 0.5 }.`);
+  if (impact && tonal && !c.transient) out.push(`no noise: if this is an impact, a shot or a whoosh, those are mostly noise. Add a noise layer through a filter that falls: { "wave": "noise", "filter": "bandpass", "cutoff": 3000, "cutoffEnd": 500, "q": 1.2, "decay": 0.25 }.`);
+  if (impact && onlyNoise) out.push(`only noise, no body: add a tone that drops in pitch under it: { "wave": "sine", "freq": 70, "pitch": 24, "pitchTime": 0.03, "decay": 0.25 } (a thump) or a triangle at 150 to 300 Hz for a knock.`);
+  if (impact && seconds >= 0.15 && c.low < 0.04 && c.noise > 0.5) out.push(`no weight under it (${Math.round(c.low * 100)} % below 150 Hz): for a heavy hit, a slam or an explosion add a sub layer: { "wave": "sine", "freq": 55, "pitch": 19, "pitchTime": 0.04, "decay": 0.3, "volume": 0.6 } (felt on headphones; the handheld's speaker gets the drop).`);
+  if (c.movement < 1 && seconds >= 0.08) out.push(`static: the spectrum hardly moves (${c.movement.toFixed(1)} dB per 20 ms). Give a layer a pitch envelope (\`pitch\` 12 to 24 with \`pitchTime\` 0.03) or a filter that moves (\`cutoff\` 6000 to \`cutoffEnd\` 600).`);
+  if (c.width < 0.002 && seconds >= 0.12 && !(sfx?.reverb || sfx?.width)) out.push(`mono and dry: add \`width\` 0.3 to 0.6 and a short room, \`reverb\` 0.1 to 0.25 with \`room\` 0.2 to 0.4 (wet concrete: 0.3).`);
+  if (c.fall === "linear" || c.fall === "cut") out.push(`${c.fall === "cut" ? "it is cut off while still sounding" : "it fades in a straight line"}: real sounds ring out exponentially. ${layered ? "Layers already fall exponentially: lengthen the last layer's `decay`." : "Layers fall exponentially (`decay` is the time to -60 dB)."}`);
+  if (plain && (sfx!.wave === "square" || sfx!.wave === "saw") && sfx!.freq > 600) out.push(`the plain voice's ${sfx!.wave} is not band-limited: at ${Math.round(sfx!.freq)} Hz its upper harmonics fold back as whistles (aliasing). A layer's saw and square are band-limited: move it into \`layers\`.`);
+  if (plain && sfx!.wave === "noise") out.push(`the plain voice's noise is held steps (an 8-bit console's noise channel, buzzy at freq ${Math.round(sfx!.freq)}). A layer's \`noise\` and \`pink\` are smooth, and its filter can move.`);
+  return out;
 }
 
 const BANDS: [string, number, number][] = [
@@ -390,11 +648,37 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
       warnings.push(`the loop's seam does not match: the last sample to the first is a step of ${fmt(step * 100)} % of full scale, against ${fmt(inner * 100)} % for the biggest steps inside it (a click every time round). ${song ? `At the seam: ${sounding}. A note that is cut off by the end is the usual cause: shorten the notes still held at the end so that they finish a step earlier, or lengthen those tracks' \`release\`.` : "Make the loop end where the wave crosses zero, or fade its last few milliseconds into its first."}`);
     } else if (gap >= 0.08) warnings.push(`the loop has ${Math.round(gap * 1000)} ms of silence at its ends: if that is not a rest in the music, it is a gap every time round. ${song ? "Put a note on the first step, or shorten the song's `length`." : "Cut the silence off the file's ends."}`);
   }
+  const made = character(sound, mono, columns, size, hop);
+  const loudStart = envelope.length > 0 && envelope.indexOf(Math.max(...envelope)) <= 1;
+  const advice = peak > 0.0005 && !opts.loop && !opts.run && !song ? adviseEffect(made, n / rate, sfx, loudStart) : song ? adviseSong(made, song) : [];
   return {
     name, seconds: n / rate, rate, channels: sound.channels.length, peakDb: db(peak), rmsDb: db(rms), loudDb: db(loud), lufs, clipped, dc: sum / Math.max(1, n),
     centroid, shares, lines: lines.map((l) => ({ hz: l.hz, share: l.share })), flatness, reading, warnings, envelope, pitch,
-    silenceStart: s0 / rate, silenceEnd: s1 / rate, clicks, seam, stft: { columns, size, hop }, mono,
+    silenceStart: s0 / rate, silenceEnd: s1 / rate, clicks, seam, stft: { columns, size, hop }, mono, character: made, advice,
   };
+}
+
+/// The level a sound is heard at, as the mix table measures it: LUFS for a sound of 0.45 s or more, else the RMS of its loud
+/// parts (100 ms windows within 26 dB of the loudest). Cheap: no spectrum.
+export function heardLevel(sound: Sound): number {
+  const n = sound.channels[0]?.length ?? 0;
+  if (!n) return -Infinity;
+  if (n / sound.rate >= 0.45) return integratedLufs(sound.channels, sound.rate);
+  const win = Math.max(1, Math.round(sound.rate * 0.1));
+  const energies: number[] = [];
+  for (let i = 0; i < n; i += win) {
+    let e = 0;
+    const end = Math.min(n, i + win);
+    for (let k = i; k < end; k++) {
+      let m = 0;
+      for (const c of sound.channels) m += c[k]! / sound.channels.length;
+      e += m * m;
+    }
+    energies.push(e / (end - i));
+  }
+  const top = Math.max(0, ...energies);
+  const loud = energies.filter((e) => e > top * 0.0025);
+  return db(Math.sqrt(loud.reduce((s, e) => s + e, 0) / Math.max(1, loud.length)));
 }
 
 /// The report of one sound, in words.
@@ -411,6 +695,11 @@ export function describe(a: Analysis): string {
   if (a.lines.length) out.push(`  strongest lines: ${a.lines.filter((l) => l.share >= 0.02).map((l) => `${hz(l.hz)} ${note(l.hz)} ${Math.round(l.share * 100)} %`).join(", ") || "none above 2 % of the energy"}`);
   if (a.pitch.some((p) => p > 0)) out.push(`  strongest pitch over time (${a.pitch.length} equal parts): ${a.pitch.map((p) => (p > 0 ? `${Math.round(p)}` : "-")).join(" ")} Hz`);
   out.push(`  ends: ${Math.round(a.silenceStart * 1000)} ms of silence at the start, ${Math.round(a.silenceEnd * 1000)} ms at the end; ${a.clipped ? `${a.clipped} clipped samples` : "no clipping"}; ${a.clicks.length ? `${a.clicks.length} click(s)` : "no clicks"}`);
+  const c = a.character;
+  // (a loop or a recording has no one attack and tail: only what it is made of)
+  if (a.seam || a.seconds > 4) out.push(`  make-up: noise ${c.noise.toFixed(2)} (0 tone, 1 noise), movement ${c.movement.toFixed(1)} dB per 20 ms, ${c.width < 0.002 ? "mono" : `stereo width ${c.width.toFixed(2)}`}, ${Math.round(c.low * 100)} % below 150 Hz`);
+  else out.push(`  make-up: ${c.transient ? "a transient at the start" : "no transient"}, rises in ${c.attackMs} ms, ${c.partials} spectral line${c.partials === 1 ? "" : "s"}${c.partials >= 2 ? (c.harmonic ? " (harmonic)" : " (not harmonic)") : ""}, noise ${c.noise.toFixed(2)} (0 tone, 1 noise), movement ${c.movement.toFixed(1)} dB per 20 ms, brightness end/start ${c.darkening.toFixed(2)}, ${c.width < 0.002 ? "mono" : `stereo width ${c.width.toFixed(2)}`}, ${Math.round(c.low * 100)} % below 150 Hz, tail ${c.tailMs} ms${c.fall ? ` (${c.fall === "exponential" ? "rings out" : c.fall === "linear" ? "a straight fade" : "cut short"})` : ""}`);
+  for (const s of a.advice) out.push(`  advice: ${s}`);
   if (a.seam) out.push(`  loop seam: ${a.seam.ok ? "matches" : "DOES NOT MATCH"} (step ${fmt(a.seam.step * 100)} % of full scale across it, ${fmt(a.seam.typical * 100)} % for the big steps inside; level ${fmt(Math.abs(a.seam.levelDb))} dB apart${a.seam.ok && a.seam.why ? `; ${a.seam.why}` : ""})${a.seam.sounding ? `; at the seam: ${a.seam.sounding}` : ""}`);
   return out.join("\n");
 }
