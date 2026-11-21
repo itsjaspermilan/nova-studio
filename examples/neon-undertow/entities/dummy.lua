@@ -1,5 +1,6 @@
 -- The training dummy: takes any hit, shows the last hit's damage as a number over its head, and never dies.
 local E = require("data.enemies").dummy
+local Ty = require("lib.type")
 local Status = require("lib.status")
 
 local Dummy = nova.entity {
@@ -33,7 +34,7 @@ function Dummy:hud()
   if self.hits == 0 then return end
   local fade = math.max(0.45, 1 - self.last_t * 0.3)
   local pop = math.max(0, 0.25 - self.last_t) * 40
-  nova.ui.text(x - 40, y - pop - 14, tostring(self.last_damage), { font = "pixel", size = 28, color = { 255, 255, 255, 255 * fade }, align = "center", width = 80, shadow = true })
+  Ty.text(x - 40, y - pop - 14, tostring(self.last_damage), "head", { color = { 255, 255, 255, 255 * fade }, align = "center", width = 80, shadow = true })
 end
 
 return Dummy
