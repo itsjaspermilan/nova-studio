@@ -23,10 +23,14 @@ export const ROUTE_HELP =
   '`who` is a scene object\'s name or a tag (left out: the one named or tagged hero or player, or what the 2D camera follows). ' +
   'Fighting: { "fight": "enemy", "attack": "a", "max": 600 } goes to the nearest entity with that tag, taps `attack` (every `attack_every` frames, 20) while its hitbox is within `range` (the walker\'s own size; 1.5 in 3D), then the next, until none is left or `max` frames have passed; the answer says how many were beaten, with how many attacks, and what it cost the hero. ' +
   "walk_to and fight drive the axes move_x, move_y and the buttons left, right, up, down together (\"axes\": [x, y] and \"dirs\": [left, right, up, down] name other actions) and measure each frame which way the walker really went, so they also work when the stick is relative to a turned camera. A walk gives up with a warning that says where the walker is when it stops getting nearer for two seconds, or after `max` frames (600). \"plane\": \"xy\" or \"xz\" says which fields the point is in when the guess (xz for an entity with a model) is wrong. " +
-  "`crop`, `crop_to`, `view`, `zoom`, `every`, `capture_at`, `print`, `invincible`, `stop_on_fail` and `overlay` are options of the whole call, not of a step.";
+  'Watching every frame: "always": "<lua>" on a step (or a group) is a condition that must hold after every frame it plays ("not nova.named(\'hero\'):touching(\'solid\')"): the first frame it is false is a failure, said with its frame and step (and with stop_on_fail the route ends there), and the answer says how many frames it held on; "record": "<lua>" writes a value down after every frame of the step (the hero\'s x round a hit, to see a hit-stop). Both take a list, and both may also sit beside "route" for the whole run. A step\'s `tap` and `press` happen on its first two frames and its `lua` when it starts, not when its `until` comes true: to press at a moment, end one step with the `until` and press in the next. ' +
+  "`crop`, `crop_to`, `view`, `zoom`, `every`, `capture_at`, `print`, `each_frame`, `invincible`, `stop_on_fail` and `overlay` are options of the whole call, not of a step (`always` and `record` may be either).";
 
-export const STEP_KEYS = ["hold", "press", "tap", "tap_every", "frames", "wait", "until", "max", "may_time_out", "quiet", "capture", "lua", "repeat", "steps", "walk_to", "who", "radius", "reach", "straight", "avoid", "plane", "axes", "dirs", "fight", "attack", "attack_every", "range"];
-const CALL_KEYS = ["crop", "crop_to", "crop_margin", "view", "zoom", "every", "capture_at", "print", "seed", "size", "state", "invincible", "god", "stop_on_fail", "overlay", "compare", "out", "audio", "start_scene"];
+export const STEP_KEYS = ["hold", "press", "tap", "tap_every", "frames", "wait", "until", "max", "may_time_out", "quiet", "capture", "lua", "always", "record", "repeat", "steps", "walk_to", "who", "radius", "reach", "straight", "avoid", "plane", "axes", "dirs", "fight", "attack", "attack_every", "range"];
+const CALL_KEYS = ["crop", "crop_to", "crop_margin", "view", "zoom", "every", "capture_at", "print", "always", "record", "each_frame", "seed", "size", "state", "invincible", "god", "stop_on_fail", "overlay", "compare", "out", "audio", "start_scene"];
+
+/// An `always` or `record`: a piece of Lua, or a list of them.
+const luaList = (v: unknown) => v === undefined || (typeof v === "string" && v !== "") || (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x !== ""));
 
 function checkSteps(steps: unknown, where: string) {
   if (!Array.isArray(steps)) throw new Error(`${where || "route"} must be a list of steps. ${ROUTE_HELP}`);
@@ -41,6 +45,7 @@ function checkSteps(steps: unknown, where: string) {
       throw new Error(`${label}: walk_to is a point, [x, y] in a 2D game or [x, z] on the ground of a 3D one, or the name or tag of an entity to walk up to ("chest") (got ${JSON.stringify(s.walk_to)})`);
     }
     if (s.fight !== undefined && !(typeof s.fight === "string" && s.fight)) throw new Error(`${label}: fight is the tag of the entities to fight, like "enemy" (got ${JSON.stringify(s.fight)})`);
+    for (const k of ["always", "record"]) if (!luaList(s[k])) throw new Error(`${label}: ${k} is a piece of Lua or a list of them (got ${JSON.stringify(s[k])})`);
     if (s.steps !== undefined) checkSteps(s.steps, `${where}${i + 1}.`);
   });
 }
@@ -174,6 +179,26 @@ export function pictureDifference(a: Raster, b: Raster): { share: number; mean: 
   return { share: changed / (a.w * a.h), mean: changed ? sum / changed : 0, box: changed ? [x0, y0, x1, y1] : null };
 }
 
+/// A `record` in words: its value after each frame, a run of the same value said once with how many frames it lasted
+/// ("f12-f15 120 (x4)"), at most 200 entries (the report has them all).
+export function recordLines(rec: Args): string[] {
+  const values: [number, string][] = rec.values ?? [];
+  if (!values.length) return [`record \`${rec.expr}\` (${rec.scope}): no frames`];
+  const runs: { from: number; to: number; value: string; n: number }[] = [];
+  for (const [frame, value] of values) {
+    const last = runs[runs.length - 1];
+    if (last && last.value === value && last.to === frame - 1) {
+      last.to = frame;
+      last.n++;
+    } else runs.push({ from: frame, to: frame, value, n: 1 });
+  }
+  const MAX = 200;
+  const said = runs.slice(0, MAX).map((r) => (r.n > 1 ? `f${r.from}-f${r.to} ${r.value} (x${r.n})` : `f${r.from} ${r.value}`));
+  const more = runs.length > MAX ? `; ... ${runs.length - MAX} more changes (all in report.json with \`out\`)` : "";
+  const dropped = rec.dropped ? ` (and ${rec.dropped} later frames not kept)` : "";
+  return [`record \`${rec.expr}\` (${rec.scope}, ${values.length} frames${dropped}): ${said.join("; ")}${more}`];
+}
+
 interface Ran {
   r: { code: number; out: string };
   report: Args | null;
@@ -209,6 +234,8 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
   if (a.crop_to !== undefined && !(typeof a.crop_to === "string" && a.crop_to)) throw new Error(`crop_to is the name, tag or kind of the entity to crop every picture to, like "hero" (got ${JSON.stringify(a.crop_to)})`);
   if (a.crop_to && a.crop) throw new Error("crop and crop_to both say what part of the pictures to keep: give one of them");
   if (a.crop_margin !== undefined && !(typeof a.crop_margin === "number" && a.crop_margin >= 0)) throw new Error("crop_margin is the room round the crop_to entity, in picture pixels (0 or more)");
+  for (const k of ["always", "record"]) if (!luaList(a[k])) throw new Error(`${k} is a Lua ${k === "always" ? "condition" : "expression"} or a list of them, like "nova.named('hero').hp > 0" (got ${JSON.stringify(a[k])})`);
+  if (a.each_frame !== undefined && !(typeof a.each_frame === "string" && a.each_frame)) throw new Error(`each_frame is Lua run before every frame, like "nova.named('hero').hp = 3" (got ${JSON.stringify(a.each_frame)})`);
   const dir = mkdtempSync(join(tmpdir(), "nova-play-"));
   try {
     const route: Args[] = a.route ?? a.steps ?? [];
@@ -233,6 +260,9 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
         ...(overlay.length ? { overlay } : {}),
         ...(a.view ? { view: a.view } : {}),
         ...(a.crop_to ? { crop_to: String(a.crop_to) } : {}),
+        ...(a.always !== undefined ? { always: a.always } : {}),
+        ...(a.record !== undefined ? { record: a.record } : {}),
+        ...(a.each_frame ? { lua_each_frame: String(a.each_frame) } : {}),
         ...extra,
       };
       const last = join(dir, `${name}-last.png`);
@@ -414,16 +444,28 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     }
 
     const which = a.state ?? "end";
+    // (a value that cannot be worked out yet, before the thing exists, is said in full once and then shortly, so that
+    // a long strip's captions do not bury the one error that matters)
+    const saidErrors = new Set<string>();
+    const shown = (p: Args) => {
+      const v = String(p.value);
+      if (!v.startsWith("error:")) return `${p.expr} = ${v}`;
+      const key = `${p.expr}\n${v}`;
+      if (saidErrors.has(key)) return `${p.expr} = (error, as above)`;
+      saidErrors.add(key);
+      return `${p.expr} = ${v}`;
+    };
     for (const c of captures) {
-      const prints = (c.prints ?? []).map((p: Args) => `${p.expr} = ${p.value}`);
+      const prints = (c.prints ?? []).map(shown);
       const st = which === "all" ? stateLines(c.state, true) : [];
       if (prints.length || st.length) {
         lines.push(`f${c.frame}${c.label ? ` "${c.label}"` : ""}:${prints.length ? ` ${prints.join("; ")}` : ""}`);
         lines.push(...st.map((s) => `  ${s}`));
       }
     }
+    for (const rec of (report?.records ?? []) as Args[]) lines.push(...recordLines(rec));
     if (report) {
-      const prints = (report.end?.prints ?? []).map((p: Args) => `${p.expr} = ${p.value}`);
+      const prints = (report.end?.prints ?? []).map(shown);
       lines.push(`at the end (f${ran}):${prints.length ? ` ${prints.join("; ")}` : ""}`);
       if (which !== "none") lines.push(...stateLines(report.end?.state, true).map((s) => `  ${s}`));
       const log: Args[] = report.log ?? [];

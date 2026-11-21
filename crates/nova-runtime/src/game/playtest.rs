@@ -691,17 +691,56 @@ end
 local PINS = { "hp", "health", "hearts", "lives", "life", "energy" }
 local god
 
--- Puts the walker's life back to the most it has had. Called after every frame of a run with `invincible`.
+-- The life fields of one entity are kept out of the entity itself and every write to them goes through its class, which
+-- refuses a write that lowers them (a blow is refused as it lands, so a hit bigger than what is left cannot kill, and the
+-- game's own "hp <= 0" check right after it sees the life it had). Returns a function that puts everything back.
+local function guard(e, pins)
+  local cls = getmetatable(e)
+  if type(cls) ~= "table" then return function() end end
+  local store = {}
+  for k in pairs(pins) do store[k] = rawget(e, k); rawset(e, k, nil) end
+  local old_index, old_newindex = rawget(cls, "__index"), rawget(cls, "__newindex")
+  cls.__index = function(t, k)
+    if t == e then
+      local v = store[k]
+      if v ~= nil then return v end
+    end
+    if type(old_index) == "function" then return old_index(t, k) end
+    return old_index and old_index[k]
+  end
+  cls.__newindex = function(t, k, v)
+    if t == e and pins[k] ~= nil then
+      local now = store[k]
+      if type(v) == "number" and type(now) == "number" and v < now then
+        god.restored = god.restored + 1
+        return
+      end
+      store[k] = v
+      return
+    end
+    if old_newindex then return old_newindex(t, k, v) end
+    rawset(t, k, v)
+  end
+  return function()
+    cls.__index, cls.__newindex = old_index, old_newindex
+    for k, v in pairs(store) do rawset(e, k, v) end
+  end
+end
+
+-- Keeps the walker's life from going down. Called after every frame of a run with `invincible`; the first call (and the
+-- first after the walker changes, a new scene) puts the guard on.
 function H.god(who)
   nova.testing.invincible = true
   local ok, e, label = pcall(find_walker, who)
   if not ok then return nil end
   if not god or god.e ~= e then
+    if god and god.release then god.release() end
     local pins = {}
     for _, k in ipairs(PINS) do
       if type(e[k]) == "number" then pins[k] = e[k] end
     end
     god = { e = e, pins = pins, restored = (god and god.restored or 0), label = label }
+    if next(pins) then god.release = guard(e, pins) end
   end
   local names = {}
   for _, k in ipairs(PINS) do

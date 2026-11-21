@@ -21,6 +21,15 @@ export interface TilesetDoc {
 
 export const MAX_TILE = 1024;
 
+/// Whether a tileset of `count` tiles fits (tile numbers run from 0 to MAX_TILE - 1): an error past the limit, and a
+/// warning from 90 % of it, before a later `append` runs into it.
+export function tileRoom(count: number, name: string): { error?: string; warning?: string } {
+  const advice = `make a second tileset for the rest (tileset_make with only the terrains and props one place needs, or sprite_write without "append") and paint it as a layer of its own`;
+  if (count > MAX_TILE) return { error: `sprites/${name} would hold ${count} tiles; a tileset holds at most ${MAX_TILE} (tiles 0 to ${MAX_TILE - 1}): ${advice}` };
+  if (count >= MAX_TILE * 0.9) return { warning: `WARNING: sprites/${name} holds ${count} of the ${MAX_TILE} tiles a tileset may hold; ${MAX_TILE - count} are left. For more, ${advice}` };
+  return {};
+}
+
 export function newTileset(tileW: number, tileH: number): TilesetDoc {
   return { version: 1, tile_width: tileW, tile_height: tileH, solid: [], names: {}, terrains: [] };
 }

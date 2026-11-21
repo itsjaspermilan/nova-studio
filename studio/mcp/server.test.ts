@@ -264,6 +264,19 @@ describe("the Nova MCP server", () => {
     expect(saved.tilemaps[0].legend).toBeUndefined();
     expect(text(r)).toContain("1 tile layer(s)");
     expect((r.content[1] as { type: string }).type).toBe("image");
+    // a tileset says when it nears the most tiles one may hold, and refuses to pass it
+    const many = (n: number) => Array.from({ length: n }, () => ["a"]);
+    expect(text(use("sprite_write", { name: "big", palette: { a: "#ff0000" }, frames: many(900), names: ["first"] }))).not.toContain("WARNING");
+    expect(text(use("sprite_write", { name: "big", palette: { a: "#ff0000" }, frames: many(30), append: true }))).toContain("WARNING: sprites/big holds 930 of the 1024 tiles a tileset may hold; 94 are left");
+    expect(() => use("sprite_write", { name: "big", palette: { a: "#ff0000" }, frames: many(100), append: true })).toThrow(/sprites\/big would hold 1030 tiles; a tileset holds at most 1024 \(tiles 0 to 1023\): make a second tileset/);
+    // a scene in a folder, named with / or with . (as nova.goto_scene names it), picture and all
+    const deep = use("scene_write", { name: "gutter/room1", scene: { version: 1, objects: [], tilemaps: [layer] } });
+    expect(text(deep)).toContain("scenes/gutter/room1.scene.json");
+    expect((deep.content[1] as { type: string }).type).toBe("image");
+    use("scene_write", { name: "gutter.room2", scene: { version: 1, objects: [] }, picture: false });
+    expect(existsSync(join(dir, "scenes/gutter/room2.scene.json"))).toBe(true);
+    expect(text(use("scene_preview", { name: "gutter/room2" }))).toContain("scenes/gutter/room2.scene.json");
+    for (const bad of ["../room", "gutter//room", "a b", "gutter/"]) expect(() => use("scene_write", { name: bad, scene: { version: 1, objects: [] } }), bad).toThrow(/Scene names use letters, numbers, - and _, with \/ \(or \.\) between folders/);
     // numbers stay accepted
     use("scene_write", { name: "plain", scene: { version: 1, objects: [], tilemaps: [{ ...layer, legend: undefined, solid: [1], tiles: [[1, 0], [-1, 2]] }] }, picture: false });
     let said = "";

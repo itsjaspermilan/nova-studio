@@ -236,11 +236,17 @@ export function expandPaint(root: string, scene: Args): string[] {
       }
       return -1;
     };
+    const walkableAt = (c: number, r: number) => {
+      const cell = cells[r]?.[c];
+      return cell?.kind === "ground" && walkable(cell.g);
+    };
     for (const [c, r, on] of needs) {
       if (on !== undefined) base[r]![c] = groundOf(on);
       else {
         const left = along(c, r, -1), right = along(c, r, 1);
-        if (left >= 0 && left === right) base[r]![c] = left;
+        // (a wall on both sides is the ground only for a thing set in the wall: a window, with no floor above or below
+        // it; a rail across a street between two walls lies on the street)
+        if (left >= 0 && left === right && (walkable(left) || !(walkableAt(c, r - 1) || walkableAt(c, r + 1)))) base[r]![c] = left;
       }
     }
     for (let pass = 0; pass < cols + nrows && needs.some(([c, r]) => base[r]![c]! < 0); pass++) {
@@ -257,6 +263,27 @@ export function expandPaint(root: string, scene: Args): string[] {
       }
       if (!found.length) break;
       for (const [c, r, g] of found) base[r]![c] = g;
+    }
+    // say what was laid under the things painted with no ground of their own ("tram_rail" rather than "tram_rail on
+    // asphalt"), and loudly when that is solid
+    const charOf = new Map<Cell, string>([...legend].map(([ch, cell]) => [cell, ch]));
+    const laid = new Map<string, Map<number, number>>();
+    for (const [c, r, on] of needs) {
+      if (on !== undefined) continue;
+      const ch = charOf.get(cells[r]![c]!) ?? "?";
+      const counts = laid.get(ch) ?? new Map<number, number>();
+      counts.set(base[r]![c]!, (counts.get(base[r]![c]!) ?? 0) + 1);
+      laid.set(ch, counts);
+    }
+    const groundNotes: string[] = [];
+    for (const [ch, counts] of laid) {
+      const cell = legend.get(ch)!;
+      const thing = cell.kind === "prop" ? cell.name : cell.kind === "standing" ? key(cat.standing[cell.s]!.t.name) : ch;
+      const parts = [...counts].filter(([g]) => g >= 0).sort((a, b) => b[1] - a[1]);
+      if (!parts.length) continue; // (nothing beside it at all, as in a side view: nothing is laid under it)
+      const said = parts.map(([g, n]) => `${cat.ground[g]!.t.name}${walkable(g) ? "" : " (SOLID)"}${parts.length > 1 ? ` x${n}` : ""}`).join(", ");
+      const solid = parts.some(([g]) => !walkable(g));
+      groundNotes.push(`  "${ch}" (${thing}) has no ground of its own: laid on ${said}, the ground around it${solid ? `. A SOLID ground under it blocks those cells: paint "${thing} on <ground>" to choose one you can walk on` : ` (paint "${thing} on <ground>" to choose)`}`);
     }
 
     const blank = () => Array.from({ length: nrows }, () => new Array<number>(cols).fill(-1));
@@ -395,6 +422,7 @@ export function expandPaint(root: string, scene: Args): string[] {
     const made = [layer("", ground, depth), ...(wear ? [layer("_stains", wear.tone, depth - 0.3), layer("_wear", wear.tiles, depth - 0.6)] : []), layer("_edges", edges, depth - 1), layer("_edges_2", edges2, depth - 2), layer("_props", props, depth - 3), layer("_over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
     out.push(...made);
     notes.push(`painted "${name}": ${cols} x ${nrows} cells into ${made.length} tile layer(s) (${made.map((l) => `"${l.name}"`).join(", ")}), ${blocked} cells solid${strewn ? `, ${strewn} props scattered` : ""}, seed ${seed}`);
+    notes.push(...groundNotes);
     if (wear) {
       const nameOf = new Map([...cat.tileOf].map(([n, t]) => [t, n]));
       const said = describeWear(wear.tiles, (t) => nameOf.get(t), wearSolid);

@@ -307,6 +307,8 @@ local function finalize(cls)
   cls.__max_distance = spec.max_distance or parent.__max_distance
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
+  -- (so that self.sprite and self.model read what the class gave: nova.spawn("ghost", x, y, { sprite = self.sprite }))
+  cls.sprite, cls.model = cls.__sprite, cls.__model
   cls.__depth = spec.depth or parent.__depth or 0
   cls.__hitbox = spec.hitbox or parent.__hitbox
   cls.__pivot = spec.pivot or parent.__pivot
@@ -352,12 +354,18 @@ local function bounds(e)
   local sy, gy, esy = abs(e.sy), e.y, e.sy
   if XZ then sy, gy, esy = sx, e.z, e.sx end
   if spec then
+    local esx = e.sx
+    if e.hitbox_units == "world" then
+      -- the box is in world units: the drawing's scale leaves it alone (a negative sx still mirrors it)
+      sx, sy = 1, 1
+      esx, esy = esx < 0 and -1 or 1, esy < 0 and -1 or 1
+    end
     if spec.r then
       local r = spec.r * math.max(sx, sy)
-      local cx, cy = e.x + (spec.x or 0) * e.sx, gy + (spec.y or 0) * esy
+      local cx, cy = e.x + (spec.x or 0) * esx, gy + (spec.y or 0) * esy
       return cx - r, cy - r, cx + r, cy + r, r
     end
-    local x0 = e.x + (spec[1] or spec.x or 0) * e.sx
+    local x0 = e.x + (spec[1] or spec.x or 0) * esx
     local y0 = gy + (spec[2] or spec.y or 0) * esy
     local w, h = (spec[3] or spec.w or 0) * sx, (spec[4] or spec.h or 0) * sy
     return x0, y0, x0 + w, y0 + h
@@ -379,7 +387,7 @@ local function vrange(e)
   local spec = rawget(e, "hitbox") or getmetatable(e).__hitbox
   local h = spec and spec.height
   if not h then return nil end
-  local s = abs(e.sx)
+  local s = e.hitbox_units == "world" and 1 or abs(e.sx)
   local y0 = e.y + (spec.base or 0) * s
   return y0, y0 + h * s
 end
@@ -2352,37 +2360,102 @@ local function solid_step()
   return math.max(best, 1)
 end
 
-local function slide_axis(e, delta, horizontal, limit)
-  local blocked = false
+-- What blocks a slide: solid tiles, and with `{ solid = "tag" }` the hitboxes of the entities with that tag (not the mover
+-- itself). Returns the edges of one thing the box overlaps, and the entity when it is one.
+local function blocker(e, x0, y0, x1, y1, tag)
+  local sx0, sy0, sx1, sy1 = solid_overlap(x0, y0, x1, y1)
+  if sx0 then return sx0, sy0, sx1, sy1 end
+  if not tag then return nil end
+  local list = W.tags[tag]
+  if not list then return nil end
+  for i = 1, #list do
+    local o = list[i]
+    if o ~= e and not o._dead then
+      local ox0, oy0, ox1, oy1 = bounds(o)
+      if ox0 and ox1 > ox0 and oy1 > oy0 and x0 < ox1 and ox0 < x1 and y0 < oy1 and oy0 < y1 then return ox0, oy0, ox1, oy1, o end
+    end
+  end
+  return nil
+end
+
+-- How far the entity must go along one axis (dir +1 or -1) to be clear of everything solid; nil when that is more than `most`.
+local function way_out(e, horizontal, dir, most, tag)
+  local ox, oy = e.x, e.y
+  local moved, found = 0, nil
+  for _ = 1, 64 do
+    local x0, y0, x1, y1 = bounds(e)
+    local sx0, sy0, sx1, sy1 = blocker(e, x0, y0, x1, y1, tag)
+    if not sx0 then found = moved break end
+    local d
+    if horizontal then d = dir > 0 and (sx1 - x0) or (x1 - sx0) else d = dir > 0 and (sy1 - y0) or (y1 - sy0) end
+    moved = moved + math.max(d, 0.001)
+    if moved > most then break end
+    if horizontal then e.x = ox + dir * moved else e.y = oy + dir * moved end
+  end
+  e.x, e.y = ox, oy
+  return found
+end
+
+-- An entity that starts a move overlapping something solid (it was put there, or something solid came to it) is moved out
+-- the nearest way, by no more than its own size; when no way out is that short it stays where it is. False when it is stuck.
+local function get_out(e, tag)
+  local x0, y0, x1, y1 = bounds(e)
+  if not x0 or not blocker(e, x0, y0, x1, y1, tag) then return true end
+  local most = math.max(x1 - x0, y1 - y0, 1)
+  local best, bh, bd = nil, nil, nil
+  for _, way in ipairs({ { true, 1 }, { true, -1 }, { false, 1 }, { false, -1 } }) do
+    local d = way_out(e, way[1], way[2], most, tag)
+    if d and (not best or d < best) then best, bh, bd = d, way[1], way[2] end
+  end
+  if not best then return false end
+  if bh then e.x = e.x + bd * best else e.y = e.y + bd * best end
+  return true
+end
+
+local function slide_axis(e, delta, horizontal, limit, tag)
+  local blocked, by = false, nil
   local steps = math.max(1, math.ceil(abs(delta) / limit))
   local each = delta / steps
   for _ = 1, steps do
+    local before = horizontal and e.x or e.y
     if horizontal then e.x = e.x + each else e.y = e.y + each end
     for _ = 1, 4 do
       local x0, y0, x1, y1 = bounds(e)
-      if not x0 then return blocked end
-      local sx0, sy0, sx1, sy1 = solid_overlap(x0, y0, x1, y1)
+      if not x0 then return blocked, by end
+      local sx0, sy0, sx1, sy1, thing = blocker(e, x0, y0, x1, y1, tag)
       if not sx0 then break end
-      blocked = true
+      blocked, by = true, thing or by
       if horizontal then
         if each > 0 then e.x = e.x - (x1 - sx0) else e.x = e.x + (sx1 - x0) end
       else
         if each > 0 then e.y = e.y - (y1 - sy0) else e.y = e.y + (sy1 - y0) end
       end
+      -- (a wall is only ever stepped back from: never past where this sub-step began, so nothing is thrown through it)
+      local now = horizontal and e.x or e.y
+      if (now - before) * (each > 0 and 1 or -1) < 0 then
+        if horizontal then e.x = before else e.y = before end
+        break
+      end
     end
     if blocked then break end
   end
-  return blocked
+  return blocked, by
 end
 
 -- Move by dx, dy and stop against solid tiles, one axis at a time so entities slide along walls.
--- Large moves are taken in small steps, so nothing tunnels through a thin wall.
--- Returns whether it was blocked horizontally and vertically.
-function Entity:slide(dx, dy)
+-- Large moves are taken in small steps, so nothing tunnels through a thin wall. `opts.solid` names a tag whose entities
+-- block too. An entity that starts inside something solid is first moved out the nearest way (no further than its own
+-- size), or stays put when there is no such way out: it is never thrown through a wall.
+-- Returns whether it was blocked horizontally and vertically, and the entity it was stopped by (with opts.solid).
+function Entity:slide(dx, dy, opts)
+  local tag = opts and opts.solid
+  if tag ~= nil and type(tag) ~= "string" then error("slide(dx, dy, { solid = \"tag\" }): solid is the tag of the entities that block", 2) end
+  if not get_out(self, tag) then return dx ~= 0, dy ~= 0, nil end
   local limit = solid_step()
-  local blocked_x = dx ~= 0 and slide_axis(self, dx, true, limit) or false
-  local blocked_y = dy ~= 0 and slide_axis(self, dy, false, limit) or false
-  return blocked_x, blocked_y
+  local blocked_x, blocked_y, by_x, by_y = false, false, nil, nil
+  if dx ~= 0 then blocked_x, by_x = slide_axis(self, dx, true, limit, tag) end
+  if dy ~= 0 then blocked_y, by_y = slide_axis(self, dy, false, limit, tag) end
+  return blocked_x, blocked_y, by_x or by_y
 end
 
 function nova.each(tag, fn)
@@ -2869,7 +2942,9 @@ local function build_scene(scene, data, file)
   end
 end
 
+local time_reset -- (below, with the time scale)
 local function leave_scene()
+  time_reset()
   local scene = W.scene
   if scene and scene.leave then scene:leave() end
   if scene then scene._dead = true end
@@ -3053,37 +3128,143 @@ local function compact()
   for _, list in pairs(W.tags) do sweep(list) end
 end
 
+-- ------------------------------------------------------------------ game time: time scale, hit-stop, screen shake
+-- `nova.time_scale(s)` makes the game's time run at s (0.5 slow motion, 0 stopped); `nova.time_scale(s, tag)` only for
+-- the entities with that tag (an enemy's time slowed while the hero's runs on). `nova.hit_stop(seconds)` holds the game's
+-- time still for that long (the freeze frame of a heavy hit). Each entity's update, animation, velocity and timers get its
+-- own dt; one with `time_scale = 0.5` runs at half of that again; one with `unscaled = true` (a pause menu, the HUD, a
+-- hero who is not slowed) always runs in real time. A scene with `unscaled = true` gets real time in its update and timers.
+-- An entity whose dt is 0 is not updated at all, and nothing collides while the whole game's time stands still.
+local TIME = { scale = 1, tags = {}, any_tag = false, hold = 0, now = 1 }
+local SHAKE = { amount = 0, left = 0, total = 0, x = 0, y = 0 }
+
+local function scale_of(o)
+  if type(o) ~= "table" then return TIME.now end
+  local s
+  if o.unscaled == true then s = 1
+  else
+    s = TIME.now
+    if s > 0 and TIME.any_tag then
+      local cls = getmetatable(o)
+      local tags = cls and cls.__tags
+      if tags then
+        for tag, k in pairs(TIME.tags) do
+          if tags[tag] then s = s * k end
+        end
+      end
+    end
+  end
+  local own = o.time_scale
+  if type(own) == "number" then s = s * own end
+  return s
+end
+
+local function time_number(v, what)
+  if type(v) ~= "number" or v ~= v or v < 0 or v > 100 then error(what .. " is a number from 0 to 100 (1 is normal speed), got " .. tostring(v), 3) end
+  return v
+end
+
+function nova.time_scale(scale, tag)
+  if tag ~= nil then
+    if type(tag) ~= "string" then error("nova.time_scale(scale, tag): tag is a string, like \"enemy\"", 2) end
+    if scale == nil then return TIME.tags[tag] or 1 end
+    scale = time_number(scale, "nova.time_scale(scale, tag): scale")
+    TIME.tags[tag] = scale ~= 1 and scale or nil
+    TIME.any_tag = next(TIME.tags) ~= nil
+    return scale
+  end
+  if scale == nil then return TIME.scale end
+  TIME.scale = time_number(scale, "nova.time_scale(scale): scale")
+  return TIME.scale
+end
+
+function nova.hit_stop(seconds)
+  if seconds == nil then return math.max(0, TIME.hold) end
+  seconds = time_number(seconds, "nova.hit_stop(seconds): seconds")
+  if seconds > TIME.hold then TIME.hold = seconds end
+  return TIME.hold
+end
+
+-- The camera jolts by up to `amount` world units for `seconds` (0.2), fading out; a stronger shake replaces a weaker one.
+-- Only the picture moves: nova.cam.position() and following are not changed. It runs in real time (through a hit-stop).
+function nova.cam.shake(amount, seconds)
+  amount = time_number(amount or 0, "nova.cam.shake(amount, seconds): amount")
+  seconds = time_number(seconds or 0.2, "nova.cam.shake(amount, seconds): seconds")
+  if amount == 0 or seconds == 0 then SHAKE.amount, SHAKE.left, SHAKE.total = 0, 0, 0 return end
+  -- (a weaker shake while a stronger one is still going is left out)
+  local now = SHAKE.left > 0 and SHAKE.amount * SHAKE.left / SHAKE.total or 0
+  if amount >= now then SHAKE.amount, SHAKE.left, SHAKE.total = amount, seconds, seconds end
+end
+
+local function time_step(dt)
+  if TIME.hold > 1e-6 then
+    TIME.now = 0
+    TIME.hold = TIME.hold - dt
+  else
+    TIME.hold = 0
+    TIME.now = TIME.scale
+  end
+  if SHAKE.left > 1e-6 then
+    -- (it alternates, so it reads as a jolt and not as a drift; the same every run)
+    local k = SHAKE.amount * SHAKE.left / SHAKE.total
+    local s = (W.step_id % 2 == 0) and 1 or -1
+    local t = (W.step_id % 4 < 2) and 1 or -1
+    SHAKE.x, SHAKE.y = s * k, t * k * 0.5
+    SHAKE.left = SHAKE.left - dt
+  else
+    SHAKE.left, SHAKE.x, SHAKE.y = 0, 0, 0
+  end
+end
+
+-- (a scene change ends a hit-stop and a shake; the time scales stay until the game changes them)
+function time_reset()
+  TIME.hold, TIME.now = 0, TIME.scale
+  SHAKE.amount, SHAKE.left, SHAKE.total, SHAKE.x, SHAKE.y = 0, 0, 0, 0, 0
+end
+
 local function step(dt)
   raw.input_step() -- presses and releases since the last step become visible to this one
   W.step_id = W.step_id + 1
   W.time = W.time + dt
-  timers.update(dt)
-  anim.update(dt)
+  time_step(dt)
+  timers.update(dt, scale_of)
+  anim.update(dt, scale_of)
   if not W.paused then
     local list = W.list
+    local still = TIME.now == 0
     for i = 1, #list do
       local e = list[i]
       if not e._dead then
-        local update = e.update
-        if update then update(e, dt) end
-        if not e._dead then
-          if e._anim then animate(e, dt) end
-          if e._clip then advance_clip(e, dt) end
-          -- (a class that moves itself, with nova.walls.move say, sets `velocity = false`, so that its own vx and vz are its own)
-          if e.velocity ~= false and not e._dyn then
-            local vx, vy, vz = e.vx, e.vy, e.vz
-            if vx ~= 0 then e.x = e.x + vx * dt end
-            if vy ~= 0 then e.y = e.y + vy * dt end
-            if vz ~= 0 then e.z = e.z + vz * dt end
+        local edt = dt
+        if still or TIME.now ~= 1 or TIME.any_tag or e.time_scale ~= nil then edt = dt * scale_of(e) end
+        if edt > 0 then
+          local update = e.update
+          if update then update(e, edt) end
+          if not e._dead then
+            if e._anim then animate(e, edt) end
+            if e._clip then advance_clip(e, edt) end
+            -- (a class that moves itself, with nova.walls.move say, sets `velocity = false`, so that its own vx and vz are its own)
+            if e.velocity ~= false and not e._dyn then
+              local vx, vy, vz = e.vx, e.vy, e.vz
+              if vx ~= 0 then e.x = e.x + vx * edt end
+              if vy ~= 0 then e.y = e.y + vy * edt end
+              if vz ~= 0 then e.z = e.z + vz * edt end
+            end
           end
         end
       end
     end
-    physics_step(dt)
-    collide_pass()
+    if not still then
+      physics_step(dt * TIME.now)
+      collide_pass()
+    end
   end
   local scene = W.scene
-  if scene and scene.update then scene:update(dt) end
+  if scene and scene.update then
+    local sdt = dt
+    if TIME.now ~= 1 or scene.time_scale ~= nil then sdt = dt * scale_of(scene) end
+    scene:update(sdt)
+  end
   update_camera()
   compact()
 end
@@ -3186,7 +3367,18 @@ local function draw_weather()
   end
 end
 
+local draw_world
 local function frame_draw()
+  -- a screen shake moves the camera for the drawing only
+  local sx, sy = SHAKE.x, SHAKE.y
+  if sx == 0 and sy == 0 then return draw_world() end
+  W.cam.x, W.cam.y = W.cam.x + sx, W.cam.y + sy
+  local ok, err = pcall(draw_world)
+  W.cam.x, W.cam.y = W.cam.x - sx, W.cam.y - sy
+  if not ok then error(err, 0) end
+end
+
+function draw_world()
   local bg = W.background
   if bg then nova.clear(bg[1], bg[2], bg[3]) end
   do -- (where the 2D view is, for 2D lights given in world coordinates and rain that stays on the ground)

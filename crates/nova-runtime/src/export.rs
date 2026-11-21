@@ -265,19 +265,47 @@ fn draw_hides_picture(code: &str) -> Option<usize> {
     let draws = ["draw(", "sprite(", "model(", "mesh(", "billboard("]
         .iter()
         .any(|d| body.contains(d));
-    let outside: String = lines[..start]
-        .iter()
-        .chain(&lines[end..])
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n");
-    let tight: String = outside.chars().filter(|c| !c.is_whitespace()).collect();
-    let has_picture = (tight.contains("sprite=\"")
+    // only what the class's own spec says (`nova.entity { sprite = "..." }`): a `sprite = "..."` in a spawn call's props
+    // elsewhere in the file is another entity's
+    let spec = entity_specs(code);
+    let tight: String = spec.chars().filter(|c| !c.is_whitespace()).collect();
+    let has_picture = tight.contains("sprite=\"")
         || tight.contains("model=\"")
         || tight.contains("sprite='")
-        || tight.contains("model='"))
-        && (code.contains("nova.entity") || code.contains("require("));
+        || tight.contains("model='");
     (!draws && has_picture).then_some(start + 1)
+}
+
+/// The text of every `nova.entity { ... }` table in the code (with a parent, `nova.entity(Parent, { ... })`, the table
+/// after it), braces matched.
+fn entity_specs(code: &str) -> String {
+    let mut out = String::new();
+    let mut from = 0;
+    while let Some(at) = code[from..].find("nova.entity") {
+        let begin = from + at + "nova.entity".len();
+        let Some(open) = code[begin..].find('{').map(|i| begin + i) else {
+            break;
+        };
+        let mut depth = 0usize;
+        let mut end = code.len();
+        for (i, ch) in code[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = open + i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push_str(&code[open..end]);
+        out.push('\n');
+        from = end;
+    }
+    out
 }
 
 /// Mistakes that can be read off the scripts without running the line they are on:
@@ -581,4 +609,21 @@ pub fn export_desktop(
         }
     }
     Ok(Exported { dir, files })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The warning about a draw() that hides the picture looks only at the class's own spec: a `sprite = "..."` in a
+    /// spawn call's props elsewhere in the file is another entity's.
+    #[test]
+    fn a_draw_hides_the_picture_only_of_a_class_that_has_one() {
+        let has = "local E = nova.entity { sprite = \"hero\", hp = { 3 } }\nfunction E:draw()\n  nova.log('x')\nend\nreturn E\n";
+        assert_eq!(draw_hides_picture(&code_only(has)), Some(2));
+        let spawns = "local E = nova.entity { hp = 3 }\nfunction E:hit() nova.spawn(\"fx\", 0, 0, { sprite = \"fx_burst\" }) end\nfunction E:draw()\n  nova.log('x')\nend\nreturn E\n";
+        assert_eq!(draw_hides_picture(&code_only(spawns)), None);
+        let child = "local E = nova.entity(require(\"entities.base\"), { model = 'crate' })\nfunction E:draw()\n  nova.log('x')\nend\nreturn E\n";
+        assert_eq!(draw_hides_picture(&code_only(child)), Some(2));
+    }
 }

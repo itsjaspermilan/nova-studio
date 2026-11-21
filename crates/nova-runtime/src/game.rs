@@ -126,6 +126,8 @@ struct Shared {
     pointer_step: actions::PointerFrame,
     /// A script asked for the mouse to be locked (true) or freed (false); the host reads it once.
     grab_request: Option<bool>,
+    /// A script called nova.quit(); the host reads it once and shuts down.
+    quit_request: bool,
     /// What the scripts took last frame (ms) and the memory they use (KB), for `nova.stats()`.
     lua_ms: f32,
     lua_kb: f32,
@@ -3370,6 +3372,27 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     )?;
     nova.set("save", save)?;
 
+    // --- nova.quit(): the game ends cleanly after this frame (the host writes the save, stops the sound, closes) ---
+    let s = shared.clone();
+    nova.set(
+        "quit",
+        lua.create_function(move |_, ()| {
+            let mut sh = s.borrow_mut();
+            if cfg!(target_os = "android") {
+                // (an Android app does not end itself: the system's Back or Home leaves it, and the system closes it)
+                if !sh.quit_request {
+                    sh.log.push(
+                        "nova.quit() does nothing on Android: the player leaves with Home or Back"
+                            .into(),
+                    );
+                }
+                return Ok(());
+            }
+            sh.quit_request = true;
+            Ok(())
+        })?,
+    )?;
+
     // --- raw: lookups the Lua framework needs ---
     let raw = lua.create_table()?;
     let s = shared.clone();
@@ -4258,6 +4281,7 @@ impl Game {
             pointer_acc: actions::PointerFrame::default(),
             pointer_step: actions::PointerFrame::default(),
             grab_request: None,
+            quit_request: false,
             lua_ms: 0.0,
             lua_kb: 0.0,
             next_sound: 1,
@@ -4516,6 +4540,11 @@ impl Game {
     /// Did a script ask for the mouse to be locked (true) or freed (false) since the last call?
     pub fn take_grab_request(&self) -> Option<bool> {
         self.shared.borrow_mut().grab_request.take()
+    }
+
+    /// Did a script call `nova.quit()`? (Read once: the host then shuts down.)
+    pub fn take_quit_request(&self) -> bool {
+        std::mem::take(&mut self.shared.borrow_mut().quit_request)
     }
 
     /// Does any action of this game use the source (such as `key:Escape`)?

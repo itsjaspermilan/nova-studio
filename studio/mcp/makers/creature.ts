@@ -6,7 +6,7 @@
 import { colourOf, Img, mix, ramp, shade, SHADOW, type Ramp, type Rgba } from "./paint";
 import { accentOf, lit, paletteOf } from "./palettes";
 import { CITY_CREATURE_NAMES, CITY_CREATURES, cityCtx, cityFrames, up } from "./city-creatures";
-import { HD_CREATURE_NAMES, hdFrames } from "./creatures-hd";
+import { HD_CREATURE_NAMES, hdCanFace, hdFrames } from "./creatures-hd";
 import { toonRamp as hdRamp } from "./toon";
 import { styleOf } from "./style";
 import { writeSheet, type Put } from "./sheet";
@@ -226,6 +226,8 @@ export { CITY_CREATURE_NAMES };
 /// `creature_make`: see the tool's description in makers/index.ts.
 export function makeCreature(name: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
   const kindName = String(a.kind ?? "").trim().toLowerCase().replace(/[ -]/g, "_");
+  if (a.facings !== undefined && typeof a.facings !== "boolean") throw new Error(`"facings" is true or false (got ${JSON.stringify(a.facings)})`);
+  if (a.facings && styleOf(a) !== "detailed") throw new Error(`"facings": a creature that faces four ways is drawn in the detailed style ("style": "detailed"), for ${HD_CREATURE_NAMES.filter(hdCanFace).join(", ")}`);
   if (styleOf(a) === "detailed") return makeHdCreature(name, kindName, a, put);
   if (CITY_CREATURES[kindName]) return makeCityCreature(name, kindName, a, put);
   const kind = KINDS[kindName];
@@ -314,6 +316,8 @@ function makeCityCreature(name: string, kindName: string, a: Args, put: Put): { 
 function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { text: string; picture: import("./paint").Raster } {
   if (!HD_CREATURE_NAMES.includes(kindName)) throw new Error(`"kind": the detailed style is drawn for the city's archetypes: ${HD_CREATURE_NAMES.join(", ")} (got '${a.kind ?? ""}')`);
   if (a.size !== undefined) throw new Error(`"size": a detailed archetype has its own size (leave "size" out)`);
+  const facings = a.facings === true;
+  if (facings && !hdCanFace(kindName)) throw new Error(`"facings": a ${kindName} is drawn whole, from one side only; four ways are drawn for ${HD_CREATURE_NAMES.filter(hdCanFace).join(", ")}`);
   const kind = CITY_CREATURES[kindName]!;
   const P = paletteOf(a.palette);
   const warm = mix(P.accent[0][2], [255, 255, 255, 255], 0.65);
@@ -324,7 +328,7 @@ function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { te
     acc: accentOf(P, a.glow_color ?? a.glow_colour, '"glow_color"') ?? P.accent[0],
     metal: hdRamp(lit(P, P.mat.metal[3]), warm),
     dark: hdRamp(lit(P, mix(P.mat.metal[1], P.outline, 0.45)), warm),
-  });
+  }, facings);
   const n = made0.size;
   const pivot = { x: n / 2, y: made0.oy + 1 };
   const box = { x: Math.round(n * 0.22), y: Math.round(n * 0.45), w: Math.round(n * 0.56), h: pivot.y - Math.round(n * 0.45) };
@@ -337,6 +341,9 @@ function makeHdCreature(name: string, kindName: string, a: Args, put: Put): { te
       `${kindName} in the detailed style: ${kind.what}; ${n}x${n} frames, palette "${P.name}"`,
       `animations: ${made0.tags.map((t) => `${t.name} (${t.to - t.from + 1})`).join(", ")}. "tell" is the moment before it hurts (its edge lights up in the glow colour): show it 0.4 s before the attack. "hit" is the white copy for when it is hurt.`,
       `In its entity: sprite = "${name}", anim = "${made0.tags[0]!.name}", pivot = { 0.5, ${Math.round((pivot.y / n) * 1000) / 1000} }, hitbox = { ${box.x - pivot.x}, ${box.y - pivot.y}, ${box.w}, ${box.h} }, sx = 1.5, sy = 1.5, tags = { "enemy" }.`,
+      ...(facings
+        ? [`It faces four ways: every animation and the tell are drawn facing down (towards the viewer), left, right and up ("move_down", "move_left", "move_right", "move_up", "tell_up", ...; the plain names are the right-facing ones). Play the one for where it goes: self:play("move_" .. dir), with dir from the larger of |vx| and |vy|; do not turn it with angle (a side view turned on end lies on its back).`]
+        : []),
     ].join("\n"),
     picture: made.picture,
   };

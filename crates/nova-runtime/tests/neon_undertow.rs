@@ -85,14 +85,14 @@ fn play(name: &str, plan: String) -> Value {
     let mut frame = 0;
     while !run.finished(frame) {
         let mut input = InputFrame::default();
-        run.before_frame(frame, &mut g, &mut input);
+        run.before_frame(frame, &g, &mut input);
         g.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &input);
-        for caption in run.after_frame(frame, &mut g) {
-            let _ = run.picture(frame, &caption, &mut g);
+        for caption in run.after_frame(frame, &g) {
+            let _ = run.picture(frame, &caption, &g);
         }
         frame += 1;
     }
-    let report = run.finish(frame, &mut g).unwrap();
+    let report = run.finish(frame, &g).unwrap();
     let report: Value = serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(report["error"], Value::Null, "{name}: {report}");
@@ -2269,14 +2269,14 @@ fn play_saved(name: &str, plan: String, save: &Path) -> Value {
     let mut frame = 0;
     while !run.finished(frame) {
         let mut input = InputFrame::default();
-        run.before_frame(frame, &mut g, &mut input);
+        run.before_frame(frame, &g, &mut input);
         g.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &input);
-        for caption in run.after_frame(frame, &mut g) {
-            let _ = run.picture(frame, &caption, &mut g);
+        for caption in run.after_frame(frame, &g) {
+            let _ = run.picture(frame, &caption, &g);
         }
         frame += 1;
     }
-    let report = run.finish(frame, &mut g).unwrap();
+    let report = run.finish(frame, &g).unwrap();
     g.flush_save();
     let report: Value = serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);

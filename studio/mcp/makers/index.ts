@@ -124,6 +124,7 @@ export function registerMakers(h: Host): Record<string, Args> {
       second_color: { type: "string" },
       glow_color: { type: "string", description: "The city archetypes' lights and their tell: 1 or 2 for the palette's accents, or a colour. Accent 1 when left out." },
       size: { type: "number", description: "16 (when left out), 24 or 32; a city archetype is its own size when left out (16, 24 or 32) and may be made 48." },
+      facings: { type: "boolean", description: 'Detailed style: draw every animation and the tell facing down, left, right and up ("move_down" ... "tell_up"), for a creature that runs or flies in four directions on a top-down street (the rat_drone, the drones, the spore_hound); without it a creature is drawn from the side and faces left with flip_x. Never turn a side view with `angle`.' },
       palette: PALETTE,
       style: STYLE_OPTION,
     },

@@ -111,9 +111,16 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    | `{ "hold": ["right"], "tap": "a", "tap_every": 30, "until": "..." }` | walks and swings at once |
    | `{ "repeat": 5, "until": "...", "steps": [ ... ] }` | a group of steps again and again, until something holds |
    | `"may_time_out": true` | on an `until`, `walk_to` or `fight` that is allowed to run out: no warning |
+   | `"always": "not nova.named('hero'):touching('solid')"` | on a step or group (or the whole call): must hold after every frame it plays; the first frame it does not is a failure with its frame and step, and the answer says how many frames it held on |
+   | `"record": "nova.named('hero').x"` | on a step or group (or the whole call): the value after every frame, a run of one value said once (`f12-f15 120 (x4)`): a hit-stop, a knock-back, health through a fight |
 
-   For the whole call: `"invincible": true` (the hero's `hp`, `health`, `hearts` or `lives` is put back after every frame,
-   so a clumsy route still reaches the end; `nova.testing.invincible` is true for damage code that is not a plain field),
+   A step's `tap`/`press` happen on its first two frames and its `lua` when it starts, never when its `until` comes true:
+   to press at a moment, end one step with the `until` and press in the next.
+
+   For the whole call: `"invincible": true` (the hero's `hp`, `health`, `hearts` or `lives` never goes down: a blow is
+   refused as it lands, even one bigger than all it has, so a clumsy route still reaches the end;
+   `nova.testing.invincible` is true for damage code that is not a plain field), `"each_frame": "<lua>"` (run before
+   every frame),
    `"stop_on_fail": true` (the route ends at the first step that fails, with a picture, instead of playing the rest from
    the wrong place), `"overlay": ["hitboxes", "solids", "names"]` (drawn on the pictures: why a press beside a chest did
    nothing), `"compare": "nova.shadows(nil)"` (the run again with that one difference: the share of pixels that changed
@@ -268,11 +275,23 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   A `draw()` of your own replaces the drawing of the entity's `sprite` or `model`: put `nova.Entity.draw(self)` in it
   where the picture should go, or the entity vanishes (`check` warns).
 - **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox.
-- **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`.
+- **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`. Put `hitbox_units = "world"` in the
+  entity to give them in world units instead: then redrawing the art at another size and changing `sx` leaves every box
+  as it is. Hitboxes do not turn with `angle` (they stay upright): give a swing a box per facing.
+- **Quit:** a menu's Quit entry calls `nova.quit()` (it writes the save and exits cleanly; nothing on Android). Do not
+  call `os.exit` (not available) or leave the game to be killed: closing the window and the system's "Exit game" already
+  end it cleanly.
+- **A target standing against a wall:** a shot that stops at solid tiles dies at the tile's edge, so a hitbox that ends
+  exactly there is never touched. Let such a target's box reach into the wall's first tile.
+- **Game feel is built in:** `nova.hit_stop(3 / 60)` (a freeze frame), `nova.cam.shake(6, 0.2)` (only the picture
+  moves), `nova.time_scale(0.4)` or `nova.time_scale(0.4, "enemy")` (slow motion for all or for a tag). Things that must
+  not slow down (the HUD, a pause menu, a hero) carry `unscaled = true`. Do not write a freeze counter of your own.
 - **Depth:** bigger is further back. For top-down sorting set `self.depth = -self.y`. A tile layer drawn in front of the
   characters (tree crowns, roofs) is a second layer with a large negative depth.
-- **Solid things that are not tiles:** tag them `solid`, and in the mover undo a move that ends touching one (`hero.lua`).
-  Such a thing is then never overlapped, so its `on_collide_hero` never runs: notice the hero with `self:near("hero", 6)`.
+- **Solid things that are not tiles:** tag them `solid`, and move with `self:slide(dx, dy, { solid = "solid" })`, which
+  stops at them as at solid tiles (its third answer is the thing it ran into: a charging drone that crashes). Such a thing
+  is then never overlapped, so its `on_collide_hero` never runs: notice the hero with `self:near("hero", 6)`. A mover that
+  starts inside something solid is moved out the short way or stays put, never thrown through the wall.
 - **Tags are not kinds.** `nova.first`, `nova.all`, `nova.count` and `on_collide_<tag>` take a tag (`tags = { "enemy" }`), not
   the entity's file name; `nova.named("hero")` takes the name a scene object was given.
 - **`tint` multiplies:** it darkens or colours and cannot flash a sprite white. Blink `alpha`, or show a white copy of the

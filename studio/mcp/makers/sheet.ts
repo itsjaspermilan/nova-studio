@@ -5,7 +5,7 @@ import type { Terrain } from "../../src/lib/autotile";
 import { encodePng } from "../../src/lib/png-encode";
 import { newRaster, type Raster } from "../../src/lib/pixels";
 import { parseSheetJson, SHEET_COLUMNS, type SheetJson } from "../../src/lib/sprite-doc";
-import { newTileset, serializeTileset } from "../../src/lib/tileset";
+import { newTileset, serializeTileset, tileRoom } from "../../src/lib/tileset";
 import { namesText, spritePicture } from "../sprites";
 import type { Img } from "./paint";
 
@@ -31,6 +31,8 @@ export interface Sheet {
 /// Writes the sheet and returns what sprite_preview would say and show of it.
 export function writeSheet(name: string, s: Sheet, put: Put): { text: string; picture: Raster; json: SheetJson } {
   const fw = s.frames[0]!.w, fh = s.frames[0]!.h;
+  const room = (s.names && Object.keys(s.names).length) || s.solid?.length || s.terrains?.length ? tileRoom(s.frames.length, name) : {};
+  if (room.error) throw new Error(room.error);
   const columns = Math.min(s.frames.length, SHEET_COLUMNS);
   const sheet = newRaster(columns * fw, Math.ceil(s.frames.length / columns) * fh);
   s.frames.forEach((f, i) => {
@@ -63,7 +65,7 @@ export function writeSheet(name: string, s: Sheet, put: Put): { text: string; pi
   }
   const tags = (s.tags ?? []).map((t) => `${t.name} ${t.from}-${t.to}`).join(", ");
   return {
-    text: `sprites/${name}.png: ${s.frames.length} frame(s) of ${fw}x${fh}, ${columns} across${tags ? `; animations: ${tags}` : ""}${namesText(names, terrains)}`,
+    text: `sprites/${name}.png: ${s.frames.length} frame(s) of ${fw}x${fh}, ${columns} across${tags ? `; animations: ${tags}` : ""}${namesText(names, terrains)}${room.warning ? `\n${room.warning}` : ""}`,
     picture: spritePicture(sheet, json, names, terrains),
     json,
   };

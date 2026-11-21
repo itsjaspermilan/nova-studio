@@ -85,7 +85,8 @@ function M.wait_until(fn) coroutine.yield(fn) end
 
 local function alive(t) return not t.dead and not (t.owner and t.owner._dead) end
 
-function M.update(dt)
+-- `scale(owner)`, when given, is how fast each owner's time runs (nova.time_scale): a timer whose time stands still waits.
+function M.update(real_dt, scale)
   for i = 1, #pending do
     list[#list + 1] = pending[i]
     pending[i] = nil
@@ -93,7 +94,9 @@ function M.update(dt)
   local count = #list
   for i = 1, count do
     local t = list[i]
-    if alive(t) then
+    local dt = real_dt
+    if scale then dt = real_dt * scale(t.owner) end
+    if alive(t) and dt > 0 then
       if t.tween then
         t.time = t.time + dt
         local k = math.min(1, t.time / t.total)

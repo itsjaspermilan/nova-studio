@@ -480,6 +480,25 @@ describe("the city kit", () => {
     }, 180_000);
   }
 
+  it("draws a detailed creature facing four ways when asked, and keeps the plain names for the side view", () => {
+    use("creature_make", { name: "side", kind: "rat_drone", palette: "gutter market", style: "detailed" });
+    use("creature_make", { name: "four", kind: "rat_drone", palette: "gutter market", style: "detailed", facings: true });
+    const side = sheet("side"), four = sheet("four");
+    expect(side.frames).toBe(12); // (idle 4, move 6, tell, hit: as before)
+    expect(four.frames).toBe(4 * 11 + 1);
+    const tag = (j: typeof four, name: string) => j.tags!.find((t) => t.name === name)!;
+    for (const name of ["idle_down", "idle_left", "idle_right", "idle_up", "move_down", "move_up", "tell_down", "tell_up", "idle", "move", "tell", "hit"]) expect(tag(four, name), name).toBeDefined();
+    expect(tag(four, "move")).toEqual({ ...tag(four, "move_right"), name: "move" });
+    // the right-facing frames are the side view's; facing down is another picture
+    const a = decodePng(bytes("sprites/side.png")), b = decodePng(bytes("sprites/four.png")), n = four.frame_width!;
+    const px = (png: typeof a, cols: number, f: number) => Array.from({ length: n * n }, (_, k) => png.data[((Math.floor(f / cols) * n + Math.floor(k / n)) * png.w + (f % cols) * n + (k % n)) * 4 + 3]).join(",");
+    expect(px(b, four.columns!, tag(four, "move_right").from)).toBe(px(a, side.columns!, tag(side, "move").from));
+    expect(px(b, four.columns!, tag(four, "move_down").from)).not.toBe(px(b, four.columns!, tag(four, "move_right").from));
+    expect(text(use("creature_make", { name: "four", kind: "rat_drone", palette: "gutter market", style: "detailed", facings: true }))).toMatch(/It faces four ways/);
+    expect(() => use("creature_make", { name: "x", kind: "rat_drone", facings: true })).toThrow(/"facings": a creature that faces four ways is drawn in the detailed style/);
+    expect(() => use("creature_make", { name: "x", kind: "vending_mimic", style: "detailed", facings: true })).toThrow(/is drawn whole, from one side only/);
+  }, 120_000);
+
   for (const style of ["classic", "detailed"]) {
     it(`makes the city's icons, every one named, in the ${style} style`, () => {
       use("items_make", { name: "icons", palette: "gutter market", style });

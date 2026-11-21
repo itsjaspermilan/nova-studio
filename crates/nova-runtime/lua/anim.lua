@@ -344,11 +344,14 @@ function M.play(name, opts)
   return p
 end
 
-function M.update(dt)
+function M.update(dt, scale)
   local n = #list
   for i = 1, n do
     local p = list[i]
-    if not p.dead then p:step(dt) end
+    if not p.dead then
+      local d = scale and dt * scale(p.target) or dt
+      if d > 0 then p:step(d) end
+    end
   end
   local j = 0
   for i = 1, #list do
