@@ -112,7 +112,6 @@ local function drive_itself(car)
   if ai.follow and ai.follow < want_speed then want_speed = ai.follow end
   if car.cruise then want_speed = math.min(want_speed, car.cruise) end
   if math.abs(yaw) > capacity * 1.05 and v > 8 then want_speed = math.min(want_speed, v - 0.5) end -- (cannot turn that hard: lift)
-  ai.dbg_want, ai.dbg_yaw, ai.dbg_cap, ai.dbg_err, ai.dbg_k = want_speed, yaw, capacity, err, k_line
   -- off the road: back on, gently, round anything in the way (on the road there is nothing to dodge: the scenery stands off it)
   local urgency = 0
   if (car.off_middle or 0) > (here.w or 6) + 1.5 then

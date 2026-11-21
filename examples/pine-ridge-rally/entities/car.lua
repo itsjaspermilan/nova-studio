@@ -83,7 +83,7 @@ local function ride_of(c, layout)
   local o = c.ride or {}
   local spring, damper, lean = c.spring or SPRING, c.damper or DAMPER, c.lean or 1
   local omega = (o.hz and o.hz * 2 * math.pi) or 0.42 * math.sqrt(spring)
-  local zeta = o.damping or math.max(0.3, math.min(0.5, 0.42 * damper / (2 * math.sqrt(spring))))
+  local zeta = o.damping or math.max(0.38, math.min(0.5, 0.46 * damper / (2 * math.sqrt(spring))))
   local sag = GRAVITY / (omega * omega)
   local n = #layout.stations
   local r = {
@@ -92,8 +92,8 @@ local function ride_of(c, layout)
     c = 2 * zeta * omega / n,                    -- each damper
     bump = o.bump or math.max(0.035, math.min(0.13, 0.6 * sag)),
     droop = o.droop or math.max(0.06, math.min(0.2, 0.8 * sag + 0.02)),
-    roll = math.rad(o.roll or (1.6 + 2.6 * (lean - 0.4))),
-    pitch = math.rad(o.pitch or 0.75 * (1.6 + 2.6 * (lean - 0.4))),
+    roll = math.rad(o.roll or (1.2 + 2.0 * (lean - 0.4))),
+    pitch = math.rad(o.pitch or 0.8 * (1.2 + 2.0 * (lean - 0.4))),
     arb = o.arb or (c.class == "everyday" and 0.35 or 0.9),
   }
   -- the body's resistance to pitching and rolling (radius of gyration squared), and how stiffly the springs and bars hold it level
@@ -106,6 +106,14 @@ local function ride_of(c, layout)
     if s.pair then kr = kr + 0.5 * r.arb * r.k * (s.left - layout.stations[s.pair].left) ^ 2 end
   end
   r.kp, r.kr = kp, kr
+  -- each spring's compression at rest: its share of the weight (the middle of the car is rarely halfway between the axles, so the axle
+  -- nearer it carries more), so that the car stands level at the model's own ride height
+  local sf, sff, sl, sll = 0, 0, 0, 0
+  for _, s in ipairs(layout.stations) do sf, sff, sl, sll = sf + s.fwd, sff + s.fwd * s.fwd, sl + s.left, sll + s.left * s.left end
+  local a, b = -sf / math.max(sff, 1e-6), -sl / math.max(sll, 1e-6)
+  r.sags = {}
+  local norm = n / (n + a * sf + b * sl)
+  for i, s in ipairs(layout.stations) do r.sags[i] = sag * norm * math.max(0.3, 1 + a * s.fwd + b * s.left) end
   RIDES[key] = r
   return r
 end
@@ -167,7 +175,7 @@ function Car:create()
   local n = #self.stations
   local function list(v) local t = {} for i = 1, n do t[i] = v end return t end
   self.susp = { y = 0, vy = 0, p = 0, vp = 0, r = 0, vr = 0, ready = false,
-    s = list(0), touch = list(true), load = list(1), g = list(0), gv = list(0), bump = list(0), wx = list(0), wz = list(0) }
+    s = list(0), touch = list(true), load = list(1), g = list(0), t = list(0), gv = list(0), bump = list(0), wx = list(0), wz = list(0) }
   self.contact, self.contact_front, self.contact_rear = 1, 1, 1
   for i, s in ipairs(self.stations) do
     if s.name == "wheel_rl" then self.rear_left = i elseif s.name == "wheel_rr" then self.rear_right = i end
@@ -488,6 +496,7 @@ function Car:suspension(dt, accel, lateral_accel)
     local wz = self.z + cosh * s.fwd - sinh * s.left
     sp.wx[i], sp.wz[i] = wx, wz
     local g = nova.terrain_height(wx, wz)
+    sp.t[i] = g
     if not far then
       local raw, verge = 0, 0
       local bump_size = size
@@ -522,11 +531,12 @@ function Car:suspension(dt, accel, lateral_accel)
   local n_lat = math.max(-1, math.min(1, lateral_accel / lat_ref))
   local long_ref = accel < 0 and (self.brake_power or 30) or (self.power or 8) * 1.5
   local n_long = math.max(-1, math.min(1, accel / long_ref))
-  local tq_p = n_long * ride.pitch * ride.kp
-  local tq_r = n_lat * ride.roll * ride.kr
+  -- (each as a push that leans the body by that angle against the springs whose tyres touch: so it never leans it further when the
+  -- inside wheels have lifted and only the outside springs hold it; a car at the arcade's grip would otherwise roll over)
+  local want_p, want_r = n_long * ride.pitch, n_lat * ride.roll
   if self.hit then sp.vr, sp.vp = sp.vr + self.hit * 0.6 * (math.random() - 0.5), sp.vp + self.hit * 0.4 * (math.random() - 0.5) end -- a knock sets the body rocking
 
-  local k, c, sag, bump, droop = ride.k, ride.c, ride.sag, ride.bump, ride.droop
+  local k, c, sags, bump, droop = ride.k, ride.c, ride.sags, ride.bump, ride.droop
   local kb, cb, arb = 25 * k, 3 * c, ride.arb * k
   local steps = far and 1 or 2
   local h = dt / steps
@@ -542,29 +552,34 @@ function Car:suspension(dt, accel, lateral_accel)
         sp.touch[i], sp.s[i], F[i] = false, -droop, 0
       else
         local vel = sp.gv[i] - (vy + s.fwd * vp + s.left * vr)
-        local f = k * (sag + math.min(need, bump)) + c * vel
+        local f = k * (sags[i] + math.min(need, bump)) + c * vel
         if need > bump then f = f + kb * (need - bump) + cb * vel end
         sp.touch[i], sp.s[i], F[i] = true, math.min(need, bump), f
       end
     end
-    local fy, mp, mr = 0, 0, 0
+    local fy, mp, mr, kp, kr = 0, 0, 0, 0, 0
     touching = 0
     for i = 1, n do
       local s = st[i]
       local f = F[i]
       if sp.touch[i] then
         touching = touching + 1
+        kp, kr = kp + k * s.fwd * s.fwd, kr + k * s.left * s.left
         local j = s.pair
-        if j and sp.touch[j] then f = f + arb * (sp.s[i] - sp.s[j]) end
+        if j and sp.touch[j] then
+          f = f + arb * (sp.s[i] - sp.s[j])
+          kr = kr + 0.5 * arb * (s.left - st[j].left) ^ 2
+        end
         if f < 0 then f = 0 end
       end
-      sp.load[i] = f / (k * sag)
+      sp.load[i] = f / (k * sags[i])
       fy, mp, mr = fy + f, mp + f * s.fwd, mr + f * s.left
     end
-    local share = touching / n
+    -- (the tyres push the body about only as hard as they are pressed on the road: light over a crest, they lean it less)
+    local pressed = math.max(0, math.min(1, fy / GRAVITY))
     vy = vy + (fy - GRAVITY) * h
-    vp = vp + (mp + tq_p * share) / ride.ip * h
-    vr = vr + (mr + tq_r * share) / ride.ir * h
+    vp = vp + (mp + want_p * kp * pressed) / ride.ip * h
+    vr = vr + (mr + want_r * kr * pressed) / ride.ir * h
     if touching == 0 then vp, vr = vp * math.exp(-1.5 * h), vr * math.exp(-1.5 * h) end -- (a little air: a jump does not tumble the car)
     sp.y, sp.p, sp.r = y + vy * h, math.max(-0.3, math.min(0.3, p + vp * h)), math.max(-0.3, math.min(0.3, r + vr * h))
     sp.vy, sp.vp, sp.vr = vy, vp, vr
@@ -599,11 +614,12 @@ function Car:suspension(dt, accel, lateral_accel)
   self.pitch, self.roll = -sp.p, sp.r
 end
 
--- Where a wheel is drawn: its station on the body, moved along its travel (relative to the model's place at rest, lifted by the hill
--- under the car's middle).
+-- Where a wheel is drawn: its station on the body, moved along its travel. (Each wheel of a model is drawn on its own, and the renderer
+-- lifts it by the hill under its own middle, not under the car's: so its height is given above the hill under itself. Before
+-- 2026-11-21 it was given above the hill under the car's middle, and on a slope the wheels were lifted twice: off the car.)
 function Car:wheel_offset(i)
   local sp, s = self.susp, self.stations[i]
-  return self.lift + s.fwd * sp.p + s.left * sp.r + sp.s[i]
+  return sp.y + s.fwd * sp.p + s.left * sp.r + sp.s[i] - sp.t[i]
 end
 
 function Car:draw()
