@@ -291,7 +291,8 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
 - **Solid things that are not tiles:** tag them `solid`, and move with `self:slide(dx, dy, { solid = "solid" })`, which
   stops at them as at solid tiles (its third answer is the thing it ran into: a charging drone that crashes). Such a thing
   is then never overlapped, so its `on_collide_hero` never runs: notice the hero with `self:near("hero", 6)`. A mover that
-  starts inside something solid is moved out the short way or stays put, never thrown through the wall.
+  starts inside something solid is moved out the short way, or back to where it was last free: never thrown through
+  the wall nor left stuck in it. Test a spot with `nova.solid_at` on the corners of `self:bounds()`.
 - **Tags are not kinds.** `nova.first`, `nova.all`, `nova.count` and `on_collide_<tag>` take a tag (`tags = { "enemy" }`), not
   the entity's file name; `nova.named("hero")` takes the name a scene object was given.
 - **`tint` multiplies:** it darkens or colours and cannot flash a sprite white. Blink `alpha`, or show a white copy of the

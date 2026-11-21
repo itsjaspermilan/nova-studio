@@ -71,6 +71,16 @@ function Runner:move(dx, dy)
 end
 
 -- A roll through an enemy (Shock Wake) can end inside it: step out to the nearest free spot, the way the roll was going first.
+-- Is any part of his box on a solid tile? (the tiles are 48 units, his box smaller: its corners and middle tell)
+function Runner:in_wall()
+  local x0, y0, x1, y1 = self:bounds()
+  local mx, my = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+  for _, p in ipairs({ { x0 + 0.1, y0 + 0.1 }, { x1 - 0.1, y0 + 0.1 }, { x0 + 0.1, y1 - 0.1 }, { x1 - 0.1, y1 - 0.1 }, { mx, my } }) do
+    if nova.solid_at(p[1], p[2]) then return true end
+  end
+  return false
+end
+
 function Runner:unstick()
   if not self:touching("solid") then return end
   local ox, oy = self.x, self.y
@@ -79,13 +89,12 @@ function Runner:unstick()
       local a = math.atan(self.roll_dy, self.roll_dx) + k / 12 * math.pi * 2
       local x, y = ox + math.cos(a) * r, oy + math.sin(a) * r
       self.x, self.y = x, y
-      if not self:touching("solid") then
-        -- (and not in a wall: a step of 1 unit in each direction that the tiles refuse would put him back)
-        local bx, by = self:slide(1, 0)
-        self:slide(-1, 0)
-        self:slide(0, 1)
-        self:slide(0, -1)
-        if math.abs(self.x - x) + math.abs(self.y - y) < 3 then nova.log(string.format("unstuck from a solid thing: %.0f,%.0f to %.0f,%.0f", ox, oy, x, y)); return end
+      -- (and not in a wall: no corner of his box on a solid tile. Found by soak 16: the old test, "a step of a unit each way
+      -- that the tiles refuse puts him back", took a spot deep inside the bottom wall for free, once the engine stopped throwing
+      -- a body that is inside a wall out of it)
+      if not self:touching("solid") and not self:in_wall() then
+        nova.log(string.format("unstuck from a solid thing: %.0f,%.0f to %.0f,%.0f", ox, oy, x, y))
+        return
       end
     end
   end
