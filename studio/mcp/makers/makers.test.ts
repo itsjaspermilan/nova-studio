@@ -424,7 +424,7 @@ describe("the city kit", () => {
     it(`gives every city outfit, headgear and item all its animations in the ${style} style`, () => {
       const hd = style === "detailed";
       const per = hd ? HD_ANIMS.map((x) => x[0]) : ["idle", "walk", "attack", "hurt"];
-      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
+      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
       const parts = [...CITY_OUTFITS.map((o) => ({ outfit: o })), ...CITY_HATS.map((h) => ({ hat: h })), ...CITY_ITEMS.map((i) => ({ item: i }))];
       for (const part of parts) {
         use("character_make", { name: "c", palette: "gutter market", style, glow_color: "2", ...part });
@@ -518,7 +518,7 @@ describe("the detailed people", () => {
 
   it("makes the runner and every enemy archetype: every animation, the frame, the feet's box, closed outlines", () => {
     const counts = Object.fromEntries(HD_ANIMS.map(([n, c]) => [n, c]));
-    expect(counts).toEqual({ idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2 });
+    expect(counts).toEqual({ idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8 });
     for (const [name, recipe] of Object.entries(HD_ARCHETYPES)) {
       const said = text(use("character_make", { name, style: "detailed", ...recipe }));
       expect(said, name).toContain("hitbox = { -7, -8, 14, 8 }");
@@ -529,11 +529,11 @@ describe("the detailed people", () => {
       expect(json.pivot, name).toEqual(HD_PIVOT);
       expect(json.tags!.map((t) => t.name), name).toEqual(CITY_DIRS.flatMap((d) => HD_ANIMS.map(([a]) => `${a}_${d}`)));
       for (const t of json.tags!) expect(t.to - t.from + 1, `${name} ${t.name}`).toBe(counts[t.name.split("_")[0]!]);
-      expect(json.frames, name).toBe(4 * 23);
+      expect(json.frames, name).toBe(4 * 31);
       if (recipe.hologram) continue; // light, not a body: no outline by design
       const png = decodePng(bytes(`sprites/${name}.png`));
       // the frames without light laid over the edge (an arc, a streak, the tell's flash): idle, walk, hurt
-      for (const t of json.tags!.filter((x) => /^(idle|walk|hurt)_/.test(x.name))) for (let n = t.from; n <= t.to; n++) {
+      for (const t of json.tags!.filter((x) => /^(idle|walk|hurt|run)_/.test(x.name))) for (let n = t.from; n <= t.to; n++) {
         expect(lightEdge(frameOf(png, json, n), HD_FRAME, HD_FRAME), `${name} frame ${n} (${t.name})`).toBeLessThan(0.06);
       }
       // the figure stands in its frame: something solid in the middle, nothing touching the frame's edge
@@ -547,7 +547,7 @@ describe("the detailed people", () => {
   it("draws every part name of both styles, and says what is wrong", () => {
     for (const part of [...OUTFITS.map((o) => ({ outfit: o })), ...HD_OUTFITS_MORE.map((o) => ({ outfit: o })), ...HATS.map((h) => ({ hat: h })), ...HD_HATS_MORE.map((h) => ({ hat: h })), ...ITEMS.map((i) => ({ item: i })), ...HD_ITEMS_MORE.map((i) => ({ item: i }))]) {
       use("character_make", { name: "p", style: "detailed", palette: "gutter market", ...part });
-      expect(sheet("p").frames, JSON.stringify(part)).toBe(92);
+      expect(sheet("p").frames, JSON.stringify(part)).toBe(124);
     }
     use("character_make", { name: "v", style: "detailed", hat: "visor", visor: "down", arms: 4, stance: "proud", pose: "wide", expression: "smile", skin: "chrome" });
     expect(() => use("character_make", { name: "x", style: "detailed", arms: 3 })).toThrow(/"arms" is 2, 4, 6/);
