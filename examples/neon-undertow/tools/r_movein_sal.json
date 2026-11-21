@@ -277,6 +277,10 @@
    "max": 60
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 5,
    "capture": "room 1"
   },
@@ -295,6 +299,10 @@
   {
    "until": "nova.current_scene() == require('lib.run').chain[2].scene and nova.named('runner') ~= nil",
    "max": 60
+  },
+  {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
   },
   {
    "wait": 3

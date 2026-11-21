@@ -13,6 +13,11 @@ local Hits = require("lib.hits")
 local Status = require("lib.status")
 local Cards = require("data.cards")
 local LK = require("lib.look")
+local Wipe = require("lib.wipe")
+local Banner = require("lib.banner")
+local Prompt = require("lib.prompt")
+local Flow = require("data.flow")
+local Elites = require("data.elites")
 
 -- `look` is the kind of light of the room (data/look.lua): "outdoors", "yard" (Mother Coil's) or "indoors" (the stranger's room, the shop)
 local Room = nova.scene { room = "market_a", first = false, look = "outdoors" }
@@ -45,6 +50,13 @@ function Room:enter()
   self.fight_t = 0
   self.paused, self.banner_t, self.paid = false, 0, 0
   nova.pause(false)
+  Prompt.reset(self.runner)
+  Banner.clear()
+  Banner.runner = self.runner
+  -- Arriving through a wipe: the room holds still (nothing spawns, nothing can hurt the runner, the clock stops) until the shutter has fully opened,
+  -- then its banners come and it begins (see update).
+  self.held = Wipe.busy()
+  if self.held then nova.pause(true) end
   nova.music.play(P.music.track, { volume = P.music.volume })
   nova.log("entered " .. self.room)
   LK.enter(self.look)
@@ -59,6 +71,29 @@ function Room:enter()
     nova.log("debt spiral takes a point (health " .. r.hp .. ")")
   end
   if self.entry then nova.log(string.format("room %d of 8: %s (%s)", math.min(self.entry.index, 8), self.entry.kind, self.room)) end
+  if not self.held then self:announce() end
+end
+
+-- The room-start banners: LET'S GO! at the start of a run, and the room counter with the kind of room.
+function Room:announce()
+  local e = self.entry
+  if not e then return end
+  if e.index == 1 then Banner.show("go", { text = "LET'S GO!" }) end
+  local kind = Flow.room_kinds[e.kind] or ""
+  Banner.show("room", { text = e.kind == "walk" and kind or string.format("ROOM %d / 8   %s", math.min(e.index, 8), kind) })
+end
+
+-- Every update of a room's scene starts here: the wipe's clock (it runs while the world is paused), then true while the room must do nothing else:
+-- a wipe is closing, holding or opening (input is ignored, nothing is hurt). The frame the shutter is fully open the world starts.
+function Room:frozen(dt)
+  Wipe.tick(dt)
+  if Wipe.busy() then return true end
+  if self.held then
+    self.held = false
+    nova.pause(false)
+    self:announce()
+  end
+  return false
 end
 
 function Room:leave() LK.leave() end
@@ -112,7 +147,11 @@ function Room:spawn_wave(i)
     local pt = self.points[row.at]
     if not pt then error("data/waves.lua: room " .. self.room .. " has no spawn point named " .. row.at) end
     local kind, mark = row.kind, nil
-    if row.elite then kind, mark = self.entry.elite_kind, self.entry.mark end
+    if row.elite then
+      kind, mark = self.entry.elite_kind, self.entry.mark
+      local m = Elites.marks[mark]
+      Banner.show("elite", { text = "ELITE!", sub = m.name:upper() .. ": " .. m.text })
+    end
     local count = row.count
     if Run.mods.crowd > 0 then
       -- Crowd Pleaser: 25% more enemies (the fractions are carried to the next row, so a room's total is exact)
@@ -162,6 +201,15 @@ function Room:clear()
     Run.hp = r.hp
     self.heal_note = string.format("+%d health (Clot)", r.hp - before)
     nova.log(string.format("clot heals %d (a clean room)", r.hp - before))
+  end
+  -- CLEARED! with what the room paid (the boss's room says DISTRICT CLEARED!)
+  local sub = "+" .. (self.paid or 0) .. " scrap"
+  if (self.keys_paid or 0) > 0 then sub = sub .. string.format("   +%d key%s", self.keys_paid, self.keys_paid == 1 and "" or "s") end
+  if self.heal_note then sub = sub .. "   " .. self.heal_note end
+  if self.B then
+    Banner.show("win", { text = "DISTRICT CLEARED!", sub = sub })
+  else
+    Banner.show("clear", { text = "CLEARED!", sub = sub })
   end
 end
 
@@ -217,23 +265,53 @@ function Room:pick()
     self:reroll_cards()
     return
   end
+  local near = self.near_card
+  if near and nova.input.pressed("interact") then Prompt.used("card" .. near.card_id); self:take(near) end
+end
+
+-- The prompts of the room (lib/prompt.lua): a panel over the card the runner stands by, over an open exit door; only the nearest. Run every update.
+-- (The cards' own pictures and the doors' lamps are their quiet cues.) `extra` are a scene's own items (the stranger, the counters).
+function Room:prompts(dt, extra, enabled)
   local r = self.runner
-  local near, nd = nil, R.card_reach
+  local items = {}
+  if not r or r.state == "dead" then Prompt.update(dt, {}, false); return end
   for _, c in ipairs(nova.all("card")) do
     c.near = false
-    if c.ready then
-      local d = r:distance_to(c)
-      if d < nd then near, nd = c, d end
+    if c.ready and self.state == "cards" then
+      local d, def = r:distance_to(c), c.def
+      items[#items + 1] = {
+        key = "card" .. c.card_id, card = c, x = c.x, y = c.y - 140, name = def.name:upper(), color = c.rar.color, no_cue = true,
+        line = Cards.rarity[def.rarity].name .. (def.jinx and "   JINX!" or ""), near = d,
+      }
     end
   end
-  if near then near.near = true end
-  self.near_card = near
-  if near and nova.input.pressed("interact") then self:take(near) end
+  for i, d in ipairs(self.doors) do
+    if d.exit and d.state == "open" and not d.gone then
+      local kind = self.entry and self.entry.kind
+      local name, line = "NEXT ROOM", "Walk through."
+      if kind == "walk" then name, line = "HEAD HOME", "Back to the Den." elseif kind == "boss" then name, line = "TO THE SHOP", "Then home." end
+      items[#items + 1] = { key = "door" .. i, x = d.x, y = d.y - 62, name = name, line = line, walk = true,
+        near = Prompt.box_distance(r.x, r.y, d.x - 16, d.y - 32, d.x + 16, d.y + 32) }
+    end
+  end
+  for _, it in ipairs(extra or {}) do items[#items + 1] = it end
+  local t = Prompt.update(dt, items, enabled ~= false)
+  self.near_card = t and t.card or nil
+  if self.near_card then self.near_card.near = true end
+  return t
 end
 
 function Room:update(dt)
+  if self:frozen(dt) then return end
   if nova.input.pressed("start") and self.runner and self.runner.state ~= "dead" then self:toggle_pause() end
   if self.paused then HUD.pause_input(self); return end
+  Banner.tick(dt)
+  if self.runner and self.runner.state == "dead" and not self.death_shown then
+    self.death_shown = true
+    local L = Flow.death_lines
+    Banner.show("death", { text = "FLATLINED!", sub = L[math.random(#L)], hold = 1.0 })
+  end
+  self:prompts(dt, nil, true)
   J.tick()
   self.t = self.t + dt
   Run.time = Run.time + dt
@@ -288,13 +366,17 @@ end
 function Room:on_runner_dead()
   if Run.chain then
     Run.finish("dead")
-    nova.goto_scene("summary")
+    Wipe.go("summary")
   else
     Run.active = false
     nova.goto_scene("market_a")
   end
 end
 
-function Room:draw_ui() HUD.draw(self) end
+function Room:draw_ui()
+  HUD.draw(self)
+  if not self.paused then Prompt.draw(); Banner.draw() end
+  Wipe.draw()
+end
 
 return Room

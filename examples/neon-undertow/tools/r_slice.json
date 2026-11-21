@@ -45,9 +45,16 @@
    "lua": "A_CARDS = table.concat(require('lib.run').cards, ','); A_HP = nova.named('runner').hp; A_SCRAP_EXIT = require('lib.juice').scrap; A_EXIT_DOOR = nova.named('door_e').state"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_e",
    "who": "runner",
    "max": 900
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 3,

@@ -61,7 +61,8 @@ function Door:update(dt)
         Run.room = Run.room + 1
       end
       nova.log("through the door to " .. dest)
-      nova.goto_scene(dest)
+      -- a quick wipe closes (the runner steps into the doorway), the next room loads behind it and opens when the shutter has (lib/wipe.lua)
+      if not require("lib.wipe").go(dest, { actor = p, to = { self.x, p.y } }) then nova.goto_scene(dest) end
       self.gone = true
     end
   end

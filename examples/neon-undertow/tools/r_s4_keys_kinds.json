@@ -7,6 +7,10 @@
    "max": 40
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 3
   },
   {
@@ -92,6 +96,10 @@
   {
    "until": "nova.current_scene() == 'gutter.boss' and nova.named('coil') ~= nil",
    "max": 40
+  },
+  {
+   "until": "nova.scene_now().state == 'boss'",
+   "max": 300
   },
   {
    "wait": 30

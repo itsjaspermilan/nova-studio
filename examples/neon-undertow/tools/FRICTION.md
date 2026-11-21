@@ -261,3 +261,38 @@ What I wanted, what I tried, what would have made it one step. Most costly first
    terrain; I paint three reflective cells under each object (`tools/paint.mjs`) so they agree. One step: `scene_write` `pools: [{ x, y, w, h }]`.
 9. **`sprite_write` rejects `"outline": null`** (a frame with no outline had to leave the key out) and the film strip `play` cannot take an `out`
    from the command line, so `tools/look/shoot.mjs` rewrites each route file. Small.
+
+# UI pass (vector text, wipes, banners, prompts)
+
+What I wanted, what I tried, what would have made it one step. Most costly first.
+
+1. **Text is always drawn over UI rectangles, so a wipe cannot cover the HUD.** Wanted: a neon shutter that closes over the whole screen. Tried: a shutter of
+   `nova.ui.rect` rows; the HUD's text ("ROOM 1 / 8", the key hints, the scrap count) sat on top of it, as the guide's trap says. Worked round with
+   `Type.fade` (every piece of text goes through `lib/type.lua`, which multiplies its alpha, so the text fades while the shutter closes and back in as it
+   opens; a text `shadow` option does not fade, so the shadow is gone and the outline does the job). One step: a draw-order number on `nova.ui.rect` and
+   `nova.ui.text`, or `nova.ui.fade(alpha)` for the whole UI layer.
+2. **A wipe has to outlive a scene, and there is no game-wide update or draw hook.** `goto_scene` destroys the scene, its entities and its timers, so the
+   wipe's clock lives in a module (`lib/wipe.lua`) and every scene calls `Wipe.tick(dt)` in its update and `Wipe.draw()` last in its `draw_ui`
+   (title is the only one that starts no wipe). Forget it in one scene and the screen stays covered. One step: `nova.on_update(fn)` / `nova.on_draw_ui(fn)`
+   in `main.lua` that survive scene changes, or `nova.goto_scene(name, { transition = fn })`.
+3. **`nova.pause(true)` also stops `nova.time()`** (framework.lua: by design), so anything timed by `nova.time()` freezes with the world. The wipe (it
+   pauses the world so nothing can hurt the runner, and nothing can be pressed), the banners and the prompts count `dt` themselves; a scene's `update`
+   still runs while the world is paused, which is what makes that work. Worth a line in the guide.
+4. **World-space text (an elite's mark, bounty tags, the prompts over things; the dummy's damage number): the vector fonts DO work, but only as UI text.**
+   There is no `nova.text` in the world layer. `nova.ui.text` at `nova.cam.to_screen(x, y)` (what the game's `hud()` hooks do) is sharp and takes every font
+   and the outline, but it is drawn over everything: it cannot hide behind a wall or a tall sprite and it is not lit. Fine here; a `nova.text(x, y, text, opts)`
+   that sorts with sprites would be one step. (The game draws no damage numbers in play; only the training dummy has them.)
+5. **Text has no slant, rotation or scale animation.** The brief wanted the comic face "slanted and outlined". Bangers leans a little by itself and the
+   outline is `outline = { color, width }`, but there is no skew, so the lean is the font's own. A banner that slams in (big, dip under, settle) has to change
+   `size` every frame, which rasterises a glyph set for each size (quantised here to whole even sizes to keep the atlas small). One step: `skew`,
+   `rotation` and `scale` options on `nova.ui.text`.
+6. **No leaning panels.** A banner band and the wipe's slats lean (parallelograms), but `nova.ui.slant` leans only the right edge and costs a strip per screen
+   pixel row, so both are rows of `nova.ui.rect` (2 to 3 units tall, about 270 rects for a whole-screen wipe). Not measured on the device. One step:
+   `nova.ui.quad(points, color)` or a `skew` on `nova.ui.rect`.
+7. **There is no way to see a font's real size before drawing.** Sizes in units do not match between fonts (the old pixel font's "15" is about a sans "18"
+   to look as big): they are in one table (`lib/type.lua`), found by looking at 1920x1080 pictures, because a 960x540 picture hides what the handheld shows.
+8. **`walk_to` into a door that now closes behind a wipe ends when the hitboxes overlap, not when the scene changes** (the scene changes 0.25 s later), and a
+   hold step during a wipe is reported as "the hold did nothing" (a warning, which the tests treat as a failure: right, but the test wants to prove it). The
+   routes that cross a door use `through(...)` and `idle()` (tools/routes.mjs); the input-ignored proof uses `press` steps.
+9. **`play`'s `lua` runs after the scene's `enter`, so a route cannot choose the run's seed for a room it starts in** (`start_scene: "gutter.elite"` runs
+   `begin_chain()` with a random seed in `enter`, then the route's `lua` begins another): the new routes read the room's own `scene_now().entry` instead.

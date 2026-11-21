@@ -69,10 +69,10 @@ end
 
 function Title:draw_ui()
   nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 120 })          -- (the street shows through, dimmed)
-  nova.ui.rect(0, 84, W, 210, { 5, 6, 15, 150 })         -- (a band behind the name and the tagline)
+  nova.ui.rect(0, 50, W, 250, { 5, 6, 15, 150 })         -- (a band behind the name and the tagline)
   local glow = 0.75 + 0.25 * math.sin(self.t * 3)
-  Ty.text(0, 100, "NEON", "title", { color = { 255 * glow, 43, 214, 255 }, align = "center", width = W, shadow = true })
-  Ty.text(0, 170, "UNDERTOW", "title", { color = { 6, 240 * glow, 255, 255 }, align = "center", width = W, shadow = true })
+  Ty.text(0, 52, "NEON", "title", { color = { 255 * glow, 43, 214, 255 }, align = "center", width = W })
+  Ty.text(0, 134, "UNDERTOW", "title", { color = { 6, 240 * glow, 255, 255 }, align = "center", width = W })
   Ty.text(0, 244, "Low Meridian floods a little more every year.\nSomebody has to deliver the mail.", "small", { color = { 190, 200, 230, 255 }, align = "center", width = W })
   if self.mode == "menu" then
     for i, name in ipairs(self:items()) do

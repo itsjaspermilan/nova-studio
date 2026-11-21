@@ -70,7 +70,7 @@ function S.hud(e, x, y)
     nova.ui.rect(x - 26, y - 22, 52, 16, on and { 255, 228, 94, 255 } or { 90, 90, 100, 255 })
     Ty.text(x - 26, y - 20, "$" .. e.bounty, "small", { color = { 20, 16, 5, 255 }, align = "center", width = 52 })
   end
-  if e.leaky then Ty.text(x - 20, y + 4, "leak", "tiny", { color = { 6, 240, 255, 255 }, align = "center", width = 40, shadow = true }) end
+  if e.leaky then Ty.text(x - 20, y + 4, "leak", "tiny", { color = { 6, 240, 255, 255 }, align = "center", width = 40 }) end
 end
 
 return S

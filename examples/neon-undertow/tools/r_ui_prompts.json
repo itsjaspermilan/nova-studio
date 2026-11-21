@@ -1,0 +1,114 @@
+{
+ "start_scene": "den",
+ "lua": "require('lib.meta').started = true",
+ "route": [
+  {
+   "until": "nova.current_scene() == 'den' and nova.named('runner') ~= nil",
+   "max": 60
+  },
+  {
+   "wait": 60
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "until": "nova.scene_now().state == 'free' or nova.scene_now().state == 'movein'",
+   "max": 200
+  },
+  {
+   "wait": 3
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 400, 520"
+  },
+  {
+   "wait": 30,
+   "capture": "far from everything: no panel, only quiet cues"
+  },
+  {
+   "lua": "FAR_N = require('lib.prompt').count(); FAR_KEY = tostring(require('lib.prompt').target and require('lib.prompt').target.key); CUES = #require('lib.prompt').items; ALL_FAR = 0; for _, it in ipairs(require('lib.prompt').items) do if it.near <= 78 then ALL_FAR = ALL_FAR + 1 end end"
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 1104, 240"
+  },
+  {
+   "wait": 2
+  },
+  {
+   "lua": "K2 = require('lib.prompt').shown.bench and require('lib.prompt').shown.bench.k or -1"
+  },
+  {
+   "wait": 12,
+   "capture": "by the workbench: its prompt"
+  },
+  {
+   "lua": "K14 = require('lib.prompt').shown.bench.k; BENCH_N = require('lib.prompt').count(); BENCH_KEY = tostring(require('lib.prompt').visible_key())"
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 790, 240"
+  },
+  {
+   "wait": 24,
+   "capture": "two things in reach: the nearer shows"
+  },
+  {
+   "lua": "T1 = require('lib.prompt').target.key; N1 = require('lib.prompt').count(); V1 = tostring(require('lib.prompt').visible_key()); IN1 = 0; for _, it in ipairs(require('lib.prompt').items) do if it.near <= 78 then IN1 = IN1 + 1 end end"
+  },
+  {
+   "lua": "nova.named('runner').x = 812"
+  },
+  {
+   "wait": 24
+  },
+  {
+   "lua": "T2 = require('lib.prompt').target.key; N2 = require('lib.prompt').count(); V2 = tostring(require('lib.prompt').visible_key())"
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 1104, 330"
+  },
+  {
+   "wait": 24
+  },
+  {
+   "lua": "OUT_N = require('lib.prompt').count(); OUT_KEY = tostring(require('lib.prompt').target and require('lib.prompt').target.key)"
+  },
+  {
+   "lua": "nova.named('runner').x, nova.named('runner').y = 1104, 240"
+  },
+  {
+   "wait": 24
+  },
+  {
+   "press": "interact"
+  },
+  {
+   "wait": 14,
+   "capture": "used: the panel slides away"
+  },
+  {
+   "lua": "USED_STATE = nova.scene_now().state; USED_N = require('lib.prompt').count()"
+  }
+ ],
+ "print": [
+  "FAR_N",
+  "FAR_KEY",
+  "CUES",
+  "ALL_FAR",
+  "K2",
+  "K14",
+  "BENCH_N",
+  "BENCH_KEY",
+  "T1",
+  "N1",
+  "V1",
+  "IN1",
+  "T2",
+  "N2",
+  "V2",
+  "OUT_N",
+  "OUT_KEY",
+  "USED_STATE",
+  "USED_N"
+ ]
+}

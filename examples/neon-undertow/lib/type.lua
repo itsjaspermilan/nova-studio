@@ -40,7 +40,7 @@ local function copy_opts(role, opts)
     for k, v in pairs(opts) do
       if k == "outline" then
         if v == false then o.outline = nil elseif type(v) == "table" then o.outline = { color = v.color or DARK, width = (v.width or r.outline) * T.scale } end
-      elseif k ~= "size" then
+      elseif k ~= "size" and k ~= "shadow" then      -- (the outline is the shadow now: a drop shadow would not fade with the wipe)
         o[k] = v
       end
     end

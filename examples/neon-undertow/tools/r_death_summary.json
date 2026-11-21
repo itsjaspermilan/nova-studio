@@ -7,6 +7,10 @@
    "max": 30
   },
   {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
+  },
+  {
    "wait": 3
   },
   {
@@ -35,6 +39,10 @@
   {
    "until": "nova.current_scene() == require('lib.run').chain[1].scene and nova.named('runner') ~= nil",
    "max": 60
+  },
+  {
+   "until": "not require('lib.wipe').busy()",
+   "max": 240
   },
   {
    "wait": 5,

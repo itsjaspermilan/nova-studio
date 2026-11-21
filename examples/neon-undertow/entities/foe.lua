@@ -32,6 +32,13 @@ function Foe:move(dx, dy)
   if by2 then hit = true end
   if self:touching("solid") then self.y = y; hit = true end
   if math.abs(self.x - x) + math.abs(self.y - y) > math.abs(dx) + math.abs(dy) + 4 then self.x, self.y = x, y; hit = true end   -- (never a leap: see Scrapper:move)
+  -- never out of the room: gutter.s5_courts has three tiles of its east wall (column 43, rows 3 to 5) that are not solid, and a thrower backing away from the
+  -- runner walked out through them and on for ever (the soak found it: seed 17). The room's edge is a wall for every foe.
+  local sc = nova.scene_now()
+  if sc and sc.w and sc.h then
+    local cx, cy = math.max(8, math.min(sc.w - 8, self.x)), math.max(8, math.min(sc.h - 8, self.y))
+    if cx ~= self.x or cy ~= self.y then self.x, self.y, hit = cx, cy, true end
+  end
   return hit
 end
 

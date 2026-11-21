@@ -2,6 +2,7 @@
 -- (permanent upgrades, bought with keys), the stalls (name plates; the strangers who moved in live there) and the door (a run starts).
 -- Everything it says is data/den.lua; the upgrades are data/upgrades.lua; the sums are lib/workbench.lua; what is saved is lib/meta.lua.
 local P = require("data.player")
+local Ty = require("lib.type")
 local J = require("lib.juice")
 local Run = require("lib.run")
 local Meta = require("lib.meta")
@@ -11,12 +12,16 @@ local Cards = require("data.cards")
 local Work = require("lib.workbench")
 local HUD = require("lib.hud")
 local Lullaby = require("lib.lullaby")
+local Wipe = require("lib.wipe")
+local Banner = require("lib.banner")
+local Prompt = require("lib.prompt")
+local Flow = require("data.flow")
 
 local Den = nova.scene {}
 local VIEW_W, VIEW_H, W = 960, 540, 960
 
-local function centered(y, text, size, color)
-  nova.ui.text(0, y, text, { font = "pixel", size = size, color = color, align = "center", width = W, shadow = true })
+local function centered(y, text, role, color)
+  Ty.text(0, y, text, role, { color = color, align = "center", width = W })
 end
 
 function Den:enter()
@@ -36,6 +41,9 @@ function Den:enter()
   self.toast, self.toast_t = nil, 0
   self.line, self.line_kind, self.line_n = Lullaby.wake_line(Meta.last)
   Meta.save()
+  Prompt.reset(self.runner)
+  Banner.clear()
+  Banner.runner = self.runner
   nova.pause(true)
   nova.sound.play("printed", { volume = P.sfx.printed })
   nova.music.play(P.music.den, { volume = P.music.den_volume })
@@ -54,18 +62,48 @@ function Den:camera(dt)
   nova.cam.set(math.max(VIEW_W / 2, math.min(self.w - VIEW_W / 2, self.cx)), math.max(VIEW_H / 2, math.min(self.h - VIEW_H / 2, self.cy)))
 end
 
--- The fixture the runner stands at (the screen, the bench, the door, a stall), or nil.
-function Den:near_thing()
-  local r, best, bd = self.runner, nil, Dd.reach
+-- What each fixture says in its prompt (lib/prompt.lua): its name, one short line and the colour of its panel. The stalls say who they are.
+local YELLOW = { 255, 228, 94 }
+local PROMPTS = {
+  bench = { name = "WORKBENCH", line = "Spend keys on upgrades that stay." },
+  screen = { name = "LULLABY", line = "Talk to the printer." },
+  codex = { name = "CARD CODEX", line = "Every card you have seen.", color = { 255, 200, 120 } },
+  door = { name = "THE DOOR", line = "Start a run.", color = YELLOW },
+}
+
+-- The usable fixtures as prompt items, with how far the runner is from each (the box of the thing: how near to its edge, not to its middle).
+function Den:usables()
+  local r, out = self.runner, {}
   for _, t in pairs(self.things) do
     if t.thing ~= "bed" then
-      local dx = math.max(0, math.abs(r.x - t.x) - t.w * 0.3)
-      local dy = r.y - t.y
-      local d = math.sqrt(dx * dx + dy * dy)
-      if d < bd then best, bd = t, d end
+      local it = { key = t.name or t.thing, thing = t, x = t.x, y = t.y - t.h, color = (PROMPTS[t.thing] or {}).color }
+      local p = PROMPTS[t.thing]
+      if p then
+        it.name, it.line = p.name, p.line
+      elseif t.thing == "stall" then
+        local stall
+        for _, s in ipairs(Dd.stalls) do if s.id == t.who then stall = s end end
+        it.name = stall.name
+        if Meta.moved_in[t.who] then
+          it.line, it.color = "Lives here. Say hello.", { 6, 240, 255 }
+        elseif stall.later then
+          it.line, it.color = "Not in the Market yet.", { 150, 160, 190 }
+        else
+          it.line = string.format("Empty. Helped %d of %d times.", Meta.met[t.who] or 0, Dd.moved_in_needed)
+          it.color = { 150, 160, 190 }
+        end
+      end
+      if t.thing == "door" then
+        it.lines = {}
+        for _, id in ipairs({ "patch", "old_sal" }) do
+          if Meta.moved_in[id] then it.lines[#it.lines + 1] = Dd.movers[id].name .. ": " .. Dd.movers[id].perk end
+        end
+      end
+      it.near = Prompt.box_distance(r.x, r.y, t.x - t.w / 2, t.y - ((Dd.sizes[t.thing] or {}).solid and t.h * 0.35 or 20), t.x + t.w / 2, t.y)
+      out[#out + 1] = it
     end
   end
-  return best
+  return out
 end
 
 function Den:open_panel(kind, data)
@@ -110,11 +148,13 @@ function Den:use(t)
     self:open_panel("bench", {})
     nova.log("the workbench opens")
   elseif t.thing == "door" then
-    nova.pause(false)
     Run.begin_chain()
     Run.from_den = true
+    Run.fresh = true
     nova.log("through the door: a run begins")
-    nova.goto_scene(Run.chain[1].scene)
+    -- the runner steps into the door, the neon wipe closes, the district card holds, the wipe opens on room 1 (lib/wipe.lua)
+    self.state = "leaving"
+    Wipe.go(Run.chain[1].scene, { card = Wipe.district_card(Run.seed), actor = self.runner, to = { t.x, t.y - 6 } })
   elseif t.thing == "stall" then
     local M = Dd.movers[t.who]
     if Meta.moved_in[t.who] and M then
@@ -195,10 +235,10 @@ end
 function Den:draw_codex()
   local WHITE, DIM = { 255, 255, 255, 255 }, { 190, 200, 230, 255 }
   nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 240 })
-  nova.ui.text(40, 22, "CARD CODEX", { font = "pixel", size = 30, color = { 255, 200, 120, 255 }, shadow = true })
+  Ty.text(40, 22, "CARD CODEX", "head", { color = { 255, 200, 120, 255 } })
   local seen, total = 0, #Cards.list
   for _, c in ipairs(Cards.list) do if Meta.seen_cards[c.id] then seen = seen + 1 end end
-  nova.ui.text(0, 30, string.format("SEEN %d / %d   POOL %d / %d", seen, total, Work.pool_size(), total), { font = "pixel", size = 16, color = { 255, 228, 94, 255 }, align = "right", width = 920 })
+  Ty.text(0, 30, string.format("SEEN %d / %d   POOL %d / %d", seen, total, Work.pool_size(), total), "body", { color = { 255, 228, 94, 255 }, align = "right", width = 920 })
   local first = math.max(1, math.min(self.csel - 5, total - 11))
   for row = 0, 11 do
     local i = first + row
@@ -212,8 +252,8 @@ function Den:draw_codex()
     local col = st == "seen" and { c.rarity == "rare" and 255 or (c.rarity == "uncommon" and 6 or 255), c.rarity == "rare" and 43 or (c.rarity == "uncommon" and 240 or 255), c.rarity == "rare" and 214 or 255, 255 }
       or { 110, 116, 140, 255 }
     local name = st == "unseen" and "? ? ?" or c.name
-    nova.ui.text(42, y + 6, string.format("%d. %s", i, name), { font = "pixel", size = 17, color = col })
-    if st == "locked" then nova.ui.text(250, y + 9, "Deck " .. self:tier_needed(c), { font = "pixel", size = 14, color = { 200, 170, 120, 255 }, align = "right", width = 170 }) end
+    Ty.text(42, y + 6, string.format("%d. %s", i, name), "body", { color = col })
+    if st == "locked" then Ty.text(250, y + 9, "Deck " .. self:tier_needed(c), "small", { color = { 200, 170, 120, 255 }, align = "right", width = 170 }) end
   end
   local c = Cards.list[self.csel]
   local st = self:card_state(c)
@@ -221,32 +261,39 @@ function Den:draw_codex()
   nova.ui.rect(x - 3, y - 3, w + 6, 396, st == "seen" and { 255, 200, 120, 255 } or { 70, 80, 120, 255 })
   nova.ui.rect(x, y, w, 390, { 8, 10, 26, 248 })
   if st == "unseen" then
-    nova.ui.text(x + 14, y + 14, "? ? ?", { font = "pixel", size = 22, color = { 150, 160, 190, 255 } })
-    nova.ui.text(x + 14, y + 54, "In your pool, but it has not turned up yet.", { font = "pixel", size = 14, color = WHITE, width = w - 28 })
+    Ty.text(x + 14, y + 10, "? ? ?", "name", { color = { 150, 160, 190, 255 } })
+    Ty.text(x + 14, y + 54, "In your pool, but it has not turned up yet.", "small", { color = WHITE, width = w - 28 })
   else
     local rc = Cards.rarity[c.rarity].color
     local head = st == "locked" and { 150, 156, 180, 255 } or { rc[1], rc[2], rc[3], 255 }
-    nova.ui.text(x + 14, y + 12, c.name, { font = "pixel", size = 22, color = head, shadow = true })
+    Ty.text(x + 14, y + 8, c.name, "name", { color = head })
     local fam = Cards.families[c.family].name
     local tags = #c.tags > 0 and ("  [" .. table.concat(c.tags, ", ") .. "]") or ""
-    nova.ui.text(x + 14, y + 44, Cards.rarity[c.rarity].name .. "  " .. fam .. tags .. "   up to " .. c.max, { font = "pixel", size = 15, color = DIM, width = w - 28 })
-    nova.ui.text(x + 14, y + 74, c.text, { font = "pixel", size = 18, color = st == "locked" and { 170, 176, 200, 255 } or WHITE, width = w - 28, line_spacing = 1.3 })
+    Ty.text(x + 14, y + 44, Cards.rarity[c.rarity].name .. "  " .. fam .. tags .. "   up to " .. c.max, "small", { color = DIM, width = w - 28 })
+    Ty.text(x + 14, y + 74, c.text, "label", { color = st == "locked" and { 170, 176, 200, 255 } or WHITE, width = w - 28 })
     local ty = y + 178
-    if c.cost then nova.ui.text(x + 14, ty, "JINX! " .. c.cost, { font = "pixel", size = 14, color = { 255, 228, 94, 255 }, width = w - 28 }); ty = ty + 40 end
+    if c.cost then Ty.text(x + 14, ty, "JINX! " .. c.cost, "small", { color = { 255, 228, 94, 255 }, width = w - 28 }); ty = ty + 40 end
     for _, t in ipairs(c.tags) do
-      nova.ui.text(x + 14, ty, string.format("SET %s (3 different cards): %s", Cards.sets[t].name, Cards.sets[t].text), { font = "pixel", size = 15, color = { 255, 150, 70, 255 }, width = w - 28 })
+      Ty.text(x + 14, ty, string.format("SET %s (3 different cards): %s", Cards.sets[t].name, Cards.sets[t].text), "small", { color = { 255, 150, 70, 255 }, width = w - 28 })
       ty = ty + 50
     end
-    if st == "locked" then nova.ui.text(x + 14, y + 340, "LOCKED: buy Deeper Deck tier " .. self:tier_needed(c) .. " at the Workbench.", { font = "pixel", size = 16, color = { 255, 228, 94, 255 }, width = w - 28 }) end
+    if st == "locked" then Ty.text(x + 14, y + 340, "LOCKED: buy Deeper Deck tier " .. self:tier_needed(c) .. " at the Workbench.", "body", { color = { 255, 228, 94, 255 }, width = w - 28 }) end
   end
   HUD.prompt(40, 508, "dash", "back")
 end
 
 function Den:update(dt)
+  Wipe.tick(dt)
+  -- (input is ignored while a wipe runs, and the wake beat starts when the shutter has opened)
+  if Wipe.busy() then
+    Prompt.update(dt, {}, false)
+    return
+  end
   self.t = self.t + dt
   self.toast_t = math.max(0, self.toast_t - dt)
   self:camera(dt)
   local pressed = nova.input.pressed("interact")
+  Prompt.update(dt, self.state == "free" and self:usables() or {}, self.state == "free")
   if self.state == "wake" then
     if self.t >= Dd.wake or (self.t > 0.9 and pressed) then
       self.state = "free"
@@ -254,8 +301,11 @@ function Den:update(dt)
       self:announce()
     end
   elseif self.state == "free" then
-    self.by = self:near_thing()
-    if self.by and pressed then self:use(self.by) end
+    self.by = Prompt.target and Prompt.target.thing or nil
+    if self.by and pressed and not Prompt.hidden[Prompt.target.key] then
+      Prompt.used(Prompt.target.key)
+      self:use(self.by)
+    end
   elseif self.state == "bench" then
     self:bench_update()
   elseif self.state == "codex" then
@@ -280,11 +330,11 @@ local function box(x, y, w, h, edge)
 end
 
 local function speech(name, text, color, sprite, prompt)
-  local x, y, w, h = 90, 308, 780, 172
+  local x, y, w, h = 90, 318, 780, 160
   box(x, y, w, h, color)
-  nova.ui.text(x + 18, y + 12, name, { font = "pixel", size = 18, color = color, shadow = true })
+  Ty.text(x + 18, y + 8, name, "name", { color = color })
   if sprite then nova.ui.sprite(sprite, x + w - 60, y + 80, { scale = 1.2, frame = 0 }) end
-  nova.ui.text(x + 18, y + 46, text, { font = "pixel", size = 16, color = WHITE, width = w - (sprite and 130 or 40), line_spacing = 1.4 })
+  Ty.text(x + 18, y + 46, text, "body", { color = WHITE, width = w - (sprite and 130 or 40) })
   HUD.prompt(x + w - 150, y + h - 32, "interact", prompt or "next")
 end
 
@@ -296,88 +346,64 @@ end
 
 function Den:draw_bench()
   nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 240 })
-  nova.ui.text(40, 22, "THE WORKBENCH", { font = "pixel", size = 30, color = CYAN, shadow = true })
-  nova.ui.text(0, 28, string.format("KEYS %d", Meta.keys), { font = "pixel", size = 22, color = { 255, 228, 94, 255 }, align = "right", width = 920 })
+  Ty.text(40, 22, "THE WORKBENCH", "head", { color = CYAN })
+  Ty.text(0, 28, string.format("KEYS %d", Meta.keys), "big", { color = { 255, 228, 94, 255 }, align = "right", width = 920 })
   for i, u in ipairs(Work.list) do
     local y = 76 + (i - 1) * 40
     local on = i == self.sel
     local tier, max = Work.tier(u.id), Work.max_tier(u.id)
     nova.ui.rect(30, y, 540, 36, on and CYAN or { 40, 46, 80, 255 })
     nova.ui.rect(33, y + 3, 534, 30, on and { 14, 30, 50, 255 } or { 12, 14, 34, 255 })
-    nova.ui.text(44, y + 9, u.name, { font = "pixel", size = 16, color = u.locked and { 120, 128, 160, 255 } or WHITE })
-    nova.ui.text(330, y + 9, pips(tier, max), { font = "pixel", size = 16, color = MAG })
+    Ty.text(44, y + 9, u.name, "body", { color = u.locked and { 120, 128, 160, 255 } or WHITE })
+    Ty.text(330, y + 9, pips(tier, max), "body", { color = MAG })
     local right
     if u.locked then right = "LOCKED"
     elseif tier >= max then right = "MAX"
     else right = Work.next_cost(u.id) .. " keys" end
     local can = Work.can_buy(u.id)
-    nova.ui.text(400, y + 9, right, { font = "pixel", size = 16, color = can and { 255, 228, 94, 255 } or { 150, 160, 190, 255 }, align = "right", width = 160 })
+    Ty.text(400, y + 9, right, "body", { color = can and { 255, 228, 94, 255 } or { 150, 160, 190, 255 }, align = "right", width = 160 })
   end
   local u = Work.list[self.sel]
   local x, y, w = 600, 76, 330
   box(x, y, w, 396, MAG)
-  nova.ui.text(x + 14, y + 12, u.name, { font = "pixel", size = 20, color = MAG, shadow = true })
-  nova.ui.text(x + 14, y + 46, u.text, { font = "pixel", size = 14, color = WHITE, width = w - 28, line_spacing = 1.4 })
+  Ty.text(x + 14, y + 8, u.name, "name", { color = MAG })
+  Ty.text(x + 14, y + 46, u.text, "small", { color = WHITE, width = w - 28 })
   local tier, max = Work.tier(u.id), Work.max_tier(u.id)
   local ty = y + 150
-  nova.ui.text(x + 14, ty, string.format("Tier %d of %d", tier, max), { font = "pixel", size = 14, color = DIM })
-  nova.ui.text(x + 14, ty + 24, tier > 0 and ("Now: " .. u.tier_text[tier]) or "Now: nothing yet", { font = "pixel", size = 14, color = CYAN, width = w - 28, line_spacing = 1.4 })
+  Ty.text(x + 14, ty, string.format("Tier %d of %d", tier, max), "small", { color = DIM })
+  Ty.text(x + 14, ty + 24, tier > 0 and ("Now: " .. u.tier_text[tier]) or "Now: nothing yet", "small", { color = CYAN, width = w - 28 })
   if u.locked then
-    nova.ui.text(x + 14, ty + 80, string.format("Tiers: %d. Locked: %s.", max, u.locked), { font = "pixel", size = 14, color = { 255, 228, 94, 255 }, width = w - 28, line_spacing = 1.4 })
+    Ty.text(x + 14, ty + 80, string.format("Tiers: %d. Locked: %s.", max, u.locked), "small", { color = { 255, 228, 94, 255 }, width = w - 28 })
   elseif tier < max then
-    nova.ui.text(x + 14, ty + 80, string.format("Next: %s\nCosts %d keys.", u.tier_text[tier + 1], Work.next_cost(u.id)), { font = "pixel", size = 14, color = { 255, 228, 94, 255 }, width = w - 28, line_spacing = 1.4 })
+    Ty.text(x + 14, ty + 80, string.format("Next: %s\nCosts %d keys.", u.tier_text[tier + 1], Work.next_cost(u.id)), "small", { color = { 255, 228, 94, 255 }, width = w - 28 })
   end
   if u.id == "warm_start" and tier >= 3 then
     local c = Cards.by_id[Meta.warm_pick]
-    nova.ui.text(x + 14, ty + 150, "Your card (left, right): " .. (c and c.name or "none"), { font = "pixel", size = 14, color = MAG, width = w - 28 })
+    Ty.text(x + 14, ty + 150, "Your card (left, right): " .. (c and c.name or "none"), "small", { color = MAG, width = w - 28 })
   end
   if self.toast_t > 0 and self.toast then
-    nova.ui.text(0, 480, self.toast, { font = "pixel", size = 16, color = { 255, 255, 255, math.min(1, self.toast_t / 0.4) * 255 }, align = "center", width = W, shadow = true })
+    Ty.text(0, 480, self.toast, "body", { color = { 255, 255, 255, math.min(1, self.toast_t / 0.4) * 255 }, align = "center", width = W })
   end
   local nx = HUD.prompt(40, 508, "interact", "buy")
   HUD.prompt(nx, 508, "dash", "back")
 end
 
 function Den:draw_ui()
-  local r = self.runner
-  -- name plates over the stalls and the fixtures
-  for _, t in pairs(self.things) do
-    local x, y = nova.cam.to_screen(t.x, t.y - t.h - 6)
-    if self.state ~= "free" then
-      -- (text is always over rectangles: nothing of the world's labels may show through a panel)
-    elseif t.thing == "stall" then
-      local stall
-      for _, s in ipairs(Dd.stalls) do if s.id == t.who then stall = s end end
-      local here = Meta.moved_in[t.who]
-      nova.ui.rect(x - 62, y + 18, 124, 36, { 5, 6, 15, 225 })
-      nova.ui.rect(x - 62, y + 52, 124, 2, here and CYAN or { 70, 80, 120, 255 })
-      nova.ui.text(x - 62, y + 22, stall.name, { font = "pixel", size = 15, color = here and WHITE or { 150, 160, 190, 255 }, align = "center", width = 124 })
-      nova.ui.text(x - 62, y + 38, here and "lives here" or (stall.later and "later" or string.format("met %d/%d", Meta.met[t.who] or 0, Dd.moved_in_needed)), { font = "pixel", size = 13, color = here and CYAN or { 120, 128, 160, 255 }, align = "center", width = 124 })
-    elseif t.thing == "bench" or t.thing == "screen" or t.thing == "door" or t.thing == "bed" or t.thing == "codex" then
-      local label = ({ bench = "WORKBENCH", screen = "LULLABY", door = "DOOR: A RUN", bed = "PRINT BED", codex = "CARD CODEX" })[t.thing]
-      nova.ui.text(x - 80, y + 10, label, { font = "pixel", size = 15, color = CYAN, align = "center", width = 160, shadow = true })
-    end
-  end
+  self:draw_den()
+  Wipe.draw()
+end
+
+function Den:draw_den()
   if self.state == "bench" then self:draw_bench(); return end
   if self.state == "codex" then self:draw_codex(); return end
   nova.ui.sprite("ui", 912, 30, { scale = 1.2, frame = 6 })
-  nova.ui.text(0, 20, string.format("KEYS %d", Meta.keys), { font = "pixel", size = 20, color = { 255, 228, 94, 255 }, align = "right", width = 890, shadow = true })
-  nova.ui.text(16, 16, string.format("runs %d   wins %d%s", Meta.runs, Meta.wins, Meta.best > 0 and string.format("   best %d:%02d", Meta.best // 60, math.floor(Meta.best % 60)) or ""), { font = "pixel", size = 15, color = DIM, shadow = true })
-  if self.state == "free" and self.by then
-    local t = self.by
-    local word = ({ screen = "talk to LULLABY", codex = "read the codex", bench = "open the Workbench", door = "start a run", stall = "talk" })[t.thing]
-    if t.thing == "stall" and not Meta.moved_in[t.who] then word = "read the plate" end
-    if word then HUD.prompt(360, 470, "interact", word) end
-  end
-  if self.state == "free" and self.by and self.by.thing == "door" then
-    local perks = {}
-    for _, id in ipairs({ "patch", "old_sal" }) do if Meta.moved_in[id] then perks[#perks + 1] = Dd.movers[id].name .. ": " .. Dd.movers[id].perk end end
-    for i, p in ipairs(perks) do centered(420 - (#perks - i) * 18 - 18, p, 12, CYAN) end
-  end
+  Ty.text(0, 20, string.format("KEYS %d", Meta.keys), "label", { color = { 255, 228, 94, 255 }, align = "right", width = 890 })
+  Ty.text(16, 16, string.format("runs %d   wins %d%s", Meta.runs, Meta.wins, Meta.best > 0 and string.format("   best %d:%02d", Meta.best // 60, math.floor(Meta.best % 60)) or ""), "small", { color = DIM })
+  Prompt.draw()      -- (a panel over the thing the runner stands at, a quiet cue over the others: lib/prompt.lua)
   if self.state == "wake" then
     local a = math.max(0, 1 - self.t / Dd.wake)
     nova.ui.rect(0, 0, W, 540, { 5, 6, 15, 200 * a })
-    centered(60, self.line_kind == "first" and "PRINTING" or "PRINTED AGAIN", 36, { 6, 240, 255, 255 * math.min(1, self.t / 0.3) })
+    centered(60, self.line_kind == "first" and "PRINTING" or "PRINTED AGAIN", "head", { 6, 240, 255, 255 * math.min(1, self.t / 0.3) })
     speech("LULLABY", self.line, MAG, nil, "wake up")
   elseif self.state == "screen" then
     speech("LULLABY", self.panel.lines[self.pi], MAG, nil, self.pi < #self.panel.lines and "next" or "bye")
@@ -386,7 +412,7 @@ function Den:draw_ui()
   elseif self.state == "plate" then
     speech(self.panel.name .. "  " .. self.panel.sub, self.panel.text, { 70, 80, 120, 255 }, nil, "ok")
   elseif self.state == "movein" then
-    centered(120, self.panel.name:upper() .. " MOVED IN", 34, CYAN)
+    centered(120, self.panel.name:upper() .. " MOVED IN", "head", CYAN)
     speech(self.panel.name, self.panel.note .. "\n(" .. self.panel.perk .. ")", CYAN, Strangers[self.panel.who].sprite, "nice")
   end
 end

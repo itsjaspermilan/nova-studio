@@ -43,7 +43,7 @@ local function prompt(x, y, action, word)
   nova.ui.rect(x, y, w, 22, { 5, 6, 15, 220 })
   nova.ui.rect(x, y + 20, w, 2, { 6, 240, 255, 255 })
   Ty.text(x + 6, y + 3, label, "small", { color = { 255, 255, 255, 255 } })
-  Ty.text(x + w + 6, y + 3, word, "small", { color = { 190, 200, 230, 255 }, shadow = true })
+  Ty.text(x + w + 6, y + 3, word, "small", { color = { 190, 200, 230, 255 } })
   return x + w + 6 + Ty.width(word, "small") + 22
 end
 
@@ -69,7 +69,7 @@ function Room:draw_ui()
   -- scrap
   nova.ui.rect(868, 8, 92, 44, { 5, 6, 15, 215 })   -- (a plate under the count: it must read over the busiest floor)
   nova.ui.sprite("ui", 890, 30, { scale = 1.1, frame = 5 })
-  Ty.text(908, 18, tostring(J.scrap), "label", { color = { 255, 255, 255, 255 }, shadow = true })
+  Ty.text(908, 18, tostring(J.scrap), "label", { color = { 255, 255, 255, 255 } })
   -- prompt row
   local x = 16
   x = prompt(x, 506, "attack", "baton")
@@ -79,7 +79,7 @@ function Room:draw_ui()
   if r.state == "dead" then
     local a = math.min(1, r.dead_t / 0.4) * 255
     nova.ui.rect(0, 0, VIEW_W, VIEW_H, { 5, 6, 15, a * 0.8 })
-    Ty.text(0, 230, "PRINTED AGAIN", "banner", { color = { 6, 240, 255, a }, align = "center", width = VIEW_W, shadow = true })
+    Ty.text(0, 230, "PRINTED AGAIN", "banner", { color = { 6, 240, 255, a }, align = "center", width = VIEW_W })
     Ty.text(0, 284, "LULLABY: hold still. I have you. Mostly.", "label", { color = { 255, 43, 214, a }, align = "center", width = VIEW_W })
   end
 end

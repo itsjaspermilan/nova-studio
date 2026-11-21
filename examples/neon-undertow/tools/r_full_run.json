@@ -120,9 +120,16 @@
    "lua": "CARDS1_AFTER = #require('lib.run').cards; SCRAP1 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -172,9 +179,16 @@
    "lua": "CARDS2_AFTER = #require('lib.run').cards; SCRAP2 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -224,9 +238,16 @@
    "lua": "CARDS3_AFTER = #require('lib.run').cards; SCRAP3 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -276,9 +297,16 @@
    "lua": "CARDS4_AFTER = #require('lib.run').cards; SCRAP4 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -328,9 +356,16 @@
    "lua": "CARDS5_AFTER = #require('lib.run').cards; SCRAP5 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -366,9 +401,16 @@
    "wait": 5
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -418,9 +460,16 @@
    "lua": "CARDS7_AFTER = #require('lib.run').cards; SCRAP7 = require('lib.juice').scrap"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4
@@ -431,6 +480,10 @@
   {
    "wait": 20,
    "capture": "Mother Coil's arena"
+  },
+  {
+   "until": "nova.scene_now().state == 'boss'",
+   "max": 300
   },
   {
    "repeat": 1500,
@@ -490,9 +543,16 @@
    "lua": "CARDS8 = #require('lib.run').cards"
   },
   {
+   "lua": "WIPE0 = require('lib.wipe').done"
+  },
+  {
    "walk_to": "door_out",
    "who": "runner",
    "max": 1500
+  },
+  {
+   "until": "require('lib.wipe').done > WIPE0",
+   "max": 200
   },
   {
    "wait": 4

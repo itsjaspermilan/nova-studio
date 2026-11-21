@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "wave": "noise",
+  "freq": 2400,
+  "freqLimit": 0,
+  "slide": -0.5,
+  "slideDelta": 0,
+  "duty": 0.5,
+  "dutySweep": 0,
+  "vibratoDepth": 0,
+  "vibratoSpeed": 8,
+  "arpSemitones": 0,
+  "arpTime": 0.1,
+  "attack": 0.004,
+  "sustain": 0.08,
+  "decay": 0.28,
+  "punch": 0.2,
+  "lowpass": 6000,
+  "highpass": 600,
+  "volume": 0.35,
+  "seed": 1
+}
