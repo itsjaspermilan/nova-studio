@@ -276,6 +276,9 @@ describe("sounds and songs by what they are for", () => {
     expect(() => use("sfx_write", { name: "low", purpose: "coin", params: { freq: 500 } })).toThrow(/made of layers.*"freq" would change nothing/);
     // the old purposes are all still there, with the new ones
     for (const p of ["step_grass", "step_stone", "sword_swing", "hit", "hurt", "pickup", "coin", "door", "chest_open", "jump", "land", "ui_move", "ui_select", "enemy_die", "locked", "powerup", "explosion", "laser", "heavy_hit", "whoosh", "shot", "zap", "tell", "alarm", "death", "metal_hit", "glass"]) expect(PURPOSE_NAMES).toContain(p);
+    // a misspelt key, of the effect or of a layer, is refused with the nearest one
+    expect(() => use("sfx_write", { name: "x", params: { revrb: 0.2 } })).toThrow(/"revrb", which the synth does not have \(did you mean "reverb"\?\)/);
+    expect(() => use("sfx_write", { name: "x", params: { layers: [{ wave: "noise", cutof: 300 }] } })).toThrow(/layers\[0\] has "cutof", which a layer does not have \(did you mean "cutoff"\?\)/);
     // a level to match: the volume is found for it
     const matched = text(use("sfx_write", { name: "quiet_hit", purpose: "hit", loudness: -24 }));
     expect(matched).toMatch(/volume [\d.]+ for loudness -2[34]\.\d \(asked -24\)/);

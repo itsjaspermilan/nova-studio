@@ -65,7 +65,7 @@ export const DEFAULTS: SfxParams = {
 };
 
 /// Slider ranges, so the editor and the randomiser agree on what is sensible.
-export const RANGES: Record<Exclude<keyof SfxParams, "wave" | "seed" | "arpNotes">, { min: number; max: number; step: number; label: string; unit?: string }> = {
+export const RANGES: Record<Exclude<keyof SfxParams, "wave" | "seed" | "arpNotes" | (typeof RICH_KEYS)[number]>, { min: number; max: number; step: number; label: string; unit?: string }> = {
   freq: { min: 40, max: 3000, step: 1, label: "Pitch", unit: "Hz" },
   freqLimit: { min: 0, max: 3000, step: 1, label: "Lowest pitch", unit: "Hz" },
   slide: { min: -4, max: 4, step: 0.05, label: "Slide", unit: "oct/s" },
