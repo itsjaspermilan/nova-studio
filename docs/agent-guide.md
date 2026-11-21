@@ -268,11 +268,18 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   A `draw()` of your own replaces the drawing of the entity's `sprite` or `model`: put `nova.Entity.draw(self)` in it
   where the picture should go, or the entity vanishes (`check` warns).
 - **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox.
-- **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`.
+- **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`. Put `hitbox_units = "world"` in the
+  entity to give them in world units instead: then redrawing the art at another size and changing `sx` leaves every box
+  as it is. Hitboxes do not turn with `angle` (they stay upright): give a swing a box per facing.
+- **Game feel is built in:** `nova.hit_stop(3 / 60)` (a freeze frame), `nova.cam.shake(6, 0.2)` (only the picture
+  moves), `nova.time_scale(0.4)` or `nova.time_scale(0.4, "enemy")` (slow motion for all or for a tag). Things that must
+  not slow down (the HUD, a pause menu, a hero) carry `unscaled = true`. Do not write a freeze counter of your own.
 - **Depth:** bigger is further back. For top-down sorting set `self.depth = -self.y`. A tile layer drawn in front of the
   characters (tree crowns, roofs) is a second layer with a large negative depth.
-- **Solid things that are not tiles:** tag them `solid`, and in the mover undo a move that ends touching one (`hero.lua`).
-  Such a thing is then never overlapped, so its `on_collide_hero` never runs: notice the hero with `self:near("hero", 6)`.
+- **Solid things that are not tiles:** tag them `solid`, and move with `self:slide(dx, dy, { solid = "solid" })`, which
+  stops at them as at solid tiles (its third answer is the thing it ran into: a charging drone that crashes). Such a thing
+  is then never overlapped, so its `on_collide_hero` never runs: notice the hero with `self:near("hero", 6)`. A mover that
+  starts inside something solid is moved out the short way or stays put, never thrown through the wall.
 - **Tags are not kinds.** `nova.first`, `nova.all`, `nova.count` and `on_collide_<tag>` take a tag (`tags = { "enemy" }`), not
   the entity's file name; `nova.named("hero")` takes the name a scene object was given.
 - **`tint` multiplies:** it darkens or colours and cannot flash a sprite white. Blink `alpha`, or show a white copy of the

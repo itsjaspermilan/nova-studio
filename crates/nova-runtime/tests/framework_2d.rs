@@ -208,3 +208,190 @@ return S"#,
         "{log:?}"
     );
 }
+
+/// A body that starts a move inside something solid is never thrown through it: it is moved out the nearest way by no
+/// more than its own size, or stays put. `{ solid = "tag" }` makes entities block a slide too, and says which one did.
+#[test]
+fn slide_never_throws_a_body_through_a_wall_and_can_stop_at_tagged_entities() {
+    let mut g = project(vec![
+        (
+            "entities/box.lua",
+            "return nova.entity { hitbox = { 0, 0, 10, 10 } }",
+        ),
+        (
+            "entities/crate.lua",
+            "return nova.entity { tags = { 'crate' }, hitbox = { 0, 0, 20, 20 } }",
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+local function say(what, e, bx, by, thing)
+  nova.log(string.format('%s %.1f %.1f %s %s %s', what, e.x, e.y, tostring(bx), tostring(by), thing and thing.label or '-'))
+end
+function S:enter()
+  -- a wall three tiles thick: x 32 to 80, y 0 to 16 (4-pixel tiles drawn 16 units big)
+  nova.tilemap { image = 'dot', tile_width = 4, tile_height = 4, scale = 4, solid = { 0 }, tiles = { { -1, -1, 0, 0, 0, -1, -1, -1 } } }
+  local deep = nova.spawn('box', 60, 4)
+  say('deep', deep, deep:slide(-2, 0))
+  local shallow = nova.spawn('box', 75, 4)
+  say('shallow', shallow, shallow:slide(0, 0))
+  local walker = nova.spawn('box', 0, 4)
+  say('walker', walker, walker:slide(40, 0))
+  local c = nova.spawn('crate', 200, 0, { label = 'crate' })
+  local pusher = nova.spawn('box', 150, 4)
+  say('crate', pusher, pusher:slide(60, 0, { solid = 'crate' }))
+  local ghost = nova.spawn('box', 150, 4)
+  say('ghost', ghost, ghost:slide(60, 0))
+  local inside = nova.spawn('box', 195, 4)
+  say('inside', inside, inside:slide(0, 0, { solid = 'crate' }))
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        g.take_log(),
+        [
+            // 20 units out on the right, 38 on the left: both more than its size, so it stays (it used to land at 80)
+            "deep 60.0 4.0 true false -",
+            // 5 units from the far side: out that way
+            "shallow 80.0 4.0 false false -",
+            "walker 22.0 4.0 true false -",
+            "crate 190.0 4.0 true false crate",
+            "ghost 210.0 4.0 false false -",
+            // 5 units into the crate's left side: out to the left
+            "inside 190.0 4.0 false false -",
+        ]
+    );
+}
+
+/// `hitbox_units = "world"`: the drawing's scale leaves the box alone (a negative sx still mirrors it); without it the
+/// box is in the sprite's pixels and scaled, as before.
+#[test]
+fn a_hitbox_in_world_units_is_not_scaled_with_the_drawing() {
+    let mut g = project(vec![
+        (
+            "entities/new.lua",
+            "return nova.entity { sprite = 'dot', hitbox_units = 'world', hitbox = { 2, 0, 10, 6 }, sx = 3, sy = 3 }",
+        ),
+        (
+            "entities/old.lua",
+            "return nova.entity { sprite = 'dot', hitbox = { 2, 0, 10, 6 }, sx = 3, sy = 3 }",
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  local a = nova.spawn('new', 100, 100)
+  local b = nova.spawn('new', 100, 100, { sx = -1.5, sy = 1.5 })
+  local c = nova.spawn('old', 100, 100)
+  local d = nova.spawn('new', 100, 100, { hitbox = { r = 5 } })
+  for _, e in ipairs({ a, b, c, d }) do nova.log(string.format('%g %g %g %g', e:bounds())) end
+end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    steps(&mut g, 1);
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        g.take_log(),
+        [
+            "102 100 112 106",
+            "98 100 108 106",
+            "106 100 136 118",
+            "95 95 105 105"
+        ]
+    );
+}
+
+/// Game time: `nova.time_scale` for all or for a tag, an entity's own `time_scale`, `unscaled` things that run in real
+/// time, `nova.hit_stop` freezing the rest (velocity, timers, collisions too) and `nova.cam.shake` moving only the picture.
+#[test]
+fn time_scale_hit_stop_and_shake() {
+    let mut g = project(vec![
+        (
+            "entities/mover.lua",
+            r#"local M = nova.entity { hitbox = { 0, 0, 4, 4 }, t = 0, vx = 60 }
+function M:update(dt) self.t = self.t + dt end
+return M"#,
+        ),
+        (
+            "entities/foe.lua",
+            r#"local F = nova.entity { tags = { "enemy" }, hitbox = { 0, 0, 4, 4 }, t = 0, rings = 0 }
+function F:create() self:every(0.25, function() self.rings = self.rings + 1 end) end
+function F:update(dt) self.t = self.t + dt end
+return F"#,
+        ),
+        (
+            "scenes/s.lua",
+            r#"local S = nova.scene {}
+function S:enter()
+  self.hero = nova.spawn('mover', 0, 0, { unscaled = true })
+  self.box = nova.spawn('mover', 0, 100)
+  self.half = nova.spawn('mover', 0, 200, { time_scale = 0.5 })
+  self.foe = nova.spawn('foe', 0, 300)
+end
+function S:draw() if self.say then nova.log(string.format('drawn at %.1f %.1f', nova.cam.position())) end end
+return S"#,
+        ),
+        ("main.lua", "nova.start('s')"),
+    ]);
+    let say = "local s = nova.scene_now(); nova.log(string.format('%.3f %.3f %.3f %.3f x%.1f %d', s.hero.t, s.box.t, s.half.t, s.foe.t, s.box.x, s.foe.rings))";
+    steps(&mut g, 1); // (the scene comes up)
+    g.run_lua("local s = nova.scene_now(); for _, e in ipairs({ s.hero, s.box, s.half, s.foe }) do e.t = 0 end; s.box.x = 0", "t").unwrap();
+    steps(&mut g, 60);
+    g.run_lua(say, "t").unwrap();
+    // only the enemies slowed: the foe's time and its timer run at half speed
+    g.run_lua("nova.time_scale(0.5, 'enemy')", "t").unwrap();
+    steps(&mut g, 60);
+    g.run_lua(say, "t").unwrap();
+    // the whole game at a quarter, but the hero runs on in real time
+    g.run_lua("nova.time_scale(1, 'enemy'); nova.time_scale(0.25)", "t")
+        .unwrap();
+    steps(&mut g, 60);
+    g.run_lua(say, "t").unwrap();
+    // a hit-stop of three frames: everything but the hero holds still, then carries on
+    g.run_lua("nova.time_scale(1); nova.hit_stop(3 / 60)", "t")
+        .unwrap();
+    steps(&mut g, 3);
+    g.run_lua(say, "t").unwrap();
+    steps(&mut g, 3);
+    g.run_lua(say, "t").unwrap();
+    g.run_lua(
+        "nova.log(string.format('%.2f %.2f %.2f', nova.time_scale(), nova.time_scale(nil, 'enemy'), nova.hit_stop()))",
+        "t",
+    )
+    .unwrap();
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(
+        g.take_log(),
+        [
+            "1.000 1.000 0.500 1.000 x60.0 4",
+            "2.000 2.000 1.000 1.500 x120.0 6",
+            "3.000 2.250 1.125 1.750 x135.0 7",
+            "3.050 2.250 1.125 1.750 x135.0 7",
+            "3.100 2.300 1.150 1.800 x138.0 7",
+            "1.00 1.00 0.00",
+        ]
+    );
+    // the shake moves what is drawn, and only while it lasts; the camera itself stays
+    g.run_lua(
+        "local s = nova.scene_now(); s.say = true; nova.cam.set(480, 270); nova.cam.shake(10, 0.1)",
+        "t",
+    )
+    .unwrap();
+    steps(&mut g, 1); // (each step draws too)
+    g.run_lua(
+        "nova.log(string.format('kept at %.1f %.1f', nova.cam.position()))",
+        "t",
+    )
+    .unwrap();
+    steps(&mut g, 8);
+    let log = g.take_log();
+    assert_eq!(log[1], "kept at 480.0 270.0", "{log:?}");
+    assert_ne!(log[0], "drawn at 480.0 270.0", "{log:?}");
+    assert_eq!(log.last().unwrap(), "drawn at 480.0 270.0", "{log:?}");
+}

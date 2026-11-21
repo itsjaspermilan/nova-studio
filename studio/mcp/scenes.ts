@@ -119,6 +119,8 @@ interface KindLook {
   frame?: number;
   sx?: number;
   sy?: number;
+  /// `hitbox_units = "world"`: the hitbox is not scaled by sx, sy
+  world?: boolean;
 }
 
 /// What an entity kind looks like, as far as its file says without running it: `sprite = "name"`, `pivot = { a, b }` and a box `hitbox = { x, y, w, h }`.
@@ -139,6 +141,7 @@ function lookOf(root: string, kind: string, cache: Map<string, KindLook>): KindL
     const sx = /\bsx\s*=\s*(-?[\d.]+)/.exec(src), sy = /\bsy\s*=\s*(-?[\d.]+)/.exec(src);
     if (sx) look.sx = Number(sx[1]);
     if (sy) look.sy = Number(sy[1]);
+    if (/\bhitbox_units\s*=\s*"world"/.test(src)) look.world = true;
     if (sprite) {
       look.sprite = sprite;
       const png = imageFile(root, sprite);
@@ -338,7 +341,8 @@ export function drawScene(root: string, short: string, scene: Scene, opts: { gri
     }
     if (b.look.hitbox && opts.grid !== false) {
       const [hx, hy, hw, hh] = b.look.hitbox as [number, number, number, number];
-      outline(canvas, CX(o.x + hx * b.sx), CY(o.y + hy * b.sy), Math.ceil(hw * b.sx * zoom), Math.ceil(hh * b.sy * zoom), [80, 255, 120, 200]);
+      const [ks, ls] = b.look.world ? [1, 1] : [b.sx, b.sy];
+      outline(canvas, CX(o.x + hx * ks), CY(o.y + hy * ls), Math.ceil(hw * ks * zoom), Math.ceil(hh * ls * zoom), [80, 255, 120, 200]);
     }
     // the position itself: a small cross
     fill(canvas, CX(o.x) - 2, CY(o.y), 5, 1, [255, 60, 200, 255]);

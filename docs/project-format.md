@@ -20,7 +20,9 @@ The questions a first 2D game asks, answered in one place (the sections further 
 - **Facing left.** `self.flip_x = true` mirrors the picture only. A negative `sx` also mirrors the hitbox offsets.
 - **Hitboxes** are offsets from `x, y` in the sprite's own pixels: `hitbox = { x, y, w, h }` (or `{ r = 8 }`). They *are*
   scaled by `sx`, `sy`, so a hitbox drawn for the art keeps fitting when the art is shown four times bigger. Without one the
-  whole sprite is the box.
+  whole sprite is the box. `hitbox_units = "world"` in the entity measures its hitbox in world units instead: `sx`, `sy`
+  then only size the drawing (a negative `sx` still mirrors the box), so art redrawn at another density, shown at another
+  scale, changes nothing about the game.
 - **What draws over what.** Bigger `depth` is further back; equal depths draw in the order things were made. For a
   top-down game where the lower thing must cover the upper, set `self.depth = -self.y` every step (the feet's y). A tile layer
   is one entity with one depth: ground at `"depth": 90`, tree crowns and roofs in a second layer at a negative depth below
@@ -28,7 +30,11 @@ The questions a first 2D game asks, answered in one place (the sections further 
 - **Solid things.** Tiles: list their numbers in the layer's `"solid"` and move with `self:slide(dx, dy)`, which stops at
   them. Anything else (a bush, a sign, a chest): give its entity a hitbox and a tag (`tags = { "solid" }`), and after
   `slide` step back when `self:touching("solid")` is not nil (try the x move, undo it if it touches, then the y move:
-  `examples/starter-topdown/entities/hero.lua` does this).
+  `examples/starter-topdown/entities/hero.lua` does this), or let `slide` stop at them too:
+  `local bx, by, thing = self:slide(dx, dy, { solid = "solid" })` stops at the hitboxes of the entities with that tag
+  and says which one it ran into (`thing`). A mover that starts inside something solid (spawned there, or a roll that
+  ended in it) is first moved out the nearest way, by no more than its own size; when no way out is that short it stays
+  where it is. It is never thrown through a wall.
   A solid thing is never overlapped by what stops at it, so **its `on_collide_<tag>` never runs** and `touching` never sees
   the two together. Notice it with `self:near(tag, margin)`: the first entity with the tag whose hitbox is within `margin`
   units (4) of this one's. A chest: `if self:near("hero", 6) and nova.input.pressed("a") then self:open() end`.
@@ -831,6 +837,27 @@ and the timer methods below.
 `nova.send(entity_or_tag, "method", ...)`, `nova.pause(on)` (freezes entities, timers keep going and
 the scene keeps updating, for pause menus).
 
+### Game time: slow motion, hit-stop, screen shake
+
+```lua
+nova.time_scale(0.5)              -- the whole game in slow motion (0 stops it; 1 is normal); nova.time_scale() reads it
+nova.time_scale(0.4, "enemy")     -- only what is tagged enemy (a card that slows the enemies); scales multiply
+nova.hit_stop(3 / 60)             -- hold the game's time still for three frames: the freeze of a heavy hit
+nova.cam.shake(6, 0.2)            -- jolt the picture by up to 6 units for 0.2 s, fading out
+-- in an entity (or as a spawn prop):
+unscaled = true                   -- always real time: the hero who is never slowed, a pause menu, the HUD
+time_scale = 0.5                  -- this one at half of whatever it would run at
+```
+
+Each entity's `update(dt)`, its sprite and model animation, its velocity and its timers (`after`, `every`, `go`, `tween`)
+get its own scaled `dt`; keyframe animations follow their target, and the scene's `update` and timers get the game's scale
+(real time with `unscaled = true` in the scene). An entity whose `dt` is 0 is not updated at all, and nothing collides
+while the whole game's time stands still (a hit-stop, `time_scale(0)`), so a swing does not land twice during its own
+freeze. A hit-stop starts with the next step; a longer one lengthens one that is going. The shake moves only the picture
+(`nova.cam.position()`, following and `to_world` are left alone), runs in real time (on through a hit-stop), and a
+weaker shake while a stronger one goes on is left out; `nova.cam.shake(0)` stops it. A scene change ends a hit-stop and a
+shake; the scales stay until the game changes them. `nova.time()` is real time.
+
 ### Settings (what a scene may set on an entity)
 
 An entity can declare the fields a scene file may give it, each with a default, a type and limits, in its spec's
@@ -1162,6 +1189,7 @@ ground:get(col, row)   ground:set(col, row, tile)   ground:size()        -- colu
 ground:cell_at(x, y)   ground:tile_at(x, y)         ground:is_solid_at(x, y)    -- world points
 nova.solid_at(x, y)                                                       -- any tilemap
 local hit_x, hit_y = self:slide(dx, dy)                                   -- entity moves, stopping at solid tiles
+local hx, hy, thing = self:slide(dx, dy, { solid = "solid" })             -- and at the entities tagged solid
 ```
 
 In a scene file, add `"tilemaps": [ { "name": "ground", "tileset": { "image": "sprites/tiles.png",

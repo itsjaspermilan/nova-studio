@@ -935,7 +935,7 @@
   "name": "nova.entity",
   "kind": "function",
   "signature": "nova.entity([parent,] spec)",
-  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, settings, and default fields. settings = { speed = { 4, min = 0, max = 10, help = \"...\" }, paint = { \"#ff8800\", type = \"colour\" }, mood = { \"calm\", choices = { \"calm\", \"angry\" } } } declares what a scene may set: a default, a type (number, boolean, text, choice, colour, vector, object, sprite, sound, music, model), limits, a step and help; values are checked and colours arrive as { r, g, b }. The engine's own fields, which your code must not use for anything else: x, y, z; vx, vy, vz (the engine adds them to the position every step: keep your own speed there only if you do not also move the entity yourself, or say `velocity = false` in the spec and they are yours); sx, sy, angle, alpha, visible, tint, depth, frame, flip_x, flip_y, id, name; for a model rx, ry, rz, quat, parts, clip, clip_time, clip_loop, clip_speed; shader, shader_params, shader_textures, blend; and everything that starts with an underscore. `tint = { r, g, b }` MULTIPLIES the picture's colours (255, 255, 255 leaves them): it darkens or colours and can never make a sprite brighter or white, so for a hit flash blink `alpha` or `visible`, or show a white copy of the frame (sprite_write's { copy = n, silhouette = true }). `angle` is in radians and a positive angle turns the picture clockwise on the screen (y points down): 0 is as drawn, math.pi / 2 a quarter turn clockwise; the same goes for angle_to and set_velocity, where 0 is to the right and math.pi / 2 is down. A solid thing (one a mover stops at) is never overlapped, so its on_collide_<tag> never runs: notice it with self:near(tag, margin). `solid = true` with a `model` makes the model's triangles solid where the entity is placed (`nova.solid`): bodies moved with `nova.solid.move` stop at it and climb it, and the follow camera's `collide` keeps it out of the view. It is for things that stay where they are; the triangles are forgotten when the scene ends. A scene object may say it too (`\"props\": { \"solid\": true }`). 2D effects (each off until asked for): `shadow = true` (a soft ellipse under the feet, as wide as the hitbox; or { w, h, alpha, y }), `light = { radius, radius_y, color, intensity, flicker, x, y }` (a 2D light that goes with the entity, seen with nova.ambient2d; x, y move it from the entity), `blend = \"add\"` (its sprite adds light; a model's `blend` is a true/false of its own), `lit = false` (its sprite is not darkened by nova.ambient2d).",
+  "doc": "Define an entity class. Spec: sprite, model, tags, depth, hitbox, screen, settings, and default fields. settings = { speed = { 4, min = 0, max = 10, help = \"...\" }, paint = { \"#ff8800\", type = \"colour\" }, mood = { \"calm\", choices = { \"calm\", \"angry\" } } } declares what a scene may set: a default, a type (number, boolean, text, choice, colour, vector, object, sprite, sound, music, model), limits, a step and help; values are checked and colours arrive as { r, g, b }. The engine's own fields, which your code must not use for anything else: x, y, z; vx, vy, vz (the engine adds them to the position every step: keep your own speed there only if you do not also move the entity yourself, or say `velocity = false` in the spec and they are yours); sx, sy, angle, alpha, visible, tint, depth, frame, flip_x, flip_y, id, name; for a model rx, ry, rz, quat, parts, clip, clip_time, clip_loop, clip_speed; shader, shader_params, shader_textures, blend; and everything that starts with an underscore. `tint = { r, g, b }` MULTIPLIES the picture's colours (255, 255, 255 leaves them): it darkens or colours and can never make a sprite brighter or white, so for a hit flash blink `alpha` or `visible`, or show a white copy of the frame (sprite_write's { copy = n, silhouette = true }). `angle` is in radians and a positive angle turns the picture clockwise on the screen (y points down): 0 is as drawn, math.pi / 2 a quarter turn clockwise; the same goes for angle_to and set_velocity, where 0 is to the right and math.pi / 2 is down. A solid thing (one a mover stops at) is never overlapped, so its on_collide_<tag> never runs: notice it with self:near(tag, margin). `solid = true` with a `model` makes the model's triangles solid where the entity is placed (`nova.solid`): bodies moved with `nova.solid.move` stop at it and climb it, and the follow camera's `collide` keeps it out of the view. It is for things that stay where they are; the triangles are forgotten when the scene ends. A scene object may say it too (`\"props\": { \"solid\": true }`). 2D effects (each off until asked for): `shadow = true` (a soft ellipse under the feet, as wide as the hitbox; or { w, h, alpha, y }), `light = { radius, radius_y, color, intensity, flicker, x, y }` (a 2D light that goes with the entity, seen with nova.ambient2d; x, y move it from the entity), `blend = \"add\"` (its sprite adds light; a model's `blend` is a true/false of its own), `lit = false` (its sprite is not darkened by nova.ambient2d). Game time: `time_scale = 0.5` runs this entity at half speed, `unscaled = true` keeps it in real time whatever nova.time_scale and nova.hit_stop do. `hitbox_units = \"world\"` measures the hitbox in world units, so sx and sy (the drawing's scale) leave it alone; a negative sx still mirrors it.",
   "group": "Scenes and entities"
  },
  {
@@ -1247,6 +1247,20 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.time_scale",
+  "kind": "function",
+  "signature": "nova.time_scale([scale [, tag]]) -> scale",
+  "doc": "How fast the game's time runs: 1 is normal, 0.5 slow motion, 0 stopped (0 to 100). With a tag only the entities with that tag are slowed or sped up (nova.time_scale(0.4, \"enemy\"): the enemies' time crawls while the hero's runs on); scales multiply. Every entity's update, sprite and model animation, velocity and timers (self:after, every, go, tween) get the scaled dt, as do keyframe animations and the scene's update; an entity whose dt is 0 is not updated at all, and nothing collides while the whole game's time stands still. An entity with `unscaled = true` (a pause menu, the HUD, a hero that is never slowed) always runs in real time, and one with `time_scale = 0.5` runs at half of whatever it would; a scene with `unscaled = true` gets real time too. Given nothing, it says the scale. The scales stay across scenes until changed; nova.time() is real time.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.hit_stop",
+  "kind": "function",
+  "signature": "nova.hit_stop([seconds]) -> seconds_left",
+  "doc": "Hold the game's time still for this long (3 / 60 is three frames): the freeze frame of a heavy hit. Everything that nova.time_scale slows stops (unscaled things run on: the camera's shake, a pause menu), from the next step; a longer hit-stop while one is going lengthens it, a shorter one is left out. A scene change ends it. Given nothing, it says how long is left.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.count_alive",
   "kind": "function",
   "signature": "nova.count_alive() -> number",
@@ -1314,6 +1328,13 @@
   "kind": "function",
   "signature": "nova.cam.limit(x0, y0, x1, y1)",
   "doc": "Keep the view inside a world rectangle.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.cam.shake",
+  "kind": "function",
+  "signature": "nova.cam.shake(amount [, seconds])",
+  "doc": "Jolt the 2D camera by up to `amount` world units for `seconds` (0.2), fading out: the screen shake of a heavy hit. Only the picture moves (nova.cam.position, following and to_world are left alone); it runs in real time, through a hit-stop. A weaker shake while a stronger one is going is left out; nova.cam.shake(0) stops it. The pattern is the same every run.",
   "group": "Scenes and entities"
  },
  {
@@ -1438,8 +1459,8 @@
  {
   "name": "slide",
   "kind": "method",
-  "signature": "self:slide(dx, dy) -> blocked_x, blocked_y",
-  "doc": "Move, stopping against solid tiles.",
+  "signature": "self:slide(dx, dy [, { solid = tag }]) -> blocked_x, blocked_y, thing",
+  "doc": "Move, stopping against solid tiles (and with `solid = \"tag\"` against the hitboxes of the entities with that tag; `thing` is the one it ran into). One that starts inside something solid is moved out the nearest way by no more than its own size, or stays put: never thrown through a wall.",
   "group": "Entity methods"
  },
  {
