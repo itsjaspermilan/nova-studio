@@ -720,6 +720,9 @@ const sideName = (mask: number): string => {
   return `${open ? `_edge_${open}` : ""}${bites.length ? `_in_${bites.join("_")}` : ""}`;
 };
 
+/// Terrains whose tiles mirror what stands above them (a tileset's `reflect` list). Only the city's puddles: the classic tilesets stay byte for byte as
+/// they were (a water layer can still be made reflective with `"reflect": true` in its scene).
+const REFLECTIVE = ["puddle"];
 const EDGES: EdgeKind[] = [{ name: "fence", what: "a wooden fence that joins along its length; it stands on the ground beside it", solid: true, tile: fenceTile }, ...CITY_EDGES];
 const ALL_TERRAINS = [...TERRAINS, ...CITY_TERRAINS];
 const ALL_PROPS = [...PROPS, ...CITY_PROPS];
@@ -761,6 +764,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
   const names: Record<number, string> = {};
   const solid: number[] = [];
   const docTerrains: Terrain[] = [];
+  const reflect: number[] = [];
   const add = (img: Img, tileName: string, isSolid: boolean): number => {
     frames.push(img);
     names[frames.length - 1] = tileName;
@@ -785,6 +789,8 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     }
     for (let v = 1; v < kind.variants; v++) add(textures[v]!, `${kind.name}_${v + 1}`, kind.solid);
     docTerrains.push({ name: kind.name, mode: "blob", tiles });
+    // still water shows what stands above it (nova.reflections): every tile of a puddle or water terrain, edges and variants too
+    if (REFLECTIVE.includes(kind.name)) for (let n = tiles[0]!; n < frames.length; n++) reflect.push(n);
   }
   for (const kind of EDGES.filter((k) => terrains.includes(k.name))) {
     const tiles: number[] = [];
@@ -808,7 +814,7 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
     }
   }
 
-  const made = writeSheet(name, { frames, names, solid, terrains: docTerrains }, put);
+  const made = writeSheet(name, { frames, names, solid, reflect, terrains: docTerrains }, put);
   const said = [
     `sprites/${name}.png: a tileset of ${frames.length} tiles of ${t}x${t}, ${describePalette(P)}, seed ${c.seed}`,
     `terrains (later ones lie over earlier ones; each has the joining tiles for every edge and corner, and scene_write's "paint" picks them):`,
