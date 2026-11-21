@@ -19,6 +19,7 @@ import { styleOf } from "./style";
 import { CITY_EDGES, CITY_PROP_NAMES, CITY_PROPS, CITY_TERRAIN_NAMES, CITY_TERRAINS } from "./city-tiles";
 import { faceEnds, ground, lightSide, lump, speckle, times, type Ctx, type EdgeKind, type Probe, type PropKind, type Shape, type TerrainKind } from "./tilekit";
 import { writeSheet, type Put } from "./sheet";
+import { poolWobble, wearTiles, WORN } from "./wear";
 
 type Args = Record<string, any>;
 
@@ -771,19 +772,34 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
   for (const plain of ALL_TERRAINS.filter((k) => terrains.includes(k.name))) {
     const H = hd ? HD_TERRAINS[plain.name]! : null;
     const kind: typeof plain = H ? { ...plain, variants: H.variants ?? plain.variants, texture: H.texture, edge: H.edge, shape: { inset: plain.shape.inset * 2, round: plain.shape.round * 2, wobble: plain.shape.wobble * 2 } } : plain;
-    const wob = [0, 1, 2, 3].map((side) => wobbleOf(t, kind.shape.wobble, seedOf(`${kind.name}/${side}`) + c.seed));
+    // (a pool drawn with several outlines: each its own smooth wobble per side and corner radius; see city-hd.ts)
+    const outline = (k: number) => {
+      const o = H?.outlines;
+      if (!o) return { shape: kind.shape, wob: [0, 1, 2, 3].map((side) => wobbleOf(t, kind.shape.wobble, seedOf(`${kind.name}/${side}`) + c.seed)) };
+      return { shape: { inset: o.inset, round: o.rounds[k]!, wobble: o.wobble }, wob: [0, 1, 2, 3].map((side) => poolWobble(t, seedOf(`${kind.name}/${k}/${side}`) + c.seed, o.wobble)) };
+    };
     const textures = Array.from({ length: kind.variants }, (_, v) => kind.texture(c, v));
-    const tiles: number[] = [];
-    for (const mask of BLOB_MASKS) {
+    const joining = (k: number, mask: number) => {
+      const { shape, wob } = outline(k);
       const img = new Img(t, t);
-      const full = mask === 255;
       for (let y = 0; y < t; y++) for (let x = 0; x < t; x++) {
         const tex = textures[0]!.get(x, y)!;
-        img.set(x, y, full ? tex : kind.edge(c, probe(mask, x, y, t, kind.shape, wob), mask, x, y, tex));
+        img.set(x, y, mask === 255 ? tex : kind.edge(c, probe(mask, x, y, t, shape, wob), mask, x, y, tex));
       }
-      tiles.push(add(img, `${kind.name}${sideName(mask)}`, kind.solid));
-    }
+      return img;
+    };
+    const tiles: number[] = [];
+    for (const mask of BLOB_MASKS) tiles.push(add(joining(0, mask), `${kind.name}${sideName(mask)}`, kind.solid));
     for (let v = 1; v < kind.variants; v++) add(textures[v]!, `${kind.name}_${v + 1}`, kind.solid);
+    if (H) {
+      // worn variants: a plain tile with one mark of use on it, for the painter to place where the street is worn
+      (WORN[kind.name] ?? []).forEach((w, i) => {
+        const img = textures[i % kind.variants]!.part(0, 0, t, t);
+        w.draw(c, img, rngOf(seedOf(`worn/${kind.name}/${w.what}`) + c.seed));
+        add(img, `${kind.name}_worn_${w.what}`, kind.solid);
+      });
+      for (let k = 1; k < (H.outlines?.rounds.length ?? 0); k++) for (const mask of BLOB_MASKS) if (mask !== 255) add(joining(k, mask), `${kind.name}_shape${k + 1}${sideName(mask)}`, kind.solid);
+    }
     docTerrains.push({ name: kind.name, mode: "blob", tiles });
   }
   for (const kind of EDGES.filter((k) => terrains.includes(k.name))) {
@@ -807,6 +823,8 @@ export function makeTileset(name: string, a: Args, put: Put): { text: string; pi
       }
     }
   }
+  // the detailed city's wear: see-through tiles the painter lays over the ground (none of them solid in the tileset)
+  if (hd) for (const w of wearTiles(c)) add(w.img, w.name, false);
 
   const made = writeSheet(name, { frames, names, solid, terrains: docTerrains }, put);
   const said = [

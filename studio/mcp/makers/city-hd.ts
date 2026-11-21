@@ -16,6 +16,9 @@ export interface HdTerrain {
   texture: (c: Ctx, v: number) => Img;
   edge: (c: Ctx, p: Probe, mask: number, x: number, y: number, tex: Rgba) => Rgba | null;
   variants?: number;
+  /// A pool on the ground drawn with several outlines ("<name>_shape2_edge_n"...): every one at `inset` where a tile ends,
+  /// so any joins any, with a smooth wobble of up to `wobble` pixels between, and outer corners of these radii (one per outline).
+  outlines?: { inset: number; rounds: number[]; wobble: number };
 }
 
 function canvas(c: Ctx, name: string, v: number, draw: (img: Img, rng: () => number) => void): Img {
@@ -71,7 +74,8 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? c.P.outline : p.d < 3 && lightSide(p) ? mix(tex, c.P.outline, 0.5) : tex),
   },
   asphalt: {
-    variants: 16,
+    // plain variants only: the marks of use (cracks, patches, stains) are its worn variants (wear.ts), placed by the painter
+    variants: 8,
     texture: (c, v) => canvas(c, "asphalt", v, (img, rng) => {
       const a = c.P.mat.asphalt;
       img.rect(0, 0, 32, 32, a[2]);
@@ -85,22 +89,11 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
       if (v === 1) reflection(img, x, 4, 24, 1, mix(a[3], a[4], 0.3), 0.25);
       if (v === 3) reflection(img, x, 4, 24, 2, A(c, 0)[1], 0.16);
       if (v === 4) reflection(img, x, 4, 24, 2, A(c, 1)[1], 0.16);
-      if (v === 5) {
-        // a crack: a dark line with its far lip catching light
-        let cx = x, cy = 2;
-        while (cy < 30) {
-          img.set(cx, cy, a[0]);
-          img.set(cx + 1, cy, mix(a[2], a[3], 0.5));
-          cy++;
-          if (rng() < 0.4) cx += rng() < 0.5 ? -1 : 1;
-        }
-      }
-
     }),
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? mix(c.P.mat.asphalt[0], c.P.outline, 0.4) : p.d === 1 && lightSide(p) ? c.P.mat.asphalt[1] : tex),
   },
   pavement: {
-    variants: 7,
+    variants: 4,
     texture: (c, v) => canvas(c, "pavement", v, (img, rng) => {
       const C = c.P.mat.concrete;
       for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
@@ -115,22 +108,6 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
       // a wet slab: a soft corner of reflected light
       const wx = (Math.floor(rng() * 2) << 4) + 3, wy = (Math.floor(rng() * 2) << 4) + 3;
       if (v % 3 === 1) for (let i = 0; i < 6; i++) for (let j = 0; j < 6 - i; j++) img.set(wx + i, wy + j, blend(img.get(wx + i, wy + j), C[4], 0.18));
-      if (v === 4) {
-        let x = 20, y = 2;
-        for (let i = 0; i < 12; i++) {
-          img.set(x, y, C[0]);
-          img.set(x + 1, y, mix(C[2], C[3], 0.4));
-          y++;
-          if (rng() < 0.5) x++;
-        }
-      }
-      if (v === 5) img.ellipse(9, 22, 5, 3, (x, y) => (hash2(x, y, c.seed) < 0.8 ? mix(img.get(x, y) ?? C[2], C[0], 0.35) : undefined));
-      if (v === 6) {
-        // a drain grate set in the slab
-        img.rect(18, 18, 10, 8, c.P.mat.plate[1]);
-        img.rect(18, 18, 10, 1, c.P.mat.plate[3]);
-        for (let x = 19; x < 28; x += 2) img.rect(x, 20, 1, 5, darkOf(c));
-      }
     }),
     edge: (c, p, mask, x, y, tex) => {
       const C = c.P.mat.concrete;
@@ -178,13 +155,15 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? mix(c.P.mat.plate[0], c.P.outline, 0.5) : p.d === 1 ? (lightSide(p) ? c.P.mat.plate[3] : c.P.mat.plate[1]) : tex),
   },
   grating: {
-    variants: 2,
+    variants: 3,
     texture: (c, v) => canvas(c, "grating", v, (img) => {
       const P = c.P.mat.plate, deep = darkOf(c);
+      // (the pipe below lies a little differently under each variant)
+      const py = (x: number) => (v === 2 ? 12 + x * 0.3 : 22 - x * 0.45);
       for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
         const bar = y % 4 === 0 || y % 4 === 1, frame = x < 2 || x === 16 || x === 17;
-        const pipe = Math.abs(y - (22 - x * 0.45)) < 1.6;
-        let below = pipe ? (Math.abs(y - (22 - x * 0.45)) < 0.6 ? c.P.mat.metal[1] : c.P.mat.asphalt[1]) : deep;
+        const pipe = Math.abs(y - py(x)) < 1.6;
+        let below = pipe ? (Math.abs(y - py(x)) < 0.6 ? c.P.mat.metal[1] : c.P.mat.asphalt[1]) : deep;
         if (v === 1 && Math.abs(y - 14) < 3) below = mix(deep, A(c, 0)[1], 0.55 - Math.abs(y - 14) * 0.12);
         img.set(x, y, frame ? (x === 0 || x === 16 ? P[3] : P[1]) : bar ? (y % 4 === 0 ? P[3] : P[1]) : below);
       }
@@ -192,8 +171,8 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (c, p, _m, _x, _y, tex) => (p.d === 0 ? (lightSide(p) ? c.P.mat.plate[3] : c.P.mat.plate[0]) : p.d === 1 ? c.P.mat.plate[1] : tex),
   },
   lab_tile: {
-    variants: 10,
-    texture: (c, v) => canvas(c, "lab_tile", v, (img, rng) => {
+    variants: 6,
+    texture: (c, v) => canvas(c, "lab_tile", v, (img) => {
       const T = c.P.mat.tile;
       for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
         const lx = x & 7, ly = y & 7;
@@ -201,17 +180,6 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
         const face = tone < 0.25 ? mix(T[2], T[1], 0.25) : tone > 0.8 ? mix(T[2], T[3], 0.3) : T[2];
         const gloss = Math.abs(x + y - 30) < 2;
         img.set(x, y, lx === 7 || ly === 7 ? T[0] : lx === 0 || ly === 0 ? mix(face, T[4], 0.35) : lx === 6 || ly === 6 ? mix(face, T[1], 0.4) : gloss ? mix(face, T[4], 0.3) : face);
-      }
-      if (v === 3) img.line(10, 8, 14, 14, T[1]);
-      if (v === 4) {
-        img.ellipse(16, 16, 4, 4, T[0]);
-        img.ellipse(16, 16, 3, 3, c.P.mat.plate[1]);
-        for (let x = 14; x <= 18; x += 2) img.rect(x, 14, 1, 5, darkOf(c));
-      }
-      if (v === 5) for (let i = 0; i < 9; i++) {
-        const x = 18 + Math.floor(rng() * 8), y = 18 + Math.floor(rng() * 8);
-        img.set(x, y, c.P.mat.leaf[2]);
-        img.set(x + 1, y, c.P.mat.leaf[1]);
       }
     }),
     edge: (_c, p, _m, _x, _y, tex) => (p.d === 0 ? shade(tex, lightSide(p) ? -2.4 : -1) : p.d < 3 && lightSide(p) ? shade(tex, -0.8) : tex),
@@ -238,7 +206,7 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
     edge: (_c, p, _m, _x, _y, tex) => (p.d === 0 ? shade(tex, lightSide(p) ? -2.4 : -1) : p.d < 2 && lightSide(p) ? shade(tex, -0.8) : tex),
   },
   platform: {
-    variants: 2,
+    variants: 3,
     texture: (c, v) => canvas(c, "platform", v, (img, rng) => {
       const C = c.P.mat.concrete;
       img.rect(0, 0, 32, 32, mix(C[2], C[3], 0.2));
@@ -266,6 +234,8 @@ export const HD_TERRAINS: Record<string, HdTerrain> = {
   },
   puddle: {
     variants: 4,
+    // its edge drawn three ways (a soft wobble per side, rounder corners), mixed cell by cell so a pool has no straight sides
+    outlines: { inset: 5, rounds: [13, 10, 15], wobble: 4 },
     texture: (c, v) => canvas(c, "puddle", v, (img, rng) => {
       const Wa = c.P.mat.water, base = mix(Wa[1], c.P.mat.asphalt[1], 0.3);
       img.rect(0, 0, 32, 32, base);
