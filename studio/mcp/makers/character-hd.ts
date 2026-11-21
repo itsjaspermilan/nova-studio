@@ -31,6 +31,8 @@ export const HD_ANIMS: [string, number, number[]][] = [
   ["tell", 2, [100, 100]],
   // (last, so that the frames of every other animation keep their numbers)
   ["run", 8, [45, 45, 45, 45, 45, 45, 45, 45]],
+  // (after the run, for the same reason: a low lunge with a wide, flat slash; 0.37 s in all, once)
+  ["dash_attack", 4, [50, 70, 110, 140]],
 ];
 /// The frame, where the feet stand in it, and the feet's box (unchanged from the first detailed kit, so rooms and
 /// collisions stay as they were).
@@ -331,7 +333,51 @@ function rigOf(B: Body, anim: string, i: number): Rig {
     return build(B, k);
   }
   if (anim === "roll") return rollRig(B, i);
+  if (anim === "dash_attack") return dashAttackRig(B, i);
   return build(B, {});
+}
+
+/// The dash attack: out of a roll, a low lunge along the ground with a wide, flat slash: wound up and coiled, the lunge (the item
+/// smeared in a long arc, speed lines behind), the crack (the arc ends far across the body), and the skid. Guns and shields do the
+/// same lunge with their own hands (the arc is only drawn for a swinging item).
+function dashAttackRig(B: Body, i: number): Rig {
+  const W = B.W, T = B.T;
+  const hands: [V3, V3][] = [
+    [[-9 * W, 30 * T, 8], [11 * W, 38 * T, -7]],
+    [[-6 * W, 30 * T, 17], [6 * W, 31 * T, 25]],
+    [[5 * W, 29 * T, 18], [-12 * W, 27 * T, 15]],
+    [[-8 * W, 24 * T, 12], [-6 * W, 20 * T, 15]],
+  ];
+  const aim: V3[] = [unit([0.5, 0.7, -0.5]), unit([-0.25, 0.0, 1]), unit([-1, -0.1, 0.25]), unit([-0.3, -0.6, 0.8])];
+  const feet: [V3, V3][] = [
+    [[-5.6, 3.6, -3], [5.6, 4.5, 4]],
+    [[-5.6, 5.5, -9], [5.6, 3.6, 8]],
+    [[-5.8, 4.5, -8], [5.8, 3.6, 9]],
+    [[-6.4, 3.6, -5], [6.4, 3.6, 6]],
+  ];
+  const rig = build(B, {
+    hands: hands[i]!, aim: aim[i]!, feet: feet[i]!,
+    crouch: [5, 8.5, 8, 6][i]!, lean: [6, 15, 14, 8][i]!, twist: [0.8, 0.1, -0.7, -0.3][i]!, headTilt: [0, -1, -1, 0][i]!,
+    eyes: i === 3 ? "bean" : "narrow", brows: "angry", mouth: i === 1 || i === 2 ? "yell" : "grit",
+    hem: [[0, 12, -9], [0, 11, -15], [0, 11, -14], [0, 10, -8]][i] as V3,
+    xf: [{ sy: 0.95, sx: 1.04 }, { sy: 0.92, sx: 1.06 }, { sy: 0.94, sx: 1.05 }, { sy: 0.96, sx: 1.03 }][i]!,
+    extraSwing: i * 1.4,
+  });
+  if ((i === 1 || i === 2) && swings(B)) {
+    // a flat sweep across the front at about chest height: from out on the item's side, through the front, to far across
+    const sh = add(rig.shoulder[1], [0, 0, 0]), reach = 34 * T;
+    const a0 = i === 1 ? 1.9 : 0.5, a1 = i === 1 ? 0.2 : -2.0;
+    const pts: V3[] = [];
+    for (let s = 0; s <= 18; s++) {
+      const a = a0 + ((a1 - a0) * s) / 18;
+      pts.push(add(sh, scale(unit([Math.sin(a), -0.18 + 0.12 * (s / 18), Math.cos(a)]), reach)));
+    }
+    rig.arc = pts;
+    rig.arcWidth = i === 1 ? 11 : 6;
+    rig.hideItem = i === 1;
+  }
+  rig.streak = i === 1 || i === 2;
+  return rig;
 }
 
 /// The roll: a dive into a tuck, the tucked figure turning over twice a quarter at a time, and the landing crouch; the
@@ -974,7 +1020,7 @@ export function makeCharacterHd(name: string, a: Args, put: Put, lists: { hair: 
   const durations: number[] = [];
   for (const dir of HD_DIRECTIONS) {
     for (const [anim, count, ms] of HD_ANIMS) {
-      tags.push({ name: `${anim}_${dir}`, from: frames.length, to: frames.length + count - 1, ...(anim === "attack" || anim === "hurt" || anim === "roll" ? { loop: false } : {}) });
+      tags.push({ name: `${anim}_${dir}`, from: frames.length, to: frames.length + count - 1, ...(anim === "attack" || anim === "hurt" || anim === "roll" || anim === "dash_attack" ? { loop: false } : {}) });
       for (let i = 0; i < count; i++) {
         frames.push(drawFrame(B, anim, i, dir));
         durations.push(ms[i]!);
@@ -988,7 +1034,7 @@ export function makeCharacterHd(name: string, a: Args, put: Put, lists: { hair: 
     text: [
       made.text,
       `the detailed style: a bold body about 44x64 in ${HD_FRAME}x${HD_FRAME} frames (draw it at sx = 1.5, sy = 1.5: 96 units high on the screen): ${build} build, ${stance} stance, pose ${pose}, ${skinText} skin, ${B.style} hair, ${outfit}, hat ${B.hat}${B.hat === "visor" ? ` (${B.visor})` : ""}, item ${item}, expression ${B.expression}${arms > 2 ? `, ${arms} arms` : ""}${B.hologram ? ", a hologram" : ""}; palette "${P.name}"`,
-      `animations, each facing down, left, right and up: idle_<dir> (4: weight shift), walk_<dir> (6), attack_<dir> (4: anticipation, the smear with the arc, overshoot, settle; plays once), hurt_<dir> (2: a squash; once), roll_<dir> (5: a tumble with a streak; once), run_<dir> (8: a sprint, leaning in, a long stride with a frame in the air, arms pumping, the coat streaming behind; a cycle is 0.36 s, which keeps step with 235 world units a second), tell_<dir> (2: wound up to strike, then the same with a flash in the glow colour; loop it for the 0.4 s before an enemy's attack)`,
+      `animations, each facing down, left, right and up: idle_<dir> (4: weight shift), walk_<dir> (6), attack_<dir> (4: anticipation, the smear with the arc, overshoot, settle; plays once), hurt_<dir> (2: a squash; once), roll_<dir> (5: a tumble with a streak; once), run_<dir> (8: a sprint, leaning in, a long stride with a frame in the air, arms pumping, the coat streaming behind; a cycle is 0.36 s, which keeps step with 235 world units a second), tell_<dir> (2: wound up to strike, then the same with a flash in the glow colour; loop it for the 0.4 s before an enemy's attack), dash_attack_<dir> (4: a low lunge with a wide flat slash and speed lines, then a skid; once, 0.37 s)`,
       `In its entity: sprite = "${name}", anim = "idle_down", pivot = { 0.5, ${py} }, hitbox = { ${hb.x - HD_PIVOT.x}, ${hb.y - HD_PIVOT.y}, ${hb.w}, ${hb.h} }, sx = 1.5, sy = 1.5; then self:play("walk_" .. dir). The hitbox is the feet's (14x8 pixels, 21x12 on the screen). The same pivot and hitbox are in the .sprite.json.`,
     ].join("\n"),
     picture: made.picture,

@@ -424,7 +424,7 @@ describe("the city kit", () => {
     it(`gives every city outfit, headgear and item all its animations in the ${style} style`, () => {
       const hd = style === "detailed";
       const per = hd ? HD_ANIMS.map((x) => x[0]) : ["idle", "walk", "attack", "hurt"];
-      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
+      const counts: Record<string, number> = hd ? { idle: 4, walk: 6, attack: 4, hurt: 2, roll: 5, tell: 2, run: 8, dash: 4 } : { idle: 2, walk: 4, attack: 3, hurt: 1 };
       const parts = [...CITY_OUTFITS.map((o) => ({ outfit: o })), ...CITY_HATS.map((h) => ({ hat: h })), ...CITY_ITEMS.map((i) => ({ item: i }))];
       for (const part of parts) {
         use("character_make", { name: "c", palette: "gutter market", style, glow_color: "2", ...part });
