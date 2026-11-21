@@ -11,6 +11,18 @@ here is decided unless marked OPEN. Numbers are starting values to tune by play.
 - Each print costs her memory. She will not say what she is forgetting. The printer's paperwork says your debt is owned by the Spire.
 - Climb four districts to the top, delete the contract, and find out who LULLABY was. Die, keep what you learned, go again.
 
+**Decided with the owner, 2026-11-20:**
+- **Tone: funnier and pulpier.** Big personalities, jokes, comic-book energy; everyone in the Undertow has a hustle and an opinion.
+  LULLABY is a sarcastic, overworked bootleg machine who complains about the cost of printing you. The sad thread (she is
+  forgetting things; the debt) stays, in the background, and lands harder for being rare. Lines written before this date were
+  drier and need a pass.
+- **Difficulty: a first run dies by room 4 or 5.** Early deaths are expected; permanent upgrades and skill carry you further.
+  The first district should fall after roughly five to eight tries.
+- **Characters: bigger and bolder.** About a third larger on screen than the first detailed kit, chunkier shapes, a clear face,
+  strong outlines, so they pop against the dark street. Rooms stay the same size.
+- **Order: polish district 1 until it is fun** (new art with light and worn ground, the remaining cards, tuning from play on the
+  Retroid) before districts 2 to 4 and before co-op.
+
 Pillars: **fights you can read** (every attack is telegraphed, four-way sprites, big clear shapes); **a run is a build** (three
 cards after every room, and they combine); **the city remembers** (what you bank, who you helped and what you unlocked stays).
 
