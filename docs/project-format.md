@@ -1330,8 +1330,18 @@ optional fields, and a song can have a room; a song with none of them renders ex
   "notes": [] }
 { "name": "drums", "kind": "drums", "kit": "studio", "reverb": 0.12, ... }   // the studio kit: a kick with a click and weight,
                                                                                  // a snare with a tone and rattle, metallic hats
+{ "name": "drums", "kind": "drums", "kit": "punch", ... }   // big modern drums in layers: a kick with a beater click falling
+                                                             // 174 -> 64 Hz, a snare with a crack, tones, a clap and a gated room,
+                                                             // ring-modulated metal hats (the synthwave sound)
+{ "name": "bass", "kind": "synth", "wave": "saw", "duck": 0.35, ... }   // dips by 35 % on every kick and swells back over
+                                                                         // about half a beat: side-chain pumping
 "room": { "size": 0.55, "damping": 0.4, "mix": 1 }   // song level: how long the reverb rings, how dull its tail is, how loud
 ```
+
+`duck` (0 to 1) listens to every heard drum track's kicks (pitch 36), including those near the end, which dip the start (the song loops).
+A song's `master` can carry an effect chain like a track's (`"fx": [{ "type": "compressor", "params": { ... } }]`), a loudness target
+`lufs` and a peak ceiling `limit` (see `SongMaster` in `studio/src/lib/song.ts`); `song_make`'s moods use a gentle compressor and
+`"limit": -1`.
 
 **Buses and note details.** A song can have up to 8 `buses`, each `{ "name", "volume" (0 to 1.5), "pan" (balance), "mute", "reverb", "fx", "color" }`; `fx` is a chain like a track's. A
 track names the bus it plays into with `"bus": "name"` (none: straight to the master) and may copy part of its sound to up to four more with
@@ -1346,7 +1356,7 @@ A clip plays its pattern from `step`, repeating it to fill `len` steps (starting
 
 Saws and squares are band-limited (no hiss from folded harmonics) in a fuller voice. The reverb is a Freeverb-style room that is run
 twice over the song, so its tail wraps round and the loop has no seam. The music editor has sliders for all of it. Not done: samples as
-instruments, per-note filter automation, a compressor or EQ on the mix (a fuller song gets only a gentle soft clip).
+instruments, per-note filter automation. (A fuller song also gets a gentle soft clip on the whole.)
 
 ## Sound
 
@@ -1384,13 +1394,45 @@ nova.music.seek(30)                  -- jump to 30 s; true, or false when nothin
 ```
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
-(2 is an octave up; it also changes speed). `nova.sound.set` glides to the new values over about 10 ms, so a looping sound can be steered every frame: an engine's pitch
+(2 is an octave up; it also changes speed). `vary` (0 to 0.5) changes each play a little: the pitch by up to that share either way
+and the volume down by up to that share (`nova.sound.play("hit", { vary = 0.06 })`), so a sound played again and again is not a row
+of identical copies; it draws on its own random numbers, so `math.random` (and a seeded run) goes on exactly as without it. `nova.sound.set` glides to the new values over about 10 ms, so a looping sound can be steered every frame: an engine's pitch
 following the revs, wind following speed. A sound that has ended ignores it, and so does `pitch` on streamed music. Starting new music fades the old track out over 0.3
 seconds. Up to 32 effects play at once; past that the oldest gives way. Output is soft-clipped, so a
 loud mix cannot distort harshly. Names resolve as the exact path, then `sounds/<name>.wav`, then
 `music/<name>.wav`. The mixer runs on the audio thread and costs about 0.1 ms per callback on the
 Android emulator. Sound calls are queued and sent to the audio thread each frame; with no audio
 device (headless runs) they are discarded.
+
+### Sound effect files (`sounds/<name>.sfx.json`)
+
+The sound editor's settings, beside the `.wav` the game plays (the studio and `sfx_write` render one from the other; the game reads only the
+WAV). The plain voice is sfxr's model: one oscillator (`wave` square, saw, sine, triangle or noise), one envelope (`attack`, `sustain`,
+`decay`, `punch`), a pitch `slide`, `arpSemitones`/`arpNotes`, `vibratoDepth`, `duty`, one-pole `lowpass`/`highpass`, `volume`, `seed`.
+Alone it sounds like an old console (why, measured: `docs/sound-for-agents.md`). A fuller effect adds:
+
+```json
+{ "version": 1, "volume": 0.9, "seed": 1,
+  "drive": 0.25,                 // soft-clip saturation over the whole (0 to 1): denser, grittier, louder; peaks round off
+  "reverb": 0.15, "room": 0.35,  // a short stereo room: how much is heard (0 to 1) and its size (0 small to 1 a hall); it adds a tail
+  "width": 0.4,                  // stereo spread (0 to 1): unison voices fan out, noise layers become two noises, the room widens
+  "layers": [                    // up to 8; with layers the plain voice is not played and `volume` (0 to 4) is a gain on them
+    { "wave": "noise", "filter": "bandpass", "cutoff": 4900, "q": 0.7, "hold": 0.004, "decay": 0.025, "volume": 0.9 },   // the crack
+    { "wave": "sine", "freq": 110, "pitch": 19, "pitchTime": 0.02, "hold": 0.01, "decay": 0.13, "volume": 0.65 },      // a thump that drops
+    { "wave": "noise", "filter": "bandpass", "cutoff": 2200, "cutoffEnd": 700, "q": 1.3, "hold": 0.01, "decay": 0.13, "volume": 0.45 } ] }
+```
+
+A layer: `wave` (`sine`, `triangle`, `saw`, `square` (both band-limited, so high notes do not whistle), `noise` (white), `pink` (darker),
+`crackle` (sparse clicks, `freq` of them a second)); `freq` (Hz, 20 to 12000); `start` (seconds after the effect starts); the envelope
+`attack`, `hold` and `decay` (the time to fall to -60 dB, an exponential ring); `volume`, `pan`; a pitch envelope `pitch` (semitones from
+`freq` at the start, -48 to 48, gliding there, most of the way in `pitchTime` seconds) and `slide` (octaves a second after that);
+`vibrato` (semitones) and `vibratoSpeed`; `duty` (square); `unison` (1 to 5) and `detune` (cents); FM: `fm` (depth, 0 to 30), `fmRatio`
+(a whole number is harmonic, 1.41 or 2.76 is metal and bells) and `fmDecay` (seconds for the FM to fade, 0 steady); `ring` (Hz of a ring
+modulator, 0 off: electric, robotic); and a filter that moves: `filter` (`none`, `lowpass`, `highpass`, `bandpass`; a `cutoff` alone means
+`lowpass`), `cutoff` (Hz at the start), `cutoffEnd` (Hz at the end, 0 the same), `filterTime` (seconds for the move, 0 the whole layer),
+`q` (0.5 to 12). A file keeps only what differs from the defaults. A key a layer or an effect does not have is refused with the nearest
+one (`"decya"`: did you mean `"decay"`?). A file with none of these keys renders exactly as before. Everything is deterministic: the
+same file always gives the same samples.
 
 ### Random sound groups and positioned sounds
 

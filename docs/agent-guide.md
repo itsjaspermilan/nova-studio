@@ -32,14 +32,14 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | **get 3D art fast: the 3D makers** | `character3d_make` (a rigged person with seven clips), `prop3d_make` (trees, rocks, ruins, a house, gems: 26 kinds), `ground3d_make` (ground from a character map), `creature3d_make` | the same picture as `model_preview` (a clip strip for the animated ones); ordinary models and one-line entity files |
 | **a racing game's parts: the racing makers** | `car_make` (a car by body type and options, or a traced `spec`), `blueprint_trace` (a drawing into numbers), `prop3d_make` with the detailed kinds (trees by species and season, rocks, barriers, tyres, stands, arches, spectators), `surface_make` (ground and road pictures), `road_make` (a route's road), `land_make` (textured ground), `engine_make` (an engine's loops by the revs and its profile), `driving_sounds_make` (tyres, wind, turbo, gear changes) | a contact sheet of the car from three sides; the props' sheet; the pictures side by side; each engine band's firing and the `sound_report` |
 | lay out a map from terrains | `scene_write` with `"paint"` | the map; edges and corners chosen for you |
-| get sound fast | `sfx_write { "purpose": "hit" }`, `song_make { "mood": "dungeon" }` | the `sound_report`, free of warnings |
+| get sound fast | `sfx_write { "purpose": "hit" }` (27 purposes, each built in layers like a produced sound), `song_make { "mood": "synthwave" }` | the `sound_report`, free of warnings and of advice |
 | draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
 | look at any sprite again | `sprite_preview` (`frame: n` for one frame close up) | the same; a frame with every pixel a numbered square, and as rows of text to edit |
 | lay out a level | `scene_write` (tile rows as characters with a `legend`) | the level as a map |
 | look at any level again | `scene_preview` | the map, and the layers as text to edit and give back |
-| make a sound effect | `sfx_write` | its `sound_report` |
+| make a sound effect | `sfx_write` with `layers` (a transient, a body, a tail) and `drive`, `reverb`, `width`; `loudness` sets its level | its `sound_report`: no warnings, no "toy-like" advice (`docs/sound-for-agents.md`) |
 | make music | `song_write` | check it with `sound_report` |
-| "hear" a sound, a song, a mix, a run | `sound_report` | level, pitch, where the energy sits, warnings that say which setting to change, a spectrogram |
+| "hear" a sound, a song, a mix, a run | `sound_report` | level, pitch, where the energy sits, its make-up (transient, partials, noise, movement, width, low end, the fall), warnings that say which setting to change, advice on what a thin or toy-like sound lacks, a spectrogram |
 | make a 3D model by hand | `model_write` (`"shape": "tube"` and `"lathe"` for round limbs and turned shapes; a clip's `walk` or `ik` places the feet and says the speed at which they do not slide; `bend: true` skins tubes and meshes, not lathes) | check it with `model_preview` |
 | look at a model, a pose, a clip | `model_preview` (`clip`, `strip: 8`; `names: [...]` for several at one scale, or `fit: "each"`) | the model whole (never cropped) with its size, a film strip of the clip on a ground line, or a contact sheet |
 | plan a 3D level | `scene_preview` on a scene with a `camera` | the scene from above: every object's footprint and name, what blocks in red, a grid in metres |
@@ -147,6 +147,11 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    sounded like, and `sound_report {"file": ...}` describes that, naming the frame and the sounds that started at any click or
    clip. Fix every WARNING (clipping, a click at the start or end, energy below 80 Hz that a handheld cannot play): each ends
    with the setting to change, its value now and which way to move it. The presets of `sfx_write` pass the check as they are.
+   Then read the `advice:` lines: they say when an effect is thin or toy-like (one steady partial, no noise, no transient,
+   mono, a straight-line fade, an 8-bit console's held-step noise) and give the layer to add, and for a song which tracks still
+   use the chip voice or the chip kit, and whether anything ducks under the kick. You cannot hear the result, and neither can
+   the report: it measures what produced game sounds are made of, which is not the same as sounding good. Why the plain voice
+   sounds like an old console, and what each fix changes in numbers: `docs/sound-for-agents.md`.
 
 **A neon city (and the detailed style).** The same makers make a cyberpunk city: give `tileset_make`, `character_make`,
 `creature_make` and `items_make` one of the city palettes (`"gutter market"`, `"bloom labs"`, `"hollow line"`, `"spire"`)
@@ -325,8 +330,14 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   is taken or beaten: `state.taken[self.name] = true` (give each such object a `name` in the scene; prefix it with
   `nova.current_scene()` if two scenes reuse a name).
 - **Songs:** a drums track needs only `name`, `kind`, `notes` (pitch picks the drum: 36 kick, 38 snare, 42 hat).
-- **Sound effects:** one effect has one envelope; `arpNotes` gives it a short tune. For the `noise` wave `freq` is the
-  colour, and under about 200 it is a rumble a handheld cannot play.
+- **Sound effects:** the plain voice (no `layers`) has one oscillator and one envelope, the sound of an old console; for
+  anything that should sound produced use a `purpose` or give `layers` (see `docs/project-format.md`, "Sound effect files"), and
+  then the plain keys (`freq`, `wave`, ...) are refused, since they would change nothing. In the plain voice `arpNotes` gives a
+  short tune, and for the `noise` wave `freq` is the colour (under about 200 it is a rumble a handheld cannot play). A layer's
+  `decay` is the time to fall 60 dB, not a straight fade. A reverb tail makes the file longer than what is heard: the report's
+  `tail` is the audible part. Play a repeated effect with `vary = 0.05` so it is not a row of copies.
+- **Songs that do not sound like a chip:** `song_make` with the `synthwave` moods, or give tracks `unison`/`detune`, a `cutoff`
+  with `sweep`, `duck` under the kick, the `punch` or `studio` kit, and a `master` compressor and `limit`.
 - **Sizes of pictures:** the tools' pictures are 960x540 unless you pass `size`; the CLI's `--capture` is 1280x720.
 - **3D: are the shadows drawn?** A 3D `play` answer has a `render:` line: shadows on or off, how many models cast one,
   which way the sun travels against the camera, the ambient light, fog, the camera's eye and target. Shadows from a sun
