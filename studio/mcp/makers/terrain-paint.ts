@@ -9,6 +9,9 @@
 //   "ground_edges"  the joining tiles, see-through where the terrain beside shows
 //   "ground_props"  things standing on the ground at the walkers' feet: trunks, bushes, rocks, fences, flowers
 //   "ground_over"   what is drawn in front of the walkers: tree crowns
+// and with a tileset that has wear tiles (the detailed city's; wear-paint.ts), the ground's variants chosen by a wear map and
+//   "ground_stains" broad soft tone over several tiles: damp, dust, polished lanes
+//   "ground_wear"   what use has left on it: cracks, potholes, patches, markings, litter, grime, drips on wall faces
 // The scene file holds only tile numbers; scene_preview shows the layers again as the painted map.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -17,6 +20,7 @@ import { blobMask, edgeMask, tileForMask, type Terrain } from "../../src/lib/aut
 import { parseTileset, type TilesetDoc } from "../../src/lib/tileset";
 import { readPng } from "../draw";
 import { hash2 } from "./paint";
+import { DEFAULT_WEAR, describeWear, layWear, wearOptions } from "./wear-paint";
 
 type Args = Record<string, any>;
 
@@ -37,6 +41,8 @@ interface Catalog {
   /// Everything else that has a name: single tiles and things of several tiles, each with its variants.
   props: Map<string, Part[][]>;
   tileOf: Map<string, number>;
+  /// A detailed tileset's wear (empty for any other): worn variants by terrain, other outlines of a joining tile, features.
+  wear: { worn: Map<string, { tile: number; what: string }[]>; alt: Map<number, number[]>; stamps: Map<string, Part[][]>; any: boolean };
 }
 
 function catalogOf(root: string, image: string, tw: number, th: number): Catalog {
@@ -80,9 +86,29 @@ function catalogOf(root: string, image: string, tw: number, th: number): Catalog
     } else standing.push({ t });
   });
   const terrainNames = new Set(doc.terrains.map((t) => key(t.name)));
+  // the wear tiles of a detailed tileset (wear.ts): worn variants, a pool's other outlines, and the features
+  const worn = new Map<string, { tile: number; what: string }[]>(), alt = new Map<number, number[]>(), parts = new Map<string, Map<number, Part[]>>();
+  const wearName = new Set<string>();
+  for (const [name, tile] of tileOf) {
+    const f = /^wear_([a-z0-9_]+?)(?:_(\d+))?(?:@(-?\d+),(-?\d+))?$/.exec(name);
+    const w = /^(.+)_worn_(.+)$/.exec(name);
+    const s = /^(.+)_shape\d+(_.*)?$/.exec(name);
+    if (f) {
+      const byVariant = parts.get(f[1]!) ?? new Map<number, Part[]>();
+      const v = Number(f[2] ?? 1);
+      byVariant.set(v, [...(byVariant.get(v) ?? []), { dx: Number(f[3] ?? 0), dy: Number(f[4] ?? 0), tile }]);
+      parts.set(f[1]!, byVariant);
+    } else if (w && terrainNames.has(w[1]!)) worn.set(w[1]!, [...(worn.get(w[1]!) ?? []), { tile, what: w[2]! }]);
+    else if (s && terrainNames.has(s[1]!) && tileOf.has(`${s[1]}${s[2] ?? ""}`)) {
+      const first = tileOf.get(`${s[1]}${s[2] ?? ""}`)!;
+      alt.set(first, [...(alt.get(first) ?? []), tile]);
+    } else continue;
+    wearName.add(name);
+  }
+  const stamps = new Map([...parts].map(([b, vs]) => [b, [...vs].sort((a, z) => a[0] - z[0]).map(([, p]) => p)]));
   const props = new Map<string, Part[][]>();
   for (const [name, tile] of tileOf) {
-    if (inTerrain.has(tile) || name.includes("@")) continue;
+    if (inTerrain.has(tile) || name.includes("@") || wearName.has(name)) continue;
     const variant = /^(.+)_(\d+)$/.exec(name);
     if (variant && terrainNames.has(variant[1]!)) continue; // a ground variant
     const base = variant && tileOf.has(variant[1]!) ? variant[1]! : name;
@@ -93,12 +119,12 @@ function catalogOf(root: string, image: string, tw: number, th: number): Catalog
     }
     props.set(base, [...(props.get(base) ?? []), parts]);
   }
-  return { doc, count, opaque, ground, standing, props, tileOf };
+  return { doc, count, opaque, ground, standing, props, tileOf, wear: { worn, alt, stamps, any: wearName.size > 0 } };
 }
 
 type Cell =
   | { kind: "empty" }
-  | { kind: "ground"; g: number }
+  | { kind: "ground"; g: number; wear?: number }
   | { kind: "standing"; s: number; on?: string }
   | { kind: "prop"; name: string; on?: string };
 
@@ -161,10 +187,18 @@ export function expandPaint(root: string, scene: Args): string[] {
         legend.set(ch, { kind: "empty" });
         continue;
       }
-      const [what, on] = String(v).split(/\s+on\s+/i).map(key);
+      let [what, on] = String(v).split(/\s+on\s+/i).map(key);
       if (on !== undefined && groundOf(on) < 0) errors.push(`${where} paint "${ch}": '${on}' is not a ground terrain of ${ts.image} (${cat.ground.map((g) => g.t.name).join(", ")})`);
+      // "broken asphalt": the terrain with its wear raised to the most (a deliberately wrecked stretch); "clean marble": none
+      let forced: number | undefined;
+      const damaged = /^(broken|damaged|wrecked|worn|clean|new)_(.+)$/.exec(what!);
+      if (damaged && groundOf(what!) < 0 && groundOf(damaged[2]!) >= 0) {
+        if (!cat.wear.any) errors.push(`${where} paint "${ch}": '${v}' needs a tileset with wear tiles (tileset_make with "style": "detailed")`);
+        forced = damaged[1] === "worn" ? 0.7 : damaged[1] === "clean" || damaged[1] === "new" ? 0 : 1;
+        what = damaged[2]!;
+      }
       const g = groundOf(what!), s = cat.standing.findIndex((x) => key(x.t.name) === what);
-      if (g >= 0) legend.set(ch, { kind: "ground", g });
+      if (g >= 0) legend.set(ch, forced === undefined ? { kind: "ground", g } : { kind: "ground", g, wear: forced });
       else if (s >= 0) legend.set(ch, { kind: "standing", s, on });
       else if (cat.props.has(what!)) legend.set(ch, { kind: "prop", name: what!, on });
       else errors.push(`${where} paint "${ch}": '${v}' is not in ${ts.image} (${known})`);
@@ -322,22 +356,51 @@ export function expandPaint(root: string, scene: Args): string[] {
         }
       });
     }
+    const wearOpts = wearOptions(tm, where, cat.ground.map((g) => key(g.t.name)), nrows, cols, errors);
+    if (wearOpts && !cat.wear.any) errors.push(`${where}: "wear", "damage", "features", "district" and "solid_damage" need a tileset with wear tiles: make it with tileset_make and "style": "detailed"`);
     if (errors.length) return;
 
     const name = String(tm.name ?? "ground");
     const depth = typeof tm.depth === "number" ? tm.depth : 100;
     const solidSet = new Set(cat.doc.solid);
+    // wear (a detailed tileset's): worn variants, other outlines for pools, and features in a layer of their own
+    let wear: ReturnType<typeof layWear> | null = null;
+    if (cat.wear.any) {
+      const nameOfGround = (g: number) => (g >= 0 ? key(cat.ground[g]!.t.name) : "");
+      wear = layWear({
+        cols, nrows, seed,
+        terrain: base.map((row) => row.map(nameOfGround)),
+        kind: cells.map((row) => row.map((cell) => cell.kind)),
+        thing: cells.map((row) => row.map((cell) => (cell.kind === "prop" ? cell.name : cell.kind === "standing" ? key(cat.standing[cell.s]!.t.name) : undefined))),
+        forced: cells.map((row) => row.map((cell) => (cell.kind === "ground" ? cell.wear : undefined))),
+        ground, edges, edges2, props,
+        solidAt: (c, r) => [ground, edges, edges2, props].some((l) => solidSet.has(l[r]![c]!)),
+        plain: new Map(cat.ground.map((g) => [key(g.t.name), g.full])),
+        worn: cat.wear.worn, alt: cat.wear.alt, stamps: cat.wear.stamps,
+        options: wearOpts,
+      });
+    }
+    const wearSolid = new Set(wear?.solid ?? []);
     let blocked = 0;
-    for (let r = 0; r < nrows; r++) for (let c = 0; c < cols; c++) if ([ground, edges, edges2, ...(tm.solid_props === false ? [] : [props])].some((l) => solidSet.has(l[r]![c]!))) blocked++;
+    for (let r = 0; r < nrows; r++) for (let c = 0; c < cols; c++) if ([ground, edges, edges2, ...(tm.solid_props === false ? [] : [props])].some((l) => solidSet.has(l[r]![c]!)) || wearSolid.has(wear?.tiles[r]![c] ?? -1)) blocked++;
     const layer = (suffix: string, tiles: number[][], d: number): Args | null => {
       const used = new Set(tiles.flat().filter((t) => t >= 0));
       if (!used.size) return null;
-      const solid = suffix === "_over" || (suffix === "_props" && tm.solid_props === false) ? [] : [...used].filter((t) => solidSet.has(t)).sort((a, b) => a - b);
+      const solid = suffix === "_over" || (suffix === "_props" && tm.solid_props === false) ? [] : [...used].filter((t) => (suffix === "_wear" ? wearSolid : solidSet).has(t)).sort((a, b) => a - b);
       return { name: `${name}${suffix}`, depth: d, tileset: { ...ts }, ...(tm.x ? { x: tm.x } : {}), ...(tm.y ? { y: tm.y } : {}), ...(solid.length ? { solid } : {}), tiles };
     };
-    const made = [layer("", ground, depth), layer("_edges", edges, depth - 1), layer("_edges_2", edges2, depth - 2), layer("_props", props, depth - 3), layer("_over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
+    const made = [layer("", ground, depth), ...(wear ? [layer("_stains", wear.tone, depth - 0.3), layer("_wear", wear.tiles, depth - 0.6)] : []), layer("_edges", edges, depth - 1), layer("_edges_2", edges2, depth - 2), layer("_props", props, depth - 3), layer("_over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
     out.push(...made);
     notes.push(`painted "${name}": ${cols} x ${nrows} cells into ${made.length} tile layer(s) (${made.map((l) => `"${l.name}"`).join(", ")}), ${blocked} cells solid${strewn ? `, ${strewn} props scattered` : ""}, seed ${seed}`);
+    if (wear) {
+      const nameOf = new Map([...cat.tileOf].map(([n, t]) => [t, n]));
+      const said = describeWear(wear.tiles, (t) => nameOf.get(t), wearSolid);
+      const amount = typeof tm.wear === "number" ? tm.wear : tm.wear && typeof tm.wear === "object" ? JSON.stringify(tm.wear) : DEFAULT_WEAR;
+      notes.push(`  wear ${amount}, district ${wear.district}${tm.district === undefined ? " (guessed from the terrains; set \"district\")" : ""}: ${wear.worn} worn tiles, ${said.count} features in "${name}_wear" (decoration${wearSolid.size ? "; the ones marked solid block" : ", nothing blocks"}; col,row):`);
+      notes.push(...said.lines.map((l) => `    ${l}`));
+      const tone = describeWear(wear.tone, (t) => nameOf.get(t), new Set());
+      if (tone.count) notes.push(`  and under them in "${name}_stains": ${tone.lines.map((l) => l.replace(/:.*/, "")).join(", ")}`);
+    }
   });
   if (errors.length) {
     const shown = errors.slice(0, 24);
@@ -367,7 +430,8 @@ export function paintedText(root: string, maps: Args[]): string[] {
     }
     if (!cat.ground.length && !cat.standing.length) continue;
     const terrainOf = new Map<number, string>();
-    for (const g of cat.ground) for (const t of [...g.t.tiles, ...g.full]) terrainOf.set(t, g.t.name);
+    for (const g of cat.ground) for (const t of [...g.t.tiles, ...g.full, ...(cat.wear.worn.get(key(g.t.name)) ?? []).map((w) => w.tile), ...g.t.tiles.flatMap((t) => cat.wear.alt.get(t) ?? [])]) terrainOf.set(t, g.t.name);
+    const wearTile = new Set([...cat.wear.stamps.values()].flat(2).map((p) => p.tile));
     for (const s of cat.standing) for (const t of s.t.tiles) terrainOf.set(t, s.t.name);
     const propOf = new Map<number, string>();
     for (const [name, variants] of cat.props) for (const parts of variants) propOf.set(parts[0]!.tile, name);
@@ -384,7 +448,7 @@ export function paintedText(root: string, maps: Args[]): string[] {
         let what = "", under = "";
         for (const l of order) {
           const t = l.tiles[r]?.[c] ?? -1;
-          if (t < 0) continue;
+          if (t < 0 || wearTile.has(t)) continue;
           const name = propOf.get(t) ?? terrainOf.get(t);
           if (!name) {
             if (!what) unknown++;
@@ -412,6 +476,12 @@ export function paintedText(root: string, maps: Args[]): string[] {
     lines.push(`painted map of ${layers.map((l) => `"${l.name ?? "?"}"`).join(", ")} (tileset ${ts.image}): to change it, give scene_write ONE layer { "name": "${name}", "tileset": ..., "paint": ..., "tiles": [rows] } in their place${unknown ? `; ${unknown} cells hold tiles that are not a terrain or a prop and show as '.'` : ""}`);
     lines.push(`  "paint": { ${[...chars].filter(([l]) => l).map(([l, ch]) => `"${ch}": "${l}"`).join(", ")} }`);
     label.forEach((row, r) => lines.push(`  ${String(r).padStart(3)} ${row.map((l) => chars.get(l) ?? "?").join("")}`));
+    // the wear laid over it, read back as things in places
+    const nameOf = new Map([...cat.tileOf].map(([n, t]) => [t, n]));
+    for (const l of layers.filter((m) => m.tiles.some((row: number[]) => row.some((t) => wearTile.has(t))))) {
+      const said = describeWear(l.tiles, (t) => nameOf.get(t), new Set(l.solid ?? []));
+      lines.push(`  wear in "${l.name ?? "?"}" (${said.count} features, col,row; painting the map again lays it anew from the seed):`, ...said.lines.map((s) => `    ${s}`));
+    }
   }
   return lines;
 }
