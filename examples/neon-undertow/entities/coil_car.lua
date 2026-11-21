@@ -4,7 +4,8 @@ local C = require("data.bosses").mother_coil.cars
 local P = require("data.player")
 local J = require("lib.juice")
 local D = require("lib.draw")
-local F = require("lib.fx")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 
 local Car = nova.entity { tags = { "coil_car" }, velocity = false, t = 0, delay = 0 }
 
@@ -16,7 +17,7 @@ end
 function Car:slam()
   nova.sound.play("car_slam", { volume = P.sfx.car_slam, limit = 3 })
   J.shake(9, 10)
-  F.burst(self.x, self.y - 16, 4)
+  V.boom(self.x, self.y, C.radius, { shake = 9 })
   local p = nova.first("player")
   local hurt = "no one"
   if p and p.state ~= "dead" and math.sqrt((p.x - self.x) ^ 2 + (p.y - self.y) ^ 2) <= C.radius then
@@ -56,7 +57,7 @@ function Car:draw()
     local r = C.radius * (0.25 + 0.75 * k)
     nova.circle(cx, cy, r, { 0, 0, 0, 170 }, { soft = true, lit = false, ry = r * 0.8 })
   end
-  D.ring(self.x, self.y, C.radius, { 255, 43, 214, on and 255 or 170 }, 5, 30)
+  T.disc(self.x, self.y, C.radius, k, self.t, T.magenta)
   if k > 0.7 then
     -- the car comes down in the last part of the tell
     local fall = (1 - k) / 0.3

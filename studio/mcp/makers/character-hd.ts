@@ -29,6 +29,8 @@ export const HD_ANIMS: [string, number, number[]][] = [
   ["hurt", 2, [90, 170]],
   ["roll", 5, [56, 56, 56, 56, 56]],
   ["tell", 2, [100, 100]],
+  // (last, so that the frames of every other animation keep their numbers)
+  ["run", 8, [45, 45, 45, 45, 45, 45, 45, 45]],
 ];
 /// The frame, where the feet stand in it, and the feet's box (unchanged from the first detailed kit, so rooms and
 /// collisions stay as they were).
@@ -236,6 +238,30 @@ function rigOf(B: Body, anim: string, i: number): Rig {
     const swingZ = (k: number) => -Math.sin(ph + k * Math.PI) * 7;
     const hands = def.hands.map((h, k) => (held && (k === 1 || B.pose === "aim" || B.pose === "guard" || B.pose === "wide") ? add(h, [0, bob * 0.5, 0]) : add(h, [k ? -0.6 : 0.6, Math.abs(swingZ(k)) * 0.25, swingZ(k)]))) as [V3, V3];
     return build(B, { bob, lean: 1.6, feet, hands, hem: [Math.sin(ph) * 1.6, 9 * T + Math.abs(Math.sin(ph)) * 1.4, -3.5 - Math.abs(Math.cos(ph)) * 1.5], extraSwing: ph });
+  }
+  if (anim === "run") {
+    // a sprint: the body leans into it, a long stride with a frame in the air (both feet off the ground, the legs split), knees driving,
+    // arms pumping against the legs, the item trailing, the coat streaming out behind. A cycle is 8 frames of 45 ms: at 235 world units
+    // a second the feet then keep step with the ground (a stride of 14 pixels each way, drawn at 1.5)
+    const ph = (i / 8) * Math.PI * 2;
+    const feet = [0, 1].map((k) => {
+      const p = ph + k * Math.PI;
+      return [k ? R.footX : -R.footX, 3.6 + Math.max(0, Math.cos(p) + 0.55) * 10, 1 + Math.sin(p) * 15] as V3;
+    }) as [V3, V3];
+    const bob = -3.8 * Math.cos(2 * ph) + 1.8;
+    // arms bent hard: the hand comes up to the chest forwards and goes back past the hip
+    const hands = def.hands.map((h, k) => {
+      const s = -Math.sin(ph + k * Math.PI);
+      const base: V3 = [h[0] * 0.8, 28 * T + Math.max(0, s) * 11, 0];
+      return add(base, [0, bob * 0.5, 5 + s * 11]);
+    }) as [V3, V3];
+    const aim = B.item === "none" ? def.aim : unit([0.15, -0.55, -0.8]);
+    return build(B, {
+      bob, lean: 10.5, headTilt: -1.2, feet, hands, aim, twist: Math.cos(ph) * 0.22,
+      hem: [Math.sin(ph) * 4, 15 + Math.abs(Math.cos(ph)) * 3, -14 - Math.abs(Math.sin(ph)) * 4],
+      eyes: "narrow", brows: "angry", mouth: "grit", extraSwing: ph * 2,
+      xf: { sy: 1 + 0.02 * Math.cos(2 * ph), sx: 1 - 0.015 * Math.cos(2 * ph) },
+    });
   }
   if (anim === "attack" || anim === "tell") {
     const tell = anim === "tell";
@@ -962,7 +988,7 @@ export function makeCharacterHd(name: string, a: Args, put: Put, lists: { hair: 
     text: [
       made.text,
       `the detailed style: a bold body about 44x64 in ${HD_FRAME}x${HD_FRAME} frames (draw it at sx = 1.5, sy = 1.5: 96 units high on the screen): ${build} build, ${stance} stance, pose ${pose}, ${skinText} skin, ${B.style} hair, ${outfit}, hat ${B.hat}${B.hat === "visor" ? ` (${B.visor})` : ""}, item ${item}, expression ${B.expression}${arms > 2 ? `, ${arms} arms` : ""}${B.hologram ? ", a hologram" : ""}; palette "${P.name}"`,
-      `animations, each facing down, left, right and up: idle_<dir> (4: weight shift), walk_<dir> (6), attack_<dir> (4: anticipation, the smear with the arc, overshoot, settle; plays once), hurt_<dir> (2: a squash; once), roll_<dir> (5: a tumble with a streak; once), tell_<dir> (2: wound up to strike, then the same with a flash in the glow colour; loop it for the 0.4 s before an enemy's attack)`,
+      `animations, each facing down, left, right and up: idle_<dir> (4: weight shift), walk_<dir> (6), attack_<dir> (4: anticipation, the smear with the arc, overshoot, settle; plays once), hurt_<dir> (2: a squash; once), roll_<dir> (5: a tumble with a streak; once), run_<dir> (8: a sprint, leaning in, a long stride with a frame in the air, arms pumping, the coat streaming behind; a cycle is 0.36 s, which keeps step with 235 world units a second), tell_<dir> (2: wound up to strike, then the same with a flash in the glow colour; loop it for the 0.4 s before an enemy's attack)`,
       `In its entity: sprite = "${name}", anim = "idle_down", pivot = { 0.5, ${py} }, hitbox = { ${hb.x - HD_PIVOT.x}, ${hb.y - HD_PIVOT.y}, ${hb.w}, ${hb.h} }, sx = 1.5, sy = 1.5; then self:play("walk_" .. dir). The hitbox is the feet's (14x8 pixels, 21x12 on the screen). The same pivot and hitbox are in the .sprite.json.`,
     ].join("\n"),
     picture: made.picture,

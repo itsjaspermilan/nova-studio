@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "image": "fx_flame.png",
+  "frame_width": 64,
+  "frame_height": 80,
+  "columns": 8,
+  "frames": 8,
+  "frame_duration_ms": 70,
+  "tags": [
+    {
+      "name": "burn",
+      "from": 0,
+      "to": 7
+    }
+  ]
+}

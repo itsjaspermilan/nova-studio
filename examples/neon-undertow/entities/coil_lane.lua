@@ -5,6 +5,8 @@ local L = require("data.bosses").mother_coil.lanes
 local P = require("data.player")
 local J = require("lib.juice")
 local D = require("lib.draw")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 
 local Lane = nova.entity { tags = { "coil_lane" }, velocity = false, t = 0, dir = 1, moving = false }
 
@@ -51,14 +53,23 @@ end
 
 function Lane:draw()
   if self.t < L.tell then
-    local on = math.floor(self.t * 12) % 2 == 0
-    D.lane(self.x0, self.y, self.x1, self.y, L.width, { 255, 43, 214, on and 110 or 55 })
-    D.lane(self.x0, self.y - L.width / 2, self.x1, self.y - L.width / 2, 4, { 255, 255, 255, 200 })
-    D.lane(self.x0, self.y + L.width / 2, self.x1, self.y + L.width / 2, 4, { 255, 255, 255, 200 })
+    -- the whole lane the junk will sweep (its width is what hurts), filling up from the side it comes from, chevrons running its way
+    local a, b = self.x0, self.x1
+    if self.dir == -1 then a, b = self.x1, self.x0 end
+    T.lane(a, self.y, b, self.y, L.width, self.t / L.tell, self.t, T.magenta)
   else
     D.lane(self.x0, self.y, self.x1, self.y, L.width, { 255, 43, 214, 28 })
     local sx, sy = nova.cam.to_screen(self.px, self.y)
     nova.sprite("coil_junk", sx, sy - 10, { w = L.length, h = L.width + 24, flip_x = self.dir == -1 })
+    -- it drags along the floor: sparks and dust trail from its back edge, and a bright line at its front
+    self.fx_t = (self.fx_t or 0) - 1
+    if self.fx_t <= 0 then
+      self.fx_t = 3
+      local back = self.px - self.dir * L.length / 2
+      V.sparks(back, self.y + (math.random() - 0.5) * L.width, 2, { z = 4, angle = self.dir == 1 and math.pi or 0, spread = 0.6, speed = 300, up = 80, life = 0.35, colors = { "spark_white", "spark_yellow" }, size = 18 })
+      V.dust(back, self.y + (math.random() - 0.5) * L.width * 0.8, 1, self.dir, 0, 60)
+    end
+    V.line(self.px + self.dir * L.length / 2, self.y - L.width / 2, self.px + self.dir * L.length / 2, self.y + L.width / 2, 4, { 255, 120, 235, 160 }, 12)
   end
 end
 

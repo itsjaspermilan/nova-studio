@@ -6,7 +6,7 @@
    "wait": 1
   },
   {
-   "until": "nova.named('scrapper').t >= 0.5 - 15/60",
+   "until": "nova.named('scrapper').t >= 0.5 - 20/60",
    "max": 60
   },
   {
@@ -20,7 +20,7 @@
   },
   {
    "wait": 20,
-   "capture": "B: swing lands after the roll's untouchable time"
+   "capture": "B: swing lands after the roll's untouchable time (0.27 s)"
   },
   {
    "lua": "B_HP = nova.named('runner').hp; B_SWINGS = nova.named('scrapper').swings; B_HURT = nova.named('runner').stats.hurt"

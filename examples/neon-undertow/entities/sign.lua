@@ -4,6 +4,7 @@ local H = require("data.hazards")
 local P = require("data.player")
 local Hits = require("lib.hits")
 local F = require("lib.fx")
+local V = require("lib.vfx")
 local Run = require("lib.run")
 local Cards = require("data.cards")
 local Art = require("data.art")
@@ -38,6 +39,9 @@ function Sign:take_hit(damage, dx, dy, knock)
   for _, p in ipairs(list) do p:electrify() end
   nova.sound.play("sign_drop", { volume = P.sfx.sign_drop })
   F.spark(self.x, self.y - 20, 4)
+  V.debris(self.x, self.y, 7, { kind = "glass", speed = 240, up = 320 })
+  V.sparks(self.x, self.y, 12, { z = 20, speed = 320, up = 240, life = 0.8, colors = { "spark_white", "spark_cyan", "spark_yellow" } })
+  for _, pd in ipairs(list) do nova.spawn("zap", self.x, self.y - 14, { x2 = pd.x, y2 = pd.y }) end
   nova.log(string.format("sign drops: %d puddles live", #list))
   return true
 end

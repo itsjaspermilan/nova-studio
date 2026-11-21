@@ -6,7 +6,7 @@ return {
   tile = TILE,
 
   health = 12,                 -- points; 6 hearts in halves
-  walk_speed = 170,            -- units/s (3.5 tiles/s)
+  run_speed = 235,             -- units/s (4.9 tiles/s): a runner runs, not walks (the run clip of the sheet keeps step with it: 8 frames of 45 ms)
 
   -- Baton chain: three hits, the third knocks back. Frames are 1/60 s.
   attack = {
@@ -25,17 +25,17 @@ return {
     shake_frames = 6,
     -- Hit areas, in world units from the runner's hips, per direction: x0, y0, w, h of the box in front of him.
     area = {
-      short = { reach = 12, length = 66, half_width = 33 },
-      long  = { reach = 12, length = 84, half_width = 42 },
+      short = { reach = 12, length = 92, half_width = 48 },
+      long  = { reach = 12, length = 116, half_width = 58 },
     },
     hips = 14,                 -- the arc and its box sit this far above the feet
   },
 
   -- The dash roll.
   roll = {
-    distance_tiles = 3.2,
-    time = 0.28,
-    untouchable = 0.22,
+    distance_tiles = 4.2,
+    time = 0.34,
+    untouchable = 0.27,
     cooldown = 0.6,            -- from the start of a roll to the next one
   },
 

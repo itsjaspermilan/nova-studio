@@ -2,6 +2,7 @@
 //   scripts/env.sh node examples/neon-undertow/tools/art.mjs            (all)       |  ... art.mjs runner patch   (some, by name)
 // The hand-drawn pieces (the crane cab, the dummy, the effects...) are in art_hd.mjs. Cast recipes are HD_ARCHETYPES of
 // studio/mcp/makers/character-hd.ts; Patch and Old Sal are ours.
+import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 const project = new URL("../", import.meta.url).pathname.replace(/\/$/, "");
 const repo = project + "/../..";
@@ -26,4 +27,14 @@ for (const [key, [tool, args]] of Object.entries(calls)) {
   if (want.length && !want.includes(key)) continue;
   const out = execFileSync(repo + "/scripts/nova-tool", ["--project", project, tool, JSON.stringify(args)], { encoding: "utf8", cwd: repo });
   console.log(key + ": " + out.split("\n").filter((l) => !l.startsWith("picture:") && !l.startsWith("[image")).slice(0, 2).map((l) => l.slice(0, 260)).join("\n  "));
+}
+
+// The runner's roll lasts 0.34 s (data/player.lua roll.time): its five frames show 68 ms each, not the maker's 56 (a roll is 0.28 s there),
+// and its run is the maker's own `run_<dir>` clip (8 frames of 45 ms: a cycle keeps step with 235 units a second).
+if (!want.length || want.includes("runner")) {
+  const file = project + "/sprites/runner.sprite.json";
+  const json = JSON.parse(fs.readFileSync(file, "utf8"));
+  for (const t of json.tags) if (t.name.startsWith("roll_")) for (let i = t.from; i <= t.to; i++) json.durations_ms[i] = 68;
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+  console.log("runner: roll frames set to 68 ms");
 }

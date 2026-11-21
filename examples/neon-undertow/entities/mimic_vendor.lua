@@ -3,7 +3,8 @@
 -- cans. It cannot move. Shots and the baton hurt it at any time. Numbers: data/enemies.lua.
 local E = require("data.enemies").mimic_vendor
 local P = require("data.player")
-local D = require("lib.draw")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 local Foe = require("entities.foe")
 local Target = require("lib.target")
 local Look = require("data.look")
@@ -32,6 +33,7 @@ function Mimic:spit()
     local a = self.base + off
     nova.spawn("can", hx, hy + 10, { dx = math.cos(a), dy = math.sin(a), owner = self })
   end
+  V.pop(hx, hy + 10, 1.4, true)
   self.volleys = self.volleys + 1
   nova.sound.play("can_spit", { volume = P.sfx.can_spit })
   nova.log("mimic_vendor spits")
@@ -77,7 +79,8 @@ function Mimic:draw()
     local a = 40 + 50 * (math.floor(self.t * 12) % 2)
     for _, off in ipairs(E.cans.fan) do
       local ang = self.base + off
-      D.lane(hx, hy + 10, hx + math.cos(ang) * E.cans.range, hy + 10 + math.sin(ang) * E.cans.range, 14, { 255, 43, 214, a })
+      -- (the can is 9 units round: the lane is 18 wide, and as long as the can flies)
+      T.lane(hx, hy + 10, hx + math.cos(ang) * E.cans.range, hy + 10 + math.sin(ang) * E.cans.range, 18, self.t / E.tell, self.t, T.magenta)
     end
   end
   nova.Entity.draw(self)

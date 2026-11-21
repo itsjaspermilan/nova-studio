@@ -3,7 +3,8 @@
 -- dead: it is stunned for `stun` seconds and takes the crash. Numbers: data/enemies.lua.
 local E = require("data.enemies").rat_drone
 local P = require("data.player")
-local D = require("lib.draw")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 local Status = require("lib.status")
 local Foe = require("entities.foe")
 local Target = require("lib.target")
@@ -40,6 +41,8 @@ function Drone:crash()
   self.crashes = self.crashes + 1
   nova.sound.play("wall_thud", { volume = P.sfx.wall_thud })
   nova.spawn("fx", self.x + self.dir_x * 14, self.y + self.dir_y * 14, { sprite = "fx_spark", anim = "spark", scale = 3 })
+  V.debris(self.x + self.dir_x * 14, self.y + self.dir_y * 14, 5, { kind = "grey", speed = 240, up = 300 })
+  V.dust(self.x + self.dir_x * 16, self.y + self.dir_y * 16, 3, self.dir_x, self.dir_y, 60)
   nova.log(string.format("rat_drone hits a wall after %.0f", self.travelled))
   self.state = "stunned"
   Status.stun(self, E.stun)
@@ -85,6 +88,13 @@ function Drone:update(dt)
     local step = E.charge.speed * sp * dt
     local blocked = self:move(self.dir_x * step, self.dir_y * step)
     self.travelled = self.travelled + step
+    -- a charge kicks up dust behind it and throws sparks from its wheels
+    self.trail_t = (self.trail_t or 0) - 1
+    if self.trail_t <= 0 then
+      self.trail_t = 3
+      V.dust(self.x, self.y, 1, self.dir_x, self.dir_y, 50)
+      V.sparks(self.x - self.dir_x * 10, self.y, 1, { z = 4, angle = math.atan(-self.dir_y, -self.dir_x), spread = 0.6, speed = 260, up = 50, life = 0.3, colors = { "spark_white", "spark_red" }, size = 16 })
+    end
     if alive and not self.hit_runner and self:overlaps(p) then
       self.hit_runner = p:take_damage(E.charge.damage) or false
       if self.hit_runner then nova.log("rat_drone hit lands") end
@@ -112,7 +122,7 @@ function Drone:draw()
   if self.state == "tell" then
     local len = E.charge.speed * E.charge.max_time
     local a = 28 + 44 * (math.floor(self.t * 12) % 2)
-    D.lane(self.x, self.y, self.x + self.dir_x * len, self.y + self.dir_y * len, E.charge.lane_half * 2, { 255, 43, 214, a })
+    T.lane(self.x, self.y, self.x + self.dir_x * len, self.y + self.dir_y * len, E.charge.lane_half * 2, self.t / E.tell, self.t, T.magenta)
   end
   nova.Entity.draw(self)
   if self.state == "tell" then LK.halo(self.x, self.y - 10, 64, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end

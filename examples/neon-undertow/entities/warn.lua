@@ -1,7 +1,7 @@
 -- The warning mark at a spawn point: a magenta ring that closes in while it pulses, then the enemy steps out of it.
 -- Props: kind (the enemy's entity), time (seconds), props (its settings, optional).
 local J = require("lib.juice")
-local D = require("lib.draw")
+local T = require("lib.tell")
 
 local Warn = nova.entity { tags = { "warn" }, velocity = false, t = 0, time = 0.9 }
 
@@ -36,10 +36,12 @@ end
 
 function Warn:draw()
   local k = self.t / self.time
-  local on = math.floor(self.t * 10) % 2 == 0
-  D.disc(self.x, self.y, 30, { 255, 43, 214, on and 70 or 35 })
-  D.ring(self.x, self.y, 30 + 22 * (1 - k), { 255, 43, 214, on and 255 or 170 }, 5, 24)
-  D.ring(self.x, self.y, 14, { 255, 255, 255, 200 }, 4, 12)
+  -- a mark where something will step out: the footprint (30 units), filling up, with a ring closing in on it and a core that brightens
+  T.disc(self.x, self.y, 30, k, self.t, T.magenta)
+  local cx, cy = nova.cam.to_screen(self.x, self.y)
+  local rr = 30 + 40 * (1 - k)
+  nova.sprite("fx_tell", cx, cy, { frame = 0, w = rr * 2.1, h = rr * 1.68, color = { 255, 120, 235, 180 * (1 - k) + 40 }, blend = "add", lit = false })
+  nova.circle(cx, cy, 12 * k + 2, { 255, 255, 255, 120 + 120 * k }, { soft = true, blend = "add", lit = false, ry = 9 * k + 1.5 })
 end
 
 return Warn

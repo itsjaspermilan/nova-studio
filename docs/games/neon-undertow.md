@@ -40,7 +40,7 @@ cards after every room, and they combine); **the city remembers** (what you bank
 Keyboard twins for the desk: arrows or WASD, J attack, K dash, L ranged, E interact. Everything is played with the pad; no touch.
 
 **The feel to hit:** attack comes out in 5 frames, each hit stops the game for 3 frames and shakes the screen 2 px; a roll covers
-3.2 tiles in 0.28 s with no damage taken for the first 0.22 s; you can cancel the end of any attack into a roll, never a roll into
+4.2 tiles in 0.34 s with no damage taken for the first 0.27 s (owner's note from the handheld, 2026-11-21: the runner runs at 235 units a second, the baton covers 92 by 96 units in front (116 by 116 for the third hit)); you can cancel the end of any attack into a roll, never a roll into
 an attack. Ranged shots cost **charge** (3 pips); every baton hit gives a third of a pip back. That one rule makes the two attacks
 feed each other: shoot to open, close in to reload.
 

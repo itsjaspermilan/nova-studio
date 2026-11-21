@@ -6,6 +6,7 @@ local J = require("lib.juice")
 local Run = require("lib.run")
 local Look = require("data.look")
 local LK = require("lib.look")
+local V = require("lib.vfx")
 
 -- (its picture is the map's own: the room is painted with reflective puddle tiles under every puddle entity, so this one only draws the live part)
 local Puddle = nova.entity { velocity = false, depth = 85, tags = { "puddle" }, live_t = 0 }
@@ -52,9 +53,23 @@ function Puddle:draw()
     local flick = math.floor((self.age or 0) * 18) % 2 == 0
     local fade = self.live_t < 0.5 and self.live_t / 0.5 or 1
     nova.sprite("solid", x, y, { w = H.puddle.w, h = H.puddle.h, color = { 6, 240, 255, (flick and 130 or 80) * fade }, blend = "add", lit = false })
-    for i = 1, 4 do
-      local a = (self.age or 0) * 7 + i * 1.7
-      nova.sprite("solid", x + math.cos(a) * H.puddle.w * 0.3, y + math.sin(a * 1.3) * H.puddle.h * 0.3, { w = 18, h = 4, rotation = a, color = { 255, 255, 255, 230 * fade }, blend = "add", lit = false })
+    -- the edge of the box that hurts (the whole puddle), bright
+    local w, h = H.puddle.w, H.puddle.h
+    local edge = { 6, 240, 255, 230 * fade }
+    nova.rect(x - w / 2, y - h / 2, w, 3, edge, { blend = "add", lit = false })
+    nova.rect(x - w / 2, y + h / 2 - 3, w, 3, edge, { blend = "add", lit = false })
+    nova.rect(x - w / 2, y - h / 2 + 3, 3, h - 6, edge, { blend = "add", lit = false })
+    nova.rect(x + w / 2 - 3, y - h / 2 + 3, 3, h - 6, edge, { blend = "add", lit = false })
+    -- arcs jumping across it: three bolts that jump to new places every few frames
+    local step = math.floor((self.age or 0) * 14)
+    for i = 1, 3 do
+      local s = step * 3 + i
+      local function r(n) return (math.sin(s * 12.9898 + n * 78.233) * 43758.5453) % 1 - 0.5 end
+      V.bolt(self.x + r(1) * w * 0.9, self.y + r(2) * h * 0.9, self.x + r(3) * w * 0.9, self.y + r(4) * h * 0.9, fade * (0.6 + 0.4 * ((step + i) % 2)), nil, s, 6, 14)
+    end
+    if step ~= self.last_step then
+      self.last_step = step
+      V.sparks(self.x + (math.random() - 0.5) * w * 0.8, self.y + (math.random() - 0.5) * h * 0.8, 2, { z = 4, speed = 120, up = 160, life = 0.4, colors = { "spark_white", "spark_cyan" }, size = 16 })
     end
   end
 end

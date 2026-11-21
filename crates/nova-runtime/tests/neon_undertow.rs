@@ -1,6 +1,6 @@
 //! Neon Undertow, slice 1 (the runner): the routes kept in `examples/neon-undertow/tools/r_*.json` are played headless and the
 //! values they print are asserted, so later slices cannot quietly break a rule of the feel: the baton chain (2, 2, 4), the
-//! 5-frame start-up and 3-frame hit-stop, the roll (3.2 tiles, untouchable for 0.22 s, 0.6 s between rolls), the aim walk (35%),
+//! 5-frame start-up and 3-frame hit-stop, the roll (4.2 tiles in 0.34 s, untouchable for 0.27 s, 0.6 s between rolls), the aim walk (35%),
 //! charge pips, health, the blink, the Scrapper's swing, scrap and the restart after dying.
 //!
 //! The route files are the `play` tool's arguments (`route`, ...); this test turns them into a plan (`steps`) and drops what
@@ -252,11 +252,11 @@ fn a_hit_stops_the_game_for_3_frames() {
 }
 
 #[test]
-fn a_roll_covers_3_2_tiles_and_the_next_waits_0_6_seconds() {
+fn a_roll_covers_4_2_tiles_and_the_next_waits_0_6_seconds() {
     let r = run("roll");
     let d = num(&r, "string.format('%.2f', R1)");
     assert!(
-        (d - 3.2 * 48.0).abs() <= 0.2 * 48.0,
+        (d - 4.2 * 48.0).abs() <= 0.2 * 48.0,
         "the roll covered {d} units, {} tiles",
         d / 48.0
     );
@@ -264,7 +264,7 @@ fn a_roll_covers_3_2_tiles_and_the_next_waits_0_6_seconds() {
     let first = s.iter().position(|t| t.4 == "roll").unwrap();
     let rolling = s[first..].iter().take_while(|t| t.4 == "roll").count();
     let t = rolling as f64 / 60.0;
-    assert!((0.27..=0.30).contains(&t), "the roll lasted {t} s");
+    assert!((0.32..=0.36).contains(&t), "the roll lasted {t} s");
     // the second roll starts only after at least 0.6 s of not rolling
     let after = first + rolling;
     let second = s[after..]
@@ -285,7 +285,7 @@ fn a_roll_covers_3_2_tiles_and_the_next_waits_0_6_seconds() {
 }
 
 #[test]
-fn a_swing_landing_in_the_first_0_22_s_of_a_roll_does_nothing_and_one_after_it_hurts() {
+fn a_swing_landing_in_the_first_0_27_s_of_a_roll_does_nothing_and_one_after_it_hurts() {
     // control: the same swing, no roll: 2 points
     let c = run("swing_control");
     assert_eq!(printed(&c, "nova.named('runner').hp"), "10");
@@ -303,7 +303,7 @@ fn a_swing_landing_in_the_first_0_22_s_of_a_roll_does_nothing_and_one_after_it_h
         la.iter().any(|(_, t)| t.starts_with("hit missed: rolling")),
         "{la:?}"
     );
-    // B: it lands 0.233 s in
+    // B: it lands 0.30 s in
     let b = run("roll_late");
     assert_eq!(printed(&b, "B_HP"), "10");
     let lb = log(&b);
@@ -314,7 +314,7 @@ fn a_swing_landing_in_the_first_0_22_s_of_a_roll_does_nothing_and_one_after_it_h
         .1
         .clone();
     assert!(
-        hurt.contains("health 10") && hurt.contains("roll t 0.2"),
+        hurt.contains("health 10") && hurt.contains("roll t 0.3"),
         "{hurt}"
     );
 }
@@ -3724,4 +3724,111 @@ fn soak_seeds_21_to_25() {
 #[test]
 fn soak_seeds_26_to_30() {
     soak(26..=30)
+}
+
+// ---- the feel pass: the runner runs, the baton covers more, the roll goes further ----------------------------------------------------
+
+#[test]
+fn the_runner_runs_at_235_units_a_second_with_the_run_clip_and_dust_at_the_start_and_a_sharp_turn()
+{
+    let r = run("feel_run");
+    // (the speed from the frames in the middle of the run: ten frames' distance, per second)
+    let s = samples(&r);
+    let per_second = (s[40].0 - s[30].0) / 10.0 * 60.0;
+    assert!(
+        (per_second - 235.0).abs() <= 1.0,
+        "he ran {per_second} units a second, not 235"
+    );
+    let dx = num(&r, "string.format('%.1f', RUN_DX)");
+    assert!(
+        (220.0..=236.0).contains(&dx),
+        "a second of holding right covered {dx} units"
+    );
+    assert!(
+        printed(&r, "RUN_CLIP").starts_with("run_right"),
+        "the clip playing was {}",
+        printed(&r, "RUN_CLIP")
+    );
+    assert_eq!(
+        printed(&r, "RUN_DUST"),
+        "1",
+        "one puff when the run started"
+    );
+    assert_eq!(
+        printed(&r, "TURNS"),
+        "1",
+        "and one when he turned round at speed"
+    );
+    // aiming slows him to 35%: he walks, the run clip is for running
+    assert!(
+        printed(&r, "AIM_CLIP").starts_with("walk_"),
+        "while aiming the clip was {}",
+        printed(&r, "AIM_CLIP")
+    );
+}
+
+#[test]
+fn the_baton_hits_92_by_96_in_front_and_116_by_116_for_the_heavy_one_and_the_arc_is_that_box() {
+    let r = run("feel_reach");
+    // a dummy inside the far end (415: its near side at 397 of the box's 404) is hit, one just past it (432) is not
+    assert_eq!(printed(&r, "D_IN.total"), "2", "just inside the length");
+    assert_eq!(printed(&r, "D_OUT.total"), "0", "just past the length");
+    // the side: 48 either way from the hips (y 406): the feet at 465 (top at 450) are in, 480 (top 465) is in too only if the box reached it
+    assert_eq!(
+        printed(&r, "S_IN.total"),
+        "2",
+        "inside the half width, below"
+    );
+    assert_eq!(
+        printed(&r, "S_OUT.total"),
+        "0",
+        "past the half width, below"
+    );
+    assert_eq!(
+        printed(&r, "N_IN.total"),
+        "2",
+        "inside the half width, above"
+    );
+    assert_eq!(
+        printed(&r, "N_OUT.total"),
+        "0",
+        "past the half width, above"
+    );
+    // the picture is the box: its rectangle comes from the box that hurts (width, height, where it starts from the hips)
+    assert_eq!(printed(&r, "SW"), "92,96,12", "the short arc's rectangle");
+    assert_eq!(printed(&r, "LW"), "116,116,12", "the heavy arc's rectangle");
+    assert_eq!(
+        printed(&r, "LEFT_X"),
+        "-104,92",
+        "facing left it starts 12 to the left of the hips and runs 92"
+    );
+}
+
+#[test]
+fn the_roll_goes_4_2_tiles_in_0_34_s_untouchable_for_0_27_s_with_after_images_all_along() {
+    let r = run("feel_roll");
+    let d = num(&r, "string.format('%.1f', ROLL_DIST)");
+    assert!(
+        (d - 4.2 * 48.0).abs() <= 6.0,
+        "the roll covered {d} units, {} tiles",
+        d / 48.0
+    );
+    let s = samples(&r);
+    let first = s.iter().position(|t| t.4 == "roll").unwrap();
+    let rolling = s[first..].iter().take_while(|t| t.4 == "roll").count();
+    let t = rolling as f64 / 60.0;
+    assert!((0.32..=0.36).contains(&t), "the roll lasted {t} s");
+    // 0.30 s in he is not untouchable any more (it ended at 0.27)
+    assert_eq!(printed(&r, "UNT"), "false", "untouchable at 0.30 s");
+    // one after-image every other frame, each 0.3 s: by 0.3 s about nine of them cover more than 150 of the 200 units
+    assert!(
+        num(&r, "GHOSTS") >= 8.0,
+        "{} after-images",
+        printed(&r, "GHOSTS")
+    );
+    assert!(
+        num(&r, "string.format('%.0f', GH_SPAN)") >= 150.0,
+        "the after-images spread over {} units",
+        printed(&r, "string.format('%.0f', GH_SPAN)")
+    );
 }

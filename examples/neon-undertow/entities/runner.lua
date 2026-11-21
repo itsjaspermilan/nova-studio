@@ -5,6 +5,7 @@ local J = require("lib.juice")
 local C = require("lib.combat")
 local Run = require("lib.run")
 local Hits = require("lib.hits")
+local V = require("lib.vfx")
 local Cards = require("data.cards")
 local A, R, AIM, CH = P.attack, P.roll, P.aim, P.charge
 local N = Cards.num
@@ -137,6 +138,7 @@ function Runner:start_roll()
   self.stats.rolls = self.stats.rolls + 1
   self:face(dx, dy)
   self:play("roll_" .. self.facing, { restart = true })
+  V.dust(self.x, self.y - 2, 4, dx, dy, 52)
   nova.sound.play("roll", { volume = P.sfx.roll })
 end
 
@@ -327,7 +329,8 @@ function Runner:update_roll(dt)
   self.roll_t = self.roll_t + step
   self:play("roll_" .. self.facing)   -- (the sheet's tumble, 5 frames of 56 ms: the roll's 0.28 s)
   if math.floor(self.roll_t * 60 + 0.5) % 2 == 0 then
-    local g = nova.spawn("ghost", self.x, self.y, { sprite = "runner", frame = self.frame, flip_x = self.flip_x, sx = 1.5, sy = 1.5, pivot = { 0.5, 0.906 } })
+    -- (an after-image every other frame, 20 units apart on the 4.2-tile roll, each lasting 0.3 s: the whole path is covered)
+    local g = nova.spawn("ghost", self.x, self.y, { sprite = "runner", frame = self.frame, flip_x = self.flip_x, sx = 1.5, sy = 1.5, pivot = { 0.5, 0.906 }, life = 0.3 })
     g.depth = -self.y + 1
   end
   -- Shock Wake: rolling through an enemy zaps it (once per roll)
@@ -351,6 +354,7 @@ function Runner:update_roll(dt)
     self.state = "free"
     self.untouchable = false
     self.roll_end = Hits.clock
+    V.dust(self.x, self.y - 2, 3, self.roll_dx, self.roll_dy, 44)
     self:unstick()
     if Run.mods.slipstream > 0 then self.slip_t = N.slipstream.time end
     -- Second Wind: more rolls before the wait (the wait starts after the last one; a pause between them also ends the run of rolls)
@@ -393,7 +397,7 @@ function Runner:update_attack(dt, sx, sy, len, dash, attack)
   local mult = A.move_mult
   if mult > 0 and len > 0.1 then
     local sm = self:speed_mult()
-    self:move(sx * P.walk_speed * mult * sm * dt, sy * P.walk_speed * mult * sm * dt)
+    self:move(sx * P.run_speed * mult * sm * dt, sy * P.run_speed * mult * sm * dt)
   end
   if self.f >= done then
     if self.queued and self.chain < #A.chain then
@@ -439,12 +443,37 @@ function Runner:update_free(dt, sx, sy, len, dash, attack)
   if not self.aiming then self.aim_t, self.slug_ready = 0, false end
   if len > 0.1 then
     local sm = self:speed_mult()
-    self:move(sx * P.walk_speed * mult * sm * dt, sy * P.walk_speed * mult * sm * dt)
+    self:move(sx * P.run_speed * mult * sm * dt, sy * P.run_speed * mult * sm * dt)
     if not self.aiming then self:face(sx, sy) end
   end
+  -- running (the sheet's run clip: 8 frames of 45 ms, a stride that keeps step with run_speed); while aiming he only walks
+  local running = len > 0.1 and not self.aiming
+  if running then self:dust_for_run(dt, sx / len, sy / len) else self.run_on = false end
   if self.hurt_t > 0 then self:play("hurt_" .. self.facing)
+  elseif running then self:play("run_" .. self.facing)
   elseif len > 0.1 then self:play("walk_" .. self.facing)
   else self:play("idle_" .. self.facing) end
+end
+
+-- A small puff at the feet when a run starts and when the runner turns sharply (more than about 110 degrees from where he was heading).
+function Runner:dust_for_run(dt, dx, dy)
+  local a = math.atan(dy, dx)
+  self.turn_cd = math.max(0, (self.turn_cd or 0) - dt)
+  if not self.run_on then
+    self.run_on, self.run_a = true, a
+    V.dust(self.x, self.y - 2, 3, dx, dy, 46)
+    self.dust_starts = (self.dust_starts or 0) + 1
+    return
+  end
+  local diff = (a - self.run_a + math.pi) % (2 * math.pi) - math.pi
+  if math.abs(diff) > 1.9 and self.turn_cd <= 0 then
+    self.turn_cd, self.run_a = 0.25, a
+    V.dust(self.x, self.y - 2, 4, dx, dy, 52)
+    self.dust_turns = (self.dust_turns or 0) + 1
+  else
+    -- (the heading the turn is measured from follows the stick a little slower than it moves)
+    self.run_a = self.run_a + math.max(-9 * dt, math.min(9 * dt, diff))
+  end
 end
 
 return Runner

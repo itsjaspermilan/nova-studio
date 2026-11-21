@@ -261,3 +261,28 @@ What I wanted, what I tried, what would have made it one step. Most costly first
    terrain; I paint three reflective cells under each object (`tools/paint.mjs`) so they agree. One step: `scene_write` `pools: [{ x, y, w, h }]`.
 9. **`sprite_write` rejects `"outline": null`** (a frame with no outline had to leave the key out) and the film strip `play` cannot take an `out`
    from the command line, so `tools/look/shoot.mjs` rewrites each route file. Small.
+
+# Friction log, the feel pass (a runner that runs, a bigger baton, a longer roll, real explosions)
+
+1. **`character_make` (detailed) had no run clip.** Idle, walk (6 frames, a stroll), attack, hurt, roll and tell only; a walk at 235 units a second skates
+   and looks like a march. Drawing a run on top of the maker's pixels (shifting the coat, the legs) is not possible: the legs and the coat are one blob
+   of pixels. What worked: the maker draws its figure from a rig (`rigOf` in `studio/mcp/makers/character-hd.ts`), so I added a `run` animation there (8
+   frames of 45 ms: a 10 degree lean, a 15 pixel stride each way, a frame in the air with both feet off the ground and the legs split, hands up to the
+   chest and back past the hip, the baton trailing, the coat's hem streaming out behind) and appended it to `HD_ANIMS`. Every detailed character now
+   gets `run_<dir>` the next time it is made (the enemies' sheets are untouched until `art.mjs` is run for them). One step: `character_make { "anims": ["run"] }`
+   or a `speed` that makes the clip's stride match the speed the game moves at, as `character3d_make` answers.
+2. **The roll's frame time cannot be set per game.** The maker's roll is 5 frames of 56 ms (0.28 s); the game's roll is 0.34 s now. `art.mjs` rewrites the
+   `durations_ms` of the runner's `roll_*` tags after the maker runs. One step: `character_make { "roll_ms": 68 }`.
+3. **`sprite_write` has no soft edges.** Glows, afterimages and smoke want alpha and blurred edges; `sprite_write` takes characters from a palette. I wrote
+   the effects' pictures with a PNG writer of my own (`tools/pnglib.mjs`, `tools/fxkit.mjs`: seeded noise, discs, lines, an outline, a blur) and their
+   `.sprite.json` by hand. One step: `sprite_write { "pixels": "<base64 rgba>" }` or a `png` field, and the sprite maker's shapes with `soft`.
+4. **`nova.sprite`'s description does not list `flip_x` / `flip_y`** (the game already passes `flip_x`; I found it by grep). Unsure how a flip combines with `rotation`, a crescent that sweeps the other way for the next hit has its mirrored frames drawn into the sheet (`flip_y` exists on
+   an entity). One step: list the flip options under `nova.sprite` and say which comes first, the flip or the turn.
+5. **`nova.ui.line` is the UI layer and has no `blend`.** Lightning drawn in the world with additive glow needed a stretched, turned square (`sprites/solid`) per
+   segment (`V.line`, as `D.lane` did). One step: `nova.line(x1, y1, x2, y2, w, color, { blend = "add" })` in the world layer.
+6. **A world-space hit box is not a thing the code can ask for.** The swing's box is its `hitbox` in sprite pixels times `sx`; every effect that must be
+   exactly that big recomputes it (`V.rect_of`). One step: `entity:hitbox_world()` returning x, y, w, h.
+7. **Long Reach's double scale (not fixed, it is not in this assignment).** The runner multiplies the area by the card's 1.3 and `entities/swing.lua`
+   multiplies `sx` by it again, so the box is 1.69 times as long, not 1.3 (the drawn crescent is made from the real box, so it is right either way).
+8. **`play`'s `crop_to` needs an entity that is still alive.** An explosion's middle is where something just died, so the gallery (`tools/feel.mjs`) spawns a
+   `spot` there and crops to it. One step: `crop_to: [x, y]` in world units.

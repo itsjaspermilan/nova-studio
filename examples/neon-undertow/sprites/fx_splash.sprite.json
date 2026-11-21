@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "image": "fx_splash.png",
+  "frame_width": 64,
+  "frame_height": 64,
+  "columns": 7,
+  "frames": 7,
+  "frame_duration_ms": 55,
+  "tags": [
+    {
+      "name": "splash",
+      "from": 0,
+      "to": 6,
+      "loop": false
+    }
+  ]
+}

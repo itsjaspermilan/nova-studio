@@ -9,6 +9,7 @@ local Status = require("lib.status")
 local Target = require("lib.target")
 local Look = require("data.look")
 local LK = require("lib.look")
+local T = require("lib.tell")
 
 local Scrapper = nova.entity {
   sprite = "scrapper", anim = "idle_down", tags = { "hurtable", "enemy", "scrapper" },
@@ -143,10 +144,9 @@ function Scrapper:draw()
   if self.state == "tell" then
     local hx, hy = self:hips()
     local b = C.box(self.facing, E.area)
-    local x, y = nova.cam.to_screen(hx + b[1] * C.px, hy + b[2] * C.px)
-    local a = Look.zone.alpha_low + (Look.zone.alpha_high - Look.zone.alpha_low) * (math.floor(self.t * 12) % 2)
-    local z = Look.zone.color
-    nova.rect(x, y, b[3] * C.px, b[4] * C.px, { z[1], z[2], z[3], a }, { blend = "add", lit = false })
+    local v = C.vec[self.facing]
+    -- the box that will hurt, to the unit (E.area), filling up as the swing nears
+    T.box(hx + b[1] * C.px, hy + b[2] * C.px, b[3] * C.px, b[4] * C.px, v[1], v[2], self.t / E.tell, self.t, Look.zone.color)
   end
   nova.Entity.draw(self)
   if self.state == "tell" then LK.halo(self.x, self.y - 40, 72, Look.tell_halo, 120 + 90 * (math.floor(self.t * 14) % 2)) end

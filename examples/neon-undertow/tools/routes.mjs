@@ -35,7 +35,7 @@ out("hitstop", {
   print: [H],
 });
 
-// ---- 3. the roll: 3.2 tiles; the second roll waits 0.6 s after the first ends
+// ---- 3. the roll: 4.2 tiles in 0.34 s; the second roll waits 0.6 s after the first ends
 out("roll", {
   start_scene: "test_room",
   lua: place(200, 470, "right") + "\n" + PROBE + "; X0 = r.x",
@@ -74,9 +74,9 @@ out("roll_late", {
   lua: scrapperSetup(500, 470),
   route: [
     { wait: 1 },
-    { until: "nova.named('scrapper').t >= 0.5 - 15/60", max: 60 },
+    { until: "nova.named('scrapper').t >= 0.5 - 20/60", max: 60 },
     { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 5 },
-    { wait: 20, capture: "B: swing lands after the roll's untouchable time" },
+    { wait: 20, capture: "B: swing lands after the roll's untouchable time (0.27 s)" },
     { lua: "B_HP = nova.named('runner').hp; B_SWINGS = nova.named('scrapper').swings; B_HURT = nova.named('runner').stats.hurt" },
   ],
   print: ["B_HP", "B_SWINGS", "B_HURT"],
@@ -275,10 +275,10 @@ out("card_live_wire", {
   print: ["BASE_D1", "BASE_D2", "BASE_D3", "MID_D2", "MID_D3", "END_D1", "END_D2", "END_D3"],
 });
 
-// Long Reach: a dummy 105 units away is out of the baton's short arc (78) and inside it with the card (98).
+// Long Reach: a dummy 135 units away is out of the baton's short arc (104 from the hips) and inside it with the card.
 out("card_long_reach", {
   start_scene: "test_lab",
-  lua: `${labPlace(300, 420)}; ${dum("d1", 405, 420)}`,
+  lua: `${labPlace(300, 420)}; ${dum("d1", 435, 420)}`,
   route: [
     { wait: 3 }, { press: "attack" }, { wait: 30 },
     { lua: `BASE = ${tot("d1")}; ${give("long_reach")}; REACH = ${RUN}.mods.reach` }, { wait: 60 },
@@ -1670,7 +1670,7 @@ card4("burn_rubber", { lua: `${stand(200, 420)}; ${stillFoe("S1", 290, 420)}; ${
 card4("phase", { lua: `${stand(300, 420)}; ${give("phase")}; SC = nova.spawn('scrapper', 900, 800); SC.hp = 99; SC.max_hp = 99; SC.state = 'recover'; SC.t = 0`,
   route: [{ wait: 2 }, { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 },
     { until: "nova.named('runner').roll_t >= 0.04", max: 20 }, { lua: `local ok = ${R0}:take_damage(2); EARLY = string.format('%.2f', ${J}.slow_t)` },
-    { until: "nova.named('runner').roll_t >= 0.14", max: 20 }, { lua: `${R0}:take_damage(2); LATE = string.format('%.2f', ${J}.slow_t); PERFECT = ${R0}.stats.perfect; T0 = SC.t` }, { wait: 30, capture: "time slows for the enemies" },
+    { until: "nova.named('runner').roll_t >= 0.20", max: 20 }, { lua: `${R0}:take_damage(2); LATE = string.format('%.2f', ${J}.slow_t); PERFECT = ${R0}.stats.perfect; T0 = SC.t` }, { wait: 30, capture: "time slows for the enemies" },
     { lua: `SLOWED = string.format('%.2f', SC.t - T0); T1 = SC.t` }, { wait: 60 }, { lua: `SLOW_END = string.format('%.2f', ${J}.slow_t); T2 = SC.t` }, { wait: 30 }, { lua: `NORMAL = string.format('%.2f', SC.t - T2)` }],
   print: ["EARLY", "LATE", "PERFECT", "SLOWED", "SLOW_END", "NORMAL"] });
 // ---- Ghost in the Shell: once a run a killing blow leaves 1 point and 2 s untouchable; the second kills
@@ -1886,3 +1886,55 @@ for (let seed = 1; seed <= 30; seed++) {
   out("look_s4_codex", { start_scene: "den", lua: `${META}.upgrades.deeper_deck = 1; ${META}.seen_cards = { live_wire = true, scatter = true, plating = true, metronome = true }; ${META}.last = 'dead'; ${META}.started = true`, route: [...denWake, { walk_to: "codex", who: "runner", max: 900 }, { wait: 3, capture: "the terminal beside LULLABY's screen" }, { press: "interact" }, { wait: 4, capture: "the codex: a seen card" },
     { hold: ["down"], frames: 4 }, { wait: 3, capture: "unseen: ???" }, ...Array.from({ length: 14 }, () => [{ hold: ["down"], frames: 4 }, { wait: 2 }]).flat(), { wait: 3, capture: "a locked card (greyed, its tier)" }, ...Array.from({ length: 7 }, () => [{ hold: ["down"], frames: 4 }, { wait: 2 }]).flat(), { wait: 3, capture: "a jinx, locked" }], out: "build/look_s4_codex", columns: 3 });
 }
+
+// =====================================================================================================================
+// The feel pass: the runner runs (235 units a second, the run clip, dust), the baton's bigger area (and the arc that is its box), the longer roll.
+// =====================================================================================================================
+// A second of holding right in the test room: the distance is the run speed; the clip playing is the run's; a puff of dust at the start.
+out("feel_run", {
+  start_scene: "test_room",
+  lua: place(200, 470, "right") + "; r.hp = 99\n" + PROBE,
+  route: [
+    { wait: 3 },
+    { lua: "X0 = nova.named('runner').x" },
+    { hold: ["right"], frames: 60, capture: "running" },
+    { lua: "RUN_DX = nova.named('runner').x - X0; RUN_CLIP = tostring(nova.named('runner')._anim.tag); RUN_DUST = nova.named('runner').dust_starts or 0; RUN_PUFFS = nova.count('vfx')" },
+    { hold: ["left"], frames: 12 },
+    { lua: "TURNS = nova.named('runner').dust_turns or 0" },
+    { wait: 6 },
+    { hold: ["ranged", "right"], frames: 12 },
+    { lua: "AIM_CLIP = tostring(nova.named('runner')._anim.tag)" },
+  ],
+  print: ["string.format('%.1f', RUN_DX)", "RUN_CLIP", "RUN_DUST", "TURNS", "AIM_CLIP", H],
+});
+// The baton's short arc: a dummy just inside the box's far end (and one just past it), one at the side inside the half width (and two past it).
+// The picture's rectangle is the box: read from the swing itself.
+out("feel_reach", {
+  start_scene: "test_lab",
+  lua: `${labPlace(300, 420)}; ${dum("d1", 1300, 120)}; ${dum("d2", 1300, 420)}; ${dum("d3", 1300, 760)}
+D_IN = nova.spawn('dummy', 415, 420); D_OUT = nova.spawn('dummy', 432, 420); S_IN = nova.spawn('dummy', 360, 465); S_OUT = nova.spawn('dummy', 360, 480); N_IN = nova.spawn('dummy', 360, 362); N_OUT = nova.spawn('dummy', 360, 345)`,
+  route: [
+    { wait: 3 }, { press: "attack" },
+    { until: "nova.count('swing') > 0", max: 30 },
+    { lua: "local s = nova.first('swing'); SW = string.format('%.0f,%.0f,%.0f', s.rect.w, s.rect.h, s.rect.x0 - 300); SHORT_ALONG = s.rect.along" },
+    { wait: 30, capture: "the short arc" },
+    { lua: `local P = require('data.player'); LONG = nova.spawn('swing', 300, 406, { dir = 'right', damage = 0, area = P.attack.area.long, arc = 'heavy', chain = 3 }); LW = string.format('%.0f,%.0f,%.0f', LONG.rect.w, LONG.rect.h, LONG.rect.x0 - 300)
+LEFT = nova.spawn('swing', 300, 406, { dir = 'left', damage = 0, area = P.attack.area.short, arc = 'swing', chain = 1 }); LEFT_X = string.format('%.0f,%.0f', LEFT.rect.x0 - 300, LEFT.rect.w)` },
+    { wait: 3, capture: "the heavy arc" },
+  ],
+  print: ["D_IN.total", "D_OUT.total", "S_IN.total", "S_OUT.total", "N_IN.total", "N_OUT.total", "SW", "LW", "LEFT_X"],
+});
+// The roll: 4.2 tiles in 0.34 s, untouchable for 0.27 s; the after-images cover the path (counted at the end of the roll).
+out("feel_roll", {
+  start_scene: "test_room",
+  lua: place(200, 470, "right") + "; r.hp = 99\n" + PROBE + "; X0 = r.x",
+  route: [
+    { wait: 3 },
+    { hold: ["right"], tap: "dash", tap_every: 200, until: "nova.named('runner').state == 'roll'", max: 6 },
+    { until: "nova.named('runner').roll_t >= 0.3", max: 40 },
+    { lua: "GHOSTS = nova.count('ghost'); GH_SPAN = 0; local lo, hi = 1e9, -1e9; for _, g in ipairs(nova.all('ghost')) do lo = math.min(lo, g.x); hi = math.max(hi, g.x) end; GH_SPAN = hi - lo; UNT = tostring(nova.named('runner').untouchable)" },
+    { until: "nova.named('runner').state ~= 'roll'", max: 40 },
+    { lua: "ROLL_DIST = nova.named('runner').x - X0" },
+  ],
+  print: ["GHOSTS", "string.format('%.0f', GH_SPAN)", "UNT", "string.format('%.1f', ROLL_DIST)", H],
+});

@@ -8,6 +8,8 @@ local J = require("lib.juice")
 local D = require("lib.draw")
 local Look = require("data.look")
 local LK = require("lib.look")
+local T = require("lib.tell")
+local V = require("lib.vfx")
 
 local Tram = nova.entity { tags = { "tram" }, velocity = false, dir = "h", span = 1920, phase = 0, state = "idle", front = 0 }
 
@@ -27,6 +29,8 @@ function Tram:flatten(e, what)
   local a = self:along(e)
   if a > self.front - H.length - H.margin and a < self.front + H.margin and math.abs(self:across(e)) <= H.half + H.margin then
     self.hit[e] = true
+    V.hit(e.x, e.y - 26, self.dir == "h" and 1 or 0, self.dir == "h" and 0 or 1, { size = 76, n = 16, magenta = what ~= "runner" })
+    V.debris(e.x, e.y, 4, { kind = "grey", speed = 240 })
     if what == "runner" then
       if e:take_damage(H.damage) then nova.log("tram flattens runner") end
     else
@@ -88,7 +92,9 @@ function Tram:draw()
     local on = math.floor(self.c * 8) % 2 == 0
     local x0, y0 = self.x, self.y
     local x1, y1 = h and (self.x + self.span) or self.x, h and self.y or (self.y + self.span)
-    D.lane(x0, y0, x1, y1, H.half * 2, { 255, 43, 214, on and 70 or 25 })
+    -- the band that flattens (half + margin each side of the rail), filling along its whole length as the tram nears, chevrons running its way
+    local k = (self.c - (H.period - H.warn)) / H.warn
+    T.lane(x0, y0, x1, y1, (H.half + H.margin) * 2, k, self.c, T.magenta)
     for _, pt in ipairs({ { x0, y0 }, { x1, y1 } }) do
       local sx, sy = nova.cam.to_screen(pt[1] + (h and (pt[1] == x0 and -30 or 30) or 0), pt[2] + (h and 0 or (pt[2] == y0 and -30 or 30)))
       nova.sprite("solid", sx, sy, { w = 26, h = 26, color = on and { 255, 190, 40 } or { 120, 40, 20 }, blend = "add", lit = false })
@@ -105,6 +111,22 @@ function Tram:draw()
     nova.light2d(fx + (h and 70 or 0), fy + (h and 0 or 70), { radius = Look.tram.radius, radius_y = Look.tram.radius * (h and 0.75 or 1), color = Look.tram.color, intensity = Look.tram.intensity })
     nova.light2d(self.x + (h and self.front - H.length / 2 or 0), self.y + (h and 0 or self.front - H.length / 2), { radius = 150, color = Look.accent.magenta, intensity = 1.2 })
     LK.halo(fx, fy, 34, Look.tram.color, 180)
+    -- speed: white streaks trailing from it, sparks from its wheels on the rail, a gust of dust ahead
+    local ux, uy = h and 1 or 0, h and 0 or 1
+    for i = -2, 2 do
+      local off = i * H.half * 0.35
+      local sx0, sy0 = fx - ux * (H.length * 0.8 + math.abs(i) * 30) - uy * off, fy - uy * (H.length * 0.8 + math.abs(i) * 30) + ux * off
+      V.line(sx0, sy0, fx - ux * (H.length * 0.95) - uy * off, fy - uy * (H.length * 0.95) + ux * off, 3, { 255, 255, 255, 60 }, 14)
+    end
+    self.fx_t = (self.fx_t or 0) - 1
+    if self.fx_t <= 0 then
+      self.fx_t = 2
+      for _, s in ipairs({ -1, 1 }) do
+        V.sparks(fx - ux * H.length * (0.2 + math.random() * 0.6) - uy * s * H.half * 0.7, fy - uy * H.length * (0.2 + math.random() * 0.6) + ux * s * H.half * 0.7, 2,
+          { z = 4, angle = h and math.pi or -math.pi / 2, spread = 0.7, speed = 300, up = 60, life = 0.35, colors = { "spark_white", "spark_yellow" }, size = 18 })
+      end
+      V.dust(fx + ux * 20, fy + uy * 20, 1, -ux, -uy, 70)
+    end
   end
 end
 
