@@ -1374,3 +1374,310 @@ fn a_stage_turns_from_gravel_to_tarmac() {
         "{log:?}"
     );
 }
+
+// ---- the rivals and the suspension (2026-11-21) -----------------------------------------------------------------------------------
+// These start a race straight from the game's state (lib/state.lua) instead of through the menus, so they do not depend on the title
+// screen's pages. `PROBE` (Lua, below) watches every car each frame: its lap times, its speed and line at each waypoint of its second
+// lap, the frames it spent on the grass, hitting things or stuck.
+
+/// The index of a course in its list (circuits or stages), 1-based, and whether it is a stage.
+fn course_index(course: &str) -> (usize, bool) {
+    if let Some(i) = CIRCUITS.iter().position(|c| *c == course) {
+        return (i + 1, false);
+    }
+    let i = STAGES
+        .iter()
+        .position(|c| *c == course)
+        .unwrap_or_else(|| panic!("no course {course}"));
+    (i + 1, true)
+}
+
+/// A game in a race on `course` (a circuit or a stage), in car `car` (1-based into `state.cars`), `mode` "race", "trial" or "rally",
+/// after `setup_lua` (run once the state is set, before the scene is built), at the green light. The probe is installed.
+fn race_direct(
+    course: &str,
+    car: usize,
+    mode: &str,
+    laps: i32,
+    setup_lua: &str,
+) -> (Game, Vec<String>) {
+    let mut g = load_car(car);
+    frame(&mut g, &[]);
+    let (index, stage) = course_index(course);
+    let field = if stage { "stage" } else { "track" };
+    g.run_lua(
+        &format!(
+            "local s = require('lib.state'); s.mode = '{mode}'; s.{field} = {index}; s.laps = {laps}; s.car = {car}; {setup_lua}; nova.goto_scene('{course}')"
+        ),
+        "test setup",
+    )
+    .expect("the race is set up");
+    g.run_lua(PROBE, "probe").expect("the probe loads");
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 10, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    (g, log)
+}
+
+const PROBE: &str = r#"
+PROBE_DATA = { cars = {}, frames = 0 }
+function PROBE()
+  local sc = nova.scene_now()
+  if not sc or not sc.cars or sc.phase ~= "racing" then return end
+  PROBE_DATA.frames = PROBE_DATA.frames + 1
+  for _, c in ipairs(sc.cars) do
+    local p = PROBE_DATA.cars[c.name]
+    if not p then
+      p = { laps = {}, trace = {}, ctl = {}, lat = {}, rough = 0, hits = 0, stuck = 0, frames = 0, lap = nil, t0 = 0, dmg = c.damage }
+      PROBE_DATA.cars[c.name] = p
+    end
+    if c.finish_time and not p.finished then
+      p.finished = true
+      if p.lap and p.lap >= 0 and not sc.stage then p.laps[#p.laps + 1] = c.finish_time - p.t0 end
+      if sc.stage then p.laps[#p.laps + 1] = c.finish_time end
+    end
+    if not c.finish_time then
+      local lap = math.floor(c.progress / sc.length)
+      if p.lap == nil then p.lap = lap end
+      if lap > p.lap then
+        if p.lap >= 0 then p.laps[#p.laps + 1] = sc.clock - p.t0 end
+        p.lap, p.t0 = lap, sc.clock
+      end
+      p.frames = p.frames + 1
+      if c.surface == "rough" then p.rough = p.rough + 1 end
+      if c.damage > p.dmg + 1e-6 then p.hits = p.hits + 1 end
+      p.dmg = c.damage
+      if (c.stuck or 0) > 0.3 then p.stuck = p.stuck + 1 end
+      if lap == (sc.stage and 0 or 1) then
+        local wp = c.waypoint
+        p.trace[wp] = c.speed
+        p.ctl[wp] = (c.ctl.throttle or 0) - (c.ctl.brake or 0)
+        p.lat[wp] = c.left or 0
+      end
+    end
+  end
+end
+function PROBE_REPORT()
+  local track = require("lib.track")
+  local pts = {}
+  for i = 1, track.count() do local q = track.point(i); pts[#pts + 1] = string.format("%.2f:%.5f:%.2f", q.seg, q.k, q.w) end
+  nova.log("PROBE track " .. table.concat(pts, " "))
+  for name, p in pairs(PROBE_DATA.cars) do
+    local laps = {}
+    for _, t in ipairs(p.laps) do laps[#laps + 1] = string.format("%.2f", t) end
+    nova.log(string.format("PROBE car %s laps %s rough %.1f%% hits %d stuck %.1fs", name, table.concat(laps, ","), 100 * p.rough / math.max(1, p.frames), p.hits, p.stuck / 60))
+    local tr = {}
+    for i = 1, track.count() do tr[#tr + 1] = string.format("%.1f:%.2f:%.1f", p.trace[i] or -1, p.ctl[i] or 0, p.lat[i] or 0) end
+    nova.log("PROBE trace " .. name .. " " .. table.concat(tr, " "))
+  end
+end
+"#;
+
+/// Plays a race set up by `race_direct` until every car has finished (or `max_seconds`), running the probe each frame (and
+/// `each_frame` before it). Returns the mean Lua time of a frame in milliseconds; the log gets the probe's report.
+fn run_probed(
+    g: &mut Game,
+    log: &mut Vec<String>,
+    max_seconds: usize,
+    each_frame: Option<&str>,
+) -> f64 {
+    let mut ms = 0.0;
+    let mut n = 0usize;
+    for _ in 0..60 * max_seconds {
+        frame(g, &[]);
+        ms += g.last_update.as_secs_f64() * 1000.0;
+        n += 1;
+        if let Some(lua) = each_frame {
+            g.run_lua(lua, "each frame").expect("each-frame lua");
+        }
+        g.run_lua("PROBE()", "probe").expect("probe");
+        log.extend(g.take_log());
+        if g.lua_truth(ALL_DONE).unwrap_or(false) {
+            break;
+        }
+    }
+    g.run_lua("PROBE_REPORT()", "probe").expect("probe report");
+    log.extend(g.take_log());
+    ms / n.max(1) as f64
+}
+const ALL_DONE: &str = "(function() local sc = nova.scene_now(); if not sc.cars then return true end for _, c in ipairs(sc.cars) do if not c.finish_time then return false end end return true end)()";
+
+/// One car of the probe's report: its laps, its summary line, and its trace (speed, throttle - brake, how far left of the middle) at
+/// each waypoint of its second lap.
+struct ProbeCar {
+    laps: Vec<f32>,
+    summary: String,
+    trace: Vec<(f32, f32, f32)>,
+}
+type Trace = Vec<(f32, f32, f32)>;
+fn probe_cars(log: &[String]) -> (Trace, std::collections::BTreeMap<String, ProbeCar>) {
+    let triple = |s: &str| -> (f32, f32, f32) {
+        let mut it = s.split(':').map(|v| v.parse::<f32>().unwrap_or(0.0));
+        (
+            it.next().unwrap_or(0.0),
+            it.next().unwrap_or(0.0),
+            it.next().unwrap_or(0.0),
+        )
+    };
+    let track: Trace = log
+        .iter()
+        .rev()
+        .find_map(|l| l.strip_prefix("PROBE track "))
+        .map(|r| r.split(' ').map(triple).collect())
+        .unwrap_or_default();
+    let mut cars = std::collections::BTreeMap::new();
+    for l in log.iter() {
+        if let Some(r) = l.strip_prefix("PROBE car ") {
+            let name = r.split(' ').next().unwrap().to_string();
+            let laps = r
+                .split(" laps ")
+                .nth(1)
+                .unwrap()
+                .split(' ')
+                .next()
+                .unwrap()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse().unwrap())
+                .collect();
+            cars.insert(
+                name,
+                ProbeCar {
+                    laps,
+                    summary: r.to_string(),
+                    trace: Vec::new(),
+                },
+            );
+        }
+    }
+    for l in log.iter() {
+        if let Some(r) = l.strip_prefix("PROBE trace ") {
+            let (name, rest) = r.split_once(' ').unwrap();
+            if let Some(c) = cars.get_mut(name) {
+                c.trace = rest.split(' ').map(triple).collect();
+            }
+        }
+    }
+    (track, cars)
+}
+
+/// Where a car loses time against a reference trace, in seconds, by the kind of road: straights (the reference on the throttle on
+/// straight road), braking (the reference on the brake), corners (the reference off the throttle in a bend) and the rest (exits:
+/// the reference back on the throttle in a bend).
+fn time_lost(track: &[(f32, f32, f32)], car: &[(f32, f32, f32)], reference: &[(f32, f32, f32)]) -> [f32; 4] {
+    let mut lost = [0.0f32; 4];
+    let n = track.len().min(car.len()).min(reference.len());
+    for i in 0..n {
+        let (seg, k, _) = track[i];
+        let (v, _, _) = car[i];
+        let (vr, ctl_r, _) = reference[i];
+        if v <= 0.5 || vr <= 0.5 {
+            continue;
+        }
+        let dt = seg / v - seg / vr;
+        let kind = if k.abs() < 0.006 && ctl_r > 0.5 {
+            0
+        } else if ctl_r < -0.05 {
+            1
+        } else if ctl_r <= 0.5 {
+            2
+        } else {
+            3
+        };
+        lost[kind] += dt;
+    }
+    lost
+}
+
+fn best(laps: &[f32]) -> f32 {
+    laps.iter().cloned().fold(f32::MAX, f32::min)
+}
+
+/// How the rivals drive, against the reference (the computer driving the player's car at its best, alone, in a time trial): each
+/// one's laps, its time off the road, its hits, and where it loses time. Run on purpose:
+/// `cargo test --release -p nova-runtime --test rally rival_report -- --ignored --nocapture`
+/// (COURSES=pine_ridge,... for some; CARS=1,2 for the cars, as numbers into `state.cars`; RIVALS=easy|normal|hard).
+#[test]
+#[ignore]
+fn rival_report() {
+    let only = std::env::var("COURSES")
+        .unwrap_or("pine_ridge,ridge_gp,dust_valley,frost_pass".into());
+    let cars = std::env::var("CARS").unwrap_or("1,2".into());
+    let level = std::env::var("RIVALS").unwrap_or("normal".into());
+    let laps: i32 = std::env::var("LAPS").ok().and_then(|l| l.parse().ok()).unwrap_or(3);
+    for course in only.split(',') {
+        for car in cars.split(',').map(|c| c.parse::<usize>().unwrap()) {
+            let setup = format!("s.rival_level = '{level}'; {}", std::env::var("SETUP").unwrap_or_default());
+            let (mut g, mut log) = race_direct(course, car, "trial", 2, &setup);
+            g.run_lua("nova.scene_now().player.autopilot = true", "autopilot")
+                .unwrap();
+            let _ = run_probed(&mut g, &mut log, 60 * 6, None);
+            let (_, refc) = probe_cars(&log);
+            let reference = refc.get("You").expect("the reference");
+            let best_ref = best(&reference.laps);
+            let ideal = log
+                .iter()
+                .find(|l| l.starts_with("rivals: ideal"))
+                .cloned()
+                .unwrap_or_default();
+            println!(
+                "REF {course} car {car}: {} {ideal}",
+                reference.summary
+            );
+            let (mut g, mut log) = race_direct(course, car, "race", laps, &setup);
+            g.run_lua("nova.scene_now().player.autopilot = true", "autopilot")
+                .unwrap();
+            let ms = run_probed(&mut g, &mut log, 60 * 12, None);
+            let (track, cars) = probe_cars(&log);
+            for (name, c) in cars.iter() {
+                let b = best(&c.laps);
+                let lost = time_lost(&track, &c.trace, &reference.trace);
+                println!(
+                    "  {course} car {car} {name:6} best {b:6.2} ({:+5.1}% of ref {best_ref:.2}) | {} | lost s: straight {:+.1} braking {:+.1} corner {:+.1} exit {:+.1}",
+                    100.0 * (b / best_ref - 1.0),
+                    c.summary,
+                    lost[0],
+                    lost[1],
+                    lost[2],
+                    lost[3]
+                );
+            }
+            for l in log.iter().filter(|l| l.contains("put back on the road")) {
+                println!("  {course} car {car}: {l}");
+            }
+            println!("  {course} car {car}: lua {ms:.3} ms a frame");
+        }
+    }
+}
+
+/// A Lua expression printed every few frames of a race, for looking into the driving: `COURSE` (pine_ridge), `CAR` (1), `MODE`
+/// (trial), `LAPS` (2), `SETUP` (Lua run as the race is set up), `START` (Lua run at the green light: the player's car is driven by the
+/// computer unless it says otherwise), `EXPR`, `EVERY` (frames, 10), `SECONDS` (120). Run on purpose:
+/// `EXPR='nova.scene_now().player.speed' cargo test --release -p nova-runtime --test rally lua_trace -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn lua_trace() {
+    let var = |k: &str, d: &str| std::env::var(k).unwrap_or(d.into());
+    let (course, mode, expr) = (var("COURSE", "pine_ridge"), var("MODE", "trial"), var("EXPR", "nova.scene_now().player.speed"));
+    let car: usize = var("CAR", "1").parse().unwrap();
+    let laps: i32 = var("LAPS", "2").parse().unwrap();
+    let every: usize = var("EVERY", "10").parse().unwrap();
+    let seconds: usize = var("SECONDS", "120").parse().unwrap();
+    let (mut g, mut log) = race_direct(&course, car, &mode, laps, &var("SETUP", ""));
+    g.run_lua(&var("START", "nova.scene_now().player.autopilot = true"), "start")
+        .unwrap();
+    for f in 0..60 * seconds {
+        frame(&mut g, &[]);
+        log.extend(g.take_log());
+        if f % every == 0 {
+            println!("f{f} {}", g.lua_text(&expr).unwrap_or_else(|e| e));
+        }
+        if g.lua_truth(ALL_DONE).unwrap_or(false) {
+            break;
+        }
+    }
+    for l in log.iter().filter(|l| !l.starts_with("PROBE")) {
+        println!("LOG {l}");
+    }
+}
