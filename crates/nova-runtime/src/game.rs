@@ -66,6 +66,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
+mod fx2d_api;
 mod morph_api;
 mod physics_api;
 mod players_api;
@@ -199,6 +200,8 @@ struct Shared {
     input_reads: RefCell<std::collections::BTreeSet<String>>,
     /// Custom shaders: the project's, and this frame's draws that use them.
     shading: shader_api::ShaderState,
+    /// The 2D effects asked for (lights, added light, shadows, reflections, rain): `game/fx2d_api.rs`.
+    fx: fx2d_api::Fx2dState,
 }
 
 impl Shared {
@@ -705,6 +708,8 @@ pub struct Game {
     pub shader_errors: Vec<String>,
     /// This frame's custom-shaded draws, for the renderer.
     shading: shader_api::FrameShading,
+    /// What the last frame's 2D effects were, for `play`'s report.
+    fx_facts: fx2d_api::Fx2dFacts,
     pub last_update: Duration,
     stamp: Option<SystemTime>,
     checked: Instant,
@@ -1525,6 +1530,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let mut sh = s.borrow_mut();
                 let inst = sprite_instance(&sh, &id, x, y, &opts)?;
                 let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
+                // `blend = "add"`, `lit = false`, and `foot` (where it stands, for reflections): 2D effects (game/fx2d_api.rs)
+                let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
+                fx2d_api::mark(&mut sh, style, number_option(&opts, "foot")?);
                 sh.world.push(inst);
                 shader_api::mark_sprite(&mut sh, false, shading);
                 Ok(())
@@ -1535,9 +1543,12 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     nova.set(
         "rect",
         lua.create_function(
-            move |_, (x, y, w, h, color): (f64, f64, f64, f64, Option<Table>)| {
+            move |_, (x, y, w, h, color, opts): (f64, f64, f64, f64, Option<Table>, Option<Table>)| {
                 let mut sh = s.borrow_mut();
                 let inst = rect_instance(&sh, x, y, w, h, rgba(color)?);
+                // `{ blend = "add" }`: adds light (a spark, a beam); `{ lit = false }`: not darkened by the 2D ambient
+                let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
+                fx2d_api::mark(&mut sh, style, None);
                 sh.world.push(inst);
                 Ok(())
             },
@@ -1921,7 +1932,22 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
                 _ => return Err(lua_err("look outline is true, false or { color = {r, g, b}, strength = 0.85, width = 1 }")),
             };
+            // grade = { shadows = {r, g, b}, highlights = {r, g, b} }: what the darks and the lights are multiplied by (255 leaves a channel alone)
+            let grade = match opts.get::<Value>("grade")? {
+                Value::Nil | Value::Boolean(false) => [[1.0; 3]; 2],
+                Value::Table(t) => {
+                    for pair in t.pairs::<String, Value>() {
+                        let (k, _) = pair?;
+                        if k != "shadows" && k != "highlights" {
+                            return Err(lua_err(format!("look grade has '{k}'; it takes shadows = {{r, g, b}} and highlights = {{r, g, b}}")));
+                        }
+                    }
+                    [picture_color(&t, "shadows")?.unwrap_or([1.0; 3]), picture_color(&t, "highlights")?.unwrap_or([1.0; 3])]
+                }
+                _ => return Err(lua_err("look grade is { shadows = {r, g, b}, highlights = {r, g, b} } (255 leaves a channel alone)")),
+            };
             s.borrow_mut().lighting.look = Look {
+                grade,
                 toon: toon as f32,
                 outline,
                 exposure: number("exposure", 1.0, 0.0, 8.0)? as f32,
@@ -3466,6 +3492,21 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
                 map.scale = scale as f32;
             }
+            // reflect = { 413, 414 } (tiles that mirror what stands above them: puddles, water) or true (every tile of the layer)
+            match spec.get::<Value>("reflect")? {
+                Value::Nil | Value::Boolean(false) => {}
+                Value::Boolean(true) => map.reflect = vec![true; map.tile_count as usize],
+                Value::Table(list) => {
+                    map.reflect = vec![false; map.tile_count as usize];
+                    for t in list.sequence_values::<i64>() {
+                        let t = t?;
+                        if let Some(slot) = usize::try_from(t).ok().and_then(|i| map.reflect.get_mut(i)) {
+                            *slot = true;
+                        }
+                    }
+                }
+                _ => return Err(lua_err("tilemap: 'reflect' is a list of tile numbers or true")),
+            }
             sh.tilemaps.push(map);
             Ok(sh.tilemaps.len() - 1)
         })?,
@@ -3536,11 +3577,19 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let view = sh.view;
                 let (ox, oy) = (ox as f32, oy as f32);
                 let mut out = std::mem::take(if ui { &mut sh.ui } else { &mut sh.world });
+                // reflections (2D effects): this layer's reflective tiles become the mask; a layer drawn after one that had them is what
+                // stands above the water, each tile mirrored about the foot of the column of tiles it belongs to (a lamp's top with its post)
+                let reflecting = !ui && sh.fx.reflecting();
+                let mut mask = Vec::new();
+                let mut axes = Vec::new();
+                let mut seen = 0usize;
                 {
                     let map = sh
                         .tilemaps
                         .get(id)
                         .ok_or_else(|| lua_err("unknown tilemap"))?;
+                    let after_water =
+                        reflecting && sh.fx.reflect_at.is_some() && map.reflect.is_empty();
                     if let Some((c0, c1, r0, r1)) = map.visible(ox, oy, map.scale, view) {
                         let rect = sh.layout.rects[&map.image];
                         let (tw, th) =
@@ -3558,7 +3607,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                                     w: map.tile_w,
                                     h: map.tile_h,
                                 };
-                                out.push(SpriteInstance {
+                                let inst = SpriteInstance {
                                     center: [
                                         ox + (col as f32 + 0.5) * tw,
                                         oy + (row as f32 + 0.5) * th,
@@ -3567,11 +3616,34 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                                     uv: sh.layout.uv(&cell),
                                     color: [255, 255, 255, alpha],
                                     rotation: 0.0,
-                                });
+                                };
+                                if !ui && map.reflect.get(t as usize) == Some(&true) {
+                                    seen += 1;
+                                    if reflecting {
+                                        mask.push(inst);
+                                    }
+                                } else if after_water {
+                                    let mut below = row as i64;
+                                    while below - (row as i64) < 6
+                                        && map.get(col as i64, below + 1) >= 0
+                                    {
+                                        below += 1;
+                                    }
+                                    if below != row as i64 {
+                                        axes.push((out.len(), oy + (below + 1) as f32 * th));
+                                    }
+                                }
+                                out.push(inst);
                             }
                         }
                     }
                 }
+                sh.fx.reflective_tiles += seen;
+                if !mask.is_empty() {
+                    sh.fx.mask.extend(mask);
+                    sh.fx.reflect_at = Some(out.len());
+                }
+                sh.fx.axes.extend(axes);
                 *(if ui { &mut sh.ui } else { &mut sh.world }) = out;
                 Ok(())
             },
@@ -3776,6 +3848,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     retained_api::install(lua, shared, &raw)?;
+    fx2d_api::install(lua, shared, &nova, &raw)?;
     nova.set("raw", raw)?;
     lua.globals().set("nova", nova)?;
 
@@ -4235,6 +4308,7 @@ impl Game {
             sound_log: Vec::new(),
             input_reads: RefCell::new(std::collections::BTreeSet::new()),
             shading: shading_state,
+            fx: Default::default(),
         }));
         let lua = new_lua();
         lua.set_memory_limit(LUA_MEMORY_LIMIT)
@@ -4273,6 +4347,7 @@ impl Game {
             warnings,
             shader_errors,
             shading: Default::default(),
+            fx_facts: Default::default(),
             last_update: Duration::ZERO,
             checked: Instant::now(),
             last_flush: Instant::now(),
@@ -4552,6 +4627,7 @@ impl Game {
             sh.joints.clear();
             sh.shading.models.clear();
             sh.shading.sprites.clear();
+            sh.fx.begin_frame();
             sh.pose_cache.clear();
             players_api::update(&mut sh, input);
             sh.frame_dt = dt;
@@ -4654,6 +4730,13 @@ impl Game {
         }
         self.camera = sh.camera;
         self.lighting = sh.lighting.clone();
+        // the 2D effects: none asked for leaves the frame as it always was
+        if !sh.fx.toggles.bloom {
+            self.lighting.look.bloom = 0.0;
+        }
+        let (fx, facts) = fx2d_api::finish(&mut sh, &self.world, self.lighting.look.bloom);
+        self.lighting.fx2d = fx;
+        self.fx_facts = facts;
         if let Some(sky) = self.lighting.sky.as_mut() {
             sky.time = (sh.time % 100_000.0) as f32;
         }

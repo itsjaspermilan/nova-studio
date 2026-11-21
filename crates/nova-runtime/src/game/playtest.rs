@@ -719,6 +719,19 @@ end
 
 -- ---------------------------------------------------------------- hitboxes, solid things and names drawn over the picture
 local function draw_overlay(want)
+  if want.lights then
+    -- each 2D light of this frame: an ellipse at its radius and a cross at its middle (screen units, as the lights are kept)
+    local c = { 255, 220, 60, 255 }
+    for _, l in ipairs(nova.raw.lights2d()) do
+      local n = 28
+      for i = 0, n - 1 do
+        local a, b = i / n * math.pi * 2, (i + 1) / n * math.pi * 2
+        nova.ui.line(l.x + math.cos(a) * l.rx, l.y + math.sin(a) * l.ry, l.x + math.cos(b) * l.rx, l.y + math.sin(b) * l.ry, 1.5, c)
+      end
+      nova.ui.line(l.x - 5, l.y, l.x + 5, l.y, 1.5, c); nova.ui.line(l.x, l.y - 5, l.x, l.y + 5, 1.5, c)
+    end
+    if not (want.hitboxes or want.solids or want.names) then return end
+  end
   if not (W and W.started) then return end
   local vw, vh = nova.view()
   local function outline(x0, y0, x1, y1, c)
@@ -1101,7 +1114,29 @@ impl Game {
     pub fn render_facts(&self) -> Value {
         let models = self.models.len() + self.shading.models.len();
         if models == 0 {
-            return serde_json::json!({ "three_d": false });
+            let f = &self.fx_facts;
+            if !f.any {
+                return serde_json::json!({ "three_d": false });
+            }
+            return serde_json::json!({
+                "three_d": false,
+                "fx2d": {
+                    "ambient": f.ambient,
+                    "lights": f.lights,
+                    "lights_asked": f.lights_asked,
+                    "dropped": f.dropped,
+                    "max_lights": crate::gfx::MAX_LIGHTS_2D,
+                    "added": f.added,
+                    "shadows": f.shadows,
+                    "reflections": f.reflections,
+                    "reflective_tiles": f.reflective_tiles,
+                    "mirrored": f.mirrored,
+                    "rain": f.rain,
+                    "bloom": f.bloom,
+                    "low": f.low,
+                    "off": f.off,
+                }
+            });
         }
         let l = &self.lighting;
         let r = |v: f32| (v as f64 * 1000.0).round() / 1000.0;

@@ -83,7 +83,7 @@ export const MOVED: Record<string, Moved> = {
 // misplacement (`scale` beside `tileset`) or a near miss of a key the structure has (`tile_widht`); the call still runs.
 const SCENE = ["version", "background", "width", "height", "camera", "objects", "images", "texts", "tilemaps", "sky", "fog", "look", "wind"];
 const OBJECT = ["kind", "name", "x", "y", "z", "props", "layer"];
-const TILEMAP = ["name", "tileset", "x", "y", "depth", "solid", "tiles", "legend", "layer", "paint", "seed", "scatter", "solid_props", "over_depth", "wear", "damage", "features", "district", "solid_damage"];
+const TILEMAP = ["name", "tileset", "x", "y", "depth", "solid", "reflect", "tiles", "legend", "layer", "paint", "seed", "scatter", "solid_props", "over_depth", "wear", "damage", "features", "district", "solid_damage"];
 const TILESET = ["image", "tile_width", "tile_height", "scale"];
 const FRAME = ["rows", "name", "copy", "flip", "rotate", "recolor", "silhouette", "shapes", "mirror", "outline"];
 const SHAPE = ["rect", "line", "circle", "ellipse", "color", "fill"];

@@ -20,6 +20,8 @@ export interface Sheet {
   durations?: number[];
   names?: Record<number, string>;
   solid?: number[];
+  /// Tiles that mirror what stands above them (puddles, water), for a tileset.
+  reflect?: number[];
   terrains?: Terrain[];
   /// In pixels of a frame from its top left: where it stands, and the box that collides.
   pivot?: { x: number; y: number };
@@ -57,7 +59,7 @@ export function writeSheet(name: string, s: Sheet, put: Put): { text: string; pi
   for (const [k, v] of Object.entries(s.names ?? {})) names[k] = v;
   const terrains = s.terrains ?? [];
   if (Object.keys(names).length || s.solid?.length || terrains.length) {
-    put(`sprites/${name}.tileset.json`, serializeTileset({ ...newTileset(fw, fh), names, solid: [...new Set(s.solid ?? [])].sort((a, b) => a - b), terrains }));
+    put(`sprites/${name}.tileset.json`, serializeTileset({ ...newTileset(fw, fh), names, solid: [...new Set(s.solid ?? [])].sort((a, b) => a - b), ...(s.reflect?.length ? { reflect: [...new Set(s.reflect)].sort((a, b) => a - b) } : {}), terrains }));
   }
   const tags = (s.tags ?? []).map((t) => `${t.name} ${t.from}-${t.to}`).join(", ");
   return {

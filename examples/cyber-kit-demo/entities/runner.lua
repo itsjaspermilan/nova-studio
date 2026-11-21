@@ -1,5 +1,8 @@
 -- The runner: a long coat, a lit visor, a baton, in the makers' detailed style (96x96 frames drawn at 1.5). The sheet is character_make's (every call is in tools/make.json), so every animation is
 -- tagged by name and direction ("walk_left", "attack_up") and this file only says which to play.
+-- a faint cool light that goes with the runner (the visor's), so that it reads on the darkest street
+local VISOR = { radius = 70, radius_y = 48, color = { 150, 230, 255 }, intensity = 0.7, y = -6 }
+
 local Runner = nova.entity {
   sprite = "runner", anim = "idle_down",
   tags = { "hero" },
@@ -7,17 +10,27 @@ local Runner = nova.entity {
   hitbox = { -7, -8, 14, 8 },
   sx = 1.5, sy = 1.5,
   speed = 190,
+  shadow = true, -- a soft shadow under the feet
+
+  light = VISOR,
 }
 
 local WAY = { down = { 0, 1 }, up = { 0, -1 }, left = { -1, 0 }, right = { 1, 0 } }
 
+-- the baton's arc: a bright cyan light and a glow that adds light, where the swing is
+local BATON = { radius = 130, radius_y = 90, color = { 53, 230, 255 }, intensity = 2.4 }
+local ARC = { 53, 230, 255, 200 }
+local ARC_OPTS = { blend = "add", soft = true }
+
 function Runner:create()
   self.facing = "down"
   self.swinging = false
+  self.arc = 0
 end
 
 function Runner:swing()
   self.swinging = true
+  self.arc = 0.22
   self:play("attack_" .. self.facing, { restart = true })
   local w = WAY[self.facing]
   local cx, cy = self.x + w[1] * 48, self.y - 40 + w[2] * 48
@@ -32,6 +45,14 @@ end
 
 function Runner:update(dt)
   self.depth = -self.y
+  self.arc = math.max(0, self.arc - dt)
+  if self.arc > 0 then
+    local w = WAY[self.facing]
+    BATON.x, BATON.y = w[1] * 40, -24 + w[2] * 34
+    self.light = BATON
+  else
+    self.light = VISOR
+  end
   if self.swinging then return end
   if nova.input.pressed("attack") then return self:swing() end
   local dx, dy = nova.input.axis("move_x"), nova.input.axis("move_y")
@@ -45,6 +66,17 @@ function Runner:update(dt)
     if math.abs(dx) > math.abs(dy) then self.facing = dx < 0 and "left" or "right" else self.facing = dy < 0 and "up" or "down" end
   end
   self:play((moving and "walk_" or "idle_") .. self.facing)
+end
+
+function Runner:draw()
+  nova.Entity.draw(self)
+  if self.arc > 0 then
+    -- the neon arc adds light over whatever it crosses, fading as the swing ends
+    local w = WAY[self.facing]
+    local x, y = nova.cam.to_screen(self.x + w[1] * 40, self.y - 24 + w[2] * 34)
+    ARC[4] = math.floor(220 * self.arc / 0.22)
+    nova.circle(x, y, 34, ARC, ARC_OPTS)
+  end
 end
 
 return Runner

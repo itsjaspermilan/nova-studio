@@ -89,6 +89,7 @@ function stateLines(state: Args | undefined, all: boolean): string[] {
 /// What the renderer was given for a 3D frame, in words: whether shadows are on and how many models cast them, where the
 /// sun points, the fog, and where the camera is. Nothing for a flat game.
 export function renderLine(r: Args | undefined): string | null {
+  if (r && !r.three_d && r.fx2d) return renderLine2d(r.fx2d);
   if (!r || !r.three_d) return null;
   const v = (a: number[]) => a.map((n) => round2(n)).join(", ");
   const d: number[] = r.light?.direction ?? [0, -1, 0];
@@ -103,6 +104,29 @@ export function renderLine(r: Args | undefined): string | null {
   const ambient: number[] = r.light?.ambient ?? [];
   const bright = ambient.length ? Math.round((ambient.reduce((s, n) => s + n, 0) / ambient.length) * 255) : 0;
   return `render: ${shadows}; sun travels along ${v(d)}, ambient about ${bright} of 255${r.shadows && bright > 110 && r.shadows.strength < 0.8 ? " (a bright ambient with a low strength makes faint shadows)" : ""}; fog ${r.fog ? `${r.fog.near} to ${r.fog.far} m` : "off"}; camera eye ${v(eye)} looking at ${v(target)}, fov ${r.camera?.fov}`;
+}
+
+/// The 2D effects of the last frame, in words (only for a flat game that uses one): the ambient and the lights (and whether there
+/// were more than the renderer draws), shadows, sprites that add light, reflections, rain, bloom, and what nova.effects switched off.
+export function renderLine2d(f: Args): string {
+  const parts: string[] = [];
+  const ambient: number[] | null = f.ambient ?? null;
+  if (ambient) {
+    const bright = Math.round(ambient.reduce((s, n) => s + n, 0) / ambient.length);
+    const capped = f.dropped > 0 ? `; CAPPED: ${f.lights + f.dropped} were in view, the ${f.dropped} farthest from the middle were dropped` : "";
+    parts.push(`2D lighting ON (ambient about ${bright} of 255, ${f.lights} light${f.lights === 1 ? "" : "s"} in view of at most ${f.max_lights}${capped})`);
+  } else {
+    parts.push(`2D lighting OFF${f.lights_asked ? ` (${f.lights_asked} light${f.lights_asked === 1 ? " was" : "s were"} asked for, but they show only with nova.ambient2d)` : ""}`);
+  }
+  parts.push(`${f.shadows} shadow${f.shadows === 1 ? "" : "s"}`);
+  parts.push(`${f.added} sprite${f.added === 1 ? "" : "s"} adding light`);
+  if (f.reflections) parts.push(`reflections ON (${f.reflective_tiles} reflective tiles in view, ${f.mirrored} thing${f.mirrored === 1 ? "" : "s"} mirrored in them)`);
+  else parts.push(`reflections OFF${f.reflective_tiles ? ` (${f.reflective_tiles} reflective tiles in view; nova.reflections {} turns them on)` : ""}`);
+  parts.push(f.rain != null ? `rain ${round2(f.rain)}` : "no rain");
+  parts.push(f.bloom > 0 ? `bloom ${round2(f.bloom)}` : "no bloom");
+  if (f.low) parts.push(`nova.effects("low")`);
+  if (f.off?.length) parts.push(`switched off by nova.effects: ${f.off.join(", ")}`);
+  return `render: ${parts.join("; ")}`;
 }
 
 /// A place in the project a run may write to: a folder (or file) that is not part of the game, so its pictures do not
@@ -166,7 +190,7 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
   const audioFile = typeof a.audio === "string" && a.audio ? ignoredPlace(root, a.audio, "audio") : null;
   if (audioFile && !/\.wav$/i.test(audioFile)) throw new Error(`audio "${a.audio}" must end in .wav (or pass audio: true with \`out\`, which writes <out>/run.wav)`);
   const overlay: string[] = a.overlay === true ? ["hitboxes", "solids", "names"] : typeof a.overlay === "string" ? [a.overlay] : Array.isArray(a.overlay) ? a.overlay.map(String) : [];
-  for (const o of overlay) if (!["hitboxes", "solids", "names"].includes(o)) throw new Error(`overlay has "${o}"; it is a list of "hitboxes", "solids" and "names" (or true for all three)`);
+  for (const o of overlay) if (!["hitboxes", "solids", "names", "lights"].includes(o)) throw new Error(`overlay has "${o}"; it is a list of "hitboxes", "solids" and "names" (or true for all three), and "lights" (each 2D light's radius, yellow)`);
   const compare: { lua: string; each_frame: boolean; label: string } | null =
     typeof a.compare === "string" && a.compare ? { lua: a.compare, each_frame: false, label: a.compare }
     : a.compare && typeof a.compare === "object" && typeof a.compare.lua === "string" ? { lua: a.compare.lua, each_frame: !!(a.compare.each_frame ?? a.compare.every_frame), label: String(a.compare.label ?? a.compare.lua) }

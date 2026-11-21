@@ -381,13 +381,16 @@ export function expandPaint(root: string, scene: Args): string[] {
       });
     }
     const wearSolid = new Set(wear?.solid ?? []);
+    const reflectSet = new Set(cat.doc.reflect ?? []);
     let blocked = 0;
     for (let r = 0; r < nrows; r++) for (let c = 0; c < cols; c++) if ([ground, edges, edges2, ...(tm.solid_props === false ? [] : [props])].some((l) => solidSet.has(l[r]![c]!)) || wearSolid.has(wear?.tiles[r]![c] ?? -1)) blocked++;
     const layer = (suffix: string, tiles: number[][], d: number): Args | null => {
       const used = new Set(tiles.flat().filter((t) => t >= 0));
       if (!used.size) return null;
       const solid = suffix === "_over" || (suffix === "_props" && tm.solid_props === false) ? [] : [...used].filter((t) => (suffix === "_wear" ? wearSolid : solidSet).has(t)).sort((a, b) => a - b);
-      return { name: `${name}${suffix}`, depth: d, tileset: { ...ts }, ...(tm.x ? { x: tm.x } : {}), ...(tm.y ? { y: tm.y } : {}), ...(solid.length ? { solid } : {}), tiles };
+      // tiles that mirror what stands above them (the tileset's puddles and water), for nova.reflections
+      const reflect = [...used].filter((t) => reflectSet.has(t)).sort((x, y) => x - y);
+      return { name: `${name}${suffix}`, depth: d, tileset: { ...ts }, ...(tm.x ? { x: tm.x } : {}), ...(tm.y ? { y: tm.y } : {}), ...(solid.length ? { solid } : {}), ...(reflect.length ? { reflect } : {}), tiles };
     };
     const made = [layer("", ground, depth), ...(wear ? [layer("_stains", wear.tone, depth - 0.3), layer("_wear", wear.tiles, depth - 0.6)] : []), layer("_edges", edges, depth - 1), layer("_edges_2", edges2, depth - 2), layer("_props", props, depth - 3), layer("_over", over, typeof tm.over_depth === "number" ? tm.over_depth : -10000)].filter((l): l is Args => !!l);
     out.push(...made);

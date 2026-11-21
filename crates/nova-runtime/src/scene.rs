@@ -530,7 +530,9 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
         check_keys(
             o,
             &at,
-            &["name", "tileset", "x", "y", "depth", "solid", "tiles"],
+            &[
+                "name", "tileset", "x", "y", "depth", "solid", "reflect", "tiles",
+            ],
         )?;
         let name = optional_name(o, &at)?;
         take_name(&name, &at)?;
@@ -643,9 +645,34 @@ pub fn parse_scene(text: &str, file: &str) -> Result<Value, String> {
                 ));
             }
         };
+        // tiles that mirror what stands above them (puddles, water; 2D reflections): a list, or true for every tile of the layer
+        let reflect = match o.get("reflect") {
+            None => None,
+            Some(Value::Bool(b)) => Some(Value::Bool(*b)),
+            Some(Value::Array(list)) => {
+                for (k, n) in list.iter().enumerate() {
+                    if !n.as_u64().is_some_and(|n| n <= 32767) {
+                        return Err(err(
+                            &format!("{at}.reflect[{k}]"),
+                            "reflective tiles are whole numbers from 0 to 32767",
+                        ));
+                    }
+                }
+                Some(Value::Array(list.clone()))
+            }
+            Some(_) => {
+                return Err(err(
+                    &format!("{at}.reflect"),
+                    "\"reflect\" is a list of tile numbers (puddles, water) or true",
+                ));
+            }
+        };
         let mut obj = Map::new();
         if let Some(n) = name {
             obj.insert("name".into(), Value::String(n));
+        }
+        if let Some(r) = reflect {
+            obj.insert("reflect".into(), r);
         }
         obj.insert("tileset".into(), Value::Object(ts));
         obj.insert("x".into(), num(optional_number(o, "x", &at, 0.0)?));

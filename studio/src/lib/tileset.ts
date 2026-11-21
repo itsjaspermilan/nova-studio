@@ -11,6 +11,9 @@ export interface TilesetDoc {
   tile_height: number;
   /// Tile numbers that block movement.
   solid: number[];
+  /// Tiles that mirror what stands above them (puddles, water): a painted layer carries the ones it uses as its `reflect` list (2D
+  /// reflections, `nova.reflections`). Left out when there are none.
+  reflect?: number[];
   /// Names for tiles that have one, by tile number.
   names: Record<string, string>;
   terrains: Terrain[];
@@ -44,6 +47,7 @@ export function parseTileset(text: string): ParsedTileset {
   if (!size(o.tile_width) || !size(o.tile_height)) return { ok: false, error: '"tile_width" and "tile_height" must be whole numbers from 1 to 1024' };
   const tile = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n < MAX_TILE;
   if (o.solid !== undefined && (!Array.isArray(o.solid) || !o.solid.every(tile))) return { ok: false, error: '"solid" is a list of tile numbers' };
+  if (o.reflect !== undefined && (!Array.isArray(o.reflect) || !o.reflect.every(tile))) return { ok: false, error: '"reflect" is a list of tile numbers' };
   const names: Record<string, string> = {};
   if (o.names !== undefined) {
     if (!o.names || typeof o.names !== "object" || Array.isArray(o.names)) return { ok: false, error: '"names" maps tile numbers to names' };
@@ -60,7 +64,8 @@ export function parseTileset(text: string): ParsedTileset {
     if (!Array.isArray(t.tiles) || t.tiles.length !== tileCountOf(t.mode) || !t.tiles.every((n) => n === -1 || tile(n))) return { ok: false, error: `terrains[${i}].tiles must be ${tileCountOf(t.mode)} tile numbers (-1 for none)` };
     terrains.push({ name: t.name.trim(), mode: t.mode, tiles: [...t.tiles] });
   }
-  return { ok: true, doc: { version: 1, tile_width: o.tile_width!, tile_height: o.tile_height!, solid: [...new Set(o.solid ?? [])].sort((a, b) => a - b), names, terrains } };
+  const reflect = [...new Set(o.reflect ?? [])].sort((a, b) => a - b);
+  return { ok: true, doc: { version: 1, tile_width: o.tile_width!, tile_height: o.tile_height!, solid: [...new Set(o.solid ?? [])].sort((a, b) => a - b), ...(reflect.length ? { reflect } : {}), names, terrains } };
 }
 
 export function serializeTileset(doc: TilesetDoc): string {
@@ -72,6 +77,7 @@ export function serializeTileset(doc: TilesetDoc): string {
     `  "tile_width": ${doc.tile_width},`,
     `  "tile_height": ${doc.tile_height},`,
     `  "solid": [${doc.solid.join(", ")}],`,
+    ...(doc.reflect?.length ? [`  "reflect": [${doc.reflect.join(", ")}],`] : []),
     `  "names": {${names.length ? `\n${names.map(([k, n]) => `    "${k}": ${JSON.stringify(n)}`).join(",\n")}\n  ` : ""}},`,
     `  "terrains": [${terrains.length ? `\n${terrains.join(",\n")}\n  ` : ""}]`,
     "}",

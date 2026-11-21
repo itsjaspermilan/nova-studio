@@ -15,7 +15,125 @@
     { "kind": "scrapper", "name": "scrapper", "x": 430, "y": 380 },
     { "kind": "rat_drone", "name": "rat", "x": 900, "y": 560 },
     { "kind": "hover_drone", "name": "drone", "x": 1150, "y": 330 },
-    { "kind": "vending_mimic", "name": "mimic", "x": 984, "y": 759 }
+    { "kind": "vending_mimic", "name": "mimic", "x": 984, "y": 759 },
+    {
+      "kind": "light",
+      "x": 372,
+      "y": 196,
+      "props": { "color": [150, 215, 255], "radius": 150, "squash": 0.62, "intensity": 1.7, "glow": 22, "glow_y": 84 }
+    },
+    {
+      "kind": "light",
+      "x": 1044,
+      "y": 196,
+      "props": {
+        "color": [150, 215, 255],
+        "radius": 150,
+        "squash": 0.62,
+        "intensity": 1.7,
+        "flicker": 0.25,
+        "glow": 22,
+        "glow_y": 84
+      }
+    },
+    {
+      "kind": "light",
+      "x": 132,
+      "y": 772,
+      "props": { "color": [150, 215, 255], "radius": 150, "squash": 0.62, "intensity": 1.7, "glow": 22, "glow_y": 84 }
+    },
+    {
+      "kind": "light",
+      "x": 1140,
+      "y": 772,
+      "props": { "color": [150, 215, 255], "radius": 150, "squash": 0.62, "intensity": 1.7, "glow": 22, "glow_y": 84 }
+    },
+    {
+      "kind": "light",
+      "x": 120,
+      "y": 262,
+      "props": { "color": [53, 230, 255], "radius": 130, "squash": 0.6, "intensity": 2.2, "glow": 34, "glow_y": 50 }
+    },
+    {
+      "kind": "light",
+      "x": 408,
+      "y": 262,
+      "props": { "color": [255, 63, 164], "radius": 130, "squash": 0.6, "intensity": 2.2, "glow": 34, "glow_y": 50 }
+    },
+    {
+      "kind": "light",
+      "x": 696,
+      "y": 262,
+      "props": {
+        "color": [255, 63, 164],
+        "radius": 130,
+        "squash": 0.6,
+        "intensity": 2.2,
+        "flicker": 0.4,
+        "glow": 34,
+        "glow_y": 50
+      }
+    },
+    {
+      "kind": "light",
+      "x": 1032,
+      "y": 262,
+      "props": { "color": [53, 230, 255], "radius": 130, "squash": 0.6, "intensity": 2.2, "glow": 34, "glow_y": 50 }
+    },
+    {
+      "kind": "light",
+      "x": 1320,
+      "y": 262,
+      "props": { "color": [53, 230, 255], "radius": 130, "squash": 0.6, "intensity": 2.2, "glow": 34, "glow_y": 50 }
+    },
+    {
+      "kind": "light",
+      "x": 552,
+      "y": 744,
+      "props": { "color": [255, 63, 164], "radius": 110, "squash": 0.6, "intensity": 1.8 }
+    },
+    {
+      "kind": "light",
+      "x": 696,
+      "y": 744,
+      "props": { "color": [255, 63, 164], "radius": 110, "squash": 0.6, "intensity": 1.8 }
+    },
+    {
+      "kind": "light",
+      "x": 840,
+      "y": 744,
+      "props": { "color": [255, 63, 164], "radius": 110, "squash": 0.6, "intensity": 1.8 }
+    },
+    {
+      "kind": "light",
+      "x": 72,
+      "y": 176,
+      "props": { "color": [255, 63, 164], "radius": 70, "squash": 0.7, "intensity": 1.3 }
+    },
+    {
+      "kind": "light",
+      "x": 600,
+      "y": 176,
+      "props": { "color": [255, 63, 164], "radius": 70, "squash": 0.7, "intensity": 1.3 }
+    },
+    {
+      "kind": "light",
+      "x": 168,
+      "y": 180,
+      "props": { "color": [255, 190, 120], "radius": 90, "squash": 0.7, "intensity": 1 }
+    },
+    {
+      "kind": "light",
+      "x": 792,
+      "y": 180,
+      "props": { "color": [255, 190, 120], "radius": 90, "squash": 0.7, "intensity": 1 }
+    },
+    {
+      "kind": "light",
+      "x": 648,
+      "y": 100,
+      "props": { "color": [53, 230, 255], "radius": 110, "squash": 0.7, "intensity": 1.4 }
+    }
   ],
   "tilemaps": [
     {
@@ -98,6 +216,7 @@
       "name": "ground_edges",
       "depth": 99,
       "tileset": { "image": "sprites/market.png", "scale": 1.5, "tile_width": 32, "tile_height": 32 },
+      "reflect": [414, 415, 417, 418, 423, 426, 430, 434, 437, 438, 439, 447, 448, 456],
       "tiles": [
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],

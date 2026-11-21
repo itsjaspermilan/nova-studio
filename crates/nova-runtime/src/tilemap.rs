@@ -21,6 +21,8 @@ pub struct TileMap {
     pub width: u32,
     pub height: u32,
     pub tiles: Vec<i16>,
+    /// Tiles that mirror what stands above them (puddles, water), by tile number; empty for none (`reflect` in a scene file).
+    pub reflect: Vec<bool>,
 }
 
 impl TileMap {
@@ -78,6 +80,7 @@ impl TileMap {
             width,
             height,
             tiles,
+            reflect: Vec::new(),
         })
     }
 

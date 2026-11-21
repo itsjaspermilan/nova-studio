@@ -61,6 +61,10 @@ The questions a first 2D game asks, answered in one place (the sections further 
 - **Text** is drawn in the UI layer, always over UI rectangles and sprites (a fade rectangle cannot cover text: fade the
   text's own colour alpha with it). `line_spacing = 1.5` sets lines further apart; the pixel fonts need it.
 - **Sound** is not played in headless runs; `nova run --headless --audio-out run.wav` writes it to a file instead.
+- **Night, light and rain.** `nova.ambient2d({ 92, 100, 150 })` darkens the world (not the HUD) to a night blue; lights pool
+  round lamps and signs (`nova.light2d`, or an entity's `light = { ... }`); `blend = "add"` makes a sprite or shape add light;
+  `shadow = true` puts a soft shadow under an entity; `nova.reflections {}` mirrors what stands over puddles; `nova.weather
+  { rain = 0.5 }` rains. All off until asked for; see "2D light, shadows, reflections and rain".
 
 ## A project is a folder
 
@@ -208,7 +212,8 @@ ratio). `nova.view()` returns the current width and height as whole numbers (rou
 | Call | Layer | Meaning |
 | --- | --- | --- |
 | `nova.sprite(id, x, y [, opts])` | world | Draw a PNG, centred on `x, y`. |
-| `nova.rect(x, y, w, h [, {r,g,b,a}])` | world | Solid rectangle, top-left `x, y`. |
+| `nova.rect(x, y, w, h [, {r,g,b,a} [, opts]])` | world | Solid rectangle, top-left `x, y`; `opts`: `blend = "add"`, `lit = false` (see "2D light, shadows, reflections and rain"). |
+| `nova.circle(x, y, r, {r,g,b,a} [, opts])` | world | A disc centred on `x, y`; `opts`: `soft = true` (a glow that fades to its edge), `ry` (an ellipse), `blend = "add"`, `lit`. |
 | `nova.model(id, x, y, z [, opts])` | world | Draw a GLB model. |
 | `nova.camera(ex,ey,ez, tx,ty,tz [, fov])` | world | 3D camera (eye, target, vertical field of view in degrees, default 60). |
 | `nova.clear(r, g, b)` | world | Background colour, 0 to 255. |
@@ -238,7 +243,8 @@ native resolution.
 **Sprite options:** `scale`, `sx`, `sy` (multipliers on the image size), `w` and/or `h`
 (explicit logical size; one alone keeps the aspect), `rotation` (radians), `color`
 `{r,g,b[,a]}` (0 to 255, multiplies the image), `anchor` (`"center"` default, or
-`"topleft"`).
+`"topleft"`), and for the 2D effects `blend` (`"add"` or `"screen"`: adds light), `lit = false` (not darkened by
+`nova.ambient2d`) and `foot` (the screen y it stands on, for reflections in puddles).
 
 **Model options:** `scale`, `rx`, `ry`, `rz` (radians), `tint` `{r,g,b[,a]}`, `parts`. Models are
 instanced: draws of the same model in a frame become one GPU draw call. A model with see-through colours (a vertex alpha
@@ -1172,6 +1178,74 @@ the next tile's edge. `slide` moves one axis at a time (so
 entities glide along walls) in sub-steps no bigger than half a tile, so a fast entity cannot jump a
 thin wall. It uses the entity's hitbox box. Tile numbers outside the tileset, ragged rows and
 unknown tilesets are errors that say which cell.
+
+## 2D light, shadows, reflections and rain
+
+A flat game's picture can take its look from light as much as from its sprites: a dark street lit by its lamps and signs,
+glows that add light, soft shadows under the characters, puddles that mirror what stands over them, rain. Each is **off
+until a game asks for it**: a game that asks for none is drawn exactly as before, by the same pipelines. They are cheap by
+design (a handheld at 1080p and 60 frames a second): no loop over lights anywhere, a small fixed cost each; `nova.effects`
+drops them on a slow device. `examples/cyber-kit-demo/scenes/street.lua` uses all of them.
+
+```lua
+-- in a scene's enter: night, puddle reflections, rain, a little glow (all stay until changed; clear them in leave)
+nova.ambient2d({ 92, 100, 150 })                          -- what a white wall shows where no light reaches; nil turns lighting off
+nova.reflections { strength = 0.6, ripple = 1.2 }         -- tint = {r, g, b}; nil turns them off
+nova.weather { rain = 0.45, wind = 0.25 }                 -- rain 0 to 1; color = {r, g, b, a}; nova.weather() stops it
+nova.look { bloom = 0.55, bloom_threshold = 0.6, vignette = 0.35,
+            grade = { shadows = { 205, 215, 255 }, highlights = { 255, 246, 236 } } }
+
+-- every frame, from a draw (world coordinates, like an entity's x, y)
+nova.light2d { x = 408, y = 262, radius = 130, radius_y = 80, color = { 255, 63, 164 }, intensity = 2, flicker = 0.3 }
+
+-- on an entity (nova.entity { ... } or self.x = ...)
+shadow = true                                            -- or { w = 34, h = 11, alpha = 0.3, y = 16 } (a hovering drone)
+light = { radius = 70, color = { 150, 230, 255 }, intensity = 0.7, y = -6 }   -- goes where it goes; x, y move it from x, y
+blend = "add"                                            -- its sprite adds light (a glow, a shot); "screen" is softer
+lit = false                                              -- its sprite is not darkened by the ambient (a lit window)
+
+-- drawing yourself (screen coordinates, like nova.sprite)
+nova.sprite("spark", x, y, { blend = "add" })
+nova.rect(x, y, w, h, { 255, 60, 160, 200 }, { blend = "add" })
+nova.circle(x, y, 30, { 53, 230, 255, 160 }, { blend = "add", soft = true, ry = 20 })    -- a soft glow; without soft a disc
+nova.particles(x, y, { ..., blend = "add", shape = "soft" })                              -- sparks that glow
+```
+
+- **Lighting** (`nova.ambient2d`, `nova.light2d`, an entity's `light`): the world's sprites and tiles are multiplied by a light
+  map: the ambient colour where no light reaches, plus each light's colour, brightest at its middle and fading to nothing at
+  `radius` (`radius_y` makes it an ellipse lying on the ground; 0.6 of the radius looks right from above). `intensity` (1) can
+  go above 1 to light dark tiles brightly. `flicker` (0 to 1) makes it waver like a failing tube, the same at the same time.
+  Lights last one frame: call `nova.light2d` from a draw (a `light` object in the scene file whose entity has `light = {...}`
+  is the usual way to place lamps: `examples/cyber-kit-demo/entities/light.lua`). The HUD (`nova.ui.*`, `draw_ui`) is never
+  lit. At most 128 lights a frame: the nearest to the middle of the view are kept, and `play`'s `render:` line says when a
+  frame asked for more. Cost: one small float picture (a quarter of the world picture's size), each light a quad drawn into it,
+  and one more texture read for each world sprite pixel. Walls do not cast shadows from lights.
+- **Added light** (`blend = "add"` or `"screen"` on `nova.sprite`, `nova.rect`, `nova.circle`, an entity, particles): the
+  colour is added to what is under it, so it can only brighten (screen never goes past white). Added light is not darkened by
+  the ambient: it is light. A run of sprites with the same blend is one draw.
+- **Drop shadows** (`shadow = true` on an entity): a soft ellipse under the feet (its position when a `pivot` puts the feet
+  there, else the bottom of the picture), as wide as the hitbox. All of a frame's shadows are drawn in one batch, just before
+  the first entity that casts one. Under the dark ambient a shadow is faint; it shows in a light's pool, as it should.
+- **Reflections** (`nova.reflections { strength = 0.55, ripple = 1, tint = { 140, 158, 217 } }`): the tiles a tile layer marks
+  as reflective (`"reflect": [413, 414]` in the scene file's layer, or `true` for every tile of the layer; `tileset_make` lists
+  a city tileset's puddles in its `.tileset.json` and `scene_write`'s paint copies them into the layers that use them) show
+  what is drawn after them and stands above them, flipped, darkened by `tint`, wobbling by `ripple` units. A sprite is
+  flipped about its foot: an entity's position when a `pivot` puts its feet there (`foot = y` in `nova.sprite`'s options for
+  your own), a tile about the bottom of the column of tiles it belongs to in its layer (a lamp's head with its post), anything
+  else about its bottom edge. Only what lands on a reflective tile is drawn twice: the reflective tiles' own pixels and the
+  flipped sprites', not a copy of the screen. With rain, rings spread on the water.
+- **Rain** (`nova.weather { rain = 0.5, wind = 0.3, color = { 170, 190, 230, 120 } }`): slanted streaks over the world and
+  splash rings on it, under the HUD, made on the GPU from nothing but their number (no Lua per drop); they belong to the world
+  as the camera moves. `nova.weather { kind = "rain" }` is the 3D rain.
+- **Bloom and a grade** for a flat game are `nova.look`'s (`bloom`, `bloom_threshold`, `vignette`, `exposure`, `saturation`, and
+  `grade = { shadows = {r, g, b}, highlights = {r, g, b} }`: what the darks and the lights are multiplied by, 255 leaving a
+  channel alone), done in the pass that puts the world picture on the screen.
+- **On a slow device:** `nova.effects("low")` drops reflections and bloom, halves the rain and draws the light map at an eighth
+  of the world picture's size; `nova.effects("off")` drops them all; `nova.effects { rain = false, shadows = false }` one at a
+  time; `nova.effects("high")` (the default) brings them back. The game's own calls stay as they are.
+- **Checking it:** `play`'s answer has a `render:` line for a flat game that uses any of these: the ambient, how many lights
+  (and whether there were too many), shadows, added sprites, reflections (how many reflective tiles were in view and how many
+  things were mirrored), rain, bloom. `"overlay": ["lights"]` outlines each light's radius on the pictures.
 
 ## Text and fonts
 
