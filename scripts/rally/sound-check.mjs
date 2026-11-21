@@ -7,13 +7,14 @@
 //              what its layout fires at the band's revs (rpm x cylinders / 120 for an even engine), how much of its energy sits on
 //              the firing harmonics and on the half-orders between, how much is above 2 kHz (little: the note and its first
 //              harmonics are to carry the sound), and that the bands of an engine get brighter as the revs rise
-// It also checks that lib/audio.lua and lib/state.lua hold the same bands and revs as scripts/rally/engines.mjs, that every car
+// It also checks that lib/audio.lua and lib/state.lua hold the same bands and revs as the engine model (studio/mcp/makers/engine.mjs, made by engine_make), that every car
 // has an engine, and that all the engine loops together stay under 16 MB. Exits 1 when anything fails.
 //
 //   node scripts/rally/sound-check.mjs [project folder]
 import fs from "node:fs";
 import path from "node:path";
-import { ENGINES, LOOP, RATE, ROOT, bandRpm, fft, firingHz, loopLength, patternOrder } from "./engines.mjs";
+import { ENGINES, LOOP, RATE, bandRpm, fft, firingHz, loopLength, patternOrder } from "../../studio/mcp/makers/engine.mjs";
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 
 const project = path.resolve(process.argv[2] ?? path.join(ROOT, "examples/pine-ridge-rally"));
 const dir = path.join(project, "sounds");

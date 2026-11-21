@@ -805,6 +805,28 @@
   "group": "Sound"
  },
  {
+  "name": "nova.engine_sound",
+  "kind": "namespace",
+  "module": true,
+  "signature": "local engine_sound = require(\"nova.engine_sound\")",
+  "doc": "A car's engine and the sounds of driving, played from the loops engine_make and driving_sounds_make write: the two engine bands either side of the revs crossfaded at the engine's note, throttle-down and lifted layers by how hard it pulls, the limiter, gear changes, a turbo's breath and blow-off, pops, tyres by surface, the squeal, wind, bumps and scrapes; rivals placed where their cars are. Opt in with require; engine_sound.SURFACES (the tyre loops by surface) may be changed.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.engine_sound.new",
+  "kind": "function",
+  "signature": "nova.engine_sound.new(profile [, { volume, rival, surface }]) -> engine",
+  "doc": "(After local engine_sound = require(\"nova.engine_sound\"): engine_sound.new.) An engine from its profile (the table engine_make writes to engines/<name>.lua: sound, idle, max, cycles, rise, fall, gain, limiter, shift, turbo...). Then every step engine:update(dt, { rpm or rev (0 to 1), throttle (0 to 1), speed (m/s), slip, surface (road, gravel, dirt, snow, sand, rough), lift, scrape, x, y, z }); engine:shift(\"up\" or \"down\") at a gear change; engine:state() -> heard rpm, load; engine:silence() (paused); engine:stop(). A rival (rival = true) plays only its throttle-down loops, placed at its x, y, z.",
+  "group": "Sound"
+ },
+ {
+  "name": "nova.engine_sound.cars",
+  "kind": "function",
+  "signature": "nova.engine_sound.cars(cars, player, dt)",
+  "doc": "Every car's engine for this step: each car table has `engine` and what engine:update takes, plus x, z, velx, velz; `player` is the driven one. Rivals within 90 m are heard from where they are, their note bent by their closing speed, with a whoosh as one passes close; `car.shifted` (\"up\" or \"down\") is played and cleared.",
+  "group": "Sound"
+ },
+ {
   "name": "nova.music",
   "kind": "namespace",
   "signature": "nova.music",

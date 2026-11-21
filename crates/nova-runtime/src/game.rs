@@ -59,6 +59,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     match name {
         "nova.timers" => Some(include_str!("../lua/timers.lua")),
         "nova.anim" => Some(include_str!("../lua/anim.lua")),
+        "nova.engine_sound" => Some(include_str!("../lua/engine_sound.lua")),
         _ => None,
     }
 }
