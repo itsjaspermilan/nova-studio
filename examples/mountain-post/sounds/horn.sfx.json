@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "volume": 0.8,
+  "seed": 1,
+  "drive": 0.25,
+  "reverb": 0.12,
+  "room": 0.4,
+  "width": 0.3,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0,
+      "decay": 0.01,
+      "volume": 0.2,
+      "filter": "highpass",
+      "cutoff": 3800
+    },
+    {
+      "wave": "noise",
+      "attack": 0.012,
+      "hold": 0.32,
+      "decay": 0.08,
+      "volume": 0.07,
+      "filter": "bandpass",
+      "cutoff": 1900,
+      "q": 1.4
+    },
+    {
+      "wave": "square",
+      "freq": 415,
+      "attack": 0.012,
+      "hold": 0.32,
+      "decay": 0.08,
+      "volume": 0.45,
+      "duty": 0.4,
+      "unison": 2,
+      "detune": 8,
+      "filter": "lowpass",
+      "cutoff": 2600
+    },
+    {
+      "wave": "square",
+      "freq": 523,
+      "attack": 0.012,
+      "hold": 0.32,
+      "decay": 0.08,
+      "volume": 0.4,
+      "duty": 0.4,
+      "unison": 2,
+      "detune": 8,
+      "filter": "lowpass",
+      "cutoff": 2600
+    },
+    {
+      "wave": "saw",
+      "freq": 830,
+      "attack": 0.012,
+      "hold": 0.32,
+      "decay": 0.08,
+      "volume": 0.15,
+      "filter": "bandpass",
+      "cutoff": 1900,
+      "q": 2
+    }
+  ]
+}

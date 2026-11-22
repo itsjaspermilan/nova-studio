@@ -48,16 +48,18 @@ export interface SfxParams {
   reverb?: number;
   room?: number;
   width?: number;
+  /// 1: a seamless loop (lib/sfx-layers.ts `seamless`), for a bed of water or wind played with loop = true.
+  loop?: number;
 }
 
 /// The keys of an effect beyond the plain voice's sliders.
-export const RICH_KEYS = ["layers", "drive", "reverb", "room", "width"] as const;
+export const RICH_KEYS = ["layers", "drive", "reverb", "room", "width", "loop"] as const;
 
 /// A layered effect's `volume` is a gain on its layers (they rarely add up to full scale): it may go to 4, and the peak is kept under full scale.
 export const MAX_LAYERED_VOLUME = 4;
 
 /// Whether an effect uses anything beyond the plain voice (then it renders through lib/sfx-layers.ts).
-export const isRichSfx = (p: SfxParams) => !!p.layers?.length || !!p.drive || !!p.reverb || !!p.width;
+export const isRichSfx = (p: SfxParams) => !!p.layers?.length || !!p.drive || !!p.reverb || !!p.width || !!p.loop;
 
 export const DEFAULTS: SfxParams = {
   wave: "square", freq: 440, freqLimit: 0, slide: 0, slideDelta: 0, duty: 0.5, dutySweep: 0, vibratoDepth: 0, vibratoSpeed: 8,
@@ -100,7 +102,7 @@ export const MAX_SECONDS = 4;
 
 export function render(params: SfxParams, rate = SAMPLE_RATE): Sound {
   if (!isRichSfx(params)) return renderPlain(params, rate);
-  const finish: SfxFinish = { drive: params.drive, reverb: params.reverb, room: params.room, width: params.width };
+  const finish: SfxFinish = { drive: params.drive, reverb: params.reverb, room: params.room, width: params.width, loop: params.loop };
   const layers = params.layers?.length ? params.layers : null;
   const dry = layers ? null : renderPlain(params, rate).channels[0]!;
   return { rate, channels: renderRich(layers, dry, finish, params.volume, params.seed, MAX_SECONDS, rate) };
@@ -231,8 +233,8 @@ export function cleanRich(v: Record<string, unknown>): Partial<Pick<SfxParams, (
 }
 
 export function toJson(params: SfxParams): string {
-  const { layers, drive, reverb, room, width, ...plain } = params;
-  const finish = { ...(drive ? { drive } : {}), ...(reverb ? { reverb } : {}), ...(reverb && room !== undefined ? { room } : {}), ...(width ? { width } : {}) };
+  const { layers, drive, reverb, room, width, loop, ...plain } = params;
+  const finish = { ...(drive ? { drive } : {}), ...(reverb ? { reverb } : {}), ...(reverb && room !== undefined ? { room } : {}), ...(width ? { width } : {}), ...(loop ? { loop } : {}) };
   // a layered effect keeps only what it plays: its master volume, seed, finish and layers
   if (layers?.length) return `${JSON.stringify({ version: 1, volume: plain.volume, seed: plain.seed, ...finish, layers: layers.map(layerToJson) }, null, 2)}\n`;
   return `${JSON.stringify({ version: 1, ...plain, ...finish }, null, 2)}\n`;

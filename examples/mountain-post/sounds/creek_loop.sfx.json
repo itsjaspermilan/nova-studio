@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "volume": 1,
+  "seed": 1,
+  "reverb": 0.1,
+  "room": 0.4,
+  "width": 0.7,
+  "loop": 1,
+  "layers": [
+    {
+      "wave": "crackle",
+      "freq": 1400,
+      "attack": 0.3,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.6,
+      "filter": "bandpass",
+      "cutoff": 2100,
+      "cutoffEnd": 2900,
+      "q": 1.3
+    },
+    {
+      "wave": "crackle",
+      "freq": 900,
+      "attack": 0.3,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.45,
+      "filter": "bandpass",
+      "cutoff": 1100,
+      "cutoffEnd": 800,
+      "q": 1.8
+    },
+    {
+      "wave": "pink",
+      "attack": 0.5,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.45,
+      "filter": "bandpass",
+      "cutoff": 700,
+      "cutoffEnd": 1100,
+      "q": 0.8
+    },
+    {
+      "wave": "noise",
+      "attack": 0.5,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.1,
+      "filter": "highpass",
+      "cutoff": 4000
+    }
+  ]
+}

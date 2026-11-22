@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "background": [40, 34, 30],
+  "camera": { "eye": [0, 2.2, 2.2], "target": [0, 1, 0], "fov": 60 },
+  "objects": [
+    { "kind": "office_room", "name": "room", "x": 0, "y": 0, "z": 0 },
+    { "kind": "postmaster", "name": "postmaster", "x": 0.3, "y": 0, "z": 0.55, "props": { "ry": 3.14 } },
+    {
+      "kind": "item",
+      "name": "letter",
+      "x": 1,
+      "y": 0.81,
+      "z": -0.45,
+      "props": { "item": "letter", "ry": 0.25 }
+    },
+    {
+      "kind": "item",
+      "name": "parcel_hazel",
+      "x": 3.25,
+      "y": 0.45,
+      "z": 1.25,
+      "props": { "item": "hazel", "ry": 1.57 }
+    },
+    {
+      "kind": "item",
+      "name": "parcel_pip",
+      "x": 3.25,
+      "y": 0.45,
+      "z": 0.55,
+      "props": { "item": "pip", "ry": 1.57 }
+    },
+    { "kind": "spot", "name": "office_exit", "x": 0.9, "y": 0, "z": 2.55 },
+    { "kind": "spot", "name": "counter_spot", "x": 0.4, "y": 0, "z": 0.1 }
+  ]
+}

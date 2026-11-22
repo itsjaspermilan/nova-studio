@@ -349,3 +349,52 @@ What I wanted, what I tried, what would have made it one step. Most costly first
 7. **`sfx_write` clips easily with `punch`**: a whoosh with `punch` 0.7 at volume 0.55 clipped 60 samples (the warning said so, with the setting to change: good).
    A rising noise sweep that ends abruptly (a swell, then a cut) is how the dash attack's "whoosh-crack" is made with one envelope; two layers (a whoosh and a crack)
    would need two sounds started together, which `nova.sound.play` can do, but the preset list has no "whip".
+
+# Friction log, the mountain post office slice (Fernhollow Post, 2026-11-22)
+
+Building `examples/mountain-post` (docs/games/mountain-post.md, "Slice spec") in one session, as an agent, from the makers. What cost time, most
+first, and what was done about it.
+
+1. **Collision shapes came out 16 times too small.** `prop3d_make`'s low-style props wrote their `colliders` and `boxes` in metres, but a model
+   document keeps them in model units and the glTF export scales them by the model's `scale`: a pine's trunk blocked as a circle 2 cm across, a
+   room's walls as nothing (found when the camera boom went through the office wall). `model_write`'s description said "world units", which is
+   what the maker believed. **Fixed**: the maker writes model units and says metres in its answer; `model_write`'s description says model units.
+   Props already made by the low-style maker in other examples (the 3D starter's trees and rocks) still have the tiny shapes until remade.
+2. **A scene prop named `id` is silently replaced** by the entity's own numeric `id`: the road lines and the creek lost their names, and the
+   autopilot found no road. Nothing warns. One step: `scene_write` or `check` could warn when a prop has the name of a built-in field (`id`, `x`,
+   `name`, `depth`...).
+3. **`terrain_write` made ground for one route.** A small map has a main road, two lanes, a creek, yards and edges. **Added**: `roads` (each lane
+   leaves its road level with it), `pads`, `carve` (a creek or a gorge, cut through everything) and `rim` (with `edges`, so a view out over a lake
+   stays open); features that meet blend by their weights (before, a yard beside a road made a step: the parked van leaned 17 degrees).
+4. **`sfx_write` could not make a loop** (a creek, the air in the trees, a radio): every effect ended in a fade. **Added** `loop: 1` (the end
+   crossfaded into the start); `sound_report` judges such a file as a loop (its seam, no one-shot advice).
+5. **`character3d_make` made only people.** **Added** `species` (fox, badger, rabbit, bear, cat: fur and its pattern, a muzzle, ears, big eyes, paws,
+   a tail part the clips swing), `head_scale`, a `squat` build, a `peaked` cap, `accessory` (satchel, glasses, headphones, scarf), and the clips
+   `carry` (a masked layer for the arms), `talk` and `work`.
+6. **`car_make` has no van**, and its `spec` is the car kit's curves traced from a blueprint (dozens of numbers per view). A toy-like low-poly van
+   was quicker and fits the flat look better: `model_write` boxes with bevels, wheels as `wheel_*` parts so Pine Ridge's suspension finds them.
+7. **`nova check` called sound groups missing** (`nova.sound.play("impact")` with `sounds/impact.group.json`), which failed
+   `the_shipped_examples_all_check_clean`. **Fixed** in the check (a group is a sound by its name), with a test.
+8. **The follow camera and `walk_to` do not know the heightmap or a parked van.** `nova.cam3.follow` places the eye by `nova.solid` only, so on
+   designed ground the game places its own camera (as Pine Ridge does), shortening its boom by probing `nova.scenery.push`; `walk_to` walks
+   straight into the van (not solid, it moves), so the routes lead the postmaster round it with helpers (`lib/testkit.lua`).
+9. **Objects are made before the scene's `enter`**, where the terrain is set: the bridge measured its deck on flat ground. A `settle` call from
+   `enter` fixed it; a line in the scene docs would have saved the search.
+10. **`sound_report` advises "no transient" on soft sounds** (footsteps on grass, voices, bird calls), and the `step_grass` purpose itself gets the
+   same advice. It reads as a fault where none was meant; an effect's `purpose` (or a "soft" flag) could turn the impact advice off.
+11. **`print` echoes the whole expression** on every line, so long `string.format` probes were cut off in the answer; defining a helper in the
+   plan's `lua` and printing `PS()` is the way round.
+12. **Static scenery boxes become chains of at most 32 circles** of the box's narrow half-width: a long thin wall is a row of small circles with
+   gaps a small body can pass. Fine here (walls are short), but worth a line in the scenery docs.
+13. **A model has no way to swap a face part.** `parts` turns and shifts a part but cannot hide it or scale it, and there are no shape keys on
+   a rigid head. The expressions are made by moving the parts that are not shown 12 cm back inside the head (`parts = { eye_wide = { z = 0.12 } }`
+   brings one out). It works and costs nothing, but `parts = { eye_wide = { visible = false } }` would say what is meant.
+14. **A chibi has no knees or elbows, and the walk solver assumes both.** `walk` and `ik` clips bend a thigh and shin to plant the foot; a
+   one-piece leg cannot do that, so the chibi clips swing whole limbs and drop the hips by L(1 - cos a) to keep the foot on the ground, and the
+   no-slide speeds are worked out by hand (2 L sin a per step). A `walk` option for straight legs would let any short figure use the solver.
+15. **The face sheets and the run's film strip needed a fixed camera** (`play`'s `view` always looks at the entity's middle, which on a two-heads-tall
+   figure is the belly, so a face filled a corner). The game's camera module took a `pinned` view for the gallery's routes; a `view.target_height`
+   (or `at`) would do it from the tool.
+16. **The brows and the smile came out upside down the first time**: a part's `rz` in the model file turns +x up when positive, and +x is the
+   figure's own left, the viewer's right. Only a close capture from the front showed it (the sheet at a 3/4 view hid it). One line in
+   `model_write`'s description ("seen from the front, +x is on the viewer's right... positive rz lifts the +x end") would have saved a round.

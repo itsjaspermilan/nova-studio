@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "volume": 0.8,
+  "seed": 1,
+  "drive": 0.2,
+  "width": 0.2,
+  "layers": [
+    {
+      "wave": "saw",
+      "freq": 160,
+      "attack": 0.02,
+      "hold": 0.42,
+      "decay": 0.05,
+      "volume": 0.35,
+      "vibrato": 2,
+      "vibratoSpeed": 14,
+      "filter": "lowpass",
+      "cutoff": 1400
+    },
+    {
+      "wave": "noise",
+      "attack": 0.02,
+      "hold": 0.42,
+      "decay": 0.05,
+      "volume": 0.2,
+      "filter": "bandpass",
+      "cutoff": 1600,
+      "q": 1
+    },
+    {
+      "wave": "saw",
+      "freq": 140,
+      "start": 0.45,
+      "attack": 0.01,
+      "hold": 0.15,
+      "decay": 0.3,
+      "volume": 0.45,
+      "pitch": 12,
+      "pitchTime": 0.12,
+      "filter": "lowpass",
+      "cutoff": 700
+    },
+    {
+      "wave": "noise",
+      "start": 0.45,
+      "hold": 0.1,
+      "decay": 0.3,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 900,
+      "q": 0.8
+    }
+  ]
+}

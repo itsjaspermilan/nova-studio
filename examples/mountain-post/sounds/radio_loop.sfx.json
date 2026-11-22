@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "volume": 0.9,
+  "seed": 1,
+  "width": 0.3,
+  "loop": 1,
+  "layers": [
+    {
+      "wave": "crackle",
+      "freq": 90,
+      "attack": 0.2,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.2,
+      "filter": "highpass",
+      "cutoff": 2500
+    },
+    {
+      "wave": "triangle",
+      "freq": 523,
+      "attack": 0.05,
+      "hold": 0.45,
+      "decay": 0.2,
+      "volume": 0.25,
+      "vibrato": 0.15,
+      "vibratoSpeed": 5,
+      "filter": "bandpass",
+      "cutoff": 1500,
+      "q": 1.2
+    },
+    {
+      "wave": "triangle",
+      "freq": 659,
+      "start": 0.7,
+      "attack": 0.05,
+      "hold": 0.45,
+      "decay": 0.2,
+      "volume": 0.25,
+      "filter": "bandpass",
+      "cutoff": 1500,
+      "q": 1.2
+    },
+    {
+      "wave": "triangle",
+      "freq": 784,
+      "start": 1.4,
+      "attack": 0.05,
+      "hold": 0.7,
+      "decay": 0.3,
+      "volume": 0.22,
+      "filter": "bandpass",
+      "cutoff": 1500,
+      "q": 1.2
+    },
+    {
+      "wave": "triangle",
+      "freq": 587,
+      "start": 2.5,
+      "attack": 0.05,
+      "hold": 0.9,
+      "decay": 0.3,
+      "volume": 0.24,
+      "filter": "bandpass",
+      "cutoff": 1500,
+      "q": 1.2
+    },
+    {
+      "wave": "pink",
+      "attack": 0.2,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.12,
+      "filter": "bandpass",
+      "cutoff": 1800,
+      "q": 1.5
+    }
+  ]
+}

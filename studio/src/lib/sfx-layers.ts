@@ -96,6 +96,9 @@ export interface SfxFinish {
   room?: number;
   /// Stereo spread (0 to 1): unison oscillators fan out, noise layers become two independent noises, the room is wide.
   width?: number;
+  /// 1: a seamless loop (a bed of water, wind, a crowd, played with `loop = true`): the last `loop` share of a second of the
+  /// sound is crossfaded into its start and cut there, so its end runs on into its start with no seam. 0: an ordinary effect.
+  loop?: number;
 }
 
 export const FINISH_RANGES: Record<keyof SfxFinish, { min: number; max: number; what: string }> = {
@@ -103,7 +106,21 @@ export const FINISH_RANGES: Record<keyof SfxFinish, { min: number; max: number; 
   reverb: { min: 0, max: 1, what: "how much of a short room is heard" },
   room: { min: 0, max: 1, what: "the room's size (default 0.3)" },
   width: { min: 0, max: 1, what: "stereo spread" },
+  loop: { min: 0, max: 1, what: "1: a seamless loop, its end crossfaded into its start (play it with loop = true)" },
 };
+
+/// Makes a sound loop with no seam: the last `xf` samples are faded in under the first `xf` (equal power) and the sound is cut
+/// before them, so its last sample runs on into the first as the material did.
+export function seamless(ch: Float32Array, xf: number): Float32Array {
+  const n = ch.length;
+  xf = Math.max(1, Math.min(xf, Math.floor(n / 3)));
+  const out = ch.slice(0, n - xf);
+  for (let i = 0; i < xf; i++) {
+    const t = (i + 0.5) / xf;
+    out[i] = ch[i]! * Math.sin((t * Math.PI) / 2) + ch[n - xf + i]! * Math.cos((t * Math.PI) / 2);
+  }
+  return out;
+}
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -390,6 +407,18 @@ export function renderRich(layers: SfxLayer[] | null, dry: Float32Array | null, 
     }
   }
   if (reverb > 0) room(l, r, reverb, size, width, rate);
+  if ((finish.loop ?? 0) >= 0.5) {
+    // a loop: no fade at the end (its end is its start), under full scale, the last half second crossfaded into the start
+    const xf = Math.round(Math.min(0.5, seconds / 4) * rate);
+    const a = seamless(l, xf), b = seamless(r, xf);
+    let pk = 0;
+    for (let i = 0; i < a.length; i++) pk = Math.max(pk, Math.abs(a[i]!), Math.abs(b[i]!));
+    const g = pk > 0.98 ? 0.98 / pk : 1;
+    for (let i = 0; i < a.length; i++) { a[i] = a[i]! * g; b[i] = b[i]! * g; }
+    let same = true;
+    for (let i = 0; i < a.length && same; i++) same = a[i] === b[i];
+    return same ? [a] : [a, b];
+  }
   // under full scale; the end cut where the sound has fallen 66 dB under its peak (a room's tail need not run on in silence), and
   // a short fade there so nothing clicks
   let peak = 0;

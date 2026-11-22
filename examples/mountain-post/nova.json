@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "Fernhollow Post",
+  "version": "0.1.0",
+  "world_height": 720,
+  "ignore": ["tools", "build", "docs"],
+  "graphics": { "msaa": 4 },
+  "sprite_filter": "smooth",
+  "input": {
+    "go": ["key:ArrowUp", "key:KeyW", "axis:r2"],
+    "brake": ["key:ArrowDown", "key:KeyS", "axis:l2"],
+    "steer": {
+      "negative": ["key:ArrowLeft", "key:KeyA", "axis:left_x-"],
+      "positive": ["key:ArrowRight", "key:KeyD", "axis:left_x+"]
+    },
+    "move_x": {
+      "negative": ["key:ArrowLeft", "key:KeyA", "axis:left_x-"],
+      "positive": ["key:ArrowRight", "key:KeyD", "axis:left_x+"]
+    },
+    "move_y": {
+      "negative": ["key:ArrowUp", "key:KeyW", "axis:left_y-"],
+      "positive": ["key:ArrowDown", "key:KeyS", "axis:left_y+"]
+    },
+    "look_x": {
+      "negative": ["axis:right_x-", "key:KeyQ"],
+      "positive": ["axis:right_x+", "key:KeyE"]
+    },
+    "look_y": {
+      "negative": ["axis:right_y-"],
+      "positive": ["axis:right_y+"]
+    },
+    "act": ["pad:south", "key:Space", "key:Enter"],
+    "van": ["pad:east", "key:KeyF", "key:Backspace"],
+    "horn": ["pad:west", "key:KeyH"],
+    "map": ["pad:north", "key:KeyM", "key:Tab"],
+    "pause": ["pad:start", "key:Escape", "key:KeyP"],
+    "menu_up": ["key:ArrowUp", "pad:dpad_up", "axis:left_y-"],
+    "menu_down": ["key:ArrowDown", "pad:dpad_down", "axis:left_y+"]
+  }
+}

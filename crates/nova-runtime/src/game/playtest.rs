@@ -1256,6 +1256,9 @@ impl Game {
             "sound" | "music" => {
                 super::find_sound(&sh.sounds, name).is_some()
                     || super::find_stream(&sh.streams, name).is_some()
+                    // (a random sound group, sounds/<name>.group.json, is played by its name too)
+                    || (kind == "sound"
+                        && self.vfs().exists(&format!("sounds/{name}.group.json")))
             }
             "sprite" => {
                 name == crate::assets::WHITE

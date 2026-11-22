@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "from": [-0.96, -0.4, -10.4], "size": [1.92, 0.8, 20.8], "color": "#c99a68" }
+      ],
+      "children": []
+    }
+  ]
+}

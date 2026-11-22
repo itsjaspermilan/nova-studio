@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "volume": 0.6,
+  "seed": 1,
+  "width": 0.2,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0,
+      "decay": 0.01,
+      "volume": 0.45,
+      "filter": "highpass",
+      "cutoff": 3800
+    },
+    {
+      "wave": "noise",
+      "attack": 0.006,
+      "decay": 0.05,
+      "volume": 0.25,
+      "filter": "bandpass",
+      "cutoff": 2500,
+      "cutoffEnd": 900,
+      "q": 1.2
+    },
+    {
+      "wave": "noise",
+      "hold": 0.002,
+      "decay": 0.02,
+      "volume": 0.4,
+      "filter": "bandpass",
+      "cutoff": 4000,
+      "q": 2
+    },
+    {
+      "wave": "triangle",
+      "freq": 1250,
+      "hold": 0.004,
+      "decay": 0.05,
+      "volume": 0.45
+    }
+  ]
+}
