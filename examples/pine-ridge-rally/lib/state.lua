@@ -229,6 +229,7 @@ state.music_volume = 0.7
 state.sfx_volume = 0.8
 state.shadows = true   -- the sun's shadows (a little slower on a handheld)
 state.vibration = true -- shake the gamepad when the car hits something
+state.codriver = true  -- the co-driver reads the pace notes aloud (lib/codriver.lua; its volume follows the sound volume)
 state.music_style = "studio" -- "kenney" (Kenney's music loops) or "studio" (the songs made with Nova's music editor)
 state.smooth = true    -- edges smoothed (FXAA at 540p, before the picture is scaled up)
 state.effects = true   -- bloom, ambient occlusion, grass and wind (a little slower on a handheld)
@@ -240,6 +241,7 @@ function state.load()
   state.sfx_volume = saved.sfx or state.sfx_volume
   if saved.shadows ~= nil then state.shadows = saved.shadows end
   if saved.vibration ~= nil then state.vibration = saved.vibration end
+  if saved.codriver ~= nil then state.codriver = saved.codriver end
   if saved.effects ~= nil then state.effects = saved.effects end
   if saved.smooth ~= nil then state.smooth = saved.smooth end
   if saved.music_style then state.music_style = saved.music_style end
@@ -269,7 +271,7 @@ function state.apply_look(look, extra)
 end
 
 function state.save_options()
-  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, smooth = state.smooth, music_style = state.music_style, rivals = state.rival_level })
+  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, codriver = state.codriver, effects = state.effects, smooth = state.smooth, music_style = state.music_style, rivals = state.rival_level })
   nova.save.set("last_track", state.track)
   nova.save.set("last_stage", state.stage)
   nova.save.set("last_car", state.car)

@@ -37,12 +37,12 @@ Keep the folder on a disk that allows running programs (some SD-card mounts are 
 - Which of Wayland or X11 the OS uses, and that winit picks it up; whether a Vulkan device is found (try `vulkaninfo`).
 - Gamepad: gilrs reads `/dev/input` through udev; the Retroid's built-in controls may appear as a differently mapped pad.
 - Audio: PipeWire's ALSA plugin gave 5.5-second callbacks (sound seconds late and garbled). `main.rs` now sets `PIPEWIRE_ALSA={ alsa.period-bytes=2048 alsa.buffer-bytes=8192 node.latency=256/48000 }` (256-frame periods, 1024-frame buffer: about 20 ms) (1024 frames) unless it is set, and `audio.rs` prefers the "pipewire" ALSA device (`NOVA_AUDIO_DEVICE=<part of a name>` picks another; names are logged). Measured on 2026-11-19: about 47 callbacks a second, max 2 ms; **not listened to yet**. Save-data folder, thermals: unchecked.
-- Launching from the OS's own front end: the Retroid runs Steam in game mode, so each game is a "non-Steam game" pointing at its `play.sh`. `scripts/steam-shortcut.mjs` writes a first list; `scripts/steam-shortcut-add.mjs` adds a game to an existing list, copying another entry's launch options (Pine Ridge's are `/usr/libexec/armada/armada-game-launch %command%`). The list is `~/.local/share/Steam/userdata/<id>/config/shortcuts.vdf`; keep a copy, and restart Steam to see the change. Neon Undertow was added this way on 2026-11-21; **not yet confirmed to appear or start**.
+- Launching from the OS's own front end: the Retroid runs Steam in game mode, so each game is a "non-Steam game" pointing at its `play.sh`. `scripts/steam-shortcut.mjs` writes a first list; `scripts/steam-shortcut-add.mjs` adds a game to an existing list, copying another entry's launch options (Pine Ridge's are `/usr/libexec/armada/armada-game-launch %command%`). The list is `~/.local/share/Steam/userdata/<id>/config/shortcuts.vdf`; keep a copy, and restart Steam to see the change. Neon Undertow was added this way on 2026-11-21 and appeared and started (the game was removed from the repository later that day).
 
 ## Library artwork in Steam's game mode
 
 Each game has its pictures in `<game>/steam/` (`cover.png` 600x900, `banner.png` 920x430, `hero.png` 3840x1240, `logo.png` 1280x720 with a
-transparent background, `icon.png` 256x256), made by `scripts/steam-art.mjs` (`scripts/env.sh node scripts/steam-art.mjs examples/neon-undertow`; it plays the
+transparent background, `icon.png` 256x256), made by `scripts/steam-art.mjs` (`scripts/env.sh node scripts/steam-art.mjs examples/pine-ridge-rally`; it plays the
 game headless to capture key art, so it needs the release build of `nova`). The folder is in each game's `nova.json` `"ignore"` list, so it is neither loaded nor packed.
 
 For a non-Steam game Steam reads artwork from `~/.local/share/Steam/userdata/<user id>/config/grid/`, named after the shortcut's app id (the unsigned

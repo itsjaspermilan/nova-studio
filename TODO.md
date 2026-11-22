@@ -29,6 +29,10 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
 - **Not verified by a person or on the device:** the radio songs and engine sounds have not been listened to; drift feel, stiffness and
   camera are first guesses; the new cars are not played on the Retroid; the studio's native-only paths were checked once overall.
 
+## Direction (2026-11-21)
+
+The owner scrapped Neon Undertow (the cyberpunk roguelike) and had it deleted; it is kept in the git tag `archive/neon-undertow-2026-11`, and what building it taught about Nova is in `docs/friction-log.md` and `docs/sound-for-agents.md`. Effort goes into **Pine Ridge Rally** and into Nova itself. Open for Pine Ridge: generated tracks with share codes, the Daily Race with its calendar and target times, proper sun shadows under the cars (an engine fix), and the owner's play notes as they come.
+
 ## Nova for agents (decided 2026-11-20): the next assignment
 
 The aim: someone points their AI agent at Nova and it builds a good-looking game. Agent-friendly comes before human-friendly here. The

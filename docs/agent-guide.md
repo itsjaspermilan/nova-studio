@@ -160,7 +160,7 @@ which for a person or a creature). The detailed style has twice the pixels at th
 layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox). A detailed
 person is a bold cartoon a third bigger than a tile row (96x96 frames, pivot `{ 0.5, 0.906 }`, the feet's hitbox `{ -7, -8, 14, 8 }`),
 with a face that changes, `roll_<dir>` and `tell_<dir>` besides idle, walk, attack and hurt; `stance`, `pose` and `expression`
-give each enemy its own silhouette (Neon Undertow's cast is `HD_ARCHETYPES` in `makers/character-hd.ts`). Every city creature
+give each enemy its own silhouette (a cast of city people is `HD_ARCHETYPES` in `makers/character-hd.ts`). Every city creature
 has a `tell` frame to show before it hurts.
 `examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
 `play` at game scale on a dark street, not in the sheet. Its street takes its night look from light: `scenes/street.lua` sets
@@ -338,6 +338,11 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   `tail` is the audible part. Play a repeated effect with `vary = 0.05` so it is not a row of copies.
 - **Songs that do not sound like a chip:** `song_make` with the `synthwave` moods, or give tracks `unison`/`detune`, a `cutoff`
   with `sweep`, `duck` under the kick, the `punch` or `studio` kit, and a `master` compressor and `limit`.
+- **Music under a long fight** must not repeat every 15 seconds: `song_make` writes an intro, A, B, a break and A again (a minute or
+  more, looping from the first A); for a song you write yourself, set `loop` to skip the intro and make it 45 seconds or more.
+- **Small speakers** (the handheld, a phone) play little below 200 Hz: a bass or a thump that is only a sine is lost there. The report
+  says how much quieter a sound is on such a speaker and warns past 60 % below 200 Hz; add harmonics (a saw, a triangle knock, drive) or
+  a layer an octave up.
 - **Sizes of pictures:** the tools' pictures are 960x540 unless you pass `size`; the CLI's `--capture` is 1280x720.
 - **3D: are the shadows drawn?** A 3D `play` answer has a `render:` line: shadows on or off, how many models cast one,
   which way the sun travels against the camera, the ambient light, fog, the camera's eye and target. Shadows from a sun

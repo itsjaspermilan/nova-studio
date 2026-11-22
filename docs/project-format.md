@@ -1357,6 +1357,15 @@ A song's `master` can carry an effect chain like a track's (`"fx": [{ "type": "c
 `lufs` and a peak ceiling `limit` (see `SongMaster` in `studio/src/lib/song.ts`); `song_make`'s moods use a gentle compressor and
 `"limit": -1`.
 
+**Loop region and song forms.** `"loop": { "from": 64, "to": 512 }` (steps) is where the game loops: the studio and `song_write` write it
+into the `.ogg` as `LOOPSTART`/`LOOPLENGTH`, so the song plays from the top once (an intro) and then loops between the two. When `to` is
+the song's end, the tails of the last notes, echoes and the room are wrapped onto the loop's start, not onto the intro, and
+`sound_report` judges the seam there. `song_make` writes songs this way by default: an intro (4 bars) that plays once, then A, B, a
+break and A again (32 bars, or 40 for a fast tempo), with `markers` naming the sections and the loop from the first A to the end; its
+`form: "loop"` gives one short loop instead. `sound_report` warns when a looping piece repeats in under 45 seconds (one under 10 seconds,
+a jingle or a sting, is left alone), and when more than 60 % of a sound's energy lies below 200 Hz, which a handheld's or a phone's
+speaker barely plays (give the bass harmonics or a layer an octave up: `song_make`'s driving moods have a `bass_hi` track for that).
+
 **Buses and note details.** A song can have up to 8 `buses`, each `{ "name", "volume" (0 to 1.5), "pan" (balance), "mute", "reverb", "fx", "color" }`; `fx` is a chain like a track's. A
 track names the bus it plays into with `"bus": "name"` (none: straight to the master) and may copy part of its sound to up to four more with
 `"sends": [{ "bus": "name", "level": 0.4 }]` (after its own volume, pan and effects). A name that is not a bus is an error. Buses do not feed each other.
