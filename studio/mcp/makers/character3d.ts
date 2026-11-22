@@ -8,7 +8,7 @@ import { paletteOf } from "./palettes";
 import { blend, choice, colours, Mesh3, modelDoc, part, tone, U, type Args, type V3 } from "./kit3d";
 
 export const CHARACTER3D = {
-  builds: ["average", "slim", "stocky", "child", "squat"] as const,
+  builds: ["average", "slim", "stocky", "child", "squat", "chibi"] as const,
   skins: ["light", "tan", "brown", "dark", "pale", "green"] as const,
   hairs: ["short", "long", "bun", "ponytail", "spiky", "bald"] as const,
   outfits: ["tunic", "shirt", "robe", "armor", "vest"] as const,
@@ -17,6 +17,27 @@ export const CHARACTER3D = {
   items: ["none", "sword", "staff", "lantern", "axe", "torch"] as const,
   species: ["human", "fox", "badger", "rabbit", "bear", "cat"] as const,
   accessories: ["none", "satchel", "glasses", "headphones", "scarf"] as const,
+};
+
+/// An animal person's face is a few sets of parts (eyes, brows, mouth), one of each shown: the first of each set is in place, the others
+/// wait FACE_HIDE metres back inside the head until the game brings one out (parts = { eye_wide = { z = FACE_HIDE }, eye_open = { z = -FACE_HIDE } }).
+export const FACE_HIDE = 0.12;
+export const FACE_SETS = {
+  eyes: ["eye_open", "eye_happy", "eye_wide", "eye_shut"],
+  brows: ["brow_flat", "brow_frown", "brow_up", "brow_sad"],
+  mouth: ["mouth_closed", "mouth_open", "mouth_smile", "mouth_frown"],
+} as const;
+const FIRSTS = new Set<string>([FACE_SETS.eyes[0], FACE_SETS.brows[0], FACE_SETS.mouth[0]]);
+/// The expressions, as the part of each set they show (the game also blinks with eye_shut and talks with mouth_open).
+export const EXPRESSIONS: Record<string, [string, string, string]> = {
+  neutral: ["eye_open", "brow_flat", "mouth_closed"],
+  smile: ["eye_open", "brow_flat", "mouth_smile"],
+  happy: ["eye_happy", "brow_up", "mouth_smile"],
+  delighted: ["eye_wide", "brow_up", "mouth_open"],
+  gruff: ["eye_open", "brow_frown", "mouth_frown"],
+  sad: ["eye_open", "brow_sad", "mouth_frown"],
+  surprised: ["eye_wide", "brow_up", "mouth_open"],
+  indignant: ["eye_open", "brow_frown", "mouth_open"],
 };
 
 /// The animals' fur: the main coat, the lighter one (muzzle, chest, tail tip), the dark one (nose, ear tips, paws), and the
@@ -38,6 +59,8 @@ export interface Character3d {
   speeds: Record<string, number>;
   capsule: { radius: number; height: number };
   says: string;
+  /// For an animal person: how its face changes (the parts of each set, and the expressions as the part of each set they show).
+  faces?: string;
   lua: (name: string, speeds: { walk: number; run: number }) => string;
 }
 
@@ -74,15 +97,19 @@ export function makeCharacter3d(a: Args): Character3d {
 
   // ---- the measures (metres)
   // (squat: short and broad, a badger's or a bear's build)
+  // (chibi: a cozy villager about two heads tall, 1.0 to 1.15 m: a big round head on a small pear-shaped body, stubby arms and legs
+  // that are one simple piece each, swinging from the shoulder and the hip, mitten hands, round feet; no elbows or knees)
+  const chibi = build === "chibi";
   const tall = build === "child" ? 0.72 : build === "squat" ? 0.76 : build === "stocky" ? 0.95 : 1;
-  const wide = build === "slim" ? 0.88 : build === "stocky" ? 1.2 : build === "squat" ? 1.18 : build === "child" ? 0.86 : 1;
-  const headK = (build === "child" ? 1.02 : 1.1) * hs;
-  const ankle = 0.07, shin = 0.34 * tall, thigh = 0.36 * tall;
+  const wide = build === "slim" ? 0.88 : build === "stocky" ? 1.2 : build === "squat" ? 1.18 : build === "child" ? 0.86 : chibi ? 1.15 : 1;
+  const headK = (build === "child" ? 1.02 : chibi ? 1.0 : 1.1) * hs;
+  const ankle = chibi ? 0.045 : 0.07, shin = chibi ? 0.115 : 0.34 * tall, thigh = chibi ? 0.125 : 0.36 * tall;
   const hipY = ankle + shin + thigh;
-  const hipsY = hipY + 0.03;
-  const spineUp = 0.07 * tall, neckUp = 0.42 * tall;
-  const upper = 0.24 * tall, fore = 0.22 * tall;
-  const shoulder = 0.205 * wide * (build === "child" ? 0.95 : 1), legX = 0.092 * wide;
+  const hipsY = hipY + (chibi ? 0.02 : 0.03);
+  const spineUp = chibi ? 0.02 : 0.07 * tall, neckUp = chibi ? 0.25 : 0.42 * tall;
+  const upper = chibi ? 0.12 : 0.24 * tall, fore = chibi ? 0.09 : 0.22 * tall;
+  const shoulder = chibi ? 0.16 * wide : 0.205 * wide * (build === "child" ? 0.95 : 1), legX = chibi ? 0.075 * wide : 0.092 * wide;
+  const cy = chibi ? 0.55 : 1; // (the hips' own shapes, pelvis, jacket hem and belt, squeezed to the short body)
   const headR: V3 = [0.125 * headK, 0.148 * headK, 0.13 * headK];
   const headC = 0.165 * headK;
 
@@ -131,7 +158,25 @@ export function makeCharacter3d(a: Args): Character3d {
   };
   // (an animal's hands are paws: a fox's dark, the others a shade under the fur)
   const paw = !animal ? skin : species === "fox" ? furDark : species === "badger" ? furDark : tone(skin, -0.25);
+  // chibi limbs: a stubby rounded piece each, rigid in its part (it swings from the shoulder or the hip as a whole); the mitten and the
+  // round foot sit at its end in their own parts, which the chibi clips never bend away
+  const chibiArm = () => {
+    const m = new Mesh3(sleeveC, { bend: false });
+    const len = upper + fore;
+    m.rings([{ y: 0.035, rx: 0.03 }, { y: 0.015, rx: 0.06 * wide }, { y: -len * 0.45, rx: 0.056 * wide }, { y: -len + 0.01, rx: 0.05 * wide }, { y: -len, rx: 0.044 * wide }], 8,
+      (i) => (i >= 3 && sleeves === "short" ? skin : i === 3 ? tone(sleeveC, -0.4) : sleeveC), { smooth: true });
+    return m;
+  };
+  const chibiMitten = () => new Mesh3(paw, { bend: false }).blob([0, -0.03, 0.005], [0.05, 0.05, 0.048], paw, () => 0.5, { seg: 8, rows: 4, jitter: 0, tones: 0.1 });
+  const chibiLeg = () => {
+    const m = new Mesh3(legC, { bend: false });
+    const len = thigh + shin;
+    m.rings([{ y: 0.03, rx: 0.07 * wide, rz: 0.07 }, { y: -len * 0.5, rx: 0.064 * wide, rz: 0.064 }, { y: -len, rx: 0.058 * wide, rz: 0.058 }], 8, legC, { smooth: true });
+    return m;
+  };
+  const chibiFoot = () => new Mesh3(shoe, { bend: false }).blob([0, -ankle + 0.035, 0.03], [0.065 * wide, 0.042, 0.09], shoe, () => 0.5, { seg: 8, rows: 4, jitter: 0, tones: 0.2, flatBottom: 0.85 });
   const handMesh = (side: number) => {
+    if (chibi) return chibiMitten();
     const m = new Mesh3(paw, { bend: false });
     m.blob([0, -0.045, 0], [0.036, 0.055, 0.045], paw, () => 0.5, { seg: 6, rows: 3, jitter: 0, tones: 0 });
     m.box([-side * 0.012, -0.045, 0.04], [0.022, 0.04, 0.03], tone(paw, -0.2), { flat: true });
@@ -140,25 +185,27 @@ export function makeCharacter3d(a: Args): Character3d {
 
   // ---- the body
   const pelvis = new Mesh3(legC, { bend: false });
-  pelvis.rings([{ y: -0.11, rx: 0.1 * wide, rz: 0.085 }, { y: -0.05, rx: 0.158 * wide, rz: 0.115 }, { y: 0.04, rx: 0.16 * wide, rz: 0.112 }, { y: 0.1, rx: 0.145 * wide, rz: 0.1 }], 10, legC, { smooth: true });
+  pelvis.rings([{ y: -0.11 * cy, rx: 0.1 * wide, rz: 0.085 }, { y: -0.05 * cy, rx: 0.158 * wide, rz: 0.115 }, { y: 0.04 * cy, rx: 0.16 * wide, rz: 0.112 }, { y: 0.1 * cy, rx: 0.145 * wide, rz: 0.1 }], 10, legC, { smooth: true });
   const skirt = new Mesh3(torsoC, { bend: false });
   if (outfit === "tunic" || outfit === "robe" || outfit === "armor") {
-    const down = outfit === "robe" ? -(thigh + shin * 0.35) : -0.2 * tall, flare = outfit === "robe" ? 1.5 : 1.22;
+    const down = outfit === "robe" ? -(thigh + shin * 0.35) : chibi ? -0.07 : -0.2 * tall, flare = outfit === "robe" ? 1.5 : 1.22;
     const c = outfit === "armor" ? tone(main, -0.3) : torsoC;
-    skirt.rings([{ y: 0.09, rx: 0.165 * wide, rz: 0.118 }, { y: 0.0, rx: 0.178 * wide, rz: 0.13 }, { y: down, rx: 0.17 * wide * flare, rz: 0.13 * flare }], 10, (i) => (i === 1 ? tone(c, -0.25) : c), { smooth: true, caps: false });
+    skirt.rings([{ y: 0.09 * cy, rx: 0.165 * wide, rz: 0.118 }, { y: 0.0, rx: 0.178 * wide, rz: 0.13 }, { y: down, rx: 0.17 * wide * flare, rz: 0.13 * flare }], 10, (i) => (i === 1 ? tone(c, -0.25) : c), { smooth: true, caps: false });
     // (closed underneath, a shade darker, so nothing shows through from below)
     skirt.rings([{ y: down + 0.004, rx: 0.165 * wide * flare, rz: 0.125 * flare }, { y: down, rx: 0.17 * wide * flare, rz: 0.13 * flare }], 10, tone(c, -1.4));
     if (outfit === "robe") skirt.rings([{ y: down, rx: 0.172 * wide * flare, rz: 0.132 * flare }, { y: down + 0.04, rx: 0.172 * wide * flare, rz: 0.132 * flare }], 10, trim, { caps: false });
   }
   const belt = new Mesh3(trim, { bend: false });
   if (outfit !== "robe") {
-    belt.rings([{ y: 0.065, rx: 0.172 * wide, rz: 0.124 }, { y: 0.105, rx: 0.172 * wide, rz: 0.124 }], 10, tone(trim, -0.5));
-    belt.box([0, 0.085, 0.125], [0.05, 0.05, 0.02], pal.gold!, { flat: true });
+    belt.rings([{ y: 0.065 * cy, rx: (chibi ? 0.195 : 0.172) * wide, rz: chibi ? 0.155 : 0.124 }, { y: 0.105 * cy, rx: (chibi ? 0.195 : 0.172) * wide, rz: chibi ? 0.155 : 0.124 }], 10, tone(trim, -0.5));
+    belt.box([0, 0.085 * cy, chibi ? 0.157 : 0.125], [0.05, 0.05 * cy, 0.02], pal.gold!, { flat: true });
   } else belt.rings([{ y: 0.07, rx: 0.172 * wide, rz: 0.124 }, { y: 0.1, rx: 0.172 * wide, rz: 0.124 }], 10, trim);
 
   const torso = new Mesh3(torsoC, { bend: false, ...(metal ? { metallic: 0.55, roughness: 0.5 } : {}) });
   const tc = metal ? "#b4bac6" : torsoC;
-  torso.rings(
+  // (chibi: a pear, widest at the bottom, round in the middle, a small neck)
+  if (chibi) torso.rings([{ y: -0.04, rx: 0.17 * wide, rz: 0.14 }, { y: neckUp * 0.25, rx: 0.19 * wide, rz: 0.15 }, { y: neckUp * 0.6, rx: 0.165 * wide, rz: 0.13 }, { y: neckUp * 0.88, rx: 0.115 * wide, rz: 0.095 }, { y: neckUp, rx: 0.06, rz: 0.055 }], 10, tc, { smooth: true });
+  else torso.rings(
     [
       { y: -0.02, rx: 0.15 * wide, rz: 0.105 }, { y: neckUp * 0.3, rx: 0.165 * wide, rz: 0.115 }, { y: neckUp * 0.66, rx: 0.19 * wide, rz: 0.125 },
       { y: neckUp * 0.88, rx: 0.185 * wide, rz: 0.115 }, { y: neckUp, rx: 0.075, rz: 0.07 },
@@ -186,6 +233,7 @@ export function makeCharacter3d(a: Args): Character3d {
     hr.push({ y: headC + Math.sin(t) * headR[1], rx: Math.max(0, Math.cos(t)) * headR[0] * (i < 3 ? 0.9 : 1), rz: Math.max(0, Math.cos(t)) * headR[2] * (i < 3 ? 0.94 : 1) });
   }
   const face = new Mesh3("#2a2430", { bend: false });
+  const faceParts: Args[] = [];
   if (!animal) {
     head.rings(hr, 10, skin, { smooth: true });
     const eyeY = headC - 0.008, eyeZ = headR[2] * 0.93;
@@ -251,14 +299,47 @@ export function makeCharacter3d(a: Args): Character3d {
         head.blob([at[0], at[1], at[2] + 0.05 * R], [s * 0.6 * R, s * 0.6 * R, 0.05 * R], fur2, () => 0.5, { seg: 8, rows: 3, jitter: 0, tones: 0 });
       }
     }
-    // big eyes a little below the middle, each with a glint
-    const ex = 0.37 * R, ey = headC - 0.04 * RY, ez = RZ * Math.sqrt(1 - 0.37 * 0.37) * 0.97;
-    for (const k of [-1, 1]) {
-      // (an eye in a dark stripe gets a light rim, so it can be seen)
-      if (species === "badger") face.box([k * ex, ey, ez - 0.012 * R], [0.33 * R, 0.43 * R, 0.08 * R], "#e9e4da", { flat: true, ry: k * 22 });
-      face.box([k * ex, ey, ez], [0.23 * R, 0.33 * R, 0.08 * R], "#221c22", { flat: true, ry: k * 22 });
-      face.box([k * ex + 0.05 * R, ey + 0.08 * R, ez + 0.035 * R], [0.08 * R, 0.09 * R, 0.03 * R], "#ffffff", { flat: true, ry: k * 22 });
-    }
+    // the face that changes: big eyes set wide, brows, a mouth, each a set of parts the game shows one of (FACE_PARTS: the first of
+    // each set is at its place; the others wait inside the head, FACE_HIDE metres back, and `parts = { eye_wide = { z = FACE_HIDE } }`
+    // brings one out). A light rim round an eye that sits in a dark stripe, so it can be seen.
+    const ink = "#221c22", glint = "#ffffff";
+    const ex = 0.4 * R, ey = headC - 0.03 * RY, ez = RZ * Math.sqrt(1 - 0.4 * 0.4) * 0.985;
+    const browC = species === "badger" ? fur2 : species === "fox" || species === "bear" ? furDark : tone(skin, -1.1);
+    const muzzled = species === "fox" || species === "badger";
+    const my = headC - (muzzled ? 0.55 : 0.5) * RY, mz = muzzled ? RZ * 1.02 : RZ * 0.93;
+    const set = (name: string, build: (m: Mesh3) => void) => {
+      const m = new Mesh3(ink, { bend: false });
+      build(m);
+      return { name, mesh: m };
+    };
+    const eyes = (m: Mesh3, w: number, h: number, rim = species === "badger") => {
+      for (const k of [-1, 1]) {
+        if (rim) m.box([k * ex, ey, ez - 0.012 * R], [w + 0.1 * R, h + 0.1 * R, 0.08 * R], "#e9e4da", { flat: true, ry: k * 24 });
+        m.box([k * ex, ey, ez], [w, h, 0.08 * R], ink, { flat: true, ry: k * 24 });
+        m.box([k * ex + w * 0.2, ey + h * 0.22, ez + 0.06 * R], [w * 0.36, h * 0.28, 0.03 * R], glint, { flat: true, ry: k * 24 });
+      }
+    };
+    const bar = (m: Mesh3, x: number, y: number, z: number, w: number, h: number, rz: number, c = ink, ry = 0) => m.box([x, y, z], [w, h, 0.05 * R], c, { flat: true, rz, ry });
+    const by = ey + 0.33 * RY, bz = RZ * Math.sqrt(Math.max(0, 1 - 0.5 * 0.5)) * 0.96 * Math.sqrt(Math.max(0.2, 1 - 0.33 * 0.33));
+    const brows = (lift: number, tilt: number) => (m: Mesh3) => { for (const k of [-1, 1]) bar(m, k * ex, by + lift * RY, bz + 0.02 * R, 0.3 * R, 0.07 * R, k * tilt, browC, k * 24); };
+    const faceSets = [
+      // eyes: open (round, about a fifth of the head's height), happy (closed upward arcs), wide (big, with a big glint), shut (a blink)
+      set("eye_open", (m) => eyes(m, 0.26 * R, 0.4 * R)),
+      set("eye_happy", (m) => { for (const k of [-1, 1]) { bar(m, k * ex - 0.07 * R, ey + 0.02 * R, ez, 0.17 * R, 0.07 * R, 30, ink, k * 24); bar(m, k * ex + 0.07 * R, ey + 0.02 * R, ez, 0.17 * R, 0.07 * R, -30, ink, k * 24); } }),
+      set("eye_wide", (m) => eyes(m, 0.32 * R, 0.5 * R, true)),
+      set("eye_shut", (m) => { for (const k of [-1, 1]) bar(m, k * ex, ey - 0.04 * R, ez, 0.28 * R, 0.06 * R, 0, ink, k * 24); }),
+      // brows: level, frowning (the inner ends down), raised, sad (the inner ends up)
+      set("brow_flat", brows(0, 0)),
+      set("brow_frown", brows(-0.05, 22)),
+      set("brow_up", brows(0.1, 0)),
+      set("brow_sad", brows(0.04, -20)),
+      // the mouth: closed (a small line), open (talking, surprised), a smile, a frown
+      set("mouth_closed", (m) => bar(m, 0, my, mz, 0.3 * R, 0.06 * R, 0)),
+      set("mouth_open", (m) => { m.blob([0, my - 0.02 * R, mz], [0.17 * R, 0.14 * R, 0.05 * R], "#3a1c1c", () => 0.5, { seg: 8, rows: 3, jitter: 0, tones: 0 }); m.blob([0, my - 0.08 * R, mz + 0.02 * R], [0.1 * R, 0.05 * R, 0.03 * R], "#d9727a", () => 0.5, { seg: 6, rows: 2, jitter: 0, tones: 0 }); }),
+      set("mouth_smile", (m) => { bar(m, 0, my - 0.04 * R, mz, 0.2 * R, 0.06 * R, 0); for (const k of [-1, 1]) bar(m, k * 0.16 * R, my, mz - 0.01 * R, 0.15 * R, 0.06 * R, k * 34); }),
+      set("mouth_frown", (m) => { bar(m, 0, my, mz, 0.2 * R, 0.06 * R, 0); for (const k of [-1, 1]) bar(m, k * 0.16 * R, my - 0.04 * R, mz - 0.01 * R, 0.15 * R, 0.06 * R, -k * 34); }),
+    ];
+    for (const f of faceSets) faceParts.push(part(f.name, [0, 0, FIRSTS.has(f.name) ? 0 : -FACE_HIDE], [f.mesh]));
   }
 
   const hairM = new Mesh3(hairC, { bend: false });
@@ -398,7 +479,7 @@ export function makeCharacter3d(a: Args): Character3d {
   if (accessory === "satchel") {
     // a strap from the left shoulder across the chest to a bag on the right hip, and back across the back
     for (const zs of [1, -1]) {
-      const z = (v: number) => zs * v;
+      const z = (v: number) => zs * v * (chibi ? 1.2 : 1);
       extras.tube([[0.13 * wide, neckUp * 0.97, z(0.04)], [0.06 * wide, neckUp * 0.74, z(0.128)], [-0.08 * wide, neckUp * 0.4, z(0.122)], [-0.17 * wide, neckUp * 0.08, z(0.118)], [-0.2 * wide, -0.02, z(0.06)]], 0.013, 5, tone(accent, -0.4));
     }
     extras.box([-0.215 * wide, -0.07, 0.0], [0.07, 0.19, 0.25], accent, { taper: [1, 0.92] });
@@ -410,9 +491,9 @@ export function makeCharacter3d(a: Args): Character3d {
   }
   const headExtra = new Mesh3(accent, { bend: false });
   if (accessory === "glasses") {
-    const R = headR[0], RZ = headR[2], ey = headC - (animal ? 0.04 * headR[1] : 0.008), ex = animal ? 0.37 * R : 0.047 * headK;
-    const ez = (animal ? RZ * Math.sqrt(1 - 0.37 * 0.37) * 0.97 : RZ * 0.93) + 0.025 * hs;
-    const r = animal ? 0.21 * R : 0.03 * headK;
+    const R = headR[0], RZ = headR[2], ey = headC - (animal ? 0.03 * headR[1] : 0.008), ex = animal ? 0.4 * R : 0.047 * headK;
+    const ez = (animal ? RZ * Math.sqrt(1 - 0.4 * 0.4) * 0.985 : RZ * 0.93) + 0.03 * hs;
+    const r = animal ? 0.27 * R : 0.03 * headK;
     for (const k of [-1, 1]) {
       const ring: V3[] = [];
       for (let i = 0; i <= 12; i++) ring.push([k * ex + Math.cos((i / 12) * Math.PI * 2) * r, ey + Math.sin((i / 12) * Math.PI * 2) * r, ez]);
@@ -441,13 +522,13 @@ export function makeCharacter3d(a: Args): Character3d {
     const s = k > 0 ? "l" : "r";
     const held = k < 0 ? [itemM, glow] : [];
     if (name === "arm") {
-      return part(`arm_${s}`, [k * shoulder, neckUp * 0.86, 0], [armMesh()], [part(`fore_${s}`, [0, -upper, 0], [], [part(`hand_${s}`, [0, -fore, 0], [handMesh(k), ...held])])], [0, 0, k * 7]);
+      return part(`arm_${s}`, [k * shoulder, neckUp * (chibi ? 0.8 : 0.86), 0], [chibi ? chibiArm() : armMesh()], [part(`fore_${s}`, [0, -upper, 0], [], [part(`hand_${s}`, [0, -fore, 0], [handMesh(k), ...held])])], [0, 0, k * 7]);
     }
-    return part(`leg_${s}`, [k * legX, -0.03, 0], [legMesh()], [part(`shin_${s}`, [0, -thigh, 0], [], [part(`foot_${s}`, [0, -shin, 0], [footMesh()])])]);
+    return part(`leg_${s}`, [k * legX, chibi ? -0.02 : -0.03, 0], [chibi ? chibiLeg() : legMesh()], [part(`shin_${s}`, [0, -thigh, 0], [], [part(`foot_${s}`, [0, -shin, 0], [chibi ? chibiFoot() : footMesh()])])]);
   };
   const parts = [
     part("hips", [0, hipsY, 0], [pelvis, skirt, belt], [
-      part("spine", [0, spineUp, 0], [torso, extras, packM], [part("head", [0, neckUp, 0], [head, face, hairM, hatM, headExtra]), side("arm", 1), side("arm", -1)]),
+      part("spine", [0, spineUp, 0], [torso, extras, packM], [part("head", [0, neckUp, 0], [head, face, hairM, hatM, headExtra], faceParts), side("arm", 1), side("arm", -1)]),
       side("leg", 1),
       side("leg", -1),
       ...(tailM.polys.length ? [part("tail", [0, -0.04, -0.11 * wide], [tailM])] : []),
@@ -466,8 +547,8 @@ export function makeCharacter3d(a: Args): Character3d {
     foot_l: list.map(([t, dy, dz, pitch]) => [t, restAnkle(1)[0], r3((ankle + dy) * U), r3(dz * U), pitch ?? 0]),
     foot_r: list.map(([t, dy, dz, pitch]) => [t, restAnkle(-1)[0], r3((ankle + dy) * U), r3(dz * U), pitch ?? 0]),
   });
-  const walkD = 0.86, runD = 0.56;
-  const walkStride = 0.6 * tall, runStride = 0.8 * tall;
+  const walkD = 0.86, runD = 0.56, trotD = 0.5;
+  const walkStride = 0.6 * tall, runStride = 0.8 * tall, trotStride = 0.62 * tall;
   const hasTail = tailM.polys.length > 0;
   // a tail swings from side to side (about y) over `D` seconds, lagging the body a little
   const tailSwing = (D: number, deg: number, lift = 0) => (hasTail ? [rot(P("tail"), [key(0, [lift, deg, 0], "inout"), key(D / 2, [lift, -deg, 0], "inout"), key(D, [lift, deg, 0])])] : []);
@@ -491,6 +572,9 @@ export function makeCharacter3d(a: Args): Character3d {
     },
     { name: "walk", duration: walkD, loop: true, tracks: sway(walkD, 5, 3), walk: { legs: ["foot_l", "foot_r"], stride: r3(walkStride * U), lift: r3(0.085 * tall * U), stance: 0.6, arms: ["arm_l", "arm_r"], arm_swing: 24, elbow: 14, event: "step" } },
     { name: "run", duration: runD, loop: true, tracks: sway(runD, 9, 13), walk: { legs: ["foot_l", "foot_r"], stride: r3(runStride * U), lift: r3(0.2 * tall * U), stance: 0.36, bob: 0.9, heel: 4, toe: 32, arms: ["arm_l", "arm_r"], arm_swing: 44, elbow: 48, event: "step" } },
+    // a brisk trot, for hurrying with something in the hands: the run's legs, shorter and lower, the body upright, no arm swing (lay
+    // carry over the arms)
+    { name: "trot", duration: trotD, loop: true, tracks: sway(trotD, 5, 6), walk: { legs: ["foot_l", "foot_r"], stride: r3(trotStride * U), lift: r3(0.12 * tall * U), stance: 0.45, bob: 0.6, event: "step" } },
     {
       name: "jump", duration: 0.8, loop: false,
       tracks: [
@@ -571,17 +655,77 @@ export function makeCharacter3d(a: Args): Character3d {
       ],
     },
   ];
+  // chibi: no elbows or knees to bend, so the clips swing whole limbs from the shoulder and the hip; the walk is a waddle with a little
+  // bob (the hips rise as the legs pass upright and roll towards the leg that stands), the carry holds the parcel out with both arms,
+  // the talk tilts the head and waves an arm. The feet stay on the ground: a straight leg swung by `a` lifts the foot by L(1 - cos a),
+  // and the hips drop by as much at the ends of each stride.
+  let chibiSpeeds: { walk: number; run: number; trot: number } | undefined;
+  if (chibi) {
+    const L = thigh + shin + ankle;
+    // (o.arms: "swing" (back and forth), "out" (the aeroplane: held straight out to the sides and a little back, flapping a touch
+    // with each step) or "none" (left to a layer: the carry); o.lean: the body's forward lean; o.bob: the head's nod each step;
+    // o.tail: how far the tail lifts to stream out behind)
+    const stride = (D: number, swing: number, armSwing: number, roll: number, o: { arms?: "swing" | "out" | "none"; lean?: number; bob?: number; tail?: number } = {}) => {
+      const drop = L * (1 - Math.cos((swing * Math.PI) / 180));
+      const lean = o.lean === undefined ? 3 : o.lean * 0.5, bob = o.bob ?? 3;
+      // (half the lean is the hips tipping forward, the legs turned back by as much so the feet stay under)
+      const hl = (o.lean ?? 0) * 0.5;
+      const legKeys = (s: number) => [key(0, [s * swing - hl, 0, 0], "inout"), key(D / 2, [-s * swing - hl, 0, 0], "inout"), key(D, [s * swing - hl, 0, 0])];
+      const armKeys = (s: number, side: string) => [key(0, [-s * armSwing, 0, restZ(side) * 2], "inout"), key(D / 2, [s * armSwing, 0, restZ(side) * 2], "inout"), key(D, [-s * armSwing, 0, restZ(side) * 2])];
+      // (out: about 80 degrees from the sides, 18 back; the arms dip a little as each foot lands and rise as the body does)
+      const outKeys = (side: string) => { const k = side === "l" ? 1 : -1; return [key(0, [18, 0, k * 74], "inout"), key(D / 4, [18, 0, k * 84], "inout"), key(D / 2, [18, 0, k * 74], "inout"), key((3 * D) / 4, [18, 0, k * 84], "inout"), key(D, [18, 0, k * 74])]; };
+      const arms = o.arms ?? "swing";
+      return [
+        rot(P("leg_l"), legKeys(1)), rot(P("leg_r"), legKeys(-1)),
+        ...(arms === "swing" ? [rot(arm("l"), armKeys(1, "l")), rot(arm("r"), armKeys(-1, "r"))] : arms === "out" ? [rot(arm("l"), outKeys("l")), rot(arm("r"), outKeys("r"))] : []),
+        hipsAt([[0, -drop], [D / 4, 0], [D / 2, -drop], [(3 * D) / 4, 0], [D, -drop]]),
+        rot(["hips"], [key(0, [hl, 0, roll], "inout"), key(D / 2, [hl, 0, -roll], "inout"), key(D, [hl, 0, roll])]),
+        rot(spine, [key(0, [lean, 0, -roll * 0.5], "inout"), key(D / 2, [lean, 0, roll * 0.5], "inout"), key(D, [lean, 0, -roll * 0.5])]),
+        // (the head keeps looking ahead over the lean, and nods with each step)
+        rot(headP, [key(0, [-(lean + hl) * 0.6, 0, -roll * 0.4], "inout"), key(D / 4, [-(lean + hl) * 0.6 - bob, 0, 0], "inout"), key(D / 2, [-(lean + hl) * 0.6, 0, roll * 0.4], "inout"), key((3 * D) / 4, [-(lean + hl) * 0.6 - bob, 0, 0], "inout"), key(D, [-(lean + hl) * 0.6, 0, -roll * 0.4])]),
+        ...tailSwing(D, roll * 3, -(o.tail ?? 0)),
+      ];
+    };
+    // (the run: quick short steps, about twice the walk's speed, the arms out like an aeroplane's wings, leaning into it, the tail
+    // streaming; the trot: a brisk hurry with the arms left free for the carry, a little quicker than the walk)
+    const walkC = 0.56, runC = 0.3, trotC = 0.4, walkSwing = 26, runSwing = 30, trotSwing = 24;
+    const replace = (name: string, c: Args) => { const i = clips.findIndex((x) => x.name === name); clips[i] = c; };
+    replace("walk", { name: "walk", duration: walkC, loop: true, tracks: stride(walkC, walkSwing, 26, 5), events: [{ t: 0, name: "step" }, { t: walkC / 2, name: "step" }] });
+    replace("run", { name: "run", duration: runC, loop: true, tracks: stride(runC, runSwing, 0, 5, { arms: "out", lean: 24, bob: 6, tail: -18 }), events: [{ t: 0, name: "step" }, { t: runC / 2, name: "step" }] });
+    replace("trot", { name: "trot", duration: trotC, loop: true, tracks: stride(trotC, trotSwing, 0, 6, { arms: "none", lean: 8, bob: 4, tail: -8 }), events: [{ t: 0, name: "step" }, { t: trotC / 2, name: "step" }] });
+    replace("carry", { name: "carry", duration: 1.2, loop: true, tracks: (["l", "r"] as const).flatMap((s) => [rot(arm(s), [key(0, [-74, 0, -restZ(s) * 1.6], "inout"), key(0.6, [-78, 0, -restZ(s) * 1.6], "inout"), key(1.2, [-74, 0, -restZ(s) * 1.6])])]) });
+    replace("talk", { name: "talk", duration: 2.0, loop: true, tracks: [
+      rot(arm("r"), [key(0, [-20, 0, -14], "inout"), key(0.5, [-70, 0, -50], "inout"), key(1.0, [-30, 0, -20], "inout"), key(1.5, [-85, 0, -40], "inout"), key(2.0, [-20, 0, -14])]),
+      rot(arm("l"), [key(0, [0, 0, 9], "inout"), key(1.0, [-12, 0, 18], "inout"), key(2.0, [0, 0, 9])]),
+      rot(headP, [key(0, [0, 0, 0], "inout"), key(0.35, [6, 6, 10], "inout"), key(0.8, [-4, -3, -4], "inout"), key(1.25, [5, -6, -10], "inout"), key(1.65, [-3, 3, 4], "inout"), key(2.0, [0, 0, 0])]),
+      rot(spine, [key(0, [0, 0, 0], "inout"), key(0.5, [3, 6, 2], "inout"), key(1.5, [3, -6, -2], "inout"), key(2.0, [0, 0, 0])]),
+      ...tailSwing(1.0, 14),
+    ] });
+    replace("work", { name: "work", duration: 0.8, loop: true, tracks: [
+      rot(arm("r"), [key(0, [-70, 0, -10], "inout"), key(0.4, [-40, 0, -14], "inout"), key(0.8, [-70, 0, -10])]),
+      rot(arm("l"), [key(0, [-50, 0, 16], "inout"), key(0.4, [-62, 0, 12], "inout"), key(0.8, [-50, 0, 16])]),
+      rot(spine, [key(0, [10, -6, 0], "inout"), key(0.4, [13, 5, 0], "inout"), key(0.8, [10, -6, 0])]),
+      rot(headP, [key(0, [8, 6, 4], "inout"), key(0.4, [10, -4, -4], "inout"), key(0.8, [8, 6, 4])]),
+      ...tailSwing(0.8, 10),
+    ] });
+    // (the other clips bend forearms and shins, which a chibi does not have: those turns are left out)
+    for (const c of clips) if (c.tracks) c.tracks = c.tracks.filter((t: Args) => !/^(fore|shin|hand|foot)_/.test(t.part[t.part.length - 1]));
+    for (const c of clips) delete c.ik;
+    const step = (sw: number) => 2 * L * Math.sin((sw * Math.PI) / 180);
+    chibiSpeeds = { walk: r3((2 * step(walkSwing)) / walkC), run: r3((2 * step(runSwing)) / runC), trot: r3((2 * step(trotSwing)) / trotC) };
+  }
   const model = modelDoc(parts, { clips });
-  const speeds = { walk: r3(walkStride / (0.6 * walkD)), run: r3(runStride / (0.36 * runD)) };
+  const speeds = chibiSpeeds ?? { walk: r3(walkStride / (0.6 * walkD)), run: r3(runStride / (0.36 * runD)), trot: r3(trotStride / (0.45 * trotD)) };
   const height = r3(hipsY + spineUp + neckUp + headC + headR[1] + (hat === "wizard" ? 0.3 : hair === "spiky" ? 0.1 : 0.02));
   const capsule = { radius: r3(Math.max(0.24, 0.3 * wide * (build === "child" ? 0.8 : 1))), height: r3(Math.max(1, hipsY + spineUp + neckUp + headC + headR[1])) };
   const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat === "peaked" ? "peaked cap" : hat}` : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `${item === "axe" ? "an" : "a"} ${item} in the right hand` : ""].filter(Boolean).join(", ");
   return {
     model,
     parts: ["hips", "spine", "head", "arm_l", "fore_l", "hand_l", "arm_r", "fore_r", "hand_r", "leg_l", "shin_l", "foot_l", "leg_r", "shin_r", "foot_r", ...(hasTail ? ["tail"] : [])],
-    clips: clips.map((c) => ({ name: c.name, duration: c.duration, loop: !!c.loop, events: c.name === "walk" || c.name === "run" ? ["step when each foot lands"] : (c.events ?? []).map((e: Args) => `${e.name} at ${e.t}`) })),
+    clips: clips.map((c) => ({ name: c.name, duration: c.duration, loop: !!c.loop, events: c.name === "walk" || c.name === "run" || c.name === "trot" ? ["step when each foot lands"] : (c.events ?? []).map((e: Args) => `${e.name} at ${e.t}`) })),
     speeds,
     capsule,
+    ...(animal ? { faces: `face parts under head (one of each set shown; the first of each is in place, the others ${FACE_HIDE} m back inside the head: bring one out with parts = { eye_wide = { z = ${FACE_HIDE} } } and send the first back with { z = -${FACE_HIDE} }): ${Object.entries(FACE_SETS).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ")}. Expressions: ${Object.entries(EXPRESSIONS).map(([k, v]) => `${k} = ${v.join(" + ")}`).join("; ")}; blink with eye_shut, talk by swapping the mouth for mouth_open and back` } : {}),
     says: `${build === "average" ? "an" : "a"} ${build} ${animal ? `${species} ` : ""}figure ${height} m high${hs !== 1 ? ` (its head ${hs} times a person's)` : ""} with ${hair === "bald" ? (animal ? "fur" : "no hair") : `${hair} hair`}, wearing ${wears}${accessory !== "none" ? ` and ${accessory === "glasses" || accessory === "headphones" ? accessory : `a ${accessory}`}` : ""}; it faces +z and stands on y = 0`,
     lua: (name, sp) => `local Hero = nova.entity { model = "${name}", tags = { "hero" }, velocity = false }
 function Hero:create()

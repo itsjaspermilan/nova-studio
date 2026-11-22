@@ -103,8 +103,8 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
     "character3d_make",
     "Make a rigged 3D person from parts, instead of modelling and animating one: `models/<name>.model.json` and `.glb`, a low-poly figure about 1.6 m high standing on y = 0 and facing +z, with limbs that bend at the elbow and knee. " +
       `Parts: build (${CHARACTER3D.builds.join(", ")}), skin (${CHARACTER3D.skins.join(", ")}, or "#rrggbb"), hair (${CHARACTER3D.hairs.join(", ")}) and hair_color, outfit (${CHARACTER3D.outfits.join(", ")}) with outfit_color, trim_color (trousers, belt) and shoe_color, hat (${CHARACTER3D.hats.join(", ")}), pack (${CHARACTER3D.packs.join(", ")}), item (${CHARACTER3D.items.join(", ")}: held in the right hand). ` +
-      `\`species\` (${CHARACTER3D.species.join(", ")}) makes an animal person instead: its fur (\`fur\`, \`fur2\`) and pattern, a muzzle, ears, big eyes, paws and a tail (a part, \`tail\`, that the clips swing), with a big head (\`head_scale\`, 1.5 or so; 1 is a person's); \`accessory\` (${CHARACTER3D.accessories.join(", ")}) and \`accent_color\` add one more thing. ` +
-      "Clips: idle, walk, run (both loop, with a `step` event as each foot lands, the feet rolling from heel to toe on the ground, the hips rising over the standing leg, the arms swinging against the legs), jump (crouch, push off, tuck, reach for the ground: play it once while in the air), wave, attack (a swing of the right arm, with a `hit` event), hurt, carry (both arms forward round a box at the chest: lay it over another clip's arms as a masked layer, `{ clip = \"carry\", mask = { \"arm_l\", \"arm_r\" } }`), talk (a hand that gestures with each phrase and a nodding head, loops) and work (busy hands in front: sawing, fiddling with a knob, loops). " +
+      `\`species\` (${CHARACTER3D.species.join(", ")}) makes an animal person instead (with \`build: \"chibi\"\` a cozy villager about two heads tall: a big round head, a small pear-shaped body, stubby one-piece arms and legs swinging from shoulder and hip, a waddling walk, a run with the arms held straight out to the sides like wings; and a face of swappable parts for its expressions: neutral, smile, happy, delighted, gruff, sad, surprised, indignant, a blink and a talking mouth): its fur (\`fur\`, \`fur2\`) and pattern, a muzzle, ears, big eyes, paws and a tail (a part, \`tail\`, that the clips swing), with a big head (\`head_scale\`, 1.5 or so; 1 is a person's); \`accessory\` (${CHARACTER3D.accessories.join(", ")}) and \`accent_color\` add one more thing. ` +
+      "Clips: idle, walk, run (both loop, with a `step` event as each foot lands, the feet rolling from heel to toe on the ground, the hips rising over the standing leg, the arms swinging against the legs), jump (crouch, push off, tuck, reach for the ground: play it once while in the air), wave, attack (a swing of the right arm, with a `hit` event), hurt, trot (a brisk hurry with no arm swing, for carrying: lay carry over it), carry (both arms forward round a box at the chest: lay it over another clip's arms as a masked layer, `{ clip = \"carry\", mask = { \"arm_l\", \"arm_r\" } }`), talk (a hand that gestures with each phrase and a nodding head, loops) and work (busy hands in front: sawing, fiddling with a knob, loops). " +
       "The answer gives the part names (to hang things on or turn: parts = { head = { ry = 0.4 } }), each clip's length and events, the speeds at which the walk and the run do not slide, the capsule for nova.solid.move, and the Lua for an entity with an animator. `entity`: \"hero\" also writes entities/hero.lua, a third-person walker (stick relative to the camera, jump, the clips blended by speed) to start from. " +
       "It returns model_preview's picture and the walk as a strip. The model is an ordinary one afterwards: read the .model.json, change a clip or a colour and give it to model_write with bend: true.",
     {
@@ -138,7 +138,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       const wrote = text(h.call("model_write", { project: a.project, name, model: made.model, bend: true }));
       const speeds: Record<string, number> = {};
       for (const m of wrote.matchAll(/clip "(\w+)": a walk[^\n]*?does not slide when the entity moves ([\d.]+) world units a second|clip "(\w+)": a walk[^\n]*?do not slide when the entity moves ([\d.]+) world units a second/g)) speeds[(m[1] ?? m[3])!] = Number(m[2] ?? m[4]);
-      const walk = speeds.walk ?? made.speeds.walk!, run = speeds.run ?? made.speeds.run!;
+      const walk = speeds.walk ?? made.speeds.walk!, run = speeds.run ?? made.speeds.run!, trot = speeds.trot ?? made.speeds.trot!;
       let also = "";
       if (a.entity !== undefined) {
         const ent = h.safeName(a.entity, "Entity");
@@ -152,8 +152,9 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
           `models/${name}.model.json and models/${name}.glb${also}: ${made.says}`,
           `parts: ${made.parts.join(", ")} (hips is the root; a thing held goes in hand_r, on the back in spine)`,
           `clips: ${made.clips.map((c) => `${c.name} ${c.duration} s${c.loop ? " (loops)" : ""}${c.events.length ? ` [${c.events.join(", ")}]` : ""}`).join("; ")}`,
-          `speeds at which the feet do not slide: walk ${walk} m/s, run ${run} m/s (at another speed play the clip faster: speed = wanted / that)`,
+          `speeds at which the feet do not slide: walk ${walk} m/s, run ${run} m/s, trot ${trot} m/s (at another speed play the clip faster: speed = wanted / that)`,
           `capsule for nova.solid.move: radius ${made.capsule.radius}, height ${made.capsule.height} (the feet at the entity's y)`,
+          ...(made.faces ? [made.faces] : []),
           "in an entity:",
           ...made.lua(name, { walk, run }).split("\n").map((l) => `  ${l}`),
           "the walk, eight moments (second picture); the lowest point of the whole figure at each:",

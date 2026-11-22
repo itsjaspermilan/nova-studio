@@ -7,7 +7,7 @@ import { releaseBinary } from "../binaries";
 import { parseModel } from "../../src/lib/model-doc";
 import { expandModel } from "../modelkit";
 import { call } from "../server";
-import { CHARACTER3D, makeCharacter3d } from "./character3d";
+import { CHARACTER3D, EXPRESSIONS, FACE_SETS, makeCharacter3d } from "./character3d";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
@@ -70,6 +70,11 @@ describe("prop3d_make", () => {
     expect(makeProp({ kind: "lantern" }).light).toMatchObject({ radius: 6 });
     expect(makeProp({ kind: "rock", size: "large" }).size.w).toBeGreaterThan(makeProp({ kind: "rock", size: "small" }).size.w);
     expect(() => makeProp({ kind: "castle" })).toThrow(/a prop's kind is one of tree, pine/);
+    // what a prop blocks is kept in model units, like its points (the export scales both to metres): a pine's trunk is 0.3 m
+    const pine = makeProp({ kind: "pine" }).model;
+    expect(pine.colliders[0].r * pine.scale).toBeCloseTo(0.3, 5);
+    const fence = makeProp({ kind: "fence" }).model;
+    expect(fence.boxes[0].hw * fence.scale).toBeCloseTo(1.05, 5);
   });
 
   it("takes every palette, and the palette changes the colours", () => {
@@ -113,8 +118,8 @@ describe("character3d_make", () => {
     const a = makeCharacter3d(base);
     expect(JSON.stringify(a.model)).toBe(JSON.stringify(makeCharacter3d(base).model));
     const doc = parsed(a.model);
-    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "jump", "wave", "attack", "hurt", "carry", "talk", "work"]);
-    for (const name of ["walk", "run"]) expect(doc.clips!.find((c) => c.name === name)!.events!.map((e) => e.name)).toEqual(["step", "step"]);
+    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "trot", "jump", "wave", "attack", "hurt", "carry", "talk", "work"]);
+    for (const name of ["walk", "run", "trot"]) expect(doc.clips!.find((c) => c.name === name)!.events!.map((e) => e.name)).toEqual(["step", "step"]);
     expect(doc.clips!.find((c) => c.name === "attack")!.events).toEqual([{ t: 0.22, name: "hit" }]);
     expect(a.speeds.walk).toBeGreaterThan(0.8);
     expect(a.speeds.run).toBeGreaterThan(a.speeds.walk * 2);
@@ -129,7 +134,7 @@ describe("character3d_make", () => {
       }
     }
     // (every choice but the one of each part that the base has already)
-    expect(seen.size).toBe(1 + 4 + 5 + 4 + 6 + 3 + 5 + 5 + 4);
+    expect(seen.size).toBe(1 + 5 + 5 + 4 + 6 + 3 + 5 + 5 + 4);
     expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet, peaked/);
     expect(() => makeCharacter3d({ species: "dragon" })).toThrow(/species is one of human, fox, badger, rabbit, bear, cat/);
     expect(() => makeCharacter3d({ species: "fox", head_scale: 3 })).toThrow(/head_scale is a number from 0.8 to 2.2/);
@@ -153,11 +158,48 @@ describe("character3d_make", () => {
     for (const s of CHARACTER3D.species) expect(JSON.stringify(makeCharacter3d({ species: s }).model), s).toBe(JSON.stringify(makeCharacter3d({ species: s }).model));
   });
 
+  it("makes a chibi villager: about two heads tall, stubby limbs that swing whole, a face of expressions, a waddle, an aeroplane run, a trot", () => {
+    const fox = makeCharacter3d({ species: "fox", build: "chibi", head_scale: 1.75 });
+    // about 1.0 to 1.2 m with the ears; the head is a big share of it
+    expect(fox.capsule.height).toBeGreaterThan(0.95);
+    expect(fox.capsule.height).toBeLessThan(1.25);
+    expect(fox.capsule.height).toBeLessThan(makeCharacter3d({ species: "fox", head_scale: 1.75 }).capsule.height - 0.3);
+    const doc = parsed(fox.model);
+    const names: string[] = [];
+    const visit = (parts: any[]) => parts.forEach((p) => { names.push(p.name); visit(p.children ?? []); });
+    visit(doc.parts);
+    // every part an expression names is there (under the head), the firsts of each set in place, the others hidden inside the head
+    for (const [expr, list] of Object.entries(EXPRESSIONS)) for (const n of list) expect(names, expr).toContain(n);
+    for (const list of Object.values(FACE_SETS)) for (const n of list) expect(names).toContain(n);
+    expect(fox.faces).toMatch(/Expressions: neutral = eye_open \+ brow_flat \+ mouth_closed/);
+    const clip = (n: string) => doc.clips!.find((c) => c.name === n)!;
+    const track = (c: string, part: string) => (clip(c).tracks ?? []).find((t: any) => t.part[t.part.length - 1] === part && t.prop === "rotation") as any;
+    // no elbows or knees: no clip turns a forearm or a shin
+    for (const c of doc.clips!) for (const t of c.tracks ?? []) expect((t as any).part.at(-1), c.name).not.toMatch(/^(fore|shin)_/);
+    // the walk swings the arms back and forth by the sides; the run holds them straight out to the sides (left +z turn, right -z),
+    // a little back, all the way through; the trot leaves them to the carry
+    for (const k of track("walk", "arm_l").keys) expect(Math.abs(k.value[2])).toBeLessThan(30);
+    for (const k of track("run", "arm_l").keys) { expect(k.value[2]).toBeGreaterThan(65); expect(k.value[0]).toBeGreaterThan(0); }
+    for (const k of track("run", "arm_r").keys) expect(k.value[2]).toBeLessThan(-65);
+    expect(track("trot", "arm_l")).toBeUndefined();
+    expect(track("trot", "leg_l")).toBeDefined();
+    // the run leans into it and streams the tail; quick short steps at about twice the walk's speed; the trot between them
+    expect(track("run", "spine").keys[0].value[0]).toBeGreaterThan(track("walk", "spine").keys[0].value[0] + 5);
+    expect(clip("run").duration).toBeLessThan(clip("walk").duration);
+    expect(fox.speeds.run / fox.speeds.walk).toBeGreaterThan(1.8);
+    expect(fox.speeds.run / fox.speeds.walk).toBeLessThan(2.4);
+    expect(fox.speeds.trot).toBeGreaterThan(fox.speeds.walk);
+    expect(fox.speeds.trot).toBeLessThan(fox.speeds.run);
+    expect(clip("run").events!.map((e) => e.name)).toEqual(["step", "step"]);
+    // a human has no face parts to swap
+    expect(makeCharacter3d({}).faces).toBeUndefined();
+  });
+
   it.skipIf(!built)("stands on the ground in every clip, bends only its limbs, and writes a walker that walks", () => {
     const said = text(use("character3d_make", { name: "hero", hair: "long", outfit: "armor", item: "sword", entity: "hero" }));
     expect(said).toMatch(/^models\/hero\.model\.json and models\/hero\.glb and entities\/hero\.lua: an average figure 1\.6\d* m high/);
     expect(said).toMatch(/speeds at which the feet do not slide: walk 1\.163 m\/s, run 3\.968 m\/s/);
-    expect(said).toContain("clips: idle 2.4 s (loops); walk 0.86 s (loops) [step when each foot lands]; run 0.56 s (loops) [step when each foot lands]; jump 0.8 s; wave 1.6 s [wave at 0.3]; attack 0.5 s [hit at 0.22]; hurt 0.45 s");
+    expect(said).toContain("clips: idle 2.4 s (loops); walk 0.86 s (loops) [step when each foot lands]; run 0.56 s (loops) [step when each foot lands]; trot 0.5 s (loops) [step when each foot lands]; jump 0.8 s; wave 1.6 s [wave at 0.3]; attack 0.5 s [hit at 0.22]; hurt 0.45 s");
     expect(said).toMatch(/capsule for nova\.solid\.move: radius 0\.3, height 1\.6/);
     // four limbs are skinned (one mesh across the joint each); nothing else is
     const model = JSON.parse(bytes("models/hero.model.json").toString());
