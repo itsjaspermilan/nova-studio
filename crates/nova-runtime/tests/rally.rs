@@ -2386,3 +2386,196 @@ fn full_grid_lua_cost() {
         );
     }
 }
+
+// ---- a rally stage's HUD: no map, notes at the top centre read aloud, a bar of sections (2026-11-21) -------------------------------
+
+/// A boolean the HUD of the last frame recorded (`hud_drawn`: what it put on the screen).
+fn hud_drawn(g: &Game, part: &str) -> bool {
+    g.lua_text(&format!("tostring(nova.scene_now().hud_drawn.{part})"))
+        .unwrap_or_else(|e| panic!("hud_drawn.{part}: {e}"))
+        .trim_matches('"')
+        == "true"
+}
+
+/// The text of a Lua expression, without its quotes.
+fn lua_said(g: &Game, expr: &str) -> String {
+    g.lua_text(expr)
+        .unwrap_or_else(|e| panic!("{expr}: {e}"))
+        .trim_matches('"')
+        .to_string()
+}
+
+#[test]
+fn a_rally_stage_shows_no_map_of_its_route_in_the_hud_or_on_the_stage_choice_but_circuits_keep_theirs() {
+    // in the race
+    let (mut g, _) = race_direct("stage_pine_ridge", 1, "rally", 1, "");
+    g.run_lua("nova.scene_now().player.autopilot = true", "autopilot")
+        .unwrap();
+    for _ in 0..240 {
+        frame(&mut g, &[]);
+    }
+    assert!(!hud_drawn(&g, "map"), "a stage's HUD has no route map");
+    assert!(hud_drawn(&g, "notes"), "the pace notes are drawn");
+    assert!(hud_drawn(&g, "bar"), "the bar of sections is drawn");
+    let (mut g, _) = race_direct("pine_ridge", 1, "race", 2, "");
+    for _ in 0..60 {
+        frame(&mut g, &[]);
+    }
+    assert!(hud_drawn(&g, "map"), "a circuit's HUD keeps its map");
+    assert!(!hud_drawn(&g, "bar"), "a circuit has no bar of sections");
+    // on the choice screens: Rally (the first mode), then a circuit (the second)
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:Enter"); // Rally -> its stages
+    for _ in 0..10 {
+        frame(&mut g, &[]);
+    }
+    assert_eq!(lua_said(&g, "tostring(require('lib.scenic').last)"), "stage_pine_ridge", "the stage's picture is drawn");
+    assert_eq!(lua_said(&g, "tostring(require('lib.scenic').map_last)"), "nil", "no route is drawn for a stage");
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:Enter"); // Circuit -> its circuits
+    for _ in 0..10 {
+        frame(&mut g, &[]);
+    }
+    assert_eq!(lua_said(&g, "tostring(require('lib.scenic').map_last)"), "pine_ridge", "a circuit's route is drawn");
+    assert_eq!(lua_said(&g, "tostring(require('lib.scenic').last)"), "nil", "and no stage picture");
+}
+
+#[test]
+fn the_co_driver_queues_the_right_clips_for_a_note_and_stays_silent_without_them() {
+    let g = load();
+    let words = |notes: &str, k: usize, away: &str| {
+        lua_said(
+            &g,
+            &format!(
+                "(function() local c = require('lib.codriver'); local n = {notes}; local w, count = c.words(n, {k}, {away}); return table.concat(w, ' ') .. ' #' .. count end)()"
+            ),
+        )
+    };
+    let left4 = "{ s = 300, e = 360, left = true, grade = 4, long = true, tightens = true }";
+    let right2 = "{ s = 400, e = 440, left = false, grade = 2 }";
+    // a bend with what goes with it, 210 m off, and the next one close behind it: one call, joined with "into"
+    assert_eq!(
+        words(&format!("{{ {left4}, {right2} }}"), 1, "210"),
+        "two_hundred left four long tightens into right two #2"
+    );
+    // too near for a distance; a bend far from the next is a call of its own
+    assert_eq!(
+        words(&format!("{{ {left4}, {{ s = 900, e = 940, left = false, grade = 3 }} }}"), 1, "60"),
+        "left four long tightens #1"
+    );
+    // a hairpin, a square corner, a flat kink, a crest on its own, the finish
+    assert_eq!(words("{ { s = 100, e = 150, left = false, grade = 1, hairpin = true } }", 1, "120"), "one_hundred hairpin right #1");
+    assert_eq!(words("{ { s = 100, e = 130, left = true, grade = 3, square = true, caution = true } }", 1, "nil"), "square left caution #1");
+    assert_eq!(words("{ { s = 100, e = 120, left = true, grade = 6, flat = true } }", 1, "nil"), "left flat #1");
+    assert_eq!(words("{ { s = 100, e = 100, kind = 'crest' } }", 1, "160"), "one_fifty crest #1");
+    assert_eq!(words("{ { s = 100, e = 140, kind = 'finish' } }", 1, "nil"), "finish #1");
+    // every clip the notes can need is one the voice script makes
+    let script = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/rally/voice.mjs")).unwrap();
+    for name in [
+        "left", "right", "one", "two", "three", "four", "five", "six", "hairpin", "square", "flat", "long", "short", "tightens",
+        "opens", "crest", "jump", "dip", "caution", "dont_cut", "into", "and", "fifty", "one_hundred", "one_fifty", "two_hundred",
+        "finish", "go",
+    ] {
+        assert!(script.contains(&format!("{name}:")), "voice.mjs makes the clip {name}");
+    }
+    // with no clips (a folder that is not there) the game goes on and says nothing: every word is tried once, none is spoken, no error
+    let g = load();
+    g.run_lua(
+        "local c = require('lib.codriver'); c.prefix = 'no_such_voice/'; c.reset({ { s = 150, e = 200, left = true, grade = 3, long = true }, { s = 230, e = 260, left = false, grade = 2 } })",
+        "silent",
+    )
+    .unwrap();
+    for i in 0..600 {
+        g.run_lua(&format!("require('lib.codriver').update(1/60, true, {i} / 60 * 30, 30)"), "step")
+            .unwrap();
+        assert!(g.error.is_none(), "no error without clips: {:?}", g.error);
+    }
+    let spoken = lua_said(
+        &g,
+        "(function() local n, s = 0, 0 for _, e in ipairs(require('lib.codriver').log()) do n = n + 1 if e.spoken then s = s + 1 end end return n .. ' ' .. s end)()",
+    );
+    let (n, s) = spoken.split_once(' ').unwrap();
+    assert!(n.parse::<usize>().unwrap() >= 6, "the calls were made: {spoken}");
+    assert_eq!(s, "0", "and none was heard: {spoken}");
+    assert_eq!(lua_said(&g, "tostring(require('lib.codriver').speaking())"), "false", "nothing is left waiting");
+}
+
+#[test]
+fn nothing_that_stays_on_screen_moves_between_the_frame_before_the_pause_and_the_paused_one() {
+    let (mut g, _) = race_direct("stage_pine_ridge", 1, "rally", 1, "");
+    g.run_lua("nova.scene_now().player.autopilot = true", "autopilot")
+        .unwrap();
+    for _ in 0..600 {
+        frame(&mut g, &[]);
+    }
+    let snap = |g: &Game| {
+        lua_said(
+            g,
+            "(function() local r = nova.scene_now(); local c, p = r.camera, r.player; local w, h = nova.view(); return string.format('%.5f %.5f %.5f %.5f %.5f %.5f %.4f %.5f | %.5f %.5f %.5f | view %d %d', c.x, c.y, c.z, c.tx, c.ty, c.tz, c.fov, c.heading, p.x, p.z, p.heading, w, h) end)()",
+        )
+    };
+    let before = snap(&g);
+    tap(&mut g, "key:Escape");
+    assert_eq!(lua_said(&g, "tostring(nova.scene_now().paused)"), "true");
+    assert_eq!(before, snap(&g), "the camera, the car and the screen's size stay put when the game is paused");
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    assert_eq!(before, snap(&g), "and stay put while it is paused");
+    assert!(before.ends_with("view 960 540"), "the screen is 960 by 540 units: {before}");
+}
+
+#[test]
+fn sections_fill_with_green_yellow_or_red_by_their_time_against_the_target_and_add_up_to_the_stage() {
+    let g = load();
+    // a fast, a middling and a slow section against a 20 second target (green to 10 %, yellow to 25 %, red beyond: lib/sections.lua)
+    for (time, colour) in [(18.5, "green"), (20.0, "green"), (21.9, "green"), (23.0, "yellow"), (24.9, "yellow"), (26.0, "red"), (40.0, "red")] {
+        assert_eq!(lua_said(&g, &format!("(require('lib.sections').grade({time}, 20))")), colour, "{time} s against 20 s");
+    }
+    // the sections of a stage with no gates of its own: 6 to 12, in order, side by side, and they end where the stage does
+    for length in [1500, 2600, 4600, 6000] {
+        let out = lua_said(
+            &g,
+            &format!(
+                "(function() local s = require('lib.sections'); local plan = s.plan({length}, nil, {{ {{ s = 300, e = 380, grade = 3, left = true }}, {{ s = 900, e = 1000, grade = 2, left = false }} }}); local sum, last = 0, 0; local ok = true; for _, p in ipairs(plan) do if math.abs(p.from - last) > 1e-6 or p.to <= p.from then ok = false end sum = sum + (p.to - p.from); last = p.to end return string.format('%d %.3f %s', #plan, sum, tostring(ok)) end)()"
+            ),
+        );
+        let parts: Vec<&str> = out.split(' ').collect();
+        let count: usize = parts[0].parse().unwrap();
+        assert!((6..=12).contains(&count), "{length} m: {count} sections");
+        assert!((parts[1].parse::<f64>().unwrap() - length as f64).abs() < 0.01, "{length} m: the sections add up: {out}");
+        assert_eq!(parts[2], "true", "{length} m: contiguous, in order");
+    }
+    // and in a real stage: the bar's sections cover it, each has a target, and the targets add up to the ideal time of the stage
+    let (g, _) = race_direct("stage_dust_valley", 1, "rally", 1, "");
+    let out = lua_said(
+        &g,
+        "(function() local r = nova.scene_now(); local sum, last, targets, ok = 0, 0, 0, true; for _, b in ipairs(r.bar) do if math.abs(b.from - last) > 0.01 or b.target <= 0 then ok = false end sum = sum + b.to - b.from; last = b.to; targets = targets + b.target end local ideal = r:ideal_time(r.player); return string.format('%.3f %.3f %.3f %.3f %s', sum, r.length, targets, ideal, tostring(ok)) end)()",
+    );
+    let n: Vec<&str> = out.split(' ').collect();
+    let (sum, length, targets, ideal): (f64, f64, f64, f64) = (n[0].parse().unwrap(), n[1].parse().unwrap(), n[2].parse().unwrap(), n[3].parse().unwrap());
+    // (the last section ends at the finish gate, a little before the road's end, where the line's own ideal time runs on)
+    assert!(sum > length - 120.0 && sum <= length + 0.01, "the sections add up to the stage up to its finish: {out}");
+    assert!(targets < ideal && targets > 0.92 * ideal, "the targets add up to the stage's ideal time up to the finish: {out}");
+    assert_eq!(n[4], "true", "each section starts where the one before ends and has a target: {out}");
+}
+
+#[test]
+fn the_computer_at_its_best_fills_most_of_a_stages_bar_green_and_none_of_it_red() {
+    let log = stage_run(0, 1);
+    let colours: Vec<&str> = log
+        .iter()
+        .filter(|l| l.starts_with("section ") && l.contains(" of its target "))
+        .map(|l| l.split(' ').nth(2).unwrap().trim_end_matches(':'))
+        .collect();
+    assert_eq!(colours.len(), 5, "a colour for each of the five sections: {log:?}");
+    assert!(!colours.contains(&"red"), "the computer at its best is never red: {colours:?}");
+    assert!(colours.iter().filter(|c| **c == "green").count() >= 3, "and mostly green: {colours:?}");
+}

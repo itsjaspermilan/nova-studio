@@ -183,18 +183,22 @@ local RIVAL_VOLUME = 0.55
 -- change of surface crossfades, so nothing is switched on or off in a step.
 local SURFACES = {
   road = { sound = "tyre_road", gain = 0.55, lo = 0.7, hi = 1.35, slide = 0.15, stones = 0 },
-  gravel = { sound = "tyre_gravel", gain = 0.72, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.8, spray_pitch = 1.0, stones = 7 },
-  dirt = { sound = "tyre_dirt", gain = 0.67, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.7, spray_pitch = 0.8, stones = 3 },
+  gravel = { sound = "tyre_gravel", gain = 0.72, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.8, spray_pitch = 1.0, stones = 4 },
+  dirt = { sound = "tyre_dirt", gain = 0.67, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.7, spray_pitch = 0.8, stones = 2 },
   snow = { sound = "tyre_snow", gain = 0.75, lo = 0.85, hi = 1.15, slide = 0.25, spray = 0.6, spray_pitch = 1.1, stones = 0 },
   sand = { sound = "tyre_sand", gain = 0.75, lo = 0.85, hi = 1.15, slide = 0.25, spray = 0.6, spray_pitch = 0.9, stones = 0 },
-  rough = { sound = "tyre_rough", gain = 1.0, lo = 0.75, hi = 1.3, slide = 0.3, stones = 4 },
+  rough = { sound = "tyre_rough", gain = 1.0, lo = 0.75, hi = 1.3, slide = 0.3, stones = 3 },
 }
+local STONE = "stone" -- (a group of takes: sounds/stone.group.json)
 local SURFACE_FADE = { 5, 3 } -- how fast a surface comes in and goes out of the mix (1/s: a third of a second, a bit more)
 -- a stretch of road with a kind of its own (a waypoint's `road`; race.lua keeps the player's in car.road_kind)
 local ROAD_KINDS = { road_asphalt = "road", road_gravel = "gravel", road_dirt = "dirt", road_snow = "snow", road_sand = "sand" }
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 local function approach(cur, target, dt, up, down) return cur + (target - cur) * math.min(1, dt * (target > cur and up or down)) end
+-- The player's engine is turned down to this share while the co-driver speaks (lib/codriver.lua sets it every step; 1 is not at all).
+audio.duck_level = 1
+function audio.duck(level) audio.duck_level = clamp(level or 1, 0, 1) end
 local function smoothstep(v, a, b) local t = clamp((v - a) / (b - a), 0, 1) return t * t * (3 - 2 * t) end
 
 -- What the course itself is made of, from its settings (the scene's race object): tarmac, snow, sand, gravel or packed dirt.
@@ -328,7 +332,7 @@ function Engine:update(dt, rev, load, rough, slip, car)
   if hi ~= lo then f = clamp(math.log(rpm / (cycles[lo] * LOOP_RPM)) / math.log(cycles[hi] / cycles[lo]), 0, 1) end
   -- a little hunting at idle, so that nothing is perfectly still
   local wander = 1 + p.wander * (math.sin(self.t * 3.1) + 0.7 * math.sin(self.t * 8.3 + 1.3)) * (1 - 0.7 * x)
-  local gain = self.volume * (p.gain or 1) * (p.quiet + (1 - p.quiet) * x)
+  local gain = self.volume * (p.gain or 1) * (p.quiet + (1 - p.quiet) * x) * (self.rival and 1 or audio.duck_level)
   local on_gain, off_gain
   if self.rival then
     on_gain, off_gain = gain * (0.45 + 0.55 * self.load), 0
@@ -407,7 +411,7 @@ function Engine:update(dt, rev, load, rough, slip, car)
         -- stones against the underside: sparse and random (a few a second at full speed, fewer slower)
         local rate = s.stones * clamp((self.speed_s - 8) / 32, 0, 1) ^ 1.5 * w
         if math.random() < rate * dt then
-          nova.sound.play("stone", { volume = m * (0.25 + 0.5 * math.random()) * clamp(self.speed_s / 40, 0.4, 1), vary = 0.08 })
+          nova.sound.play(STONE, { volume = m * (0.25 + 0.5 * math.random()) * clamp(self.speed_s / 40, 0.4, 1), vary = 0.08 })
         end
       end
     elseif self.loops[key] then
