@@ -6,7 +6,7 @@ import { integratedLufs } from "../src/lib/loudness";
 import { newRaster, type Raster, type Rgba } from "../src/lib/pixels";
 import { fft } from "../src/lib/spectrum";
 import type { SfxParams } from "../src/lib/sfx";
-import { DRUMS, expandClips, isInstrument, renderSong, type Song } from "../src/lib/song";
+import { DRUMS, expandClips, isInstrument, renderSong, stepTime, type Song } from "../src/lib/song";
 import type { Sound } from "../src/lib/wav";
 import { DIM, fill, fit, INK, label, PAPER } from "./draw";
 
@@ -51,6 +51,8 @@ export interface Analysis {
   character: Character;
   /// For an effect: what it lacks against a produced game sound, each with what to add (empty for music and runs).
   advice: string[];
+  /// On a small speaker (little below SPEAKER_HZ): the share of the energy below it, and how much quieter the sound is there.
+  speaker: { below: number; lossDb: number };
 }
 
 /// The make-up of a sound, measured: the numbers behind "it sounds like a chip".
@@ -297,8 +299,8 @@ export function adviseEffect(c: Character, seconds: number, sfx: SfxParams | und
   if (toy.length >= 3) out.push(`toy-like (it reads as an old console's sound): ${toy.join(", ")}.`);
   if (impact && !c.transient) out.push(`no transient: nothing marks the moment of impact. Add a layer of noise or a click 5 to 20 ms long at the start: { "wave": "noise", "filter": "highpass", "cutoff": 3000, "decay": 0.02, "volume": 0.5 }.`);
   if (impact && tonal && !c.transient) out.push(`no noise: if this is an impact, a shot or a whoosh, those are mostly noise. Add a noise layer through a filter that falls: { "wave": "noise", "filter": "bandpass", "cutoff": 3000, "cutoffEnd": 500, "q": 1.2, "decay": 0.25 }.`);
-  if (impact && onlyNoise) out.push(`only noise, no body: add a tone that drops in pitch under it: { "wave": "sine", "freq": 70, "pitch": 24, "pitchTime": 0.03, "decay": 0.25 } (a thump) or a triangle at 150 to 300 Hz for a knock.`);
-  if (impact && seconds >= 0.15 && c.low < 0.04 && c.noise > 0.5) out.push(`no weight under it (${Math.round(c.low * 100)} % below 150 Hz): for a heavy hit, a slam or an explosion add a sub layer: { "wave": "sine", "freq": 55, "pitch": 19, "pitchTime": 0.04, "decay": 0.3, "volume": 0.6 } (felt on headphones; the handheld's speaker gets the drop).`);
+  if (impact && onlyNoise) out.push(`only noise, no body: add a tone that drops in pitch under it, high enough for a small speaker: { "wave": "triangle", "freq": 150, "pitch": 24, "pitchTime": 0.03, "decay": 0.25, "filter": "lowpass", "cutoff": 1400 } (a thump with harmonics), or 200 to 300 Hz for a knock.`);
+  if (impact && seconds >= 0.15 && c.low < 0.04 && c.noise > 0.5) out.push(`no weight under it (${Math.round(c.low * 100)} % below 150 Hz): for a heavy hit, a slam or an explosion add a body that a small speaker plays, a knock at 120 to 250 Hz: { "wave": "triangle", "freq": 160, "pitch": 19, "pitchTime": 0.03, "decay": 0.25, "filter": "lowpass", "cutoff": 1400, "volume": 0.6 }, and if you like a quiet sine an octave under it for headphones (a handheld's speaker plays little below 200 Hz).`);
   if (c.movement < 1 && seconds >= 0.08) out.push(`static: the spectrum hardly moves (${c.movement.toFixed(1)} dB per 20 ms). Give a layer a pitch envelope (\`pitch\` 12 to 24 with \`pitchTime\` 0.03) or a filter that moves (\`cutoff\` 6000 to \`cutoffEnd\` 600).`);
   if (c.width < 0.002 && seconds >= 0.12 && !(sfx?.reverb || sfx?.width)) out.push(`mono and dry: add \`width\` 0.3 to 0.6 and a short room, \`reverb\` 0.1 to 0.25 with \`room\` 0.2 to 0.4 (wet concrete: 0.3).`);
   if (c.fall === "linear" || c.fall === "cut") out.push(`${c.fall === "cut" ? "it is cut off while still sounding" : "it fades in a straight line"}: real sounds ring out exponentially. ${layered ? "Layers already fall exponentially: lengthen the last layer's `decay`." : "Layers fall exponentially (`decay` is the time to -60 dB)."}`);
@@ -306,6 +308,12 @@ export function adviseEffect(c: Character, seconds: number, sfx: SfxParams | und
   if (plain && sfx!.wave === "noise") out.push(`the plain voice's noise is held steps (an 8-bit console's noise channel, buzzy at freq ${Math.round(sfx!.freq)}). A layer's \`noise\` and \`pink\` are smooth, and its filter can move.`);
   return out;
 }
+
+/// Below this a handheld's or a phone's speaker plays little; a sound with more than SPEAKER_SHARE of its energy under it is mostly lost there.
+export const SPEAKER_HZ = 200;
+export const SPEAKER_SHARE = 0.6;
+/// A looping piece shorter than this (seconds) is warned about: heard many times over in a scene of minutes.
+export const SHORT_LOOP = 45;
 
 const BANDS: [string, number, number][] = [
   ["below 80 Hz (sub: felt, not heard on small speakers)", 0, 80],
@@ -516,6 +524,15 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
   else if (fiveShare > 0.6) reading.push(`tonal: its strongest lines hold ${Math.round(fiveShare * 100)} % of the energy`);
   else reading.push("a mix of tone and noise");
   const below80 = shares[0]!.share, bass = shares[0]!.share + shares[1]!.share, high = shares[4]!.share + shares[5]!.share;
+  // a small speaker: what share of the energy lies below SPEAKER_HZ, and how much quieter the sound is through a speaker that rolls off
+  // there (a second-order high-pass at SPEAKER_HZ, as a handheld's or a phone's does: little below it, nothing much below 100 Hz)
+  let lowE = 0, heard = 0;
+  for (let k = 1; k <= size / 2; k++) {
+    const f = k * binHz;
+    if (f < SPEAKER_HZ) lowE += mean[k]!;
+    heard += mean[k]! * (f ** 4 / (f ** 4 + SPEAKER_HZ ** 4));
+  }
+  const speaker = { below: total > 0 ? lowE / total : 0, lossDb: total > 0 && heard > 0 ? 10 * Math.log10(total / heard) : 0 };
   // which setting to change, and which way, for a sound whose settings are known
   const lowTrack = () => {
     if (!song) return "";
@@ -533,7 +550,16 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
       : " Raise the pitch, or add something above 200 Hz.";
   if (below80 > 0.8) warnings.push(`almost all of its energy (${Math.round(below80 * 100)} %) is below 80 Hz: a rumble that small speakers (a handheld, a phone) cannot play, so it will be nearly inaudible there.${lowFix}`);
   else if (below80 > 0.5) warnings.push(`${Math.round(below80 * 100)} % of its energy is below 80 Hz, which small speakers cannot play: it will sound much quieter on a handheld than the numbers say.${lowFix}`);
-  else if (bass > 0.6) reading.push("bass-heavy");
+  else if (speaker.below > SPEAKER_SHARE) {
+    const fix = sfx?.layers?.length
+      ? " Give the low layers harmonics (a triangle or saw through a low-pass at 400 to 800 Hz instead of a pure sine, or some `drive`), add a layer an octave up (a knock at 120 to 250 Hz with a pitch drop), and turn the pure sub layer down."
+      : sfx
+        ? " Raise `freq`, or move the sound into `layers` with a knock at 120 to 250 Hz over the low end."
+        : song
+          ? " Give the bass upper harmonics (a saw with its `cutoff` at 700 Hz or more, a little `drive` in its `fx`), add a bass layer an octave up, turn the `sub` down, and give the kick a click and a body at 100 to 200 Hz (the `punch` kit's)."
+          : " Add harmonics or a layer an octave up.";
+    warnings.push(`most of the energy (${Math.round(speaker.below * 100)} %) is below ${SPEAKER_HZ} Hz, under what a handheld's or a phone's speaker plays: there it will be about ${fmt(speaker.lossDb)} dB quieter and thin, and the low part is lost. Add harmonics or a layer an octave up.${fix}`);
+  } else if (bass > 0.6) reading.push("bass-heavy");
   if (high > 0.6) reading.push(centroid > 7000 ? "very bright, hissy" : "bright");
   if (topLine && topLine.share > 0.6 && topLine.hz > 2500 && topLine.hz < 6000 && n / rate > 0.4) warnings.push(`a strong steady tone at ${hz(topLine.hz)}, where the ear is keenest: piercing if it lasts or repeats. ${sfx ? `Lower \`freq\` (it is ${n2(sfx.freq)}) below 2000, shorten \`sustain\` (${n2(sfx.sustain)}), or set \`lowpass\` to about ${Math.round(topLine.hz / 2 / 100) * 100}` : "Lower its pitch, shorten it, or soften the wave (a triangle or sine, or a low-pass filter)"}.`);
   const voiced = pitch.filter((p) => p > 0);
@@ -602,14 +628,16 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
   if (s0 / rate > 0.05 && s0 < n) warnings.push(`${Math.round((s0 / rate) * 1000)} ms of silence before it starts: it will feel late. ${song ? "Move the first notes to step 0." : sfx ? `Shorten \`attack\` (it is ${n2(sfx.attack)}).` : "Cut the silence off the front of the file."}`);
 
   let seam: Analysis["seam"];
+  // a song with an intro that plays once loops back to its loop's start, not to the top
+  const ls = song?.loop && song.loop.to === song.length && song.loop.from > 0 ? Math.max(0, Math.min(n - 2, Math.round(stepTime(song, song.loop.from) * rate))) : 0;
   if (opts.loop && n > 64) {
-    const step = Math.abs(mono[0]! - mono[n - 1]!);
+    const step = Math.abs(mono[ls]! - mono[n - 1]!);
     const inner = sorted[Math.floor(sorted.length * 0.99)] ?? 0;
-    const slope = Math.abs(mono[1]! - mono[0]! - (mono[n - 1]! - mono[n - 2]!));
-    const edge = Math.min(n >> 1, Math.round(rate * 0.05));
+    const slope = Math.abs(mono[ls + 1]! - mono[ls]! - (mono[n - 1]! - mono[n - 2]!));
+    const edge = Math.min((n - ls) >> 1, Math.round(rate * 0.05));
     let e0 = 0, e1 = 0;
     for (let i = 0; i < edge; i++) {
-      e0 += mono[i]! * mono[i]!;
+      e0 += mono[ls + i]! * mono[ls + i]!;
       e1 += mono[n - 1 - i]! * mono[n - 1 - i]!;
     }
     const levelDb = db(Math.sqrt(e0 / edge)) - db(Math.sqrt(e1 / edge));
@@ -627,7 +655,7 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
       if (!ok && at.starting.length) {
         const rest = renderSong(at.without, rate).channels;
         const m = rest[0]!.length;
-        const restStep = m > 1 ? Math.abs(rest.reduce((s, c) => s + c[0]!, 0) / rest.length - rest.reduce((s, c) => s + c[m - 1]!, 0) / rest.length) : 0;
+        const restStep = m > 1 ? Math.abs(rest.reduce((s, c) => s + c[Math.min(ls, m - 1)]!, 0) / rest.length - rest.reduce((s, c) => s + c[m - 1]!, 0) / rest.length) : 0;
         if (restStep <= limit) {
           ok = true;
           why = `the step across it is the attack of what starts on the first step (${at.starting.join("; ")}), as on any other beat`;
@@ -647,6 +675,9 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
     if (!ok) {
       warnings.push(`the loop's seam does not match: the last sample to the first is a step of ${fmt(step * 100)} % of full scale, against ${fmt(inner * 100)} % for the biggest steps inside it (a click every time round). ${song ? `At the seam: ${sounding}. A note that is cut off by the end is the usual cause: shorten the notes still held at the end so that they finish a step earlier, or lengthen those tracks' \`release\`.` : "Make the loop end where the wave crosses zero, or fade its last few milliseconds into its first."}`);
     } else if (gap >= 0.08) warnings.push(`the loop has ${Math.round(gap * 1000)} ms of silence at its ends: if that is not a rest in the music, it is a gap every time round. ${song ? "Put a note on the first step, or shorten the song's `length`." : "Cut the silence off the file's ends."}`);
+    // a short loop under a long scene is heard over and over (a jingle or a sting under 10 s is left alone)
+    const loopSeconds = (n - ls) / rate;
+    if (!opts.run && loopSeconds >= 10 && loopSeconds < SHORT_LOOP) warnings.push(`it loops every ${loopSeconds.toFixed(0)} s: under about ${SHORT_LOOP} s, a level or a fight that lasts minutes hears it many times over and it grows tiring. ${song ? "Make it longer with sections that change (song_make's default form: an intro that plays once, then A, B, a break and A again, a minute or more; or patterns and clips), and set `loop` from the first section after the intro to the end." : "Make a longer piece with sections that change."}`);
   }
   const made = character(sound, mono, columns, size, hop);
   const loudStart = envelope.length > 0 && envelope.indexOf(Math.max(...envelope)) <= 1;
@@ -654,7 +685,7 @@ export function analyse(name: string, sound: Sound, opts: { loop?: boolean; run?
   return {
     name, seconds: n / rate, rate, channels: sound.channels.length, peakDb: db(peak), rmsDb: db(rms), loudDb: db(loud), lufs, clipped, dc: sum / Math.max(1, n),
     centroid, shares, lines: lines.map((l) => ({ hz: l.hz, share: l.share })), flatness, reading, warnings, envelope, pitch,
-    silenceStart: s0 / rate, silenceEnd: s1 / rate, clicks, seam, stft: { columns, size, hop }, mono, character: made, advice,
+    silenceStart: s0 / rate, silenceEnd: s1 / rate, clicks, seam, stft: { columns, size, hop }, mono, character: made, advice, speaker,
   };
 }
 
@@ -692,6 +723,7 @@ export function describe(a: Analysis): string {
   out.push(`  loudness over time (dB RMS, ${a.envelope.length} equal parts of ${partMs >= 1000 ? `${(partMs / 1000).toFixed(1)} s` : `${Math.round(partMs)} ms`}): ${a.envelope.map((v) => (Number.isFinite(v) ? Math.round(v) : "-inf")).join(" ")}`);
   out.push(`  spectral centroid ${hz(a.centroid)}; flatness ${a.flatness.toFixed(2)} (0 a tone, 1 noise)`);
   out.push(`  energy by range: ${a.shares.filter((s) => s.share >= 0.005).map((s) => `${s.name.split(" (")[0]} ${Math.round(s.share * 100)} %`).join(", ")}`);
+  out.push(`  on a small speaker (a handheld's or a phone's, little below ${SPEAKER_HZ} Hz): ${Math.round(a.speaker.below * 100)} % of the energy is below that, so it plays about ${fmt(a.speaker.lossDb)} dB quieter there`);
   if (a.lines.length) out.push(`  strongest lines: ${a.lines.filter((l) => l.share >= 0.02).map((l) => `${hz(l.hz)} ${note(l.hz)} ${Math.round(l.share * 100)} %`).join(", ") || "none above 2 % of the energy"}`);
   if (a.pitch.some((p) => p > 0)) out.push(`  strongest pitch over time (${a.pitch.length} equal parts): ${a.pitch.map((p) => (p > 0 ? `${Math.round(p)}` : "-")).join(" ")} Hz`);
   out.push(`  ends: ${Math.round(a.silenceStart * 1000)} ms of silence at the start, ${Math.round(a.silenceEnd * 1000)} ms at the end; ${a.clipped ? `${a.clipped} clipped samples` : "no clipping"}; ${a.clicks.length ? `${a.clicks.length} click(s)` : "no clicks"}`);

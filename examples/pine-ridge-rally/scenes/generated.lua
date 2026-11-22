@@ -11,6 +11,7 @@ function Generated:enter(...)
   local info = state.current_track()
   assert(info.generated, "scenes/generated is the scene of a made-up course: choose one in the menus (state.custom)")
   generate.build(generate.course(info.generated))
+  require("lib.targets").ideal(info, state.current_car()) -- (worked out now, with a scene's load allowance: the pause and results ask for it)
   return race_enter(self, ...)
 end
 

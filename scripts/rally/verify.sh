@@ -34,7 +34,7 @@ while IFS= read -r file; do
   made=$((made + 1))
   if cmp -s "$COPY/$file" "$GAME/$file"; then same=$((same + 1)); else different=$((different + 1)); echo "DIFFERENT: $file"; fi
 done < <(cd "$COPY" && find models textures sounds -type f | sort)
-others=$(cd "$GAME" && find models textures sounds -type f | sort | while IFS= read -r f; do [ -e "$COPY/$f" ] || echo "$f"; done)
+others=$(cd "$GAME" && find models textures sounds -type f -not -path "sounds/voice/*" | sort | while IFS= read -r f; do [ -e "$COPY/$f" ] || echo "$f"; done)
 echo "made $made files: $same the same as the game's, $different different"
 echo "not made by these recipes ($(echo "$others" | grep -c . || true)): $(echo "$others" | tr '\n' ' ' | cut -c1-600)"
 [ "$different" -eq 0 ] && [ "$made" -gt 0 ] && [ "$logos_different" -eq 0 ] && [ "$logos" -gt 0 ]

@@ -9,6 +9,7 @@ local generate = require("lib.generate")
 local daily = require("lib.daily")
 local targets = require("lib.targets")
 local menu_bg = require("lib.menu_bg")
+local work = require("lib.work")
 
 local C, F = ui.color, ui.font
 
@@ -35,6 +36,18 @@ return function(Title, h)
     return generate.LOCATIONS[s.location].name .. " " .. (s.type == 1 and "stage" or "circuit") .. "  ·  " .. generate.COMPLEXITY[s.complexity].name
       .. "  ·  " .. generate.HILLS[s.hills].name
   end
+  -- The course of settings `s` with its route and its targets for `car`: { entry, rt, t }, or nil for the few frames it is being worked out
+  -- (lib/work.lua: a long Epic stage and its target times may be more than a handheld can do in one frame).
+  local function made(s, car)
+    local code = generate.encode(s)
+    return work.get(code .. ":" .. car.id, function()
+      local e = generate.entry(s)
+      return { entry = e, rt = generate.route(s), t = targets.of(e, car) }
+    end)
+  end
+  local WAIT = "..."
+  local function waiting(h) return { "box", h = h, draw = function(r) ui.say(r.x + r.w / 2, r.y + r.h / 2, "Making the course...", F.semi, 18, C.dim, { align = "center", valign = "middle" }) end } end
+
   local function medal_box(medal, size)
     return { "box", w = size, h = size, draw = function(r)
       nova.ui.rect(r.x, r.y, r.w, r.h, targets.COLORS[medal])
@@ -42,8 +55,7 @@ return function(Title, h)
     end }
   end
   -- the three targets in a row of small cells, for car `car`
-  local function target_cells(entry, car, mine)
-    local t = targets.of(entry, car)
+  local function target_cells(t, mine)
     local row = { "row", gap = 6 }
     for i, medal in ipairs({ "gold", "silver", "bronze" }) do
       local won = mine and mine >= 4 - i
@@ -71,7 +83,7 @@ return function(Title, h)
   local ROWS = {
     { "location", "LOCATION", function(s) return generate.LOCATIONS[s.location].name end },
     { "type", "TYPE", function(s) return generate.TYPES[s.type].name end },
-    { "length", "LENGTH", function(s, e) return generate.LENGTHS[s.length].name .. "  ·  " .. length_text(e) end },
+    { "length", "LENGTH", function(s, e) return generate.LENGTHS[s.length].name .. "  ·  " .. (e and length_text(e) or WAIT) end },
     { "complexity", "BENDS", function(s) return generate.COMPLEXITY[s.complexity].name end },
     { "hills", "HILLS", function(s) return generate.HILLS[s.hills].name end },
     { "surface", "SURFACE", function(s) return surface_name(s) end },
@@ -81,8 +93,10 @@ return function(Title, h)
 
   function Title:custom_menu()
     local s = self.cs
-    local entry = generate.entry(s)
-    local rt = generate.route(s)
+    local car = state.current_car()
+    local m = made(s, car)
+    local entry, rt = m and m.entry, m and m.rt
+    local code = generate.encode(s)
     ui.side_panel(470)
     nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 22, ui.header("Custom  ·  " .. generate.TYPES[s.type].name, "Make a course", 42) }
     local root = { id = "custom", anchor = "topleft", margin = 0, x = 48, y = 100, w = 372, gap = 0, enter = self.entered }
@@ -96,20 +110,23 @@ return function(Title, h)
     root[#root + 1] = { "button", "CHOOSE A CAR", id = "go", h = 40, size = 27 }
     local r = nova.ui.menu(root)
 
-    -- the right: the route, its code (and a star when it is a favourite), its facts and its targets for the car last chosen
-    local car = state.current_car()
-    local fav = state.is_favourite(entry.code)
-    local cells, t = target_cells(entry, car)
+    -- the right: its code (and a word when it is a favourite), a picture (a circuit's map; for a rally stage the place's picture, as the
+    -- stage list shows: its bends are for the pace notes to tell), its facts and its targets for the car last chosen
+    local fav = state.is_favourite(code)
     local right = { "panel", anchor = "topright", margin = 36, y = -6, w = 418, pad = { 18, 12 }, gap = 6, id = "cside",
       { "row", gap = 10, align = "center",
         { "text", "SHARE CODE", style = "kicker", grow = 1 },
         { "text", fav and "FAVOURITE" or "", font = F.bold, size = 15, color = C.gold, spacing = 0.12 } },
-      { "text", entry.code, font = F.heavy, size = 46, color = C.white, spacing = 0.08, h = 46 },
-      { "box", h = 170, draw = function(rr) route(generate.preview(rt), rr, 14) end },
-      { "row", gap = 6, cell("Length", entry.km and (entry.km .. " km") or (entry.lap_km .. " km lap"), 120), cell("Bends", tostring(rt.corners), 120),
-        cell("Hairpins", tostring(rt.hairpins), 120) },
-      { "text", "TARGETS IN THE " .. string.upper(car.name), style = "label", size = 14 },
-      cells }
+      { "text", code, font = F.heavy, size = 46, color = C.white, spacing = 0.08, h = 46 } }
+    if m then
+      right[#right + 1] = { "box", h = 170, draw = function(rr) route(entry, rr, 14) end }
+      right[#right + 1] = { "row", gap = 6, cell("Length", entry.km and (entry.km .. " km") or (entry.lap_km .. " km lap"), 120), cell("Bends", tostring(rt.corners), 120),
+        cell("Hairpins", tostring(rt.hairpins), 120) }
+      right[#right + 1] = { "text", "TARGETS IN THE " .. string.upper(car.name), style = "label", size = 14 }
+      right[#right + 1] = target_cells(m.t)
+    else
+      right[#right + 1] = waiting(318)
+    end
     local rects = nova.ui.layout(right)
     nova.ui.rect(rects.cside.x, rects.cside.y, 6, rects.cside.h, C.orange)
     if self.custom_note then ui.hint(self.custom_note)
@@ -127,9 +144,9 @@ return function(Title, h)
       changed = true
     end
     if nova.input.pressed("y") then
-      local now = state.toggle_favourite(entry.code)
+      local now = state.toggle_favourite(code)
       audio.sfx(now and "menu_accept" or "menu_back")
-      self.custom_note = now and ("Saved " .. entry.code .. " to your favourites.") or nil
+      self.custom_note = now and ("Saved " .. code .. " to your favourites.") or nil
     end
     if changed then
       self.custom_note = nil
@@ -141,12 +158,17 @@ return function(Title, h)
     elseif r.pressed == "saved" then audio.sfx("menu_accept"); nova.ui.forget("saved"); self:go("saved")
     elseif r.pressed == "go" then
       audio.sfx("menu_accept")
-      state.custom = generate.entry(s)
-      state.mode = s.type == 1 and "rally" or "race"
-      state.laps = state.custom.laps
-      nova.log(string.format("custom: chose %s (%s), %.0f m, %d bends, ideal %.1f s for %s", entry.code, summary(s), rt.length, rt.corners, t.ideal, car.id))
-      self:open_garage("flow")
+      self.go_when_made = code -- (on as soon as the course is made: at once, unless it is still being worked out)
     elseif r.pressed then audio.sfx("menu_move") end
+    if changed then self.go_when_made = nil end
+    if self.go_when_made == code and m then
+      self.go_when_made = nil
+      state.custom = entry
+      state.mode = s.type == 1 and "rally" or "race"
+      state.laps = entry.laps
+      nova.log(string.format("custom: chose %s (%s), %.0f m, %d bends, ideal %.1f s for %s", code, summary(s), rt.length, rt.corners, m.t.ideal, car.id))
+      self:open_garage("flow")
+    end
   end
 
   -- ---- ENTER A CODE: a grid of the code's letters ------------------------------------------------------------------------------------
@@ -287,17 +309,21 @@ return function(Title, h)
       self.daily_today = today
     end
     local z = self.daily_z
-    local entry = daily_entry(z)
-    local s = entry.generated
-    local rt = generate.route(s)
-    local car = car_of(entry.car)
+    local s, day_car = daily.settings(z)
+    local car = day_car
+    local m = work.get("daily:" .. z, function()
+      local e = daily_entry(z)
+      return { entry = e, rt = generate.route(s), t = targets.of(e, car) }
+    end)
+    local entry, rt = m and m.entry, m and m.rt
+    local code = generate.encode(s)
     local res = daily.result(z)
     ui.side_panel(470)
     nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 22, ui.header("Daily Race  ·  #" .. daily.number(z), daily.long_date(z), 34) }
     local loc = generate.LOCATIONS[s.location]
     local rows = { "column", gap = 0, w = 372,
-      line("Course", loc.name .. " " .. (s.type == 1 and "stage" or "circuit") .. ", " .. length_text(entry)),
-      line("Bends", generate.COMPLEXITY[s.complexity].name .. ", " .. rt.corners .. " bends"),
+      line("Course", loc.name .. " " .. (s.type == 1 and "stage" or "circuit") .. ", " .. (m and length_text(entry) or WAIT)),
+      line("Bends", generate.COMPLEXITY[s.complexity].name .. ", " .. (m and (rt.corners .. " bends") or WAIT)),
       line("Hills and road", generate.HILLS[s.hills].name .. ", " .. surface_name(s)),
       line("Time and weather", generate.TIMES[s.time].name .. ", " .. generate.WEATHERS[s.weather].name),
       line("Today's car", car.name .. " (" .. state.class_of(car).name .. ")", C.gold),
@@ -319,14 +345,17 @@ return function(Title, h)
       { "button", "DRIVE", id = "go", h = 48, size = 30 },
       { "button", "CALENDAR", id = "calendar", h = 34 },
     }
-    local cells = target_cells(entry, car, res and res.medal)
     local right = { "panel", anchor = "topright", margin = 36, y = -6, w = 418, pad = { 18, 12 }, gap = 6, id = "dside",
       { "row", gap = 10, align = "center", { "text", "THE DAY'S CODE", style = "kicker", grow = 1 },
         res and medal_box(res.medal, 26) or { "space", w = 0 } },
-      { "text", entry.code, font = F.heavy, size = 40, h = 42, spacing = 0.08 },
-      { "box", h = 188, draw = function(rr) route(generate.preview(rt), rr, 14) end },
-      { "text", "TARGETS IN THE " .. string.upper(car.name), style = "label", size = 14 },
-      cells }
+      { "text", code, font = F.heavy, size = 40, h = 42, spacing = 0.08 } }
+    if m then
+      right[#right + 1] = { "box", h = 188, draw = function(rr) route(entry, rr, 14) end }
+      right[#right + 1] = { "text", "TARGETS IN THE " .. string.upper(car.name), style = "label", size = 14 }
+      right[#right + 1] = target_cells(m.t, res and res.medal)
+    else
+      right[#right + 1] = waiting(260)
+    end
     local rects = nova.ui.layout(right)
     nova.ui.rect(rects.dside.x, rects.dside.y, 6, rects.dside.h, C.orange)
     ui.hints({ { "pad_a", "Select" }, { "pad_b", "Back" } })
@@ -335,6 +364,8 @@ return function(Title, h)
       audio.sfx("menu_accept")
       self.cal_z = z
       self:go("calendar")
+    elseif r.pressed == "go" and not m then
+      audio.sfx("menu_back") -- (a moment: the course is still being made)
     elseif r.pressed == "go" then
       audio.sfx("menu_accept")
       state.custom = entry
@@ -378,13 +409,13 @@ return function(Title, h)
     ui.side_panel(330)
     nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 22, ui.header("Daily Race  ·  Calendar", daily.MONTHS[m] .. " " .. y, 40) }
     -- the chosen day, on the left
-    local entry = daily_entry(z)
+    local day_settings = daily.settings(z)
     local res = all[daily.key(z)]
     local locked = z > today
     local info = { "column", gap = 2, w = 250,
       { "text", daily.long_date(z), font = F.semi, size = 18 },
       { "text", "Daily #" .. daily.number(z), font = F.heavy, size = 30 },
-      { "text", locked and "Opens on the day." or summary(entry.generated), style = "muted", wrap = true },
+      { "text", locked and "Opens on the day." or summary(day_settings), style = "muted", wrap = true },
       { "space", h = 6 },
       { "text", res and res.time and (ui.time(res.time) .. "  " .. targets.NAMES[res.medal]) or (locked and "" or "Not driven yet"), font = F.heavy, size = 22,
         color = res and targets.COLORS[res.medal] or C.dim } }

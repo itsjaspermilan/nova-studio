@@ -6,7 +6,7 @@ import { call } from "../server";
 import { bandFiring, ENGINE_BASES, makeEngine } from "./engine-make";
 import { firingOf } from "./index-engine";
 // @ts-ignore (plain JavaScript)
-import { engineLoop, firingHz, bandRpm, patternOrder, wavBytes } from "./engine.mjs";
+import { engineLoop, firingHz, bandRpm, patternOrder, wavBytes, fft } from "./engine.mjs";
 // @ts-ignore
 import { makeDriving } from "./driving.mjs";
 // @ts-ignore (Pine Ridge Rally's recipes)
@@ -72,5 +72,33 @@ describe("driving_sounds_make", () => {
     const again: Record<string, Buffer> = {};
     makeDriving(2, (f: string, b: Uint8Array | string) => (again[f] = Buffer.from(b)));
     expect(Buffer.compare(two["pop1.wav"]!, again["pop1.wav"]!)).toBe(0);
+  }, 120_000);
+
+  // The first gravel had an 8 to 50 Hz flutter on its bed and 228 sharp, ringing grains a second in six narrow bands: heard as separate
+  // pops. A dense loop has an envelope that is nearly the noise's own: little spread in its 1 ms level and almost no flutter of 16 to 64 Hz
+  // beyond what noise itself has.
+  const read = (bytes: Buffer) => { const n = (bytes.length - 44) / 2; const x = new Float64Array(n); for (let i = 0; i < n; i++) x[i] = bytes.readInt16LE(44 + 2 * i) / 32768; return x; };
+  const stats = (x: Float64Array) => {
+    const w = 44, m = Math.floor(x.length / w), env = new Float64Array(m);
+    for (let i = 0; i < m; i++) { let a = 0; for (let j = 0; j < w; j++) a += x[i * w + j] ** 2; env[i] = Math.sqrt(a / w); }
+    const mean = env.reduce((a, b) => a + b) / m;
+    const cv = Math.sqrt(env.reduce((a, b) => a + (b - mean) ** 2, 0) / m) / mean;
+    const n = 1 << Math.floor(Math.log2(m)), re = new Float64Array(n), im = new Float64Array(n);
+    for (let i = 0; i < n; i++) re[i] = env[i] - mean;
+    fft(re, im);
+    let flutter = 0, all = 0;
+    for (let k = 1; k < n / 2; k++) { const f = (k * 1000) / n, e = re[k] ** 2 + im[k] ** 2; if (f >= 0.3 && f < 250) all += e; if (f >= 16 && f < 64) flutter += e; }
+    return { cv, flutter: flutter / all };
+  };
+  it("makes the loose-surface loops dense and steady (no flutter, no separate pops), with a sliding layer and takes of a stone", () => {
+    const made: Record<string, Buffer> = {};
+    makeDriving(1, (f: string, b: Uint8Array | string) => (made[f] = Buffer.from(b)));
+    for (const name of ["tyre_gravel", "tyre_dirt", "tyre_snow", "tyre_slide"]) {
+      const s = stats(read(made[`${name}.wav`]!));
+      expect(s.cv, `${name} level spread`).toBeLessThan(0.4); // (the first gravel: 0.57, dirt 0.50, snow 0.56; plain noise 0.12)
+      expect(s.flutter, `${name} flutter share`).toBeLessThan(0.3); // (the first gravel: 0.52, dirt 0.39, snow 0.48; plain noise 0.19)
+    }
+    expect(Object.keys(made).filter((f) => /^stone\d\.wav$/.test(f)).length).toBeGreaterThanOrEqual(3);
+    expect(JSON.parse(made["stone.group.json"]!.toString()).sounds.length).toBeGreaterThanOrEqual(3);
   }, 120_000);
 });

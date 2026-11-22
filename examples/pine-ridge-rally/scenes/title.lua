@@ -12,6 +12,7 @@ local backdrop = require("lib.backdrop")
 local menu_bg = require("lib.menu_bg")
 local garage = require("lib.garage")
 local previews = require("lib.previews")
+local scenic = require("lib.scenic")
 local transition = require("lib.transition")
 
 local Title = nova.scene {}
@@ -185,6 +186,9 @@ local function route(id, r, pad)
     c = previews[id]
   end
   if not c then return end
+  -- a rally stage's route is not shown (the pace notes tell the bends): the place's picture instead
+  if c.open then scenic.last = id return scenic.draw(id, r) end
+  scenic.map_last = id -- (what the last route box drew: the tests look)
   pad = pad or 24
   local k = math.min((r.w - 2 * pad) / c.w, (r.h - 2 * pad) / c.h)
   local ox, oy = r.x + (r.w - c.w * k) / 2, r.y + (r.h - c.h * k) / 2
@@ -345,15 +349,16 @@ function Title:options_menu()
   page("Settings", "Options")
   local r = nova.ui.menu {
     id = "options", anchor = "topleft", margin = 0, x = 48, y = 142, w = 440, enter = self.entered,
-    { "button", "MUSIC VOLUME", value = string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)), id = "music", adjust = true, h = 38 },
-    { "button", "SOUND VOLUME", value = string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)), id = "sound", adjust = true, h = 38 },
-    { "button", "MUSIC STYLE", value = state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >", id = "style", adjust = true, h = 38 },
-    { "button", "SHADOWS", value = on_off(state.shadows), id = "shadows", adjust = true, h = 38 },
-    { "button", "EFFECTS", value = on_off(state.effects), id = "effects", adjust = true, h = 38 },
-    { "button", "SMOOTH EDGES", value = on_off(state.smooth), id = "smooth", adjust = true, h = 38 },
-    { "button", "VIBRATION", value = on_off(state.vibration), id = "vibration", adjust = true, h = 38 },
-    { "button", "RIVALS", value = "< " .. state.current_rival_level().name .. " >", id = "rivals", adjust = true, h = 38 },
-    { "button", "CONTROLS", id = "controls", h = 38 },
+    { "button", "MUSIC VOLUME", value = string.format("< %d%% >", math.floor(state.music_volume * 100 + 0.5)), id = "music", adjust = true, h = 34 },
+    { "button", "SOUND VOLUME", value = string.format("< %d%% >", math.floor(state.sfx_volume * 100 + 0.5)), id = "sound", adjust = true, h = 34 },
+    { "button", "MUSIC STYLE", value = state.music_style == "kenney" and "< Kenney loops >" or "< Nova Studio songs >", id = "style", adjust = true, h = 34 },
+    { "button", "SHADOWS", value = on_off(state.shadows), id = "shadows", adjust = true, h = 34 },
+    { "button", "EFFECTS", value = on_off(state.effects), id = "effects", adjust = true, h = 34 },
+    { "button", "SMOOTH EDGES", value = on_off(state.smooth), id = "smooth", adjust = true, h = 34 },
+    { "button", "VIBRATION", value = on_off(state.vibration), id = "vibration", adjust = true, h = 34 },
+    { "button", "CO-DRIVER VOICE", value = on_off(state.codriver), id = "codriver", adjust = true, h = 34 },
+    { "button", "RIVALS", value = "< " .. state.current_rival_level().name .. " >", id = "rivals", adjust = true, h = 34 },
+    { "button", "CONTROLS", id = "controls", h = 34 },
   }
   ui.hints({ { "pad_dpad", "Change" }, { "pad_a", "Select" }, { "pad_b", "Back" } })
   if r.back then self:go("menu") return end
@@ -367,6 +372,7 @@ function Title:options_menu()
   if id == "shadows" then state.shadows = not state.shadows end
   if id == "effects" then state.effects = not state.effects end
   if id == "smooth" then state.smooth = not state.smooth end
+  if id == "codriver" then state.codriver = not state.codriver end
   if id == "rivals" then
     local i = 1
     for k, l in ipairs(state.rival_levels) do if l.id == state.rival_level then i = k end end
@@ -672,10 +678,12 @@ function Title:confirm_menu()
   if info.generated then
     -- a made-up course: its code, and the three times to beat in this car (lib/targets.lua)
     rows[#rows + 1] = line("Code", info.code, C.gold)
-    local t = require("lib.targets").of(info, state.current_car())
+    -- (worked out over a few frames for a car not asked about before: lib/work.lua)
+    local car = state.current_car()
+    local t = require("lib.work").get(info.code .. ":" .. car.id .. ":targets", function() return require("lib.targets").of(info, car) end)
     local cells = { "row", gap = 6 }
     for i, medal in ipairs({ "gold", "silver", "bronze" }) do
-      cells[#cells + 1] = cell(require("lib.targets").NAMES[4 - i], ui.time(t[medal]):gsub("%.(%d)%d$", ".%1"), 124)
+      cells[#cells + 1] = cell(require("lib.targets").NAMES[4 - i], t and (ui.time(t[medal]):gsub("%.(%d)%d$", ".%1")) or "...", 124)
     end
     rows[#rows + 1] = { "space", h = 6 }
     rows[#rows + 1] = cells

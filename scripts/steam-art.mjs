@@ -1,6 +1,6 @@
 // Makes the Steam library artwork for a game (for a handheld that has it added as a "non-Steam game"):
 //
-//   scripts/env.sh node scripts/steam-art.mjs examples/neon-undertow [--recapture]
+//   scripts/env.sh node scripts/steam-art.mjs examples/pine-ridge-rally [--recapture]
 //   scripts/env.sh node scripts/steam-art.mjs examples/pine-ridge-rally [--recapture]
 //
 // writes <game>/steam/cover.png (600x900), banner.png (920x430), hero.png (3840x1240, no text), logo.png (1280x720, transparent)
@@ -242,7 +242,7 @@ const padMask = (m, p) => { p = Math.ceil(p); const w = m.w + 2 * p, h = m.h + 2
 
 const ctx = { root, game, gname, work, rawDir, outDir, capture, raw, lettering, setTitle, play, frameOf, blank, crop, scaleNearest, scaleSmooth, over, ramp, glow, vignette, grade, blurMask, growMask, paint, vgrad, roundRect, lerp, save, load, padMask, blendPx };
 
-const recipes = { "neon-undertow": "./steam-art-neon.mjs", "pine-ridge-rally": "./steam-art-pine.mjs" };
+const recipes = { "pine-ridge-rally": "./steam-art-pine.mjs" };
 if (!recipes[gname]) { console.error(`no recipe for ${gname} (known: ${Object.keys(recipes).join(", ")})`); process.exit(2); }
 const mod = await import(recipes[gname]);
 await mod.make(ctx);

@@ -22,37 +22,16 @@ targets.START = 2.5
 local cache = {}
 
 -- The ideal time of course `entry` (a menu entry with `generated` settings) in car `car` (an entry of state.cars): the whole stage from a
--- standstill, or all the laps of a circuit race. Also the ideal time of each section of a stage (the speeds along the line, summed to
--- each gate). Kept per course and car.
+-- standstill, or all the laps of a circuit race. Kept per course and car. (A stage's sections and their targets are lib/sections.lua's,
+-- worked out in the race.)
 function targets.ideal(entry, car)
   local key = entry.code .. ":" .. car.id
   if cache[key] then return cache[key] end
   local generate = require("lib.generate")
   local course = generate.course(entry.generated)
-  local lap, line, sp = racing.ideal_time(course, car)
-  local out = { lap = lap }
-  if course.open then
-    out.total = lap
-    -- each section: the time from the start line to its gate along the line (the gates are on the waypoints)
-    local t, at = { [1] = 0 }, 1
-    for i = 1, line.n - 1 do
-      t[i + 1] = t[i] + line.seg[i] / math.max(1, (sp.v[i] + sp.v[i + 1]) / 2)
-    end
-    out.sections = {}
-    local before = 0
-    for k, g in ipairs(course.gates) do
-      local best, bi = 1e18, 1
-      for i, w in ipairs(course.route.wps) do
-        local d = (w.x - g.x) * (w.x - g.x) + (w.z - g.z) * (w.z - g.z)
-        if d < best then best, bi = d, i end
-      end
-      at = bi
-      out.sections[k] = t[at] - before
-      before = t[at]
-    end
-  else
-    out.total = lap * course.laps + targets.START
-  end
+  local lap = racing.ideal_time(course, car)
+  local out = { lap = lap, stage = course.open }
+  out.total = course.open and lap or (lap * course.laps + targets.START)
   cache[key] = out
   return out
 end
@@ -61,8 +40,8 @@ end
 -- (`laps`: a circuit raced over other laps than its own)
 function targets.of(entry, car, laps)
   local i = targets.ideal(entry, car)
-  local ideal = (laps and not i.sections) and (i.lap * laps + targets.START) or i.total
-  local m = targets.MARGIN[i.sections and "stage" or "circuit"][car.class] or targets.MARGIN.stage.sport
+  local ideal = (laps and not i.stage) and (i.lap * laps + targets.START) or i.total
+  local m = targets.MARGIN[i.stage and "stage" or "circuit"][car.class] or targets.MARGIN.stage.sport
   local out = { ideal = ideal }
   for _, medal in ipairs({ "gold", "silver", "bronze" }) do out[medal] = math.floor(ideal * m[medal] * 10 + 0.5) / 10 end
   return out

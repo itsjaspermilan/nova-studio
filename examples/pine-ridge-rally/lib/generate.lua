@@ -6,7 +6,7 @@
 --   generate.encode(s) / decode(code)     the share code ("ABCD-EFGH": eight letters that hold the settings, the seed and a check)
 --   generate.course(s)                    the course: its route (a line every metre, waypoints every 10 m), its looks, its scenery list;
 --                                         made once per code and kept (generate.route(s) is the route alone, for the menus' map)
---   generate.build(course)                in the course's scene: the settings, waypoints, gates, grid, scenery, grass and the road mesh
+--   generate.build(course)                in the course's scene: the settings, waypoints, finish, grid, scenery, grass and the road mesh
 --   generate.entry(s, extra)              the course as the menus and the race know a course (state.current_track())
 --
 -- The road is a ribbon mesh made here with nova.mesh.make, with the cross-section, colours and texture layout of the studio's road_make
@@ -368,6 +368,7 @@ local function stage_route(s, r)
     local from = #X + 1
     local ok = false
     for _ = 1, 14 do
+      if generate.tick then generate.tick() end -- (a menu making this over several frames: lib/work.lua)
       tries = tries + 1
       local hairpin = r() < cx.hairpin
       local R = hairpin and r:range(cx.rmin, cx.rmin + 6) or r:range(cx.r[1], cx.r[2])
@@ -408,7 +409,7 @@ local function stage_route(s, r)
     else
       -- take back the last corner and try again from there
       backs = backs + 1
-      if #marks <= 1 or backs > 60 or tries > 1500 then return nil, tries end
+      if #marks <= 1 or backs > 20 or tries > 300 then return nil, tries end -- (a stuck attempt is cheaper to start again)
       local back = table.remove(marks)
       grid:drop_from(back + 1)
       cut(back)
@@ -636,6 +637,7 @@ function generate.route(s)
   local attempts = 0
   repeat
     attempts = attempts + 1
+    if generate.tick then generate.tick() end
     local sub = rng(s.seed * 1000003 + attempts * 104729 + s.complexity * 31 + s.length * 37 + s.type * 41)
     if s.type == 2 then route, tries = circuit_route(s, sub) else route, tries = stage_route(s, sub) end
     if route then
@@ -738,11 +740,16 @@ function generate.course(s)
     for _, z in ipairs(c.zones) do if at >= z.from and at < z.to then w.road = z.road end end
   end
   c.laps = route.open and 1 or generate.LENGTHS[s.length].laps
-  c.sections = route.open and math.max(3, math.min(8, math.floor(route.length / 450 + 0.5))) or 0 -- (as the hand-made stages: 3 to 8)
   c.plants = loc.plants
-  c.objects = generate.scenery(c)
+  -- (the scenery is made when it is needed, generate.objects: the menus and the target times need only the route)
   courses[code] = c
   return c
+end
+
+-- The scenery of course `c` (a list of { kind, x, z, y, props }), made the first time it is asked for.
+function generate.objects(c)
+  if not c.objects then c.objects = generate.scenery(c) end
+  return c.objects
 end
 
 -- Forgets the routes and courses made so far (each is kept once made: the menus ask for them every frame).
@@ -767,26 +774,16 @@ function generate.scenery(c)
     objects[#objects + 1] = { kind = kind, x = r1(x), y = y or 0, z = r1(z), props = props }
   end
   local function pick(v) if #v > 1 then return v[math.floor(rand() * #v) + 1] end return v[1] end
-  -- the start, the finish and the gates between
+  -- the start and the finish (the sections between are cut by lib/sections.lua at calm places, as on any stage without gates)
   local p = line[L]
   obj("road_start", p.x, p.z, p.ry, nil, 0.03)
   obj("start_arch", p.x, p.z, p.ry)
   obj("tower", p.x + p.tz * 15, p.z - p.tx * 15, p.ry + PI / 2)
-  c.gates = {}
   if open then
     local q = line[F]
+    c.finish = { x = r1(q.x), z = r1(q.z) }
     obj("start_arch", q.x, q.z, q.ry)
     for _, side in ipairs({ -1, 1 }) do obj("flag_checkers", q.x + q.tz * side * 8, q.z - q.tx * side * 8) end
-    for k = 1, c.sections do
-      local g = line[L + math.floor((F - L) * k / c.sections + 0.5)]
-      c.gates[k] = { x = r1(g.x), z = r1(g.z) }
-      if k < c.sections then
-        for _, side in ipairs({ -1, 1 }) do
-          obj(loc.roadside.banner, g.x + g.tz * side * 9.5, g.z - g.tx * side * 9.5, g.ry)
-          obj("flag_checkers", g.x + g.tz * side * 8, g.z - g.tx * side * 8)
-        end
-      end
-    end
   end
   -- the grid: a stage's one box 6 m behind the line; a circuit's four, staggered, behind it along the loop
   c.grid = {}
@@ -1127,17 +1124,18 @@ function generate.build(c)
   local stage = require("lib.stage")
   local grid = require("lib.grid")
   local foliage = require("lib.foliage")
+  local objects = generate.objects(c) -- (the scenery, with the grid and the finish)
   course.set(c.props)
   track.open = c.open
   for j, w in ipairs(c.route.wps) do track.add(j, w.x, w.z, w.k, nil, w.road) end
-  for k, gte in ipairs(c.gates or {}) do stage.add(k, gte.x, gte.z) end
+  if c.finish then stage.set_finish(c.finish.x, c.finish.z) end
   for slot, s in ipairs(c.grid) do
     grid.add(slot, s.x, s.z, s.ry)
     nova.scenery.add("grid_box", s.x, 0.035, s.z, { ry = s.ry })
   end
   foliage.set(c.plants)
   local t_objects = nova.clock()
-  for _, o in ipairs(c.objects) do
+  for _, o in ipairs(objects) do
     local props = {}
     for k, v in pairs(o.props) do props[k] = v end
     props.z = o.z
