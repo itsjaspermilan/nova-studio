@@ -256,8 +256,8 @@ tool("scene_write", { name: "office", scene: { version: 1, background: [40, 34, 
 const statics = {
   post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "", stone_wall: "", gate_post: "",
   picnic_table: "", bench: "", old_bridge: "", barrier: "", office_room: "", mast: "",
-  pine: ', lod = "pine_far", lod_distance = 95, sway = 0.012', pine2: ', lod = "pine_far", lod_distance = 95, sway = 0.012', pine3: ', lod = "pine_far", lod_distance = 95, sway = 0.012',
-  larch: ', lod = "larch_far", lod_distance = 95, sway = 0.016', larch_small: ', lod = "larch_far", lod_distance = 95, sway = 0.018', birch: ", sway = 0.02",
+  pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012', pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012', pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012',
+  larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016', larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018', birch: ", sway = 0.02",
   rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02", bush2: ", sway = 0.02", flowers: ", sway = 0.3", log: "", stump: "",
 };
 for (const [kind, extra] of Object.entries(statics)) put(`entities/${kind}.lua`, `-- Scenery (tools/scene.mjs writes this file): drawn near the camera, never moves.\nreturn nova.entity { model = "${kind}", static = true${extra} }\n`);

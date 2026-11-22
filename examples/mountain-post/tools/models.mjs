@@ -272,13 +272,13 @@ def("mast", () => {
 // ---- by the roads ---------------------------------------------------------------------------------------------------------------------
 def("signpost", () => {
   // a post with up to two arms; each arm is a pointed board whose words the game draws (sprites/fx/sign_*)
-  const c = [box([0, 1.45, 0], [0.16, 2.9, 0.16], C.sign), box([0, 2.95, 0], [0.22, 0.1, 0.22], shade(C.sign, 0.2))];
+  const c = [box([0, 2.1, 0], [0.24, 4.2, 0.24], C.sign), box([0, 4.25, 0], [0.32, 0.12, 0.32], shade(C.sign, 0.2)), box([0, 0.15, 0], [0.5, 0.3, 0.5], C.stoneDark)];
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.15 }] });
 });
 def("sign_arm", () => {
-  // one arm, pointing along +x from the post (the board 1.9 x 0.36, the point at +x)
-  const L = 1.95, h = 0.36, t = 0.05;
-  const v = [[0.08, -h / 2, -t], [L - 0.22, -h / 2, -t], [L, 0, -t], [L - 0.22, h / 2, -t], [0.08, h / 2, -t], [0.08, -h / 2, t], [L - 0.22, -h / 2, t], [L, 0, t], [L - 0.22, h / 2, t], [0.08, h / 2, t]];
+  // one arm, pointing along +x from the post (the board 3.2 x 0.62, the point at +x: big enough to read from a moving van)
+  const L = 3.2, h = 0.62, t = 0.06;
+  const v = [[0.08, -h / 2, -t], [L - 0.34, -h / 2, -t], [L, 0, -t], [L - 0.34, h / 2, -t], [0.08, h / 2, -t], [0.08, -h / 2, t], [L - 0.34, -h / 2, t], [L, 0, t], [L - 0.34, h / 2, t], [0.08, h / 2, t]];
   return one([mesh(v, [[0, 1, 2, 3, 4], [5, 9, 8, 7, 6], [0, 5, 6, 1], [1, 6, 7, 2], [2, 7, 8, 3], [3, 8, 9, 4], [4, 9, 5, 0]], C.sign, { inside: [L / 2, 0, 0] })]);
 });
 def("mailbox", () => one([

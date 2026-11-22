@@ -79,10 +79,10 @@ function camera.talk(p, r, dt)
   if (e[1] - mx) * nx + (e[3] - mz) * nz < 0 then nx, nz = -nx, -nz end
   -- a little behind the postmaster's shoulder, so the resident faces the camera more
   local bx, bz = -ax / l * 1.3, -az / l * 1.3
-  local ex, ez = mx + nx * 3.4 + bx, mz + nz * 3.4 + bz
+  local ex, ez = mx + nx * 3.9 + bx, mz + nz * 3.9 + bz
   local base = ground(mx, mz)
-  local ey = math.max(base + 1.75, ground(ex, ez) + 1.2)
-  camera.set(ex, ey, ez, mx + ax / l * 0.35, base + 1.05, mz + az / l * 0.35, 52, dt)
+  local ey = math.max(base + 1.45, ground(ex, ez) + 1.2)
+  camera.set(ex, ey, ez, mx + ax / l * 0.35, base + 0.62, mz + az / l * 0.35, 54, dt)
   cam.yaw = math.atan(mx - ex, mz - ez)
 end
 

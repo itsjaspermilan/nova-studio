@@ -99,7 +99,7 @@ function Postmaster:keep_clear()
     local s, c = math.sin(v.heading), math.cos(v.heading)
     for _, off in ipairs({ -1.25, 0, 1.25 }) do push(v.x + s * off, v.z + c * off, 0.86) end
   end
-  for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.38) end
+  for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.75) end
 end
 
 -- Where the parcel it carries is: at the chest, in front of it.

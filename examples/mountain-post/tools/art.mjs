@@ -13,7 +13,7 @@ for (const text of ["FERN LANE", "POST ROAD", "KETTLE CREEK RD"]) {
   const name = `fx/sign_${text.toLowerCase().replace(/[^a-z]+/g, "_")}`;
   img(name, [640, 110], [
     { rect: [6, 6, 628, 98], radius: 10, fill: null, stroke: { color: "#f4ede0cc", width: 4 } },
-    { text, at: [320, 80], size: text.length > 12 ? 64 : 74, font: "rounded", align: "center", fill: "#f8f3e8" },
+    { text, at: [320, 80], size: text.length > 12 ? 64 : 74, font: "rounded", align: "center", fill: "#f8f3e8", stroke: { color: "#f8f3e8", width: 3 } },
   ]);
 }
 for (const n of [3, 7]) img(`fx/num_${n}`, [128, 118], [{ rect: [4, 4, 120, 110], radius: 14, fill: "#f2ead8" }, { text: String(n), at: [64, 98], size: 104, font: "rounded", align: "center", fill: "#2c3a30" }]);
@@ -117,13 +117,12 @@ img("ui/you", [48, 48], [{ polygon: [[24, 4], [40, 42], [24, 33], [8, 42]], roun
     const hgt = 150 + ((x * 37) % 90), b = 1010 - ((x * 13) % 40);
     sh.push({ polygon: [[x, b - hgt], [x + 38, b], [x - 38, b]], fill: (x / 34) % 2 ? "#2f5a3e" : "#386a48" });
   }
-  sh.push({ path: "M 900 1080 C 960 960 1080 930 1010 860 C 960 820 1000 800 1040 790", width: 40, fill: null, stroke: { color: "#d9cdb0", width: 34 } });
   sh.push({ rect: [0, 0, W, H], fill: { linear: [0, 0, 0, H], stops: [[0, "#00000000"], [0.7, "#00000000"], [1, "#1a120c66"]] } });
   img("ui/title_bg", [W, H], sh);
 }
-img("ui/logo", [900, 300], [
-  { text: "Fernhollow Post", at: [450, 190], size: 128, font: "script", align: "center", fill: "#f8efd8", shadow: { offset: [0, 6], blur: 10, color: "#2a1c1488" } },
-  { text: "a mountain post office", at: [450, 262], size: 36, font: "serif", align: "center", fill: "#f1e3c2" },
+img("ui/logo", [1100, 320], [
+  { text: "Fernhollow Post", at: [550, 196], size: 116, font: "script", align: "center", fill: "#fbf3df", shadow: { offset: [0, 5], blur: 12, color: "#1e2a3acc" } },
+  { text: "a mountain post office", at: [550, 270], size: 36, font: "serif", align: "center", fill: "#fbf3df", shadow: { offset: [0, 2], blur: 6, color: "#1e2a3acc" } },
 ]);
 img("ui/parcel_icon", [96, 80], [
   { rect: [8, 14, 80, 58], radius: 6, fill: "#c99b67", stroke: { color: "#6b4a2c", width: 3 } },

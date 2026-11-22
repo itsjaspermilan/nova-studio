@@ -127,6 +127,10 @@ function Valley:say(r, lines, on_done)
   r.talking = true
   self.p.control = false
   self.p:face_to(r.x, r.z)
+  -- (a comfortable step apart to talk: the postmaster steps back if they stand too close)
+  local dx, dz = self.p.x - r.x, self.p.z - r.z
+  local d = math.sqrt(dx * dx + dz * dz)
+  if d < 1.35 and d > 1e-3 then self.p.walk_to = { r.x + dx / d * 1.45, r.z + dz / d * 1.45 } end
   dialogue.start(r.who, words.people[r.who].name, lines, {
     on_done = function()
       r:end_talk()
@@ -373,9 +377,9 @@ function Valley:draw()
   if bar then
     local ry = bar.ry or 0
     local fx, fz = math.sin(ry), math.cos(ry)
-    -- (the board faces back down the road, the way the barrier's model faces)
-    OUT.face = { -fx, 0, -fz }
-    nova.billboard("bridge_out", bar.x - fx * 0.52, 1.86, bar.z - fz * 0.52, 2.0, OUT)
+    -- (the board faces back down the road, the way the barrier's model faces: its front; the words just off it)
+    OUT.face = { fx, 0, fz }
+    nova.billboard("bridge_out", bar.x - fx * 0.36, 1.86, bar.z - fz * 0.36, 2.0, OUT)
   end
   -- the mast's guy wires, from its top down to three pegs
   local m = nova.named("mast")

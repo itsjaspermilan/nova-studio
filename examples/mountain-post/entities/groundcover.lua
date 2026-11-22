@@ -17,7 +17,7 @@ function Groundcover:create()
   self.jobs = {}
   for _, p in ipairs(self.plants or {}) do
     self.jobs[#self.jobs + 1] = { model = p.model, left = p.count or 0, near = p.near or "any", within = p.within or 20, tints = p.tints or {},
-      opts = { ry = 0, scale = 1, sway = p.model == "grass" and 0.45 or 0.22, max_distance = p.model == "grass" and 45 or 60, shadow = false } }
+      opts = { ry = 0, scale = 1, sway = p.model == "grass" and 0.45 or 0.22, max_distance = p.model == "grass" and 38 or 50, shadow = false } }
   end
   self.planted, self.job = 0, 1
   self.houses = {}

@@ -3,7 +3,7 @@
 -- big enough to read from the van as it comes up to the junction.
 local Signpost = nova.entity { tags = { "signpost" } }
 
-local ARM_Y = { 2.55, 2.08 }
+local ARM_Y = { 3.75, 2.95 }
 
 local function sprite_of(text) return "sign_" .. text:lower():gsub("[^a-z]+", "_"):gsub("_$", "") end
 
@@ -21,13 +21,13 @@ function Signpost:create()
       sprite = sprite_of(arm.text or ""),
       text = arm.text,
       -- the words sit on the middle of the board, 0.95 m out from the post, a hair off each face
-      cx = self.x + ax * 1.0, cz = self.z + az * 1.0,
-      fronts = { { nx * 0.06, nz * 0.06, { nx, 0, nz } }, { -nx * 0.06, -nz * 0.06, { -nx, 0, -nz } } },
+      cx = self.x + ax * 1.55, cz = self.z + az * 1.55,
+      fronts = { { nx * 0.075, nz * 0.075, { nx, 0, nz } }, { -nx * 0.075, -nz * 0.075, { -nx, 0, -nz } } },
     }
   end
 end
 
-local BOARD = { w = 1.52, h = 0.26 }
+local BOARD = { w = 2.6, h = 0.45 }
 function Signpost:draw()
   for _, d in ipairs(self.drawn) do
     nova.model("sign_arm", self.x, d.y, self.z, d.opts)

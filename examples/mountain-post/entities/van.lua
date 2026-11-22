@@ -13,7 +13,7 @@ local Van = nova.entity { model = "van", tags = { "van" }, velocity = false }
 -- 6.5 s, a top speed of 17.5 m/s on the flat, about 20 m to stop from 50 km/h, and some 4 degrees of lean in a brisk bend.
 local FEEL = {
   power = 4.6,          -- m/s^2 pulling away; it fades as the speed climbs to `top`
-  top = 17.5,           -- m/s on the flat (63 km/h)
+  top = 19,             -- the speed the pull fades to nothing at; with the air and the rolling it tops out near 16 m/s (58 km/h) on the flat
   reverse = 4.5,        -- m/s at most backwards
   brake = 5.0,          -- m/s^2 at full brake: it takes a moment to stop
   coast = 0.55,         -- m/s^2 rolling and engine braking with nothing pressed

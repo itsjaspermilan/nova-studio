@@ -27,8 +27,10 @@ function Title:draw_ui()
   nova.ui.sprite("ui/title_bg", w / 2, h / 2, { w = math.max(w, h * 16 / 9), h = math.max(h, w * 9 / 16) })
   local a = math.min(1, self.t / 1.2)
   -- (a soft shade behind the name, so the cream letters stand out of the bright sky)
-  nova.ui.rect(w / 2 - 420, h * 0.36 - 120, 840, 240, { 40, 52, 70, math.floor(110 * a) }, { radius = 120 })
-  nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = 720, h = 240, color = { 255, 255, 255, math.floor(255 * a) } })
+  local k = math.floor(95 * a)
+  nova.ui.rect(0, h * 0.36 - 120, w, 120, { 30, 44, 62, k }, { gradient = { { 30, 44, 62, 0 }, { 30, 44, 62, k } } })
+  nova.ui.rect(0, h * 0.36, w, 120, { 30, 44, 62, k }, { gradient = { { 30, 44, 62, k }, { 30, 44, 62, 0 } } })
+  nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = 660, h = 192, color = { 255, 255, 255, math.floor(255 * a) } })
   if self.t > 1.0 then
     local pulse = 0.65 + 0.35 * math.sin(self.t * 3)
     -- "Press" and the A button's glyph
