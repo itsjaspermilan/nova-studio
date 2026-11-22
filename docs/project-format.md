@@ -151,8 +151,8 @@ nova.mesh.free(road)                                        -- when the scene en
 Normals left out are worked out from the triangles (smooth where triangles share points; give a flat face its own points).
 `look` borrows a loaded model's base picture, detail picture and surface, so a mesh built from the same numbers as a road made by
 `road_make` looks exactly like it (Pine Ridge Rally's generated stages, `examples/pine-ridge-rally/lib/generate.lua`). The mesh is
-kept on the GPU (and remade after a lost device) until it is freed. Building is a copy of the lists: about 30 ms for 100,000 points on
-a desktop.
+kept on the GPU (and remade after a lost device) until it is freed. Making it is a copy of the lists: 5 to 9 ms for a road of 30,000
+points on a desktop (Apple M4); filling the lists in Lua costs more than that (about 30 ms for the same road).
 
 ### Icon and box art
 

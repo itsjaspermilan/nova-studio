@@ -948,6 +948,8 @@ fn instance_visible(
 /// reset, or the system taking the GPU away): see [`Gfx::recover`].
 /// A vertex's four joints and their weights.
 type Influence = ([u16; 4], [f32; 4]);
+/// A mesh made by a script with a loaded mesh's look (`MeshOp::Styled`): that mesh, the vertices and the indices.
+type StyledMesh = (Option<usize>, Vec<MeshVertex>, Vec<u32>);
 
 #[derive(Default)]
 struct Backup {
@@ -961,7 +963,7 @@ struct Backup {
     /// Shape-key variants of loaded meshes: the base mesh and the blended vertices.
     variants: HashMap<usize, (usize, Vec<MeshVertex>)>,
     /// Meshes made by scripts that borrow a loaded mesh's look: that mesh, the vertices and the indices.
-    styled: HashMap<usize, (Option<usize>, Vec<MeshVertex>, Vec<u32>)>,
+    styled: HashMap<usize, StyledMesh>,
     /// Custom shaders' sources in the order they were added (their ids), and their pictures.
     shaders: Vec<String>,
     shader_textures: HashMap<usize, Image>,

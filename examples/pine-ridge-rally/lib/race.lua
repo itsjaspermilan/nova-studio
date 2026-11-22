@@ -1331,7 +1331,7 @@ function race.scene()
     if self.stage then panel[#panel + 1] = fact("Score", tostring(self.score), C.gold) end
     if info.generated then
       -- a made-up course: the gold time to aim for, and on a Daily Race how long until the next one appears
-      local t = targets.of(info, state.current_car())
+      local t = targets.of(info, state.current_car(), self.laps)
       panel[#panel + 1] = fact("Gold / silver / bronze", ui.time(t.gold):gsub("%.%d%d$", "") .. " · " .. ui.time(t.silver):gsub("%.%d%d$", "") .. " · " .. ui.time(t.bronze):gsub("%.%d%d$", ""), C.gold)
       if info.daily then
         local daily = require("lib.daily")
@@ -1387,7 +1387,7 @@ function race.scene()
   -- Race's result for its day. Filled into state.result.generated.
   function Race:generated_result(time)
     local info = state.current_track()
-    local t = targets.of(info, state.current_car())
+    local t = targets.of(info, state.current_car(), self.laps)
     local medal = targets.medal(time, t)
     local out = { medal = medal, targets = t, code = info.code, daily = info.daily }
     state.add_recent(info.code)

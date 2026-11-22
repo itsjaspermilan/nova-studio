@@ -2,17 +2,19 @@
 -- for that car (lib/racing.lua: the car's speed profile along the racing line, with the hills) times a margin. The margins were measured,
 -- not guessed: the game's own drivers (the computer at its best, and the three rivals on Normal) drove 36 made-up courses of every length,
 -- complexity and surface, and their times were compared with the ideal (crates/nova-runtime/tests/rally.rs, `generated_course_times`;
--- the table and the reasoning are in docs/target-times.md). Gold is about the best rival's pace, silver a decent run, bronze a finish
--- without big mistakes.
+-- the table and the reasoning are in docs/target-times.md). Gold is about the best rival's pace (Mika's mean), silver a decent run
+-- (Dax's mean), bronze a finish without big mistakes (the slowest rival on a bad day, plus 3%). The ideal already grows with the length,
+-- the bends, the hills and the grip, so the margins depend only on what the data said they depend on: a stage or a circuit (a circuit's
+-- laps are raced from a standing start, with more time lost at each of its corners) and the class of car (a 4x4 drives nearer its
+-- ideal than a road car). The number of tight bends a kilometre and the surface made no difference worth a term.
 local racing = require("lib.racing")
 
 local targets = {}
 
--- the margins over the ideal: a base, plus a share for each hairpin-class bend a kilometre, plus a share on loose ground
+-- the margins over the ideal, by the kind of course and the car's class
 targets.MARGIN = {
-  gold = { base = 1.05, per_bend = 0.002, loose = 0.02 },
-  silver = { base = 1.11, per_bend = 0.003, loose = 0.03 },
-  bronze = { base = 1.22, per_bend = 0.004, loose = 0.04 },
+  stage = { sport = { gold = 1.045, silver = 1.065, bronze = 1.13 }, everyday = { gold = 1.015, silver = 1.03, bronze = 1.10 } },
+  circuit = { sport = { gold = 1.07, silver = 1.09, bronze = 1.16 }, everyday = { gold = 1.055, silver = 1.08, bronze = 1.16 } },
 }
 -- a circuit is raced from a standing start: the first lap's start costs about this many seconds over a flying lap
 targets.START = 2.5
@@ -55,29 +57,14 @@ function targets.ideal(entry, car)
   return out
 end
 
--- How hard the course is for the margins: its tight bends a kilometre, and whether it is loose (gravel, sand, snow) for most of it.
-local function hardness(entry)
-  local course = require("lib.generate").course(entry.generated)
-  local route = course.route
-  local tight = 0
-  for _, w in ipairs(route.wps) do if math.abs(w.k) > 0.03 then tight = tight + 1 end end
-  local loose_wps = 0
-  for _, w in ipairs(route.wps) do
-    local road = w.road or course.road
-    if road ~= "road_asphalt" then loose_wps = loose_wps + 1 end
-  end
-  return tight / 3 / math.max(0.5, route.length / 1000), loose_wps / math.max(1, #route.wps)
-end
-
 -- The three targets of course `entry` in car `car`: { ideal, gold, silver, bronze } in seconds (rounded to tenths).
-function targets.of(entry, car)
-  local ideal = targets.ideal(entry, car).total
-  local bends, loose = hardness(entry)
+-- (`laps`: a circuit raced over other laps than its own)
+function targets.of(entry, car, laps)
+  local i = targets.ideal(entry, car)
+  local ideal = (laps and not i.sections) and (i.lap * laps + targets.START) or i.total
+  local m = targets.MARGIN[i.sections and "stage" or "circuit"][car.class] or targets.MARGIN.stage.sport
   local out = { ideal = ideal }
-  for _, medal in ipairs({ "gold", "silver", "bronze" }) do
-    local m = targets.MARGIN[medal]
-    out[medal] = math.floor(ideal * (m.base + m.per_bend * bends + m.loose * loose) * 10 + 0.5) / 10
-  end
+  for _, medal in ipairs({ "gold", "silver", "bronze" }) do out[medal] = math.floor(ideal * m[medal] * 10 + 0.5) / 10 end
   return out
 end
 

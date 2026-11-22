@@ -2417,7 +2417,8 @@ fn the_daily_race_follows_the_date_in_toronto() {
         .trim_matches('"')
         .to_string()
     };
-    let date_and_offset = |g: &Game, t: i64| -> String { at(g, t).split(' ').take(2).collect::<Vec<_>>().join(" ") };
+    let date_and_offset =
+        |g: &Game, t: i64| -> String { at(g, t).split(' ').take(2).collect::<Vec<_>>().join(" ") };
     // 2026-11-22 00:39:52 UTC is 19:39:52 on Saturday the 21st in Toronto (standard time, UTC-5); midnight there is 05:00 UTC
     assert_eq!(at(&g, 1_795_307_992), "2026-11-21 -5 15608 1");
     // a minute after midnight in Toronto: the 22nd, Daily #2, 23:59 to go
@@ -2736,8 +2737,14 @@ fn current_scene(g: &Game) -> String {
 fn made_up_courses_are_driven_to_the_finish() {
     let mut g = load();
     frame(&mut g, &[]);
-    let stage = code_of(&g, "s.location = 3; s.type = 1; s.length = 1; s.complexity = 3; s.seed = 31");
-    let circuit = code_of(&g, "s.location = 2; s.type = 2; s.length = 1; s.complexity = 2; s.seed = 77");
+    let stage = code_of(
+        &g,
+        "s.location = 3; s.type = 1; s.length = 1; s.complexity = 3; s.seed = 31",
+    );
+    let circuit = code_of(
+        &g,
+        "s.location = 2; s.type = 2; s.length = 1; s.complexity = 2; s.seed = 77",
+    );
     let (mut g, mut log) = made_up_direct(&stage, 2, "rally");
     tap(&mut g, "key:F9");
     run_until(&mut g, &mut log, "the results", 60 * 60 * 4, |l| {
@@ -2824,10 +2831,7 @@ fn the_custom_page_changes_settings_and_reads_codes() {
             .contains("check each letter")
     );
     g.run_lua(
-        &format!(
-            "nova.scene_now().code_text = '{}'",
-            first.replace('-', "")
-        ),
+        &format!("nova.scene_now().code_text = '{}'", first.replace('-', "")),
         "type",
     )
     .unwrap();
@@ -2963,8 +2967,10 @@ fn made_up_course_times(driver: &str) {
         for _ in 0..60 * 60 * 9 {
             frame(&mut g, &[]);
             g.take_log();
-            if g.lua_truth("nova.scene_now().player ~= nil and nova.scene_now().player.finish_time ~= nil")
-                .unwrap_or(true)
+            if g.lua_truth(
+                "nova.scene_now().player ~= nil and nova.scene_now().player.finish_time ~= nil",
+            )
+            .unwrap_or(true)
             {
                 done = true;
                 break;

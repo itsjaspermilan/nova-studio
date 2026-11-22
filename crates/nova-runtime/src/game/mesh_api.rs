@@ -141,7 +141,7 @@ pub(super) fn build(spec: &Table) -> mlua::Result<(Vec<MeshVertex>, Vec<u32>)> {
         .collect();
     if normals.is_none() {
         let mut sum = vec![Vec3::ZERO; count];
-        for tri in indices.chunks_exact(3) {
+        for tri in indices.as_chunks::<3>().0 {
             let p = |k: usize| Vec3::from(vertices[tri[k] as usize].position);
             let face = (p(1) - p(0)).cross(p(2) - p(0)); // (its length is twice the area: bigger faces count for more)
             for &k in tri {
