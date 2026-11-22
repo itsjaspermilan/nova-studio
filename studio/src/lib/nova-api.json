@@ -275,8 +275,8 @@
  {
   "name": "nova.shadows",
   "kind": "function",
-  "signature": "nova.shadows{ radius = 60, strength = 0.6 }",
-  "doc": "Turns on the sun's shadows (set the sun with nova.light). They cover `radius` metres around what the camera looks at: a smaller radius is sharper. `strength` is how dark they are, 0 to 1. Models cast and receive them unless drawn with shadow = false; see-through models never cast. Costs extra drawing, so offer a way to turn it off. `nova.shadows(nil)` turns them off.",
+  "signature": "nova.shadows{ radius = 60, strength = 0.6 [, near = 12, softness = 1] }",
+  "doc": "Turns on the sun's shadows (set the sun with nova.light). They cover `radius` metres around what the camera looks at: a smaller radius is sharper. `strength` is how dark they are, 0 to 1. `near` (metres, 12 by default) gives the first metres in front of the camera a second, finer map, so a wheel, a foot or a post has a crisp shadow that starts where it touches the ground; 0 leaves it out (with graphics shadow_cascades 2 or 3 the cascades do this instead). `softness` (0.25 to 4, 1 by default) is how wide the soft edge is, in texels of the map. Models cast and receive them unless drawn with shadow = false (which only stops casting: such a model, the ground, still receives); see-through models never cast. Costs extra drawing, so offer a way to turn it off. `nova.shadows(nil)` turns them off.",
   "group": "Drawing"
  },
  {

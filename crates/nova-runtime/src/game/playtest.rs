@@ -1186,7 +1186,7 @@ impl Game {
             "models": models,
             "camera": { "eye": v3(self.camera.eye.to_array()), "target": v3(self.camera.target.to_array()), "fov": r(self.camera.fov_y_degrees) },
             "light": { "direction": v3(l.direction), "color": v3(l.color), "ambient": v3(l.ambient) },
-            "shadows": l.shadows.as_ref().map(|s| serde_json::json!({ "radius": r(s.radius), "strength": r(s.strength), "casters": casters })),
+            "shadows": l.shadows.as_ref().map(|s| serde_json::json!({ "radius": r(s.radius), "strength": r(s.strength), "near": r(s.near), "softness": r(s.softness), "casters": casters })),
             "fog": l.fog.as_ref().map(|f| serde_json::json!({ "near": r(f.near), "far": r(f.far), "color": v3(f.color) })),
         })
     }

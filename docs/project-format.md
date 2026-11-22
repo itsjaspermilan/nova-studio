@@ -421,8 +421,22 @@ nova.shadows { radius = 45, strength = 0.6 }                          -- the sun
 
 Sky and fog colours are as you pick them on screen. Fog the colour of the sky's horizon hides the place where far scenery
 stops being drawn. Shadows are cast and received by every model unless it is drawn with `shadow = false` (do that for
-the ground, far mountains and clouds); a model with see-through colours never casts one. A smaller `radius` gives sharper
-shadows; they cost an extra drawing pass, so let players switch them off. A model shape can glow by itself in the dark
+the ground, far mountains and clouds: `shadow = false` only stops a model casting, it still receives); a model with see-through
+colours never casts one. A smaller `radius` gives sharper shadows; they cost an extra drawing pass, so let players switch them off.
+Two more options, both with defaults that suit most games (added 2026-11-21):
+
+```lua
+nova.shadows { radius = 42, strength = 0.55, near = 12, softness = 1 }
+```
+
+`near` (metres, 12 by default) draws the first metres in front of the camera into a second map of their own, about three times
+finer than the `radius` map (around 1.5 cm a texel instead of 4 at radius 42), blended into it over the last 15% of its reach: a
+wheel, a foot, a fence post gets a crisp shadow that starts where it touches the ground. `near = 0` leaves that map out (one pass
+less to draw); it is also left out when it would be no finer than the `radius` map, and with `shadow_cascades` 2 or 3 (see
+`docs/switch-class-graphics.md`), whose near cascade does the same. `softness` (0.25 to 4, 1 by default) is the width of the soft
+edge in texels of the map: 1 is about four texels from light to dark, more is softer. A shadow is attached to what casts it: the
+map's bias is half a texel, and the rest of what keeps a surface from shadowing itself is a push along its normal that grows with
+how slanted the surface is to the sun. A model shape can glow by itself in the dark
 (`emissive`, see the model format). Scene files can set `sky` and `fog` too.
 
 **The land under the sky** (added 2026-11-20). `nova.sky { ..., ground = { 110, 120, 80 } }` says what colour the land around is. Models

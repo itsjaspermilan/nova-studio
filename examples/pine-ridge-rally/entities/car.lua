@@ -637,19 +637,6 @@ function Car:draw()
   self.draw_opts.tint = self.damage > 0.02 and { dim, dim, dim } or nil
   self.shadow_opts.ry = self.heading
   if not state.shadows then nova.model("shadow", self.x, 0, self.z, self.shadow_opts) end -- (a flat blob when there are no real shadows)
-  -- Where each tyre meets the road: a small dark patch under it, and a faint one under the whole car. The sun's shadow is soft and starts
-  -- a little away from what casts it, so without these the tyres show no shadow of their own and the car seems to float.
-  if self.susp.ready and not self.far then
-    local w = self.contact_opts
-    if not w then w = { ry = 0, scale = 0.2 }; self.contact_opts = w; self.under_opts = { ry = 0, scale = 0.86, tint = { 255, 255, 255, 120 } } end
-    w.ry = self.heading
-    for i = 1, #self.stations do
-      if self.susp.touch[i] then -- (a wheel in the air has no patch)
-        nova.model("shadow", self.susp.wx[i], 0, self.susp.wz[i], w)
-      end
-    end
-    if state.shadows then self.under_opts.ry = self.heading; nova.model("shadow", self.x, 0, self.z, self.under_opts) end
-  end
   nova.model(self.model_id, self.x, 0, self.z, self.draw_opts)
   self:draw_tail_lights()
 end

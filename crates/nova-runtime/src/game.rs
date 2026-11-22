@@ -1835,9 +1835,19 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     if !(0.0..=1.0).contains(&strength) {
                         return Err(lua_err("shadows strength must be from 0 (none) to 1 (as dark as the ambient light)"));
                     }
+                    let near = number_option(&o, "near")?.unwrap_or(crate::gfx::DEFAULT_SHADOW_NEAR as f64);
+                    if !near.is_finite() || near < 0.0 {
+                        return Err(lua_err("shadows near must be 0 (no fine map near the camera) or more (metres in front of the camera)"));
+                    }
+                    let softness = number_option(&o, "softness")?.unwrap_or(1.0);
+                    if !(0.25..=4.0).contains(&softness) {
+                        return Err(lua_err("shadows softness must be from 0.25 (crisp) to 4 (very soft); 1 is the default"));
+                    }
                     Some(Shadows {
                         radius: radius as f32,
                         strength: strength as f32,
+                        near: near as f32,
+                        softness: softness as f32,
                     })
                 }
                 Some(_) => return Err(lua_err("nova.shadows takes a table like { radius = 60, strength = 0.6 }, true, or false")),

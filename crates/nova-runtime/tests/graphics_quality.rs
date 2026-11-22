@@ -89,6 +89,7 @@ fn render(gfx: &mut Gfx, quality: Quality) -> Vec<u8> {
         shadows: Some(Shadows {
             radius: 20.0,
             strength: 0.6,
+            ..Default::default()
         }),
         quality,
         ..Default::default()

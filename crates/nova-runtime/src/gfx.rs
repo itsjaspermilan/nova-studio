@@ -148,6 +148,11 @@ pub struct Sky {
 pub struct Shadows {
     pub radius: f32,
     pub strength: f32,
+    /// Metres in front of the camera that get a second, finer map (where a wheel or a foot meets the ground); 0 for none.
+    /// Used with the single map only (`shadow_cascades` 2 or 3 already cut the view into fine and coarse slices).
+    pub near: f32,
+    /// How wide the soft edge is, in texels of the map (1 is the engine's 3x3 filter, about four texels from light to dark).
+    pub softness: f32,
 }
 
 impl Default for Shadows {
@@ -155,9 +160,14 @@ impl Default for Shadows {
         Self {
             radius: 60.0,
             strength: 0.6,
+            near: DEFAULT_SHADOW_NEAR,
+            softness: 1.0,
         }
     }
 }
+
+/// How far (metres from the camera) the fine near shadow map reaches when a game does not say.
+pub const DEFAULT_SHADOW_NEAR: f32 = 12.0;
 
 /// Distance fog: models fade into `color` between `near` and `far` world units from the camera. Colour is linear.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -690,8 +700,8 @@ struct Globals {
     terrain: [[f32; 4]; MAX_TERRAIN_WAVES + 1],
     /// The heightmap: [0] is x0, z0, 1 / cell, 0; [1] is the samples across minus 1, the rows minus 1, 0, 0. (`terrain[0].y` is 1 when there is one.)
     terrain_map: [[f32; 4]; 2],
-    /// The sun's cascaded shadow maps (only with `Quality::cascades` above 1): each cascade's matrix; x: how far (view depth) it reaches, y: its
-    /// depth bias, z: a texel's size in metres; and x of the last: how many cascades.
+    /// The sun's shadow maps, nearest first (cascades, or the near map and the wide one): each map's matrix; x: how far (view depth) it
+    /// reaches, y: its depth bias, z: a texel's size in metres, w: the soft edge's width in texels; and x of the last: how many maps.
     cascade_vp: [[[f32; 4]; 4]; MAX_CASCADES as usize],
     cascade_info: [[f32; 4]; MAX_CASCADES as usize],
     cascade_count: [f32; 4],
@@ -713,6 +723,9 @@ struct CascadePlan {
 
 /// Side of the (square) shadow map in texels.
 const SHADOW_SIZE: u32 = 2048;
+
+/// Where the single wide shadow map "ends" along the view: nowhere (a point outside its square is simply lit).
+const WIDE_FAR: f32 = 1.0e9;
 
 struct DynBuffer {
     buffer: wgpu::Buffer,
@@ -1730,13 +1743,15 @@ impl Gfx {
             cache: None,
         });
 
-        // The sun's shadow map: a depth texture the world is drawn into from the sun's side, then sampled by every mesh.
+        // The sun's shadow map: a depth texture the world is drawn into from the sun's side, then sampled by every mesh. One layer
+        // per cascade, and at least two: with one cascade the second is the fine map of what is near the camera (`Shadows::near`).
+        let shadow_layer_count = quality.cascades.max(2);
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow map"),
             size: wgpu::Extent3d {
                 width: SHADOW_SIZE,
                 height: SHADOW_SIZE,
-                depth_or_array_layers: quality.cascades,
+                depth_or_array_layers: shadow_layer_count,
             },
             mip_level_count: 1,
             sample_count: 1,
@@ -1749,7 +1764,7 @@ impl Gfx {
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
-        let shadow_layers: Vec<wgpu::TextureView> = (0..quality.cascades)
+        let shadow_layers: Vec<wgpu::TextureView> = (0..shadow_layer_count)
             .map(|layer| {
                 shadow_texture.create_view(&wgpu::TextureViewDescriptor {
                     label: Some("shadow cascade"),
@@ -1760,23 +1775,18 @@ impl Gfx {
                 })
             })
             .collect();
-        let cascade_globals: Vec<(wgpu::Buffer, wgpu::BindGroup)> = if quality.cascades > 1 {
-            (0..quality.cascades)
-                .map(|_| {
-                    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("cascade globals"),
-                        size: std::mem::size_of::<Globals>() as u64,
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    });
-                    let group =
-                        globals_bind_group(&device, &globals_layout, &buffer, &terrain_view);
-                    (buffer, group)
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let cascade_globals: Vec<(wgpu::Buffer, wgpu::BindGroup)> = (0..shadow_layer_count)
+            .map(|_| {
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("cascade globals"),
+                    size: std::mem::size_of::<Globals>() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                let group = globals_bind_group(&device, &globals_layout, &buffer, &terrain_view);
+                (buffer, group)
+            })
+            .collect();
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("shadow sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -3275,50 +3285,82 @@ impl Gfx {
                     );
                     (proj * look, texel)
                 };
+                // The depth bias: half a texel's size along the light, in the map's depth units (0 to 1 over `2 x extent` metres).
+                // The rest of what keeps a surface from shadowing itself is the normal offset in mesh.wgsl, which grows with the
+                // texel and with how slanted the surface is to the sun. Both are small, so a shadow starts where its caster
+                // touches the ground (before 2026-11-21 the single map's bias was 0.0015 of 336 m: half a metre, which cut away
+                // every shadow within half a metre of what cast it: a wheel's, a foot's, a car body's near the road).
+                let bias = |texel: f32, extent: f32| 0.5 * texel / (2.0 * extent);
+                // The bounding sphere of the view's slice from `a` to `b` metres (along the view): its distance and radius.
+                let forward = (input.camera.target - input.camera.eye).normalize_or(Vec3::Z);
+                let tan_half = (input.camera.fov_y_degrees.to_radians() * 0.5).tan();
+                let k = (1.0 + aspect * aspect).sqrt() * tan_half;
+                let sphere = |a: f32, b: f32| {
+                    let (cdist, r) = if k * k >= (b - a) / (b + a) {
+                        (b, b * k)
+                    } else {
+                        (
+                            0.5 * (a + b) * (1.0 + k * k),
+                            0.5 * ((b - a).powi(2)
+                                + 2.0 * (b * b + a * a) * k * k
+                                + (b + a).powi(2) * k.powi(4))
+                            .sqrt(),
+                        )
+                    };
+                    // (a radius in whole steps, so that the texel's size does not change by a hair each frame when the
+                    // field of view follows the speed: eighths of a metre for a small map, whole metres past 8 m)
+                    let step = if r > 8.0 { 1.0 } else { 0.125 };
+                    (cdist, (r / step).ceil() * step)
+                };
+                let near_cam = 0.3f32;
                 if cascade_count <= 1 {
                     let r = sh.radius.max(0.5);
-                    let (vp, texel) = fit(input.camera.target, r, r * 4.0);
-                    vec![CascadePlan {
+                    let extent = r * 4.0;
+                    let (vp, texel) = fit(input.camera.target, r, extent);
+                    let wide = CascadePlan {
                         vp,
-                        far: f32::MAX,
-                        bias: 0.0015,
+                        far: WIDE_FAR,
+                        bias: bias(texel, extent),
                         texel,
-                    }]
+                    };
+                    // The near map: the view's first `near` metres drawn into a map of their own (the bounding sphere of that
+                    // slice, moved in whole texels like the wide one), a few times finer than the wide map, blended into it
+                    // over the last 15% of its reach. Left out when it would not be finer.
+                    let reach = sh.near.min(far);
+                    let (cdist, rn) = sphere(near_cam, reach.max(near_cam + 0.5));
+                    if sh.near > 0.0 && rn < 0.75 * r {
+                        let (vp, texel) = fit(input.camera.eye + forward * cdist, rn, extent);
+                        vec![
+                            CascadePlan {
+                                vp,
+                                far: reach,
+                                bias: bias(texel, extent),
+                                texel,
+                            },
+                            wide,
+                        ]
+                    } else {
+                        vec![wide]
+                    }
                 } else {
                     // Cascades: the view's depth from the camera to `distance` cut into slices (a blend of equal and
                     // geometric steps: fine near the camera, coarse far away), each slice's bounding sphere drawn into its
                     // own map. A sphere does not change size as the camera turns, and its centre moves in whole texels, so
                     // the shadows do not shimmer.
                     let distance = (sh.radius.max(0.5) * 3.0).min(far);
-                    let near = 0.3f32;
-                    let forward = (input.camera.target - input.camera.eye).normalize_or(Vec3::Z);
-                    let tan_half = (input.camera.fov_y_degrees.to_radians() * 0.5).tan();
-                    let k = (1.0 + aspect * aspect).sqrt() * tan_half;
                     let mut plans = Vec::with_capacity(cascade_count);
-                    let mut start = near;
+                    let mut start = near_cam;
                     for i in 1..=cascade_count {
                         let f = i as f32 / cascade_count as f32;
-                        let end = 0.7 * near * (distance / near).powf(f)
-                            + 0.3 * (near + (distance - near) * f);
-                        let (a, b) = (start, end);
-                        let (cdist, r) = if k * k >= (b - a) / (b + a) {
-                            (b, b * k)
-                        } else {
-                            (
-                                0.5 * (a + b) * (1.0 + k * k),
-                                0.5 * ((b - a).powi(2)
-                                    + 2.0 * (b * b + a * a) * k * k
-                                    + (b + a).powi(2) * k.powi(4))
-                                .sqrt(),
-                            )
-                        };
-                        let r = (r * 8.0).ceil() / 8.0;
+                        let end = 0.7 * near_cam * (distance / near_cam).powf(f)
+                            + 0.3 * (near_cam + (distance - near_cam) * f);
+                        let (cdist, r) = sphere(start, end);
                         let extent = (r * 4.0).max(100.0);
                         let (vp, texel) = fit(input.camera.eye + forward * cdist, r, extent);
                         plans.push(CascadePlan {
                             vp,
                             far: end,
-                            bias: (texel * 2.5 + 0.02) / (2.0 * extent),
+                            bias: bias(texel, extent),
                             texel,
                         });
                         start = end;
@@ -3332,14 +3374,24 @@ impl Gfx {
             .first()
             .map_or([[0.0; 4]; 4], |p| p.vp.to_cols_array_2d());
         let shadow = match (lit.shadows, plans.first()) {
-            (Some(sh), Some(p)) => [1.0, 1.0 / SHADOW_SIZE as f32, p.bias, sh.strength],
+            (Some(sh), Some(p)) => [
+                1.0,
+                sh.softness.clamp(0.25, 4.0) / SHADOW_SIZE as f32,
+                p.bias,
+                sh.strength,
+            ],
             _ => [0.0; 4],
         };
         let mut cascade_vp = [[[0.0f32; 4]; 4]; MAX_CASCADES as usize];
         let mut cascade_info = [[0.0f32; 4]; MAX_CASCADES as usize];
         for (i, p) in plans.iter().enumerate().take(MAX_CASCADES as usize) {
             cascade_vp[i] = p.vp.to_cols_array_2d();
-            cascade_info[i] = [p.far, p.bias, p.texel, 0.0];
+            cascade_info[i] = [
+                p.far,
+                p.bias,
+                p.texel,
+                lit.shadows.map_or(1.0, |s| s.softness.clamp(0.25, 4.0)),
+            ];
         }
         let ibl_gain = if self.quality.ibl {
             self.update_environment(lit)
