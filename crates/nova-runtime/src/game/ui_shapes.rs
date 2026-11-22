@@ -240,7 +240,7 @@ mod tests {
             },
             1.0,
         );
-        assert_eq!(g.first().unwrap().4[0] > 240, true);
-        assert_eq!(g.last().unwrap().4[2] > 240, true);
+        assert!(g.first().unwrap().4[0] > 240);
+        assert!(g.last().unwrap().4[2] > 240);
     }
 }
