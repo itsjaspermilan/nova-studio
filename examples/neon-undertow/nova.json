@@ -1,6 +1,7 @@
 {
   "format": 1,
   "name": "Neon Undertow",
+  "world_height": 0,
   "ignore": ["tools", "build", "steam"],
   "input": {
     "attack": ["pad:west", "key:KeyJ"],

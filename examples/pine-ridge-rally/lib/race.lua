@@ -932,8 +932,8 @@ function race.scene()
       cam.bonnet = true
     else
       local near = self.view_mode == 1
-      local back = (near and 6.4 or 9.5) + speed * 0.03
-      local height = (near and 3.1 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
+      local back = (near and 5.5 or 9.5) + speed * 0.03
+      local height = (near and 3.8 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
       -- the camera's place on a circle round the car: behind it when the angle is 0
       local a = cam.heading + orbit.yaw
       local ox, oz = math.sin(a), math.cos(a)
