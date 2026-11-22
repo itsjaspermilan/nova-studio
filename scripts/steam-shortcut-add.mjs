@@ -14,8 +14,9 @@ if (process.argv[2] === '--print-appid') {
   console.log(appId(pname, pexe)); process.exit(0)
 }
 const setIcon = process.argv[2] === '--set-icon'
-const [inFile, outFile, name, exe, dir, like] = process.argv.slice(setIcon ? 3 : 2)
-if (setIcon ? !exe : !dir) { console.error('usage: steam-shortcut-add.mjs <in> <out> "<name>" <exe> <start-dir> ["<entry to copy>"]'); process.exit(2) }
+const remove = process.argv[2] === '--remove' // --remove <in-file> <out-file> "<name>": takes that entry out of a copy of the list
+const [inFile, outFile, name, exe, dir, like] = process.argv.slice(setIcon || remove ? 3 : 2)
+if (remove ? !name : setIcon ? !exe : !dir) { console.error('usage: steam-shortcut-add.mjs <in> <out> "<name>" <exe> <start-dir> ["<entry to copy>"]'); process.exit(2) }
 const buf = readFileSync(inFile)
 let p = 0
 const cstr = () => { const e = buf.indexOf(0, p); const s = buf.toString('utf8', p, e); p = e + 1; return s }
@@ -31,6 +32,13 @@ const ser = (m) => Buffer.concat([...m.map(([t, k, v]) => { const head = Buffer.
 if (p !== buf.length || !ser(root).equals(buf)) throw new Error('could not read this file exactly; nothing written')
 const list = root.find(([, k]) => k.toLowerCase() === 'shortcuts')[2]
 const field = (e, k) => e[2].find(([, key]) => key.toLowerCase() === k)
+if (remove) {
+  const i = list.findIndex((e) => field(e, 'appname')?.[2] === name)
+  if (i < 0) { console.log(`no entry named "${name}"; nothing written`); process.exit(0) }
+  list.splice(i, 1)
+  list.forEach((e, k) => { e[1] = String(k) }) // (Steam numbers the entries 0, 1, 2...)
+  writeFileSync(outFile, ser(root)); console.log(`wrote ${outFile}: ${list.length} entries, removed "${name}"`); process.exit(0)
+}
 if (setIcon) { // here `exe` is the icon path
   const entry = list.find((e) => field(e, 'appname')?.[2] === name)
   if (!entry) throw new Error(`no entry named "${name}"; nothing written`)
