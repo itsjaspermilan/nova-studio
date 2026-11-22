@@ -38,7 +38,7 @@
   "name": "nova.sprite",
   "kind": "function",
   "signature": "nova.sprite(id, x, y [, opts])",
-  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame, and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left), and `shader = \"shine\"` with `params` and `textures` (a custom shader, shaders/shine.wgsl; see docs/shaders.md). `color = { r, g, b [, a] }` multiplies the picture's colours (255 leaves them; it cannot brighten). `rotation` is in radians, positive clockwise on the screen. 2D effects: `blend = \"add\"` (or \"screen\") adds light instead of covering (a glow, a spark, a muzzle flash; it can only brighten), `lit = false` keeps it out of nova.ambient2d's dark (a lit window), `foot = y` is the screen y it stands on (what puddle reflections flip it about).",
+  "doc": "Draw an image or one frame of a sprite sheet, centred on x, y, in the world layer. Options: scale, sx, sy, w, h, rotation, color, anchor, frame, and `src = { x, y, w, h }` (draw only that part of the picture, in pixels from its top left), and `shader = \"shine\"` with `params` and `textures` (a custom shader, shaders/shine.wgsl; see docs/shaders.md). `color = { r, g, b [, a] }` multiplies the picture's colours (255 leaves them; it cannot brighten). `rotation` is in radians, positive clockwise on the screen. 2D effects: `blend = \"add\"` (or \"screen\") adds light instead of covering (a glow, a spark, a muzzle flash; it can only brighten), `lit = false` keeps it out of nova.ambient2d's dark (a lit window), `foot = y` is the screen y it stands on (what puddle reflections flip it about). `flip_x = true` / `flip_y = true` mirror the picture in its own frame, before `rotation` turns it (as a negative sx or sy does).",
   "group": "Drawing"
  },
  {
@@ -94,7 +94,7 @@
   "name": "nova.model",
   "kind": "function",
   "signature": "nova.model(id, x, y, z [, opts])",
-  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), quat = { x, y, z, w } (a turn as a quaternion, as a physics body gives it, in place of rx, ry, rz), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), rigid = true (on hills the whole model is lifted by the ground's height under its origin, not every vertex by the height under that vertex, so it is not sheared on a slope: a vehicle sets its own tilt from the ground under its wheels, see nova.terrain_height), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), constraints = false (leaves out the rules the studio put on the model's parts: limits, copies, reach; they apply by default), morph = { smile = 0.6 } (blends the model's shape keys by name, 0 to 1 each; see nova.model_morphs; a part that bends with a skeleton ignores them), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md). dirt = 0..1 puts dirt on the model with no picture: thick at its foot, its ragged edge climbing as the amount grows (further at the tail, -z), spatter above it and a thin film of dust, and no gloss, metal, clear coat or glass where it lies; dirt_color = { r, g, b } is its colour (a dull brown when left out) and dirt_on_top = true makes it lie on what faces up too (snow). Change it over time: Pine Ridge Rally's cars pick it up on gravel, sand and snow and shed it on tarmac.",
+  "doc": "Draw a 3D model. Options: scale, rx, ry, rz (radians), quat = { x, y, z, w } (a turn as a quaternion, as a physics body gives it, in place of rx, ry, rz), tint, parts (turn pieces on their own: parts = { wheel = { ry = 1 } }, see nova.model_parts), layers (clips mixed by weight; a layer with `mask = { \"Spine\" }` is laid over the mix on those parts and their children only; `additive = true` adds how far the clip is from the rest pose instead), clip and time (pose it from an animation clip, see nova.model_clips; loop = false holds the last pose), layers = { { clip = \"walk\", time = t, weight = 0.7 }, { clip = \"run\", time = t2, weight = 0.3 } } (several clips mixed by weight; nova.animator does the bookkeeping), shadow = false (casts no shadow, see nova.shadows), sway = 0.3 (bends in the wind: see nova.wind), rigid = true (on hills the whole model is lifted by the ground's height under its origin, not every vertex by the height under that vertex, so it is not sheared on a slope: a vehicle sets its own tilt from the ground under its wheels, see nova.terrain_height), lod = \"cheaper_model\" with lod_distance (100) and lod_fade (15% of the distance) metres (draws that model instead past that distance on the ground from the camera, the two trading places by a screen-door so nothing pops; also with clip, layers or parts: the far model is then a plain model in its rest pose and no pose is made), max_distance = 80 (nothing is drawn beyond that many metres on the ground from the camera, a pose is not made either), pose_step = 0.0667 (with clip: seconds; snaps time down to a multiple, so characters at the same moment of a clip share one pose and one set of GPU joint matrices; 0 = exact times only. A crowd of 300 with random phases becomes a few dozen poses), constraints = false (leaves out the rules the studio put on the model's parts: limits, copies, reach; they apply by default), morph = { smile = 0.6 } (blends the model's shape keys by name, 0 to 1 each; see nova.model_morphs; a part that bends with a skeleton ignores them), shader = \"water\" (draw it with shaders/water.wgsl, with params = { up to 8 numbers }, textures = { up to 2 pictures } and blend = true for see-through; see nova.post and docs/shaders.md). dirt = 0..1 puts dirt on the model with no picture: thick at its foot, its ragged edge climbing as the amount grows (further at the tail, -z), spatter above it and a thin film of dust, and no gloss, metal, clear coat or glass where it lies; dirt_color = { r, g, b } is its colour (a dull brown when left out) and dirt_on_top = true makes it lie on what faces up too (snow). Change it over time: Pine Ridge Rally's cars pick it up on gravel, sand and snow and shed it on tarmac. On the hills (nova.terrain) the renderer lifts what is drawn by the ground: every vertex by the ground under it; with `rigid = true` the model (and each piece drawn on its own, a posed part, a wheel) by the ground under that piece's own origin; with `lift = \"origin\"` every piece by the ground under the model's origin, as one rigid thing (a car whose wheels must not float on a slope).",
   "group": "Drawing"
  },
  {
@@ -408,8 +408,8 @@
  {
   "name": "nova.view",
   "kind": "function",
-  "signature": "nova.view() -> width, height",
-  "doc": "The size of the screen in logical units (whole numbers, 540 high).",
+  "signature": "nova.view([\"exact\"]) -> width, height",
+  "doc": "The size of the screen in logical units, 540 high: whole numbers (rounded down), so they work with math.random and as grid sizes. nova.view(\"exact\") gives the real width, fractional on a screen that is not 16:9: use it to put things exactly in the middle or against the right edge (nova.ui.menu does).",
   "group": "Drawing"
  },
  {
@@ -478,8 +478,8 @@
  {
   "name": "nova.ui.rect",
   "kind": "function",
-  "signature": "nova.ui.rect(x, y, w, h [, color])",
-  "doc": "Like nova.rect, in the UI layer.",
+  "signature": "nova.ui.rect(x, y, w, h [, color [, opts]])",
+  "doc": "Like nova.rect, in the UI layer. Options make it a panel: `radius` (rounded corners, units), `slant` (the top edge that many units right of the bottom: a leaning banner or a wipe's slat; negative leans left), `gradient = { top_colour, bottom_colour }`, `outline = { color = {r, g, b}, width = 2 }` (inside the edge); its edges are smooth at the screen's resolution. `layer = \"top\"` draws it in order with the UI's text: over every text drawn before it, under every text drawn after (a dimming page over the HUD, a wipe that covers the words); without it, every UI rectangle and sprite is under all UI text.",
   "group": "Drawing"
  },
  {
@@ -500,7 +500,7 @@
   "name": "nova.ui.text",
   "kind": "function",
   "signature": "nova.ui.text(x, y, text [, opts]) -> width, height, size",
-  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. fit: \"shrink\" makes one line smaller until it is no wider than `width` (and no taller than `height`); \"wrap\" wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8); the third result is the size it was drawn at. spacing: room after every letter as a share of the size (0.2 spaces a label out like CSS letter-spacing 0.2em). line_spacing: how far apart lines are, as a multiple of the font's own (0.5 to 4; 1.5 gives the pixel fonts air). Text is always drawn over UI rectangles and sprites, whatever the order of the calls. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font.",
+  "doc": "Draw text. Options: font, size, color, width (wrap), align, shadow, valign (\"top\", the default: y is the top of the line; \"middle\": y is the middle of the capital letters, so a label in a button looks centred; \"baseline\"), fallback (a font name or a list of them: if the font lacks a character of the text, the first of these that has them all draws it, instead of a box), bold (true, or a number: 1 is the usual bold; the letters are thickened, not drawn twice), outline (a colour, or { color, width } with width in logical units, default an eleventh of the size: one band round every letter, behind it). With `width`, `align` (left, center, right) places the lines inside that width; without it, \"center\" puts the middle of the text at x and \"right\" puts its right edge there. fit: \"shrink\" makes one line smaller until it is no wider than `width` (and no taller than `height`); \"wrap\" wraps it at `width` and makes it smaller until it is no taller than `height`; never below `min_size` (8); the third result is the size it was drawn at. spacing: room after every letter as a share of the size (0.2 spaces a label out like CSS letter-spacing 0.2em). line_spacing: how far apart lines are, as a multiple of the font's own (0.5 to 4; 1.5 gives the pixel fonts air). Text is always drawn over UI rectangles and sprites, whatever the order of the calls. Fonts: sans, rounded, pixel, terminal, mono, serif, comic, display, script, or a project font. `rotation` (radians, clockwise) and `zoom` turn and grow the drawn letters about x, y without drawing them again: a tilted label, a banner that slams in (`size` is what keeps letters crisp at another size). There is no skew: a slanted face is a font that leans (\"comic\").",
   "group": "Drawing"
  },
  {
@@ -943,6 +943,20 @@
   "kind": "function",
   "signature": "nova.start(scene)",
   "doc": "Hand the frame to the framework and begin with this scene (scenes/<name>.lua).",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.on_update",
+  "kind": "function",
+  "signature": "nova.on_update(fn) -> remove",
+  "doc": "A game-wide hook that outlives every scene: fn(dt) runs once a frame (real seconds: not slowed by nova.time_scale, not stopped by nova.pause), after the scene's own work. For a wipe that crosses a scene change, a clock, music that follows the game. Returns a function that takes the hook away. Call it from main.lua; goto_scene does not clear it.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.on_draw_ui",
+  "kind": "function",
+  "signature": "nova.on_draw_ui(fn) -> remove",
+  "doc": "A game-wide hook that outlives every scene: fn() runs after the scene's draw_ui, so what it draws is over all of the scene's UI (a wipe, a fade, a persistent overlay; with nova.ui.rect's `layer = \"top\"` it covers the scene's text too). Returns a function that takes the hook away.",
   "group": "Scenes and entities"
  },
  {
@@ -1487,8 +1501,8 @@
  {
   "name": "play",
   "kind": "method",
-  "signature": "self:play(tag [, { restart = true }])",
-  "doc": "Play an animation tag of the entity's sprite sheet (sprites/<name>.sprite.json). Calling it again with the same tag keeps going, so it can be called every frame; the one option is `restart = true`, which starts the tag over. on_animation_end(tag) runs when a tag that does not loop finishes.",
+  "signature": "self:play(tag [, { restart = true, speed = 1 }])",
+  "doc": "Play an animation tag of the entity's sprite sheet (sprites/<name>.sprite.json). Calling it again with the same tag keeps going, so it can be called every frame; the one option is `restart = true`, which starts the tag over. on_animation_end(tag) runs when a tag that does not loop finishes. `speed` sets how fast clips play (the entity's `anim_speed`, 1 as drawn, 2 twice as fast), and stays until changed: give it on every call to keep a run's feet in step (speed = v / the speed the run was drawn for).",
   "group": "Entity methods"
  },
  {

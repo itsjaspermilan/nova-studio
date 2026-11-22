@@ -302,7 +302,10 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   draw: `nova.sprite("sword", nova.cam.to_screen(self.x + 8, self.y))`. Forget it and the thing is off the screen.
   A `draw()` of your own replaces the drawing of the entity's `sprite` or `model`: put `nova.Entity.draw(self)` in it
   where the picture should go, or the entity vanishes (`check` warns).
-- **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox.
+- **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox. Your own `nova.sprite` takes `flip_x` / `flip_y`
+  too (mirrored first, then turned by `rotation`).
+- **A clip's speed:** `self:play("run", { speed = 1.3 })` (the entity's `anim_speed`; it stays until changed): give it on every
+  call to keep the feet in step with the ground (speed = the hero's speed / the speed the clip was drawn for).
 - **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`. Put `hitbox_units = "world"` in the
   entity to give them in world units instead: then redrawing the art at another size and changing `sx` leaves every box
   as it is. Hitboxes do not turn with `angle` (they stay upright): give a swing a box per facing.
@@ -340,7 +343,14 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   (`out`, `image_out`) before judging draw order from a small strip tile.
 - **Every PNG in the project is a sprite** and goes into the atlas. Keep screenshots and scratch files in `build/`, a
   dot-folder, or list them in `nova.json`: `"ignore": ["shots", "tools"]` (also kept out of `nova pack`).
-- **Text** is always drawn over UI rectangles; fade the text itself. `line_spacing = 1.5` for the pixel fonts. The
+- **Text is over the UI's rectangles and sprites** unless a rectangle says `layer = "top"`: then it is drawn in order with the
+  text, over every text drawn before it (a dimming page, a wipe that must cover the HUD). `nova.ui.rect`'s options also make
+  panels: `radius`, `slant` (a leaning banner), `gradient = { top, bottom }`, `outline = { color, width }`; never rows of
+  rectangles. Text turns and grows with `rotation` and `zoom` (no skew). Something that must live across scene changes (a wipe,
+  an overlay) goes in `nova.on_update(fn)` / `nova.on_draw_ui(fn)` in `main.lua`. To centre or right-align by hand on any screen,
+  use `nova.view("exact")` (`nova.view()` rounds the width down). There is no text in the world layer: UI text at
+  `nova.cam.to_screen(x, y)` is over everything and cannot hide behind a wall; for a label that must,
+  draw a sprite made with `image_make` (`text` shape) in the world instead. `line_spacing = 1.5` for the pixel fonts. The
   `pixel` font is monospaced: every letter is `size` units wide (16 by default, so 10 letters are 160 units); other fonts
   vary. Measure before placing: `nova.ui.text_width(text, { font = "pixel", size = 24 })` (`nova.ui.text_size` gives width and height).
 - **Colours** are `{ r, g, b [, a] }` from 0 to 255, never 0 to 1 (`{ 255, 255, 255, 128 }` is half-transparent white).

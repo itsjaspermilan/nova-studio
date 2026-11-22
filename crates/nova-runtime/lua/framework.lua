@@ -563,6 +563,12 @@ function Entity:play(tag, opts)
   end
   local t = info.tags[tag]
   if not t then error("play(): the sprite sheet '" .. name .. "' has no tag '" .. tostring(tag) .. "'", 2) end
+  -- `speed`: how fast the clip plays (1 as drawn, 2 twice as fast): the entity's `anim_speed`, which stays until changed. Set it on every
+  -- call (self:play("run", { speed = v / 235 })) to keep a run's feet in step with the ground
+  if opts and opts.speed ~= nil then
+    if type(opts.speed) ~= "number" or opts.speed < 0 then error("play(): speed is a number, 0 or more (1 plays the clip as drawn)", 2) end
+    self.anim_speed = opts.speed
+  end
   local a = self._anim
   if a and a.tag == tag and not a.done and not (opts and opts.restart) then return end
   self._anim = { tag = tag, seq = t.sequence, loop = t.loop, i = 1, t = 0, done = false }
@@ -3331,6 +3337,21 @@ function nova.hitch(ms, describe)
   hitch_ms, hitch_describe = ms or 0, describe
 end
 
+-- Game-wide hooks that outlive every scene (a wipe across a scene change, an overlay over every screen): nova.on_update(fn) runs
+-- fn(dt) once a frame (real seconds, not slowed by nova.time_scale nor stopped by nova.pause), after the scene's own work, and
+-- nova.on_draw_ui(fn) runs fn() after the scene's draw_ui, so what it draws is over all of the scene's UI. Each returns a function
+-- that takes the hook away again. Call them from main.lua (or any time): goto_scene does not clear them.
+local GAME_HOOKS = { update = {}, draw_ui = {} }
+local function add_hook(list, fn, what)
+  if type(fn) ~= "function" then error(what .. "(fn): give a function", 3) end
+  list[#list + 1] = fn
+  return function()
+    for i = #list, 1, -1 do if list[i] == fn then table.remove(list, i) end end
+  end
+end
+function nova.on_update(fn) return add_hook(GAME_HOOKS.update, fn, "nova.on_update") end
+function nova.on_draw_ui(fn) return add_hook(GAME_HOOKS.draw_ui, fn, "nova.on_draw_ui") end
+
 local function frame_update(dt)
   if hitch_ms > 0 and dt * 1000 > hitch_ms and not W.paused then
     local p = nova.perf()
@@ -3351,6 +3372,7 @@ local function frame_update(dt)
     switch_if_pending()
   end
   if steps == MAX_STEPS then W.acc = 0 end
+  for _, fn in ipairs(GAME_HOOKS.update) do fn(dt) end
 end
 
 local order = {}
@@ -3461,6 +3483,7 @@ function draw_world()
     if weather then draw_weather() end
     if scene.draw_ui then scene:draw_ui() end
   end
+  for _, fn in ipairs(GAME_HOOKS.draw_ui) do fn() end
 end
 
 -- Hand the frame to the framework: the first scene is loaded, then update/draw run it.

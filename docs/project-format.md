@@ -108,7 +108,12 @@ up to eight sine waves over the ground. The shaders lift every vertex of a model
 30 m) by the height under it, shadows included, so a game keeps drawing on flat ground (roads, cars, trees, the particles) and the hills follow;
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
 (a car's weight on a hill). A model that must stay rigid (a vehicle) is drawn with `rigid = true`: it is lifted by the height under its origin only, and the game tilts it
-(Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
+(Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted.
+**The rule for pieces:** a model drawn in pieces (with `clip`, `layers`, `parts` or shape keys: each part is its own draw) and
+`rigid = true` has each piece lifted by the ground under *that piece's own origin*, not the model's: a wheel whose origin is a
+metre beside the car on a slope is lifted by the ground there, so it floats off (or sinks into) the body. Either give such a
+part's height as the car's (a wheel's `y` relative to the body, the ground's difference left out: what car.lua does), or draw
+the model with `lift = "origin"`: every piece is then lifted by the ground under the model's origin, as one rigid thing. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`land_make`, `studio/mcp/makers/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's

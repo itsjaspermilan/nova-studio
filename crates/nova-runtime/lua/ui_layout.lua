@@ -715,7 +715,9 @@ end
 local function lay(root, T, st)
   local out = { focusables = {} }
   build(root, nil, 1, "#", out, "column")
-  local vw, vh = nova.view()
+  -- (the exact size: on a screen that is not 16:9 the width is fractional, and a whole-unit width would put what is centred or
+  -- anchored to the right up to a unit off)
+  local vw, vh = nova.view("exact")
   local margin = root.margin
   if margin == nil then margin = (root.x or root.y) and not root.anchor and 0 or T.margin end
   local bw, bh = vw - 2 * margin, vh - 2 * margin
