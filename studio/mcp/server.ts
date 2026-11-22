@@ -40,6 +40,7 @@ import { FEATURE_KINDS } from "./makers/wear-paint";
 import { PURPOSE_NAMES, purposeParams } from "./makers/sound";
 import { registerMakers } from "./makers";
 import { releaseBinary } from "./binaries";
+import { IMAGE_HELP, makeImage } from "./image";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -623,6 +624,33 @@ tool(
 );
 
 tool(
+  "image_make",
+  "Make a smooth picture (a logo, an emblem, a UI panel or button, an icon, a glow or a smoke puff for effects, Steam or store art) from shapes, as sprite_write makes pixel art from characters: `sprites/<name>.png`, anti-aliased, with real alpha. " +
+    "`size` is [width, height] in the picture's units; `sizes` writes it at several sizes at once, each drawn again at its own resolution (not shrunk): [[256, 256], [64, 64]] or scales [1, 0.25] (the first is sprites/<name>.png, the others sprites/<name>_<w>x<h>.png). " +
+    "`background` fills it first; `base`: \"sprites/x.png\" (or any PNG in the project) starts from an existing picture (its size when `size` is left out): to tint, crop, frame or put a gradient over a screenshot; `crop`: [x, y, w, h] keeps only that part at the end. " +
+    IMAGE_HELP +
+    " The same recipe always writes the same bytes. It returns the picture as sprite_preview shows it.",
+  {
+    name: { type: "string", description: 'The picture: sprites/<name>.png ("logos/apex", "ui/panel").' },
+    size: { type: "array", items: { type: "number" }, description: "[width, height] in units (the pixels of the first size)." },
+    sizes: { type: "array", description: "Sizes to write: [[w, h], ...] or scales [1, 0.5]; the same shape as size." },
+    background: { type: ["string", "array", "object"], description: "A colour under everything (see-through when left out)." },
+    base: { type: "string", description: "An existing picture in the project to draw over (sprites/x.png)." },
+    shapes: { type: "array", description: "The shapes, drawn in order (later ones on top)." },
+    crop: { type: "array", items: { type: "number" }, description: "[x, y, w, h] in units: keep only this part." },
+  },
+  ["name", "shapes"],
+  (a) => {
+    const root = projectRoot(a);
+    const { files, text } = makeImage(root, a, existsSync(novaBin) ? novaBin : null);
+    for (const [rel, bytes] of files) put(root, rel, bytes);
+    const name = files[0]![0].replace(/^sprites\//, "").replace(/\.png$/, "");
+    const r = previewSprite(root, name);
+    return { text: `${text}\n${r.text}`, images: [keepPicture(`image-${name.replace(/[^A-Za-z0-9_-]/g, "_")}`, r.picture)] };
+  },
+);
+
+tool(
   "scene_write",
   "Write a scene layout: `scenes/<name>.scene.json` (what the studio's scene editor edits; validated and tidied). `scene` is { version: 1, background?, width?, height?, camera?: { eye, target, fov }, objects: [ { kind, name?, x, y, z?, props? } ], images?, texts?, tilemaps? }. " +
     "`kind` is an entity in entities/ (a `name` makes the entity a field of the scene, `self.<name>`, findable with nova.named(\"<name>\"), and the entity's own `self.name`). " +
@@ -835,14 +863,14 @@ const playProperties = {
   lua: { type: "string", description: "Lua run once when the scene is up, before the route: place the player, give the key, set the health (nova.named('hero').x = 200)." },
   capture_at: { type: "array", items: { type: "number" }, description: "Frames to take pictures after (1 is the first frame; 60 = one second in)." },
   every: { type: "number", description: "Also take a picture every this many frames (an animation or a movement as a film strip)." },
-  print: { type: "array", items: { type: "string" }, description: "Lua expressions whose values are reported at every picture and at the end: \"nova.named('hero').hp\", \"nova.count('enemy')\", \"nova.current_scene()\"." },
+  print: { type: "array", items: { type: "string" }, description: "Lua expressions whose values are reported at every picture and at the end: \"nova.named('hero').hp\", \"nova.count('enemy')\", \"nova.current_scene()\". What the frame drew: \"nova.testing.drawn('ui_text')\" lists every UI text with its words and place (kinds: model, sprite, rect, ui_sprite, ui_rect, ui_line, ui_text, ui_poly, or 'ui' for all of the UI's), \"nova.testing.drawn_count('ui_text', 'MAP')\" counts those whose name or words contain MAP: a test of 'the map is not drawn' with no flag in the game." },
   frames: { type: "number", description: "Run at least this many frames (60 = one second). Default 90 without a route; with one, the route's own length." },
   seed: { type: "number", description: "The seed of math.random. Runs are repeatable: the same seed and input give the same run (1 when left out)." },
-  size: { type: "string", description: 'The picture size, "WIDTHxHEIGHT". Default "960x540" (the CLI\'s own default is 1280x720). The game always sees a screen 540 units high.' },
+  size: { type: "string", description: 'The picture size, "WIDTHxHEIGHT", from 64x64 up to 3840x2160 (4K: bigger is refused). Default "960x540" (the CLI\'s own default is 1280x720). The game always sees a screen 540 units high.' },
   crop: { type: "array", items: { type: "number" }, description: "[x, y, w, h] in picture pixels: return this part of every picture." },
   crop_to: { type: "string", description: 'Crop every picture to an entity (a scene object\'s name, a tag or a kind: "hero"), in 2D and 3D, with `crop_margin` pixels round it: one size for the whole run (round the largest box it had), moved with it, so no pixel rectangle is guessed. The answer gives each picture\'s part; `out` keeps the full frames.' },
   crop_margin: { type: "number", description: "With `crop_to`: the room round the entity, in picture pixels (half its size, at least 24, when left out; in 2D the box is its hitbox, so leave room for the rest of the sprite)." },
-  view: { type: "object", description: 'The pictures of a 3D game from beside an entity instead of from the game\'s camera (the game plays on with its own): { "follow": "hero", "from": "side", "distance": 4 }. `from`: "side" (from +x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter"; `distance` in metres (4); `height` above its middle (0.3). A side view of a walk shows the legs; with `every` it is a film strip that follows.' },
+  view: { type: "object", description: 'The pictures of a 3D game from beside an entity instead of from the game\'s camera (the game plays on with its own): { "follow": "hero", "from": "side", "distance": 4 }. `from`: "side" (from +x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter", or [dx, dy, dz] (the eye that many metres from its middle); `distance` in metres (4); `height` above its middle (0.3); `yaw` (degrees: turns the eye round it, 90 takes "side" to "back") and `pitch` (degrees above the level: 30 looks down, 90 from straight above). The entity\'s middle is where it is seen: on the hills of nova.terrain the renderer lifts it by the ground under it, and the view follows; the eye never goes under the ground and is moved in front of a wall, a solid entity or scenery in the way. A side view of a walk shows the legs; with `every` it is a film strip that follows.' },
   zoom: { type: "number", description: "Enlarge every picture (or its crop) this many times, without blur: small pixel art read closely." },
   state: { type: "string", enum: ["end", "all", "none"], description: "The list of entities with positions: at the end (default), at every picture, or not at all." },
   audio: { type: ["boolean", "string"], description: 'true: also write what the run sounded like to a WAV file (its path is in the answer; give it to sound_report). With `out` it is <out>/run.wav; a path such as "build/run1.wav" (in the project, in a folder the game ignores) says where yourself.' },
@@ -922,6 +950,7 @@ export const EXAMPLES: Record<string, Args> = {
   song_write: { name: "town", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", wave: "square", notes: [{ step: 0, len: 4, pitch: 60 }, { step: 8, len: 4, pitch: 64 }] }, { name: "drums", kind: "drums", notes: [{ step: 0, pitch: 36 }, { step: 4, pitch: 38 }] }] } },
   sprite_write: { name: "dot", palette: { r: "#ff0000", w: "#ffffff" }, frames: [[".rr.", "rwwr", "rwwr", ".rr."], { rows: [".r", "rw", "rw", ".r"], mirror: "x" }], animations: [{ name: "blink", from: 0, to: 1 }] },
   sprite_preview: { name: "dot", frame: 0 },
+  image_make: { name: "ui/badge", size: [64, 64], sizes: [1, 0.5], shapes: [{ circle: [32, 32, 26], fill: { linear: [0, 6, 0, 58], stops: [[0, "#ffd54a"], [1, "#e08a1e"]] }, stroke: { color: "#5a3510", width: 3, align: "inside" }, shadow: { offset: [0, 3], blur: 4 } }, { polygon: [[32, 16], [36, 28], [48, 28], [38, 36], [42, 48], [32, 40], [22, 48], [26, 36], [16, 28], [28, 28]], round: 1, fill: "#fffbe8" }] },
   scene_write: { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 96, y: 96 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 16, tile_height: 16, scale: 3 }, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } },
   scene_preview: { name: "room" },
   track_write: { name: "stage1", open: true, control: [[0, 0], [0, 120], [80, 220], [200, 240], [320, 180]] },
