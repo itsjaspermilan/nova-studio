@@ -156,7 +156,7 @@ export function registerMakers(h: Host): Record<string, Args> {
 
   h.tool(
     "song_make",
-    `Make a short looping song from a mood: ${MOOD_NAMES.map((n) => `"${n}" (${MOODS[n]!.what})`).join("; ")}. ` +
+    `Make a song from a mood, by default in sections (an intro that plays once, then A, B, a break and A again: 32 bars or more, a minute or more, with the lead and drums changing, fills at the ends and a loop from the first A to the end that the game follows; \`form: "loop"\` for one short loop): ${MOOD_NAMES.map((n) => `"${n}" (${MOODS[n]!.what})`).join("; ")}. ` +
       "It writes `music/<name>.song.json` and the `.ogg` the game streams, exactly as song_write does: a melody, a bass, a harmony part (and in the synthwave moods a fast arpeggio) and drums that follow one chord progression and come round to the start, in the fuller voices (detuned saws through moving filters, a sub, echo and room, the studio or punch drum kit, ducking under the kick, a compressor and limiter on the master), not the chip voice. " +
       "`key` (\"C\", \"A minor\") and `tempo` (beats a minute) change it; `seed` gives another tune in the same mood. It returns the song's sound_report (level, loop seam, warnings) and its picture. " +
       'The song is an ordinary one afterwards: read_file the .song.json, change notes or instruments, and give it to song_write. In Lua: nova.music.play("<name>", { volume = 0.35 }).',
@@ -165,6 +165,7 @@ export function registerMakers(h: Host): Record<string, Args> {
       mood: { type: "string", description: MOOD_NAMES.join(", ") },
       key: { type: "string", description: 'The key note, with "minor" or "major" to go against the mood\'s own: "C", "A minor", "F# major".' },
       tempo: { type: "number", description: "Beats a minute, 40 to 240 (each mood has its own when left out)." },
+      form: { type: "string", description: "\"song\" (the default: an intro that plays once, then A, B, a break and A again with fills at the ends and the drums and lead changing; at least 32 bars, a minute or more, looping from the first A) or \"loop\" (one short loop of the mood's bars, for a jingle or a menu)." },
       seed: SEED,
     },
     ["name", "mood"],

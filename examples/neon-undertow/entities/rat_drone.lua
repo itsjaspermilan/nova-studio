@@ -39,7 +39,7 @@ end
 
 function Drone:crash()
   self.crashes = self.crashes + 1
-  nova.sound.play("wall_thud", { volume = P.sfx.wall_thud })
+  nova.sound.play("wall_thud", { volume = P.sfx.wall_thud, vary = 0.06 })
   nova.spawn("fx", self.x + self.dir_x * 14, self.y + self.dir_y * 14, { sprite = "fx_spark", anim = "spark", scale = 3 })
   V.debris(self.x + self.dir_x * 14, self.y + self.dir_y * 14, 5, { kind = "grey", speed = 240, up = 300 })
   V.dust(self.x + self.dir_x * 16, self.y + self.dir_y * 16, 3, self.dir_x, self.dir_y, 60)

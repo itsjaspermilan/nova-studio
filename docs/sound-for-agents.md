@@ -211,15 +211,92 @@ fully decorrelated stereo noise reads 1.)
 | mother_coil (the boss) | "boss" chip voice → `synthwave`, A minor, the same theme faster | 150 → 140 | -15.2 → -15.2 LUFS | 0.006 → 0.14 | 3.4 → 3.1 | 61 → 70 % | 6 → 0 |
 | den (the hub) | "calm village" chip voice → `synthwave night`, D minor | 84 → 92 | -17.1 → -17.1 LUFS | 0.05 → 0.34 | 1.3 → 3.2 | 22 → 46 % | 4 → 0 |
 
-The fight and boss tracks are now bass-heavy (about 70 % of the energy below 150 Hz: kick, saw bass and its sub). That is the genre, but a
-handheld's speaker plays little of it; `sound_report` did not warn (under 50 % lies below 80 Hz). The loops are 8 bars (16 and 14
-seconds), shorter than before (20 and 23); `song_make` makes 8 bars.
+This first pass left two faults, both fixed in the second pass below: the fight and boss tracks were bass-heavy (about 70 % of the
+energy below 150 Hz), which a handheld's speaker cannot play, and the loops were 8 bars (16 and 14 seconds).
+
+## Second pass: small speakers, song forms, variation (2026-11-21)
+
+**Again, plainly: nothing in either pass has been listened to by a person.** Every number here is a measurement of an offline render.
+No handheld or phone speaker was measured; "a small speaker" below is a model (a second-order high-pass at 200 Hz). The owner's ears on
+the Retroid are still the test.
+
+**Small speakers.** A handheld's or a phone's speaker plays little below about 200 Hz and nearly nothing below 100. `sound_report` now
+says for every sound how much of its energy lies below 200 Hz and how much quieter it would be through such a speaker, and **warns**
+when more than 60 % lies below it ("most of the energy is below what a handheld's or a phone's speaker plays: add harmonics or a layer
+an octave up", with the settings to change). Before this pass, 17 of Neon Undertow's 70 effects and two of its three songs crossed that
+line (the worst, `wall_thud`, had 98 % below 200 Hz and would have been 10 dB quieter on the speaker). What changed:
+
+- Effects: the "thump" used by the purposes and the game's recipes is now two layers: the pure sine kept low (for headphones) and a
+  triangle knock an octave up through a low-pass, whose harmonics the speaker plays. The purposes `heavy_hit`, `door` and `locked` were
+  moved up. The report's advice for a hit without weight now suggests that knock, not a pure sub.
+- Songs: the `punch` kit's kick gained a knock that falls from 260 to 150 Hz with a third harmonic over its low body; the synthwave and
+  boss basses are brighter saws (cutoff 850 to 1100 Hz, a little `distortion` in their `fx`, the `sub` down to 0.08 to 0.15), and the
+  moods that drive have a second bass track, `bass_hi`, playing the bass line an octave up and quieter. The drum tracks are a little
+  quieter in the mix (the drums alone had been as loud as the whole song).
+
+| | below 200 Hz | through a small speaker |
+| --- | --- | --- |
+| effects over 60 % below 200 Hz | 17 of 70 → 0 of 70 (the most now 58 %) | worst 10.2 dB quieter → 4.3 dB |
+| undertow | 79 % → 44 % | 5.9 → 2.5 dB quieter |
+| mother_coil | 79 % → 45 % | 5.9 → 2.6 dB quieter |
+| den | 56 % → 25 % | 3.4 → 1.5 dB quieter |
+
+The effects that moved most (below 200 Hz in %, speaker loss in dB, level, file length, transient; before → after):
+
+| effect | below 200 Hz | loss | level | length | transient |
+| --- | --- | --- | --- | --- | --- |
+| banner_boss | 82 → 36 | 6.0 → 2.6 | -17.6 → -17.6 | 1.00 → 1.05 | yes → yes |
+| banner_elite | 70 → 57 | 4.8 → 3.1 | -15.8 → -15.8 | 0.61 → 0.58 | yes → yes |
+| blast | 87 → 57 | 7.1 → 3.4 | -15.7 → -15.7 | 1.00 → 1.03 | yes → no |
+| boss_burst | 83 → 54 | 6.0 → 3.2 | -16.7 → -16.7 | 0.93 → 0.93 | yes → no |
+| boss_die | 80 → 51 | 6.6 → 3.3 | -16.9 → -16.9 | 1.46 → 1.49 | yes → yes |
+| car_slam | 77 → 54 | 5.7 → 2.8 | -16.5 → -16.5 | 0.57 → 0.55 | no → no |
+| door_open | 81 → 55 | 5.6 → 2.2 | -15.6 → -15.6 | 0.59 → 0.59 | no → no |
+| door_shut | 96 → 23 | 8.4 → 2.0 | -16.0 → -16.0 | 0.47 → 0.46 | no → no |
+| enemy_die | 73 → 28 | 4.4 → 1.7 | -16.4 → -16.4 | 0.45 → 0.44 | no → yes |
+| hit | 91 → 36 | 5.3 → 2.0 | -16.1 → -16.1 | 0.32 → 0.30 | yes → yes |
+| magnet_slam | 91 → 40 | 8.3 → 2.4 | -16.3 → -16.3 | 0.49 → 0.48 | no → no |
+| rev_up | 65 → 34 | 4.0 → 1.8 | -15.8 → -15.8 | 0.69 → 0.66 | no → no |
+| shot | 71 → 27 | 3.4 → 1.3 | -15.3 → -15.3 | 0.41 → 0.40 | no → no |
+| sign_drop | 70 → 35 | 4.5 → 1.9 | -13.9 → -13.9 | 0.37 → 0.37 | no → no |
+| tram_pass | 67 → 58 | 4.4 → 2.5 | -14.9 → -14.9 | 1.60 → 1.60 | no → no |
+| wall_thud | 98 → 46 | 10.2 → 2.7 | -16.7 → -16.7 | 0.45 → 0.46 | yes → no |
+| wreck_break | 66 → 28 | 4.0 → 1.6 | -17.0 → -17.0 | 0.38 → 0.38 | no → no |
+
+Every effect kept its level exactly (the `loudness` match). Three lost the report's "transient" mark (`blast`, `boss_burst`,
+`wall_thud`): the knock's harmonics now fill the highs right after the crack too, so the crack stands out less against them by the
+report's measure. Whether that is heard as a softer hit is for a listener to say. The report calls none of the 70 toy-like.
+
+**Song forms.** `song_make` now writes a song in sections by default: an intro that plays once (pads and the arpeggio, hats, a snare roll
+that stops short of the loop), then A (the tune), B (its own tune on other chords, the bass pushing octaves, the hats opening, a kick
+before each bar), a break (the drums drop out, held bass and pads, a roll), and A again (the tune with a third over it, the hats
+doubled), with a fill at the end of every section and a crash where the next one starts. That is 32 bars, or 40 for a fast song (a
+second B) so the loop lasts 50 seconds or more. The song's `loop` runs from the first A to the end, and the game follows it:
+`song_write` now writes a song's loop region as the Ogg's `LOOPSTART`/`LOOPLENGTH`, the renderer wraps the last notes', echoes' and
+reverb's tails onto the loop's start (not the intro), and the seam is judged there. The loop comes back from the last A's fill into the
+first A, as any section goes to the next. `form: "loop"` gives the old 8-bar loop. `sound_report` warns when a looping piece repeats in
+under 45 seconds (a jingle or sting under 10 seconds is left alone).
+
+| song | before (first pass) | now | loop | below 200 Hz | width | movement |
+| --- | --- | --- | --- | --- | --- | --- |
+| undertow | 16.3 s, all of it looping | 65.1 s: intro, A, B, break, A again | 57 s, from bar 5 | 79 → 44 % | 0.15 → 0.24 | 3.5 → 4.7 dB |
+| mother_coil | 13.7 s | 68.6 s: intro, A, B, B, break, A again (140 bpm) | 62 s | 79 → 45 % | 0.14 → 0.23 | 3.1 → 4.9 dB |
+| den | 20.9 s | 83.5 s: intro, A, B, break, A again (92 bpm) | 73 s | 56 → 25 % | 0.34 → 0.40 | 3.2 → 5.0 dB |
+
+Each kept its loudness (-16.3, -15.2 and -17.1 LUFS) through the master's `lufs`; the report finds no warning and no advice on them.
+
+**`dash_attack`** (added by another agent in the plain voice: a rising burst of held-step noise) is now in `tools/sounds.mjs`: a pink-noise
+whoosh that rises for 0.13 s and ends in a sharp crack with a low thump (a knock and a sub) and a crunch, at its old level (-18.9 dB).
+
+**Variation per play.** The game now plays its most repeated sounds with `vary`: the baton swing (0.03, small, since its pitch already
+climbs with the chain), the hit (0.06), the dash attack (0.04), shots (0.05), the roll (0.05), enemy deaths (0.06), wreckage, bottles,
+thuds, the boss's bursts and clangs, the car's slams, ricochets, throws, spits and zaps (0.05 to 0.06), and scrap pickups (0.02, since
+their pitch climbs with the count). Not the menus, the banners or the tells, whose pitch carries meaning. The game has no footstep sounds.
 
 ## Not done, and why
 
 - **No listening test.** Measurements are not a listening test; the owner should play the game and say.
-- **The game does not use `vary` or a shared room yet.** Its sounds are played from `lib/` and `entities/`, which another agent is
-  changing at the same time; `vary = 0.05` on the hits, steps and shots is a one-word change for whoever owns that code.
+- **No shared room.** The game does not use `nova.sound.room`; each effect carries its own short room.
 - **No sample libraries.** Recorded impacts and foley would beat synthesis for realism, but downloads need the owner's say-so and a
   licence check. Everything here is synthesised from original code.
 - **The sound editor has no controls for layers.** It keeps them when saving and says the sliders are the plain voice; layers are edited in

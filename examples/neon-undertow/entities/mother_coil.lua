@@ -121,7 +121,7 @@ function Coil:take_hit(damage, dx, dy, knock)
   if self.state == "dormant" or self.state == "dying" or self.state == "dead" then return false end
   if not self.open then
     self.clangs = self.clangs + 1
-    nova.sound.play("drum_clang", { volume = P.sfx.drum_clang, limit = 2 })
+    nova.sound.play("drum_clang", { volume = P.sfx.drum_clang, limit = 2, vary = 0.05 })
     F.spark(self.x + (math.random() - 0.5) * B.cab.w * 0.6, self.y - 40, 3)
     nova.log("mother coil: the drum is shut, no damage")
     return false
@@ -160,7 +160,7 @@ function Coil:update(dt)
       self.burst_at = self.t + 0.09
       local x, y = self.x + (math.random() - 0.5) * B.cab.w, self.y - math.random() * B.cab.h
       V.boom(x, y, 40 + math.random() * 36, { quiet = true, shake = 3 })
-      nova.sound.play("boss_burst", { volume = P.sfx.boss_burst, limit = 3 })
+      nova.sound.play("boss_burst", { volume = P.sfx.boss_burst, limit = 3, vary = 0.06 })
       J.shake(7, 8)
     end
     if self.t >= B.die.burst then

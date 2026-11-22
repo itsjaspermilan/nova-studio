@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.328,
+  "volume": 0.238,
   "seed": 1,
   "drive": 0.5,
   "reverb": 0.15,
@@ -9,7 +9,7 @@
   "layers": [
     {
       "wave": "saw",
-      "freq": 70,
+      "freq": 150,
       "attack": 0.02,
       "hold": 0.3,
       "decay": 0.1,
@@ -20,8 +20,8 @@
       "unison": 3,
       "detune": 20,
       "filter": "lowpass",
-      "cutoff": 500,
-      "cutoffEnd": 3000
+      "cutoff": 1200,
+      "cutoffEnd": 4000
     },
     {
       "wave": "noise",

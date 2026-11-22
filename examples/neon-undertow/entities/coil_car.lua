@@ -15,7 +15,7 @@ function Car:create()
 end
 
 function Car:slam()
-  nova.sound.play("car_slam", { volume = P.sfx.car_slam, limit = 3 })
+  nova.sound.play("car_slam", { volume = P.sfx.car_slam, limit = 3, vary = 0.05 })
   J.shake(9, 10)
   V.boom(self.x, self.y, C.radius, { shake = 9 })
   local p = nova.first("player")

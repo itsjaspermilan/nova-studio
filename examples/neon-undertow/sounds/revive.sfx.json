@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 1.238,
+  "volume": 1.229,
   "seed": 1,
   "drive": 0.1,
   "reverb": 0.25,
@@ -12,9 +12,21 @@
       "freq": 80,
       "hold": 0.01,
       "decay": 0.2,
-      "volume": 0.3,
+      "volume": 0.135,
       "pitch": 12,
       "pitchTime": 0.03
+    },
+    {
+      "wave": "triangle",
+      "freq": 160,
+      "hold": 0.01,
+      "decay": 0.16000000000000003,
+      "volume": 0.24,
+      "pitch": 12,
+      "pitchTime": 0.03,
+      "filter": "lowpass",
+      "cutoff": 1400,
+      "cutoffEnd": 500
     },
     {
       "wave": "saw",

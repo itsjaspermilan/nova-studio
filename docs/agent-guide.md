@@ -338,6 +338,11 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   `tail` is the audible part. Play a repeated effect with `vary = 0.05` so it is not a row of copies.
 - **Songs that do not sound like a chip:** `song_make` with the `synthwave` moods, or give tracks `unison`/`detune`, a `cutoff`
   with `sweep`, `duck` under the kick, the `punch` or `studio` kit, and a `master` compressor and `limit`.
+- **Music under a long fight** must not repeat every 15 seconds: `song_make` writes an intro, A, B, a break and A again (a minute or
+  more, looping from the first A); for a song you write yourself, set `loop` to skip the intro and make it 45 seconds or more.
+- **Small speakers** (the handheld, a phone) play little below 200 Hz: a bass or a thump that is only a sine is lost there. The report
+  says how much quieter a sound is on such a speaker and warns past 60 % below 200 Hz; add harmonics (a saw, a triangle knock, drive) or
+  a layer an octave up.
 - **Sizes of pictures:** the tools' pictures are 960x540 unless you pass `size`; the CLI's `--capture` is 1280x720.
 - **3D: are the shadows drawn?** A 3D `play` answer has a `render:` line: shadows on or off, how many models cast one,
   which way the sun travels against the camera, the ambient light, fog, the camera's eye and target. Shadows from a sun

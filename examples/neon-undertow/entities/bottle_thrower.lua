@@ -44,7 +44,7 @@ function Thrower:throw()
     if d > E.lob.range then tx, ty = self.x + (tx - self.x) / d * E.lob.range, self.y + (ty - self.y) / d * E.lob.range end
   end
   nova.spawn("bottle", hx, hy, { sx0 = hx, sy0 = hy, tx = tx, ty = ty, time = E.lob.time, height = E.lob.height })
-  nova.sound.play("throw", { volume = P.sfx.throw })
+  nova.sound.play("throw", { volume = P.sfx.throw, vary = 0.05 })
   self.throws = self.throws + 1
   nova.log(string.format("bottle thrown at %.0f,%.0f", tx, ty))
 end

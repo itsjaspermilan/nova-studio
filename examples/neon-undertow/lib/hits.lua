@@ -105,7 +105,7 @@ function H.live_wire(runner_, target)
     hit = hit + 1
   end
   if hit > 0 then
-    nova.sound.play("zap", { volume = P.sfx.zap })
+    nova.sound.play("zap", { volume = P.sfx.zap, vary = 0.05 })
     nova.log("live wire hits " .. hit)
   end
 end

@@ -151,7 +151,7 @@ function Runner:start_roll()
   self:face(dx, dy)
   self:play("roll_" .. self.facing, { restart = true })
   V.dust(self.x, self.y - 2, 4, dx, dy, 52)
-  nova.sound.play("roll", { volume = P.sfx.roll })
+  nova.sound.play("roll", { volume = P.sfx.roll, vary = 0.05 })
 end
 
 -- The enemy nearest the aim line (in front of the runner), for Smart Round: the smallest distance from the ray, within 640 units.
@@ -204,7 +204,7 @@ function Runner:fire()
     self.stats.pellets = (self.stats.pellets or 0) + 1
   end
   if slug then self.stats.slugs = (self.stats.slugs or 0) + 1; nova.log("slug fired") end
-  nova.sound.play("shot", { volume = P.sfx.shot, pitch = slug and 0.6 or 1 })
+  nova.sound.play("shot", { volume = P.sfx.shot, pitch = slug and 0.6 or 1, vary = 0.05 })
   self.shot_cd = AIM.shot_cooldown
 end
 
@@ -216,7 +216,7 @@ function Runner:on_baton_hit(target, damage, chain, fresh, dash)
   self.charge = math.min(self.max_charge, self.charge + CH.baton_refund)
   J.stop(dash and D.hitstop_frames or A.hitstop_frames)
   J.shake(dash and D.shake or A.shake, dash and D.shake_frames or A.shake_frames)
-  nova.sound.play("hit", { volume = P.sfx.hit, pitch = dash and 0.8 or 1 })
+  nova.sound.play("hit", { volume = P.sfx.hit, pitch = dash and 0.8 or 1, vary = 0.06 })
   if dash then
     self.stats.dash_hits = (self.stats.dash_hits or 0) + 1
     nova.log(string.format("dash attack hit: %d damage", damage))
@@ -362,7 +362,7 @@ function Runner:update_roll(dt)
         self.zapped[e] = true
         Hits.arc(self.x, self.y - 20, e, Run.mods.shock, self.roll_dx, self.roll_dy)
         self.stats.zaps = self.stats.zaps + 1
-        nova.sound.play("zap", { volume = P.sfx.zap })
+        nova.sound.play("zap", { volume = P.sfx.zap, vary = 0.05 })
         nova.log("shock wake zaps " .. (e.kind_name or e.name or "enemy"))
       end
     end
@@ -401,7 +401,7 @@ function Runner:start_dash_attack()
   self:play("dash_attack_" .. self.facing, { restart = true })
   V.dust(self.x, self.y - 2, 4, self.roll_dx, self.roll_dy, 56)
   nova.spawn("streaks", self.x, self.y, { owner = self, dx = self.roll_dx, dy = self.roll_dy })
-  nova.sound.play("dash_attack", { volume = P.sfx.dash_attack })
+  nova.sound.play("dash_attack", { volume = P.sfx.dash_attack, vary = 0.04 })
   nova.log("dash attack starts")
 end
 
@@ -459,7 +459,7 @@ function Runner:update_attack(dt, sx, sy, len, dash, attack)
     local rhythm = Hits.rhythm()                               -- (Metronome: the same answer for both swings below)
     local knock = c.knockback * (c.knockback > 0 and Run.mods.knock or 1)
     nova.spawn("swing", hx, hy, { owner = self, dir = self.facing, damage = c.damage, knockback = knock, area = area, arc = c.arc, flip = c.flip, chain = self.chain, scale_arc = m, rhythm = rhythm })
-    nova.sound.play("swing", { volume = P.sfx.swing, pitch = 0.95 + 0.08 * self.chain })
+    nova.sound.play("swing", { volume = P.sfx.swing, pitch = 0.95 + 0.08 * self.chain, vary = 0.03 })
     -- Backhand: a swing within 0.4 s of a roll also hits behind, for double damage
     if Run.mods.backhand > 0 and Hits.clock - self.roll_end <= N.backhand_window then
       nova.spawn("swing", hx, hy, { owner = self, dir = OPPOSITE[self.facing], damage = c.damage * N.backhand_mult, knockback = knock, area = area, arc = c.arc, flip = not c.flip, chain = self.chain, scale_arc = m, rhythm = rhythm })
