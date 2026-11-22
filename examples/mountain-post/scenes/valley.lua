@@ -82,6 +82,18 @@ end
 
 local function dist(a, x, z) return math.sqrt((a.x - x) ^ 2 + (a.z - z) ^ 2) end
 
+-- (for tests and pictures: leads the postmaster round the van, on the side nearer to `name`, and to within reach of it)
+function Valley:lead_to(name)
+  local t, p = nova.named(name), self.p
+  local lx, lz = self:van_point({ 2.8, 0, -3.4 })
+  local rx, rz = self:van_point({ -2.8, 0, -3.4 })
+  local side = dist(t, lx, lz) < dist(t, rx, rz) and { lx, lz } or { rx, rz }
+  local dx, dz = t.x - side[1], t.z - side[2]
+  local d = math.sqrt(dx * dx + dz * dz)
+  p.walk_path = { side, { t.x - dx / d * 1.9, t.z - dz / d * 1.9 } }
+  p.walk_to = nil
+end
+
 -- The resident within reach, if any.
 function Valley:resident_near()
   for _, r in ipairs(nova.all("resident")) do
@@ -110,12 +122,16 @@ end
 
 function Valley:say(r, lines, on_done)
   r:begin_talk()
+  self.talking_to = r
+  camera.glide(0.55)
   r.talking = true
   self.p.control = false
   self.p:face_to(r.x, r.z)
   dialogue.start(r.who, words.people[r.who].name, lines, {
     on_done = function()
       r:end_talk()
+      self.talking_to = nil
+      camera.glide(0.6)
       self.p.control = true
       if on_done then on_done() end
     end,
@@ -237,7 +253,9 @@ function Valley:update(dt)
       nova.log("valley: into the office")
     end
   end
-  if self.mode == "van" then camera.van(v, dt) else camera.foot(p, dt) end
+  if self.mode == "van" then camera.van(v, dt)
+  elseif self.talking_to and dialogue.active() then camera.talk(p, self.talking_to, dt)
+  else camera.foot(p, dt) end
   local e = camera.state.eye
   ambience.update(dt, e[1], e[3], self.mode == "van")
   nova.music.volume(self.mode == "van" and 0.72 or 1)
@@ -329,18 +347,18 @@ function Valley:hints()
   return list
 end
 
-local PUFF = { color = { 240, 240, 238, 150 } }
+local PUFF = { color = { 226, 226, 224, 70 } }
 local BOARD = { w = 2.1, h = 0.43 }
 local OUT = { w = 2.0, h = 0.73 }
 function Valley:draw()
   camera.apply(1 / 60)
   -- chimney smoke: soft puffs rising and drifting with the wind, thinning as they go
   for _, c in ipairs(self.chimneys) do
-    for i = 0, 7 do
-      local ph = ((self.t * 0.11) + i / 8 + c.seed) % 1
+    for i = 0, 13 do
+      local ph = ((self.t * 0.08) + i / 14 + c.seed) % 1
       local x, z = c.x - ph * 5.5 + math.sin(ph * 7 + c.seed) * 0.4, c.z + ph * 2.5
-      PUFF.color[4] = math.floor(150 * (1 - ph) * math.min(1, ph * 6))
-      nova.billboard("puff", x, c.y + ph * 7, z, 0.9 + ph * 2.6, PUFF)
+      PUFF.color[4] = math.floor(70 * (1 - ph) * math.min(1, ph * 5))
+      nova.billboard("puff", x, c.y + ph * 8, z, 1.2 + ph * 3.8, PUFF)
     end
   end
   -- the post office's faded sign and the BRIDGE OUT board, painted on their boards
@@ -379,7 +397,7 @@ function Valley:draw_ui()
     elseif state.in_van then ui.parcel_card(state.in_van, "van", w) end
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
-    ui.minimap(x, z, hd, w, h)
+    if not dialogue.active() then ui.minimap(x, z, hd, w, h) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
   end
   dialogue.draw(w, h)

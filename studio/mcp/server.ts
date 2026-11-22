@@ -782,7 +782,7 @@ tool(
     bounds: { type: "array", items: { type: "number" }, description: "With roads: the map, [x0, z0, x1, z1] in metres (the roads and 120 m round them when left out)." },
     pads: { type: "array", items: { type: "object" }, description: "With roads: level ground, [{ at: [x, z], radius (8), height (the ground there when left out), blend (14) }]: a yard, a house's plot." },
     carve: { type: "array", items: { type: "object" }, description: "With roads: channels cut into the land, [{ points: [[x, z], ...], profile: [[d, bed height], ...] or depth (3), width (flat bed, 4), bank (1 in this, 1.5) }]: a creek, a gorge. They cut through roads: draw a bridge there." },
-    rim: { type: "object", description: "With roads: { height (14), width (40) }: the land rises towards the map's edges, so it ends in hills and not at a wall." },
+    rim: { type: "object", description: "With roads: { height (14), width (40), edges }: the land rises towards the map's edges (`edges`: some of \"x0\", \"x1\", \"z0\", \"z1\"; all when left out), so it ends in hills and not at a wall." },
   },
   ["name"],
   (a) => {

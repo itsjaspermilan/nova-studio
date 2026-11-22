@@ -26,14 +26,16 @@ function Title:draw_ui()
   local w, h = nova.view("exact")
   nova.ui.sprite("ui/title_bg", w / 2, h / 2, { w = math.max(w, h * 16 / 9), h = math.max(h, w * 9 / 16) })
   local a = math.min(1, self.t / 1.2)
+  -- (a soft shade behind the name, so the cream letters stand out of the bright sky)
+  nova.ui.rect(w / 2 - 420, h * 0.36 - 120, 840, 240, { 40, 52, 70, math.floor(110 * a) }, { radius = 120 })
   nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = 720, h = 240, color = { 255, 255, 255, math.floor(255 * a) } })
   if self.t > 1.0 then
     local pulse = 0.65 + 0.35 * math.sin(self.t * 3)
     -- "Press" and the A button's glyph
     local word = words.press:gsub(" A$", "")
     local tw = nova.ui.text_width(word, { font = "rounded", size = 28 })
-    nova.ui.text(w / 2 - (tw + 40) / 2, h * 0.72, word, { font = "rounded", size = 28, color = { 255, 248, 232, math.floor(255 * pulse) }, shadow = { 0, 0, 0, 120 } })
-    ui.glyph(w / 2 + (tw + 40) / 2 - 16, h * 0.72 + 17, "A", 32)
+    nova.ui.text(w / 2 - (tw + 40) / 2, h * 0.8, word, { font = "rounded", size = 28, color = { 255, 248, 232, math.floor(255 * pulse) }, shadow = { 0, 0, 0, 120 } })
+    ui.glyph(w / 2 + (tw + 40) / 2 - 16, h * 0.8 + 17, "A", 32)
   end
   ui.fade(self.leaving and self.leaving / 0.6 or math.max(0, 1 - self.t / 0.8), w, h)
 end

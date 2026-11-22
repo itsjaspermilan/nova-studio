@@ -1,7 +1,7 @@
 // The valley's ground: terrain/valley.png from the roads, the creek, the gorge and the level plots of layout.mjs (terrain_write with
 // `roads`), the three road ribbons (road_make), and the textured ground under them (land_make). Prints the nova.terrain line that
 // scenes/valley.lua uses.
-import { BOUNDS_EN, CREEK, GORGE, PADS, ROADS, BRIDGE, xz } from "./layout.mjs";
+import { BOUNDS_EN, CREEK, GORGE, LAKE, PADS, ROADS, BRIDGE, xz } from "./layout.mjs";
 import { put, tool } from "./lib.mjs";
 
 const B = BOUNDS_EN;
@@ -14,8 +14,10 @@ const answer = tool("terrain_write", {
   carve: [
     { points: CREEK.points.map(xz), profile: CREEK.profile, width: CREEK.width, bank: CREEK.bank },
     { points: GORGE.points.map(xz), profile: GORGE.profile, width: GORGE.width, bank: GORGE.bank },
+    // the lake beyond the far bank: a wide flat bed along the north edge (the ground past the map keeps its height, so the lake runs on)
+    { points: LAKE.points.map(xz), profile: LAKE.profile, width: LAKE.width, bank: LAKE.bank },
   ],
-  rim: { height: 22, width: 55 },
+  rim: { height: 22, width: 55, edges: ["x0", "x1", "z0"] },
   hills: 16, hill_wavelength: 170, cell: 2, seed: 7, max_grade: 0.11,
 });
 console.log(answer);

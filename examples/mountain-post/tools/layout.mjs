@@ -54,6 +54,9 @@ export const GORGE = {
   profile: [[0, -12], [540, -12]], width: 16, bank: 0.9,
 };
 
+// The lake on the far side, seen across the gorge from the BRIDGE OUT barrier: a flat bed along the map's north edge.
+export const LAKE = { points: [[-320, 300], [0, 300], [320, 300]], profile: [[0, -2], [640, -2]], width: 50, bank: 3.5, level: 0.7 };
+
 // Level ground: the post office's yard and parking, each house's plot, the picnic spot, the end of Post Road.
 export const PADS = [
   { id: "post_office", at: [-20, -186], radius: 15, blend: 16 },

@@ -344,8 +344,10 @@ export function heightmapFromNetwork(spec) {
   for (let k = 0; k < heights.length; k++) heights[k] = heights[k] + (target[k] - heights[k]) * weight[k];
   if (spec.rim) {
     const rh = spec.rim.height ?? 14, rw = spec.rim.width ?? 40;
+    // (`edges`: which of the map's edges rise, "x0", "x1", "z0", "z1"; all four when left out: a view out over a valley keeps its side low)
+    const edges = new Set(spec.rim.edges ?? ["x0", "x1", "z0", "z1"]);
     for (let j = 0; j < rows; j++) for (let i = 0; i < width; i++) {
-      const edge = Math.min(i * cell, x1 - x0 - i * cell, j * cell, z1 - z0 - j * cell);
+      const edge = Math.min(edges.has("x0") ? i * cell : Infinity, edges.has("x1") ? x1 - x0 - i * cell : Infinity, edges.has("z0") ? j * cell : Infinity, edges.has("z1") ? z1 - z0 - j * cell : Infinity);
       heights[j * width + i] += rh * (1 - smoothstep(0, rw, edge));
     }
   }

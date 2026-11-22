@@ -132,27 +132,43 @@ function world.blocked(x, z, r)
   return false
 end
 
+-- A body of radius `r` at x, z put back where it may be: inside the map's edges, south of the gorge, out of the water onto its bank.
+-- Returns the place and whether it had to move.
+function world.push_out(x, z, r)
+  local moved = false
+  local L = world.limits
+  if L then
+    local e = L.edge + r
+    local nx, nz = math.max(L.x0 + e, math.min(L.x1 - e, x)), math.max(L.z0 + e, math.min(L.gorge - r, z))
+    if nx ~= x or nz ~= z then x, z, moved = nx, nz, true end
+  end
+  if not world.on_bridge(x, z, -r * 0.5) then
+    local w, d, px, pz = world.nearest("water", x, z)
+    local reach = w and (w.width / 2 + 1.2 + r)
+    if w and d < reach then
+      local ox, oz = x - px, z - pz
+      local l = math.sqrt(ox * ox + oz * oz)
+      if l < 1e-6 then ox, oz, l = 1, 0, 1 end
+      x, z, moved = px + ox / l * reach, pz + oz / l * reach, true
+    end
+  end
+  return x, z, moved
+end
+
 -- Moves a body from x, z by dx, dz, keeping it out of the water and inside the map (and out of every solid piece of scenery,
 -- the buildings, walls, rocks, tree trunks: nova.scenery.push). Returns the new x, z and whether anything stopped it.
 function world.move(x, z, dx, dz, r)
   local nx, nz = x + dx, z + dz
   local hit = false
-  local b, ox, oz = world.blocked(nx, nz, r)
-  if b then
-    -- slide along: keep the part of the step that goes along the edge
-    local into = dx * ox + dz * oz
-    if into < 0 then nx, nz = x + dx - ox * into, z + dz - oz * into end
-    if world.blocked(nx, nz, r) then nx, nz = x, z end
-    hit = true
-  end
   for _ = 1, 2 do
     local px, pz = nova.scenery.push(nx, nz, r)
     if not px then break end
     nx, nz = nx + px, nz + pz
     hit = true
   end
-  if world.blocked(nx, nz, r) then nx, nz = x, z end
-  return nx, nz, hit
+  local moved
+  nx, nz, moved = world.push_out(nx, nz, r)
+  return nx, nz, hit or moved
 end
 
 return world

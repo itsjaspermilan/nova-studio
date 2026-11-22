@@ -250,7 +250,9 @@ def("cabin_pip", () => {
 def("mast", () => {
   // a home-made lattice mast: three legs, rungs, a crosspiece and a little dish at the top; guy wires are drawn by the game
   const c = [], h = 15, legs = [[0.32, 0], [-0.16, 0.28], [-0.16, -0.28]];
-  for (const [x, z] of legs) c.push(tube([[x, 0, z], [x * 0.4, h, z * 0.4]], 0.04, "#b9bdc4", { segments: 4 }));
+  for (const [x, z] of legs) c.push(tube([[x, 0, z], [x * 0.4, h, z * 0.4]], 0.065, "#c9cdd4", { segments: 5 }));
+  // (painted bands, red and white, so it reads from across the valley)
+  for (let y = 1.5, k = 0; y < h; y += 1.5, k++) c.push(box([0, y, 0], [0.62 * (1 - (y / h) * 0.6), 0.5, 0.62 * (1 - (y / h) * 0.6)], k % 2 ? "#f2efe8" : "#c63a2e"));
   for (let y = 0.6; y < h; y += 0.75) {
     const k = 1 - (y / h) * 0.6;
     for (let i = 0; i < 3; i++) {

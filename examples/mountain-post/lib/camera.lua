@@ -56,12 +56,34 @@ function camera.foot(p, dt, indoors)
   local len = clear_boom(p.x, p.z, -s, -c, dist)
   if indoors and len < 1.3 then height = height + (1.3 - len) * 0.5 end
   local ex, ez = p.x - s * len, p.z - c * len
+  -- (in the office the eye stays in the room: through the doorway it would look in from the porch)
+  if indoors then ex, ez = math.max(-3.2, math.min(3.2, ex)), math.max(-2.2, math.min(2.35, ez)) end
   local base = ground(p.x, p.z, indoors) + (p.y or 0)
   local ey = base + height * (0.6 + 0.4 * len / dist)
   if not indoors then ey = math.max(ey, ground(ex, ez) + 0.7) end
   if indoors then ey = math.min(ey, 2.6) end
   local tx, ty, tz = p.x + s * 0.6, base + (indoors and 0.95 or 1.25), p.z + c * 0.6
   camera.set(ex, ey, ez, tx, ty, tz, indoors and 66 or 58, dt)
+end
+
+-- Two people talking: a view from beside them both, a little above, the one who speaks nearer the middle; from the side the
+-- camera already looks from, so the cut is short.
+function camera.talk(p, r, dt)
+  local mx, mz = (p.x + r.x) / 2, (p.z + r.z) / 2
+  local ax, az = r.x - p.x, r.z - p.z
+  local l = math.sqrt(ax * ax + az * az)
+  if l < 1e-3 then return camera.foot(p, dt) end
+  -- the two sides of the line between them; the one nearer the camera's present eye
+  local nx, nz = -az / l, ax / l
+  local e = cam.eye
+  if (e[1] - mx) * nx + (e[3] - mz) * nz < 0 then nx, nz = -nx, -nz end
+  -- a little behind the postmaster's shoulder, so the resident faces the camera more
+  local bx, bz = -ax / l * 1.3, -az / l * 1.3
+  local ex, ez = mx + nx * 3.4 + bx, mz + nz * 3.4 + bz
+  local base = ground(mx, mz)
+  local ey = math.max(base + 1.75, ground(ex, ez) + 1.2)
+  camera.set(ex, ey, ez, mx + ax / l * 0.35, base + 1.05, mz + az / l * 0.35, 52, dt)
+  cam.yaw = math.atan(mx - ex, mz - ez)
 end
 
 -- Behind the van: the chase view.

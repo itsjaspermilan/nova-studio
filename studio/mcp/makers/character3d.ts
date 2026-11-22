@@ -204,8 +204,8 @@ export function makeCharacter3d(a: Args): Character3d {
     const across = (j: number) => Math.abs(Math.cos((j / seg) * Math.PI * 2)); // 0 in the middle line, 1 at the sides
     const coat = (i: number, j: number): string => {
       if (species === "badger") {
-        if (i >= 2 && across(j) > 0.3 && across(j) < 0.66 && front(j) > -0.85) return furDark; // the two stripes over the eyes
-        if (front(j) < -0.35 || (i < 3 && across(j) > 0.8)) return skin; // the grey back of the head and lower cheeks
+        if (i >= 2 && across(j) > 0.24 && across(j) < 0.7) return furDark; // the two stripes from the nose over the eyes and back over the head
+        if ((front(j) < -0.3 && i < 4) || (i < 2 && across(j) > 0.85)) return skin; // the grey nape and lower cheeks
         return fur2;
       }
       if (species === "bear") return skin;

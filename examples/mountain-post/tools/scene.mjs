@@ -4,7 +4,7 @@
 // the bend on Fern Lane that hides Hazel's cabin until you are round it) and close the map's edges with thick wood.
 // Also the office's scene (scenes/office.scene.json) and the one-line entity files of the static props.
 import { centreline } from "../../../scripts/lib/trackgen.mjs";
-import { BOUNDS_EN, BRIDGE, CREEK, GORGE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
+import { BOUNDS_EN, BRIDGE, CREEK, GORGE, LAKE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
 import { rng } from "./geo.mjs";
 import { put, tool } from "./lib.mjs";
 
@@ -31,6 +31,7 @@ for (const r of ROADS) {
 const creekLine = line(CREEK.points), gorgeLine = line(GORGE.points);
 obj("water", [0, 0], { key: "creek", width: CREEK.width + 1.2, depth: 0.35, points: line(CREEK.points.map(xz), 4).map(([x, z]) => [r2(x), r2(z)]), sound: true }, "creek");
 obj("water", [0, 0], { key: "gorge", width: GORGE.width + 2, depth: 1.0, points: line(GORGE.points.map(xz), 6).map(([x, z]) => [r2(x), r2(z)]) }, "gorge");
+obj("lake", [0, 300], { z0: 285, level: LAKE.level }, "lake");
 obj("limits", [0, 0], { bounds: [-BOUNDS_EN.e1, BOUNDS_EN.n0, -BOUNDS_EN.e0, BOUNDS_EN.n1], edge: 26, gorge: 236 }, "limits");
 
 // distances, for the planting rules
@@ -172,7 +173,7 @@ const groves = (e, n) => 0.5 + 0.28 * Math.sin(e * 0.031 + 1.3) * Math.sin(n * 0
 let trees = 0, rocks = 0;
 for (let n = B.n0 + 3; n < B.n1; n += 7) for (let e = B.e0 + 3; e < B.e1; e += 7) {
   const p = [e + (R() - 0.5) * 6, n + (R() - 0.5) * 6];
-  if (p[1] > 232) continue; // the gorge
+  if (p[1] > 232 && (p[1] < 266 || p[1] > 288)) continue; // the gorge and the lake; the far bank between them is wooded
   const dRoad = Math.min(...roadsAll.map((l) => distTo(l, p)));
   const dWater = distTo(creekLine, p);
   const dPlace = Math.min(...placeCentres.map((c) => Math.hypot(c[0] - p[0], c[1] - p[1])));

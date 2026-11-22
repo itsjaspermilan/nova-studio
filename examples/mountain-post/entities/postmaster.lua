@@ -57,11 +57,16 @@ function Postmaster:update(dt)
   if len > 1 then dx, dz, len = dx / len, dz / len, 1 end
   local top = state.carrying and TOP_CARRY or TOP
   local want = len > 0.15 and top * len or 0
+  -- (a few points to walk through in turn: a test leading it round the van)
+  if not self.walk_to and self.walk_path and #self.walk_path > 0 then self.walk_to = table.remove(self.walk_path, 1) end
   if self.walk_to then
     -- (the scene leads it a few steps: to the van's door, out of the office's doorway)
     local tx, tz = self.walk_to[1] - self.x, self.walk_to[2] - self.z
     local d = math.sqrt(tx * tx + tz * tz)
-    if d < 0.12 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(1.4, d * 4) end
+    -- (a point it cannot reach, against a post or the van's side, is given up when it has had the time the walk should take)
+    if self.walk_for ~= self.walk_to then self.walk_for, self.walk_budget = self.walk_to, d / 1.2 + 1.5 end
+    self.walk_budget = self.walk_budget - dt
+    if d < 0.12 or self.walk_budget <= 0 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(top * 0.95, d * 4) end
     len = 1
   end
   self.speed = self.speed + (want - self.speed) * math.min(1, dt * 9)
