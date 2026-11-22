@@ -35,7 +35,7 @@ function Mimic:spit()
   end
   V.pop(hx, hy + 10, 1.4, true)
   self.volleys = self.volleys + 1
-  nova.sound.play("can_spit", { volume = P.sfx.can_spit })
+  nova.sound.play("can_spit", { volume = P.sfx.can_spit, vary = 0.05 })
   nova.log("mimic_vendor spits")
 end
 

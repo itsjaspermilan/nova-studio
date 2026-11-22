@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.439,
+  "volume": 0.492,
   "seed": 1,
   "drive": 0.3,
   "reverb": 0.08,
@@ -20,9 +20,21 @@
       "freq": 150,
       "hold": 0.01,
       "decay": 0.14,
-      "volume": 0.55,
+      "volume": 0.24750000000000003,
       "pitch": 12,
       "pitchTime": 0.02
+    },
+    {
+      "wave": "triangle",
+      "freq": 260,
+      "hold": 0.01,
+      "decay": 0.11200000000000002,
+      "volume": 0.44000000000000006,
+      "pitch": 12,
+      "pitchTime": 0.02,
+      "filter": "lowpass",
+      "cutoff": 1400,
+      "cutoffEnd": 500
     },
     {
       "wave": "square",

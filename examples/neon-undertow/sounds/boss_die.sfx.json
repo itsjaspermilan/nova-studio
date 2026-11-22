@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.267,
+  "volume": 0.327,
   "seed": 1,
   "drive": 0.5,
   "reverb": 0.3,
@@ -20,9 +20,21 @@
       "freq": 48,
       "hold": 0.01,
       "decay": 1.2,
-      "volume": 0.7,
+      "volume": 0.315,
       "pitch": 24,
       "pitchTime": 0.08
+    },
+    {
+      "wave": "triangle",
+      "freq": 110,
+      "hold": 0.01,
+      "decay": 0.96,
+      "volume": 0.5599999999999999,
+      "pitch": 24,
+      "pitchTime": 0.08,
+      "filter": "lowpass",
+      "cutoff": 1400,
+      "cutoffEnd": 500
     },
     {
       "wave": "pink",

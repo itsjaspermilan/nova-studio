@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 2.112,
+  "volume": 2.285,
   "seed": 1,
   "reverb": 0.15,
   "room": 0.35,
@@ -31,9 +31,21 @@
       "start": 0.18,
       "hold": 0.01,
       "decay": 0.08,
-      "volume": 0.25,
+      "volume": 0.1125,
       "pitch": 7,
       "pitchTime": 0.02
+    },
+    {
+      "wave": "triangle",
+      "start": 0.18,
+      "hold": 0.01,
+      "decay": 0.064,
+      "volume": 0.2,
+      "pitch": 7,
+      "pitchTime": 0.02,
+      "filter": "lowpass",
+      "cutoff": 1400,
+      "cutoffEnd": 500
     }
   ]
 }

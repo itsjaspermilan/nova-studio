@@ -63,7 +63,7 @@ function E.make(e, mark)
   e.take_hit = function(self, damage, dx, dy, knock)
     if mark == "shielded" and Hits.from == "shot" and E.front(self, dx, dy) then
       self.blocked = (self.blocked or 0) + 1
-      nova.sound.play("ricochet", { volume = P.sfx.ricochet })
+      nova.sound.play("ricochet", { volume = P.sfx.ricochet, vary = 0.06 })
       F.spark(self.x, self.y - 14 * self.size_mult, 3)
       nova.log("shielded: the shot is blocked")
       return false

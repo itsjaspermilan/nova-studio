@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.882,
+  "volume": 0.829,
   "seed": 1,
   "drive": 0.15,
   "reverb": 0.15,
@@ -14,14 +14,14 @@
       "decay": 0.8,
       "volume": 0.6,
       "filter": "bandpass",
-      "cutoff": 500,
-      "cutoffEnd": 1600,
+      "cutoff": 800,
+      "cutoffEnd": 2200,
       "filterTime": 0.8,
       "q": 0.8
     },
     {
       "wave": "saw",
-      "freq": 110,
+      "freq": 165,
       "attack": 0.5,
       "hold": 0.25,
       "decay": 0.7,
@@ -32,7 +32,7 @@
       "unison": 2,
       "detune": 12,
       "filter": "lowpass",
-      "cutoff": 400
+      "cutoff": 900
     },
     {
       "wave": "crackle",

@@ -103,7 +103,7 @@ function Shot:update(dt)
     self.angle = math.atan(self.dy, self.dx)
     nova.spawn("fx", self.x, self.y, { sprite = "fx_impact", anim = "burst", scale = 2.2 })
     V.sparks(self.x, self.y, 5, { z = 6, speed = 240, up = 120, life = 0.4, colors = { "spark_white", "spark_cyan" } })
-    nova.sound.play("ricochet", { volume = P.sfx.ricochet })
+    nova.sound.play("ricochet", { volume = P.sfx.ricochet, vary = 0.06 })
     nova.log("shot ricochets")
     return
   end

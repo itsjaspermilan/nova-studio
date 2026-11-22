@@ -15,7 +15,7 @@ local Bottle = nova.entity { sprite = "bottle", anim = "spin", tags = { "bottle"
 function Bottle:create() self.depth = -self.ty - 300 end
 
 function Bottle:land()
-  nova.sound.play("bottle_smash", { volume = P.sfx.bottle_smash })
+  nova.sound.play("bottle_smash", { volume = P.sfx.bottle_smash, vary = 0.06 })
   -- the smash: a flash and a small fireball, the liquid splashed across the ground, glass flying, a scorch under the fire to come
   V.boom(self.tx, self.ty, E.fire.radius * 1.15, { shake = 3, quiet = true })
   V.debris(self.tx, self.ty, 6, { kind = "glass", speed = 220, up = 300, size = 14 })

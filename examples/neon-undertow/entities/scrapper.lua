@@ -60,7 +60,7 @@ function Scrapper:die()
   self.state = "dead"
   require("lib.hits").on_death(self)
   nova.log("scrapper dies")
-  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2 })
+  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2, vary = 0.06 })
   nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 4 })
   for i = 1, E.drops do
     local a = (i / E.drops) * math.pi * 2 + 0.5

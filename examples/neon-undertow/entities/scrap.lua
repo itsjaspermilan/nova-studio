@@ -25,7 +25,7 @@ function Scrap:update(dt)
   if p and self.t >= E.pickup_delay and self:overlaps(p) then
     local got = Run.add_scrap(1)       -- (through the run's multiplier: Deep Pockets)
     Hits.after_scrap(got)               -- (the Leak set heals 1 point for every 20)
-    nova.sound.play("scrap", { volume = P.sfx.scrap, pitch = 1 + 0.06 * (J.scrap % 5) })
+    nova.sound.play("scrap", { volume = P.sfx.scrap, pitch = 1 + 0.06 * (J.scrap % 5), vary = 0.02 })
     nova.log("scrap " .. J.scrap)
     nova.spawn("fx", self.x, self.y, { sprite = "fx_spark", anim = "spark", scale = 2 })
     self:destroy()

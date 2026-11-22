@@ -32,7 +32,7 @@ function Wreck:take_hit(damage, dx, dy, knock)
   nova.log(string.format("wreckage takes %d (health %d)", damage, math.max(0, self.hp)))
   if self.hp <= 0 then
     nova.log("wreckage breaks")
-    nova.sound.play("wreck_break", { volume = P.sfx.wreck_break, limit = 2 })
+    nova.sound.play("wreck_break", { volume = P.sfx.wreck_break, limit = 2, vary = 0.06 })
     F.burst(self.x, self.y - 10, 3)
     self:destroy()
   end

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.428,
+  "volume": 0.407,
   "seed": 1,
   "drive": 0.45,
   "reverb": 0.3,
@@ -20,12 +20,24 @@
       "freq": 62,
       "hold": 0.01,
       "decay": 0.8,
+      "volume": 0.225,
       "pitch": 24,
       "pitchTime": 0.06
     },
     {
+      "wave": "triangle",
+      "freq": 124,
+      "hold": 0.01,
+      "decay": 0.6400000000000001,
+      "volume": 0.4,
+      "pitch": 24,
+      "pitchTime": 0.06,
+      "filter": "lowpass",
+      "cutoff": 1400,
+      "cutoffEnd": 500
+    },
+    {
       "wave": "saw",
-      "freq": 110,
       "start": 0.02,
       "hold": 0.02,
       "decay": 0.9,
@@ -34,8 +46,8 @@
       "unison": 4,
       "detune": 25,
       "filter": "lowpass",
-      "cutoff": 2500,
-      "cutoffEnd": 150
+      "cutoff": 3000,
+      "cutoffEnd": 400
     },
     {
       "wave": "pink",
@@ -43,8 +55,8 @@
       "decay": 0.9,
       "volume": 0.4,
       "filter": "lowpass",
-      "cutoff": 3000,
-      "cutoffEnd": 200
+      "cutoff": 3500,
+      "cutoffEnd": 600
     }
   ]
 }

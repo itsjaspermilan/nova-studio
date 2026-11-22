@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "volume": 0.229,
+  "volume": 0.403,
   "seed": 2,
   "drive": 0.45,
   "reverb": 0.2,
@@ -18,32 +18,46 @@
     },
     {
       "wave": "sine",
-      "freq": 58.17,
+      "freq": 65.19,
       "hold": 0.01,
-      "decay": 0.349,
-      "volume": 0.8,
+      "decay": 0.308,
+      "volume": 0.27,
       "pitch": 24,
       "pitchTime": 0.035
     },
     {
       "wave": "triangle",
-      "freq": 120.36,
+      "freq": 130.39,
       "hold": 0.01,
-      "decay": 0.205,
-      "volume": 0.45,
+      "decay": 0.246,
+      "volume": 0.48,
+      "pitch": 24,
+      "pitchTime": 0.035,
+      "filter": "lowpass",
+      "cutoff": 1492,
+      "cutoffEnd": 533
+    },
+    {
+      "wave": "saw",
+      "freq": 170.51,
+      "hold": 0.01,
+      "decay": 0.185,
+      "volume": 0.4,
       "pitch": 12,
       "pitchTime": 0.02,
       "filter": "lowpass",
-      "cutoff": 1598
+      "cutoff": 1918,
+      "cutoffEnd": 533
     },
     {
       "wave": "noise",
       "freq": 220.66,
       "hold": 0.01,
       "decay": 0.308,
+      "volume": 0.7,
       "filter": "bandpass",
-      "cutoff": 1918,
-      "cutoffEnd": 320,
+      "cutoff": 2131,
+      "cutoffEnd": 426,
       "q": 1.1
     }
   ]

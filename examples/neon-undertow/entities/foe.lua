@@ -65,7 +65,7 @@ function Foe:die()
   self.state = "dead"
   require("lib.hits").on_death(self)
   nova.log(self.kind_name .. " dies")
-  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2 })
+  nova.sound.play("enemy_die", { volume = P.sfx.enemy_die, limit = 2, vary = 0.06 })
   nova.spawn("fx", self.x, self.y - 30, { sprite = "fx_burst", anim = "burst", scale = 4 })
   local n = self.E.drops or 0
   for i = 1, n do
