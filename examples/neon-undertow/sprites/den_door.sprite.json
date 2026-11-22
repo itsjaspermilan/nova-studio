@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "image": "den_door.png",
-  "frame_width": 48,
-  "frame_height": 96,
-  "columns": 1,
-  "frames": 1,
-  "frame_duration_ms": 100
-}

@@ -160,7 +160,7 @@ which for a person or a creature). The detailed style has twice the pixels at th
 layers with `"scale": 1.5` and give its entities `sx = 1.5, sy = 1.5` (the answers say the pivot and hitbox). A detailed
 person is a bold cartoon a third bigger than a tile row (96x96 frames, pivot `{ 0.5, 0.906 }`, the feet's hitbox `{ -7, -8, 14, 8 }`),
 with a face that changes, `roll_<dir>` and `tell_<dir>` besides idle, walk, attack and hurt; `stance`, `pose` and `expression`
-give each enemy its own silhouette (Neon Undertow's cast is `HD_ARCHETYPES` in `makers/character-hd.ts`). Every city creature
+give each enemy its own silhouette (a cast of city people is `HD_ARCHETYPES` in `makers/character-hd.ts`). Every city creature
 has a `tell` frame to show before it hurts.
 `examples/cyber-kit-demo` (its every call is in `tools/make.json`) is a street and a lab made that way. Judge the art with
 `play` at game scale on a dark street, not in the sheet. Its street takes its night look from light: `scenes/street.lua` sets

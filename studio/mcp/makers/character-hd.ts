@@ -52,7 +52,7 @@ export const EXPRESSIONS = ["neutral", "smirk", "grin", "scowl", "smile"];
 export const VISORS = ["up", "down"];
 export const ARM_COUNTS = [2, 4, 6];
 
-/// Neon Undertow's people as character_make recipes (add "name" and "style": "detailed"): the runner and an enemy of
+/// A cyberpunk action game's people as character_make recipes (add "name" and "style": "detailed"): the runner and an enemy of
 /// every archetype, each with a silhouette of its own. docs/mcp.md lists them; the tests make every one.
 export const HD_ARCHETYPES: Record<string, Args> = {
   runner: { palette: "gutter market", outfit: "long_coat", outfit_color: "#6c6488", trim_color: "#2c2a3a", hat: "visor", hair: "short", hair_color: "#4a3a5c", skin: "tan", item: "baton", glow_color: "2", shoe_color: "#2a2630", expression: "smirk" },

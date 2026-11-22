@@ -1,4 +1,8 @@
-# Friction log, slice 1 (the runner)
+# Friction log: what building a 2D action game with Nova's tools cost
+
+Kept from `examples/neon-undertow/tools/FRICTION.md`. Neon Undertow was removed from the repository on 2026-11-21 at the owner's word; the game, its tests and its design are in the git tag `archive/neon-undertow-2026-11`. The notes below are the agents' own, slice by slice; many items are fixed since (check the source before acting on one).
+
+## Slice 1 (the runner)
 
 What I wanted, what I tried, attempts, and what would have made it one step. Most costly first.
 

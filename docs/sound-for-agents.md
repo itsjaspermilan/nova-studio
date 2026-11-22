@@ -5,6 +5,8 @@ studied why. This note says what "chiptune-like" is made of, measured; which of 
 make and which its makers simply did not use; what Nova gained; and what remaking Neon Undertow's 69 effects and three songs changed,
 in numbers.
 
+(Neon Undertow was removed from the repository on 2026-11-21 at the owner's word; the game, its tests and its design are in the git tag `archive/neon-undertow-2026-11`. Its sounds are the ones measured here.)
+
 **Honest limits first.** Nothing here has been listened to by a person. An agent cannot hear, and neither can `sound_report`: it
 measures what produced game sounds are known to be made of (a transient, filtered noise, moving pitch and filters, low end, width, a
 room, a natural fall), and an effect can have all of that and still sound bad. The remade sounds were tuned until the report stopped

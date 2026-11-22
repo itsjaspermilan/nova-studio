@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "image": "den_bed.png",
-  "frame_width": 160,
-  "frame_height": 88,
-  "columns": 1,
-  "frames": 1,
-  "frame_duration_ms": 100
-}
