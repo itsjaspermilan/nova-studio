@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The track editor mounted for real: the numbers, warnings and pace notes a person reads, and the buttons they press.
 import { flushSync, mount, unmount } from "svelte";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TrackEditor from "./TrackEditor.svelte";
 import { studio } from "../lib/store.svelte";
 import { createMockApi } from "../lib/mock";
@@ -58,8 +58,11 @@ describe("TrackEditor", () => {
   it("Generate writes the scene and the road into the project", async () => {
     const api = await open();
     button("Generate scene and road")!.click();
-    await new Promise((r) => setTimeout(r, 50));
-    flushSync();
+    // (Generate works in the background: wait until it says it is done, however long a busy machine takes, not a fixed 50 ms)
+    await vi.waitFor(() => {
+      flushSync();
+      expect(host.textContent).toContain("Open the scene");
+    }, { timeout: 15_000, interval: 10 });
     const paths = (await api.listFiles()).map((f) => f.path);
     expect(paths).toEqual(expect.arrayContaining(["scenes/oval.scene.json", "models/road_oval.glb"]));
     expect(host.textContent).toContain("Open the scene");
@@ -93,7 +96,11 @@ describe("TrackEditor", () => {
     expect(host.textContent).toContain("Billboard 2");
     await api.writeFile("scenes/oval.scene.json", JSON.stringify({ version: 1, objects: [{ kind: "race", name: "race", x: 0, y: 0, props: { grip: 0.7 } }, { kind: "pine", x: 9, y: 0 }] }));
     button("Generate scene and road")!.click();
-    await new Promise((r) => setTimeout(r, 50));
+    // (Generate works in the background: wait until it says it is done, however long a busy machine takes, not a fixed 50 ms)
+    await vi.waitFor(() => {
+      flushSync();
+      expect(host.textContent).toContain("Open the scene");
+    }, { timeout: 15_000, interval: 10 });
     const scene = JSON.parse((await api.readFile("scenes/oval.scene.json")).text!);
     expect(scene.objects[0]).toEqual({ kind: "race", name: "race", x: 0, y: 0, props: { grip: 0.7 } });
     expect(scene.objects.some((o: { kind: string }) => o.kind === "grandstand")).toBe(true);

@@ -52,16 +52,12 @@ describe("SceneEditor", () => {
 
   it("edits a list or a table prop as JSON in the inspector, and keeps the old value when the JSON is wrong", () => {
     open({ version: 1, objects: [{ kind: "race", name: "race", x: 8, y: 16, props: { grip: 0.9, dust: [214, 178, 124] } }] });
-    const canvas = host.querySelector("canvas")!;
-    canvas.setPointerCapture = () => {};
-    // (where the object is on the canvas depends on how the view fitted the world into a box jsdom gives no size: click across it until it is picked)
-    for (let sy = -60; sy <= 80 && !host.querySelector('input[aria-label="Value of dust"]'); sy += 0.8) {
-      for (let sx = -60; sx <= 80 && !host.querySelector('input[aria-label="Value of dust"]'); sx += 0.8) {
-        canvas.dispatchEvent(new PointerEvent("pointerdown", { clientX: sx, clientY: sy, button: 0, bubbles: true }));
-        canvas.dispatchEvent(new PointerEvent("pointerup", { clientX: sx, clientY: sy, button: 0, bubbles: true }));
-        flushSync();
-      }
-    }
+    // picked as a person would from the "In this scene" list (it used to click across the canvas, 30,000 clicks, until one landed
+    // on the object: seconds of work that ran past the time limit on a busy machine)
+    const item = [...host.querySelectorAll("button.item")].find((b) => b.textContent?.includes("race")) as HTMLButtonElement | undefined;
+    expect(item, host.textContent ?? "").toBeTruthy();
+    item!.click();
+    flushSync();
     const dust = host.querySelector<HTMLInputElement>('input[aria-label="Value of dust"]')!;
     expect(dust.value).toBe("[214,178,124]");
     dust.value = "[200, 100, 50]";

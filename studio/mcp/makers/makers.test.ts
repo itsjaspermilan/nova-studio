@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BLOB_MASKS } from "../../src/lib/autotile";
 import { parseScene, tilemaps } from "../../src/lib/scene-model";
-import { parseSong } from "../../src/lib/song";
+import { parseSong, serializeSong } from "../../src/lib/song";
 import { parseSheetJson } from "../../src/lib/sprite-doc";
 import { parseTileset } from "../../src/lib/tileset";
 import { decodePng } from "../draw";
@@ -317,9 +317,12 @@ describe("sounds and songs by what they are for", () => {
         expect(s.markers!.map((m) => m.name).slice(0, 3), mood).toEqual(["intro", "A", "B"]);
         expect(said, mood).toMatch(/the game loops from the first A/);
       }
-      // it can be given back to song_write as it is
-      expect(() => use("song_write", { name: `${name}_again`, song: bytes(`music/${name}.song.json`).toString() })).not.toThrow();
+      // it can be given back to song_write as it is: it reads and writes back unchanged (song_write itself, which renders the
+      // whole minute again, is called once below, not once a mood: that render doubled the test's time and ran it past its limit
+      // when the whole suite ran at once)
+      expect(serializeSong(parsed.song), mood).toBe(bytes(`music/${name}.song.json`).toString());
     }
+    expect(() => use("song_write", { name: "victory_again", song: bytes("music/victory_jingle.song.json").toString() })).not.toThrow();
     again("song_make", { name: "boss", mood: "boss" }, ["music/boss.song.json"]);
     const first = bytes("music/boss.song.json").toString();
     use("song_make", { name: "boss", mood: "boss", seed: 2, key: "A minor", tempo: 170 });
@@ -335,7 +338,7 @@ describe("sounds and songs by what they are for", () => {
     expect(() => use("song_make", { name: "x", mood: "boss", form: "medley" })).toThrow(/"form" is "song"/);
     expect(() => use("song_make", { name: "x", mood: "polka" })).toThrow(/"mood" is one of: "calm village"/);
     expect(() => use("song_make", { name: "x", mood: "boss", key: "H" })).toThrow(/"key" is a note name/);
-  }, 120_000);
+  }, 120_000); // (every mood rendered, a minute of music each, and reported: a minute alone, more when the suite runs at once)
 });
 
 describe("the makers' examples", () => {

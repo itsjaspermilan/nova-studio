@@ -1363,13 +1363,16 @@ mod tests {
         });
         assert_eq!(b.net.status(), "Host's game is full");
 
-        // A goes quiet (its wifi dropped): after a few seconds the host lets player 2 go, and keeps the seat
-        let started = Instant::now();
+        // A goes quiet (its wifi dropped): after a few seconds the host lets player 2 go, and keeps the seat. (The time is taken
+        // just before A's last word, which the host cannot have heard earlier: taken after it, a busy machine that was slow to get
+        // here made the wait look shorter than DROP_AFTER.)
+        let quiet = Instant::now();
+        tick(&mut [&mut a], &bindings);
         host.net.take_events();
         run_until(&mut [&mut host], &bindings, |d| {
             d[0].net.remote_players().is_empty()
         });
-        assert!(started.elapsed() >= DROP_AFTER);
+        assert!(quiet.elapsed() >= DROP_AFTER, "{:?}", quiet.elapsed());
         assert_eq!(host.net.take_events()[0].kind, "left");
         assert!(!host.seats.get(2).unwrap().connected);
         // A comes back: the same seat
