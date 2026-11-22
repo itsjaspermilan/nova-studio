@@ -283,7 +283,7 @@ describe("sounds and songs by what they are for", () => {
     const matched = text(use("sfx_write", { name: "quiet_hit", purpose: "hit", loudness: -24 }));
     expect(matched).toMatch(/volume [\d.]+ for loudness -2[34]\.\d \(asked -24\)/);
     expect(() => use("sfx_write", { name: "x", purpose: "sneeze" })).toThrow(/unknown purpose 'sneeze'. Purposes: step_grass/);
-  });
+  }, 30_000); // (81 layered effects rendered and reported: a few seconds alone, more when the whole suite runs at once)
 
   it("makes a looping song for every mood that passes sound_report and stays an ordinary song", () => {
     for (const mood of MOOD_NAMES) {
@@ -343,7 +343,7 @@ describe("the makers' examples", () => {
     for (const name of ["tileset_make", "character_make", "creature_make", "items_make", "song_make"]) expect(() => use(name, EXAMPLES[name]), name).not.toThrow();
     expect(readdirSync(join(dir, "sprites")).filter((f) => f.endsWith(".png")).sort()).toEqual(["hero.png", "items.png", "slime.png", "tiles.png"]);
     expect(existsSync(join(dir, "music/village.song.json"))).toBe(true);
-  });
+  }, 60_000); // (song_make renders and reports a song of a minute or more)
 });
 
 describe("project_create with a template", () => {
