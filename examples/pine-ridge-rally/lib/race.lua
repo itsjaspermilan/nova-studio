@@ -932,16 +932,17 @@ function race.scene()
       cam.bonnet = true
     else
       local near = self.view_mode == 1
-      local back = (near and 5.5 or 9.5) + speed * 0.03
-      local height = (near and 3.8 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
+      local back = (near and 6.4 or 9.5) + speed * 0.03
+      local height = (near and 2.5 or 4.2) + orbit.lift * (near and 2.5 or 3.5)
       -- the camera's place on a circle round the car: behind it when the angle is 0
       local a = cam.heading + orbit.yaw
       local ox, oz = math.sin(a), math.cos(a)
       cam.x, cam.y, cam.z = p.x - ox * back, height, p.z - oz * back
       -- looking ahead of the car when behind it, at the car itself as it swings away
-      -- (the near view sits close behind and well above the car, looking down over its roof at the road ahead: the whole car is in the picture, low in it)
-      local ahead = (near and 5 or 5) * math.max(0, 1 - oy / 0.9)
-      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, near and 0.5 or 1.1, p.z + ch * ahead
+      -- (the near view is a chase camera in the manner of open-road racing games: a few metres behind and a little above the roof, looking just
+      -- over the car at the road, so the whole car sits in the lower middle of the picture with the horizon above it)
+      local ahead = (near and 6 or 5) * math.max(0, 1 - oy / 0.9)
+      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, near and 1.25 or 1.1, p.z + ch * ahead
       cam.fov = 62 + speed * 0.2
       cam.bonnet = false
     end
