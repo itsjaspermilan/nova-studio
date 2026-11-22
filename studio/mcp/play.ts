@@ -180,23 +180,32 @@ export function pictureDifference(a: Raster, b: Raster): { share: number; mean: 
 }
 
 /// A `record` in words: its value after each frame, a run of the same value said once with how many frames it lasted
-/// ("f12-f15 120 (x4)"), at most 200 entries (the report has them all).
+/// ("f12-f15 120 (x4)"). report.json keeps every frame (`runs`: [first frame, last frame, value]); the answer says the first
+/// 150 and the last 50 changes, and says plainly when it left the middle out.
 export function recordLines(rec: Args): string[] {
-  const values: [number, string][] = rec.values ?? [];
-  if (!values.length) return [`record \`${rec.expr}\` (${rec.scope}): no frames`];
+  // (`runs` from the runtime; `values`, one per frame, from older reports)
   const runs: { from: number; to: number; value: string; n: number }[] = [];
-  for (const [frame, value] of values) {
-    const last = runs[runs.length - 1];
-    if (last && last.value === value && last.to === frame - 1) {
-      last.to = frame;
-      last.n++;
-    } else runs.push({ from: frame, to: frame, value, n: 1 });
-  }
-  const MAX = 200;
-  const said = runs.slice(0, MAX).map((r) => (r.n > 1 ? `f${r.from}-f${r.to} ${r.value} (x${r.n})` : `f${r.from} ${r.value}`));
-  const more = runs.length > MAX ? `; ... ${runs.length - MAX} more changes (all in report.json with \`out\`)` : "";
-  const dropped = rec.dropped ? ` (and ${rec.dropped} later frames not kept)` : "";
-  return [`record \`${rec.expr}\` (${rec.scope}, ${values.length} frames${dropped}): ${said.join("; ")}${more}`];
+  if (Array.isArray(rec.runs)) for (const [from, to, value] of rec.runs as [number, number, string][]) runs.push({ from, to, value, n: to - from + 1 });
+  else
+    for (const [frame, value] of (rec.values ?? []) as [number, string][]) {
+      const last = runs[runs.length - 1];
+      if (last && last.value === value && last.to === frame - 1) {
+        last.to = frame;
+        last.n++;
+      } else runs.push({ from: frame, to: frame, value, n: 1 });
+    }
+  if (!runs.length) return [`record \`${rec.expr}\` (${rec.scope}): no frames`];
+  const frames = rec.frames ?? runs.reduce((s, r) => s + r.n, 0);
+  const say = (r: (typeof runs)[number]) => (r.n > 1 ? `f${r.from}-f${r.to} ${r.value} (x${r.n})` : `f${r.from} ${r.value}`);
+  const HEAD = 150;
+  const TAIL = 50;
+  if (runs.length <= HEAD + TAIL) return [`record \`${rec.expr}\` (${rec.scope}, ${frames} frames): ${runs.map(say).join("; ")}`];
+  const skipped = runs.slice(HEAD, runs.length - TAIL);
+  return [
+    `record \`${rec.expr}\` (${rec.scope}, ${frames} frames, ${runs.length} changes; ABBREVIATED here: the first ${HEAD} and the last ${TAIL} changes, ` +
+      `f${skipped[0]!.from}-f${skipped[skipped.length - 1]!.to} left out: every frame is in report.json's records (runs of [first frame, last frame, value]; pass \`out\` to keep it)): ` +
+      `${runs.slice(0, HEAD).map(say).join("; ")}; ... ${skipped.length} changes left out ...; ${runs.slice(-TAIL).map(say).join("; ")}`,
+  ];
 }
 
 interface Ran {
@@ -225,11 +234,14 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     const unknown = unknownKeys(a.compare, ["lua", "each_frame", "every_frame", "label"], "compare");
     if (unknown.length) throw new Error(unknown.join("; "));
   }
-  const VIEW_HELP = 'view is { "follow": "hero", "from": "side", "distance": 4 }: the pictures of a 3D game from beside an entity (a name, tag or kind); from "side" (+x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter"; distance in metres (4); height above its middle (0.3)';
+  const VIEW_HELP = 'view is { "follow": "hero", "from": "side", "distance": 4 }: the pictures of a 3D game from beside an entity (a name, tag or kind); from "side" (+x), "left" (-x), "front" (+z), "back" (-z), "top" or "quarter", or [dx, dy, dz] in metres from its middle; distance in metres (4); height above its middle (0.3); yaw and pitch in degrees';
   if (a.view !== undefined && a.view !== null) {
     if (typeof a.view !== "object" || Array.isArray(a.view) || typeof a.view.follow !== "string" || !a.view.follow) throw new Error(`${VIEW_HELP} (got ${JSON.stringify(a.view)})`);
-    const unknown = unknownKeys(a.view, ["follow", "from", "distance", "height"], "view");
+    const unknown = unknownKeys(a.view, ["follow", "from", "distance", "height", "yaw", "pitch"], "view");
     if (unknown.length) throw new Error(`${unknown.join("; ")}. ${VIEW_HELP}`);
+    const from = a.view.from;
+    if (from !== undefined && typeof from !== "string" && !(Array.isArray(from) && from.length === 3 && from.every((v: unknown) => typeof v === "number" && Number.isFinite(v)))) throw new Error(`view.from is a side ("side", "quarter", ...) or [dx, dy, dz] in metres (got ${JSON.stringify(from)}). ${VIEW_HELP}`);
+    for (const k of ["yaw", "pitch", "distance", "height"]) if (a.view[k] !== undefined && !(typeof a.view[k] === "number" && Number.isFinite(a.view[k]))) throw new Error(`view.${k} is a number (got ${JSON.stringify(a.view[k])}). ${VIEW_HELP}`);
   }
   if (a.crop_to !== undefined && !(typeof a.crop_to === "string" && a.crop_to)) throw new Error(`crop_to is the name, tag or kind of the entity to crop every picture to, like "hero" (got ${JSON.stringify(a.crop_to)})`);
   if (a.crop_to && a.crop) throw new Error("crop and crop_to both say what part of the pictures to keep: give one of them");
@@ -293,6 +305,8 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     for (const n of report?.notes ?? []) lines.push(`note: ${n}`);
     const render = renderLine(report?.end?.render);
     if (render) lines.push(render);
+    const drawn: Record<string, number> = report?.drawn ?? {};
+    if (Object.keys(drawn).length) lines.push(`drawn in the last frame: ${Object.entries(drawn).map(([k, n]) => `${n} ${k}`).join(", ")} (each with its name or words and place: print nova.testing.drawn('ui_text'), or nova.testing.drawn_count('ui_text', 'LAP'))`);
 
     // the pictures: every capture, then the last frame unless a capture already shows it
     // `crop_to`: one size of crop for the whole run (the biggest box the entity had, with the margin round it), moved to
@@ -403,7 +417,7 @@ export function playGame(root: string, a: Args, run: Run, keep: (label: string, 
     const views = captures.filter((c) => c.view);
     if (a.view && views.length) {
       const v = views[0]!.view;
-      lines.push(`the pictures are from beside '${a.view.follow}' (from ${a.view.from ?? "side"}, ${a.view.distance ?? 4} m away), not from the game's camera; the first from ${v.eye.join(", ")} looking at ${v.target.join(", ")}`);
+      lines.push(`the pictures are from beside '${a.view.follow}' (from ${Array.isArray(a.view.from) ? `[${a.view.from.join(", ")}]` : (a.view.from ?? "side")}${a.view.yaw !== undefined ? `, yaw ${a.view.yaw}` : ""}${a.view.pitch !== undefined ? `, pitch ${a.view.pitch}` : ""}, ${a.view.distance ?? 4} m away; on the hills, lifted with the ground under it), not from the game's camera; the first from ${v.eye.join(", ")} looking at ${v.target.join(", ")}`);
     }
 
     if (compare) {

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { releaseBinary } from "./binaries";
 import { decodePng } from "./draw";
 import { nearest, nestedWarnings, unknownKeys } from "./keys";
 import { pictureDifference, renderLine } from "./play";
@@ -19,7 +20,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.replace(/^picture: [^\n]*\n/, "");
 const use = (name: string, args: Record<string, unknown> = {}) => call(name, { project: dir, ...args });
 const picture = (r: ReturnType<typeof call>, n = 1) => decodePng(Buffer.from((r.content[n] as { data: string }).data, "base64"));
-const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../target/release/nova"));
+const built = existsSync(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "nova"));
 
 describe("nothing is ignored in silence", () => {
   it("names a key a tool does not have, with the nearest one it has", () => {
@@ -106,7 +107,7 @@ describe.skipIf(!built)("pictures that follow a thing", () => {
     const root = join(dir, "td");
     call("project_create", { project: root, name: "Td", template: "topdown" });
     const at = (args: Record<string, unknown>) => call("play", { project: root, ...args });
-    const r = at({ route: [{ hold: ["right"], frames: 40, capture: "a" }, { hold: ["down"], frames: 30, capture: "b" }], crop_to: "hero", crop_margin: 20 });
+    const r = at({ route: [{ hold: ["right"], frames: 40, capture: "a" }, { hold: ["down"], frames: 15, capture: "b" }], crop_to: "hero", crop_margin: 20 }); // (15: further down he walks into a wall, which is a warning)
     const said = text(r);
     const m = /each picture is the part round 'hero' \((\d+)x(\d+) pixels, 20 round the largest box it had\), moved with it: f(\d+) \[(\d+), (\d+), \d+, \d+\], f(\d+) \[(\d+), (\d+), \d+, \d+\]/.exec(said);
     expect(m, said).not.toBeNull();
@@ -128,7 +129,7 @@ describe.skipIf(!built)("pictures that follow a thing", () => {
     const at = (args: Record<string, unknown>) => call("play", { project: root, ...args });
     const r = at({ route: [{ hold: ["move_y=-1"], frames: 48 }], every: 8, view: { follow: "hero", from: "side", distance: 4 }, crop_to: "hero", size: "640x360" });
     const said = text(r);
-    expect(said).toMatch(/the pictures are from beside 'hero' \(from side, 4 m away\), not from the game's camera; the first from [-\d.]+, [-\d.]+, [-\d.]+ looking at/);
+    expect(said).toMatch(/the pictures are from beside 'hero' \(from side, 4 m away; on the hills, lifted with the ground under it\), not from the game's camera; the first from [-\d.]+, [-\d.]+, [-\d.]+ looking at/);
     expect(said).not.toMatch(/warning: '?hero'? is not on the picture/);
     expect(said).not.toContain("crop_to 'hero' was on none");
     // every picture has the hero on it, and a walk seen from the side changes from tile to tile
@@ -147,6 +148,7 @@ describe.skipIf(!built)("pictures that follow a thing", () => {
     };
     expect(pictureDifference(tile(1), tile(2)).share).toBeGreaterThan(0.01);
     expect(() => at({ view: { follow: "hero", from: "under" } })).toThrow(/"from": "under"; it takes side, right, left, front, back, top, quarter|from/);
+    expect(() => at({ view: { follow: "hero", from: [1, 2] } })).toThrow(/view.from is a side .* or \[dx, dy, dz\]/);
     expect(() => at({ view: { folow: "hero" } })).toThrow(/view is \{ "follow": "hero"/);
   });
 });

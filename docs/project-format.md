@@ -108,7 +108,12 @@ up to eight sine waves over the ground. The shaders lift every vertex of a model
 30 m) by the height under it, shadows included, so a game keeps drawing on flat ground (roads, cars, trees, the particles) and the hills follow;
 only a camera, a light or anything else placed by hand adds `nova.terrain_height(x, z)`, and `nova.terrain_slope(x, z)` gives the slope
 (a car's weight on a hill). A model that must stay rigid (a vehicle) is drawn with `rigid = true`: it is lifted by the height under its origin only, and the game tilts it
-(Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
+(Pine Ridge's `entities/car.lua` takes the ground under each wheel with `nova.terrain_height`); otherwise a car on a slope is sheared, not tilted.
+**The rule for pieces:** a model drawn in pieces (with `clip`, `layers`, `parts` or shape keys: each part is its own draw) and
+`rigid = true` has each piece lifted by the ground under *that piece's own origin*, not the model's: a wheel whose origin is a
+metre beside the car on a slope is lifted by the ground there, so it floats off (or sinks into) the body. Either give such a
+part's height as the car's (a wheel's `y` relative to the body, the ground's difference left out: what car.lua does), or draw
+the model with `lift = "origin"`: every piece is then lifted by the ground under the model's origin, as one rigid thing. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`land_make`, `studio/mcp/makers/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's
@@ -1675,16 +1680,39 @@ For the whole plan (beside `steps`): `"invincible": true` (alias `god`) puts the
 `"overlay": ["hitboxes", "solids", "names"]` draws those over the game on every frame (2D entities; solid tiles shaded red).
 `"lua_each_frame"` is Lua run before every frame. `"view": { "follow": "hero", "from": "side", "distance": 4, "height": 0.3 }`
 takes the pictures of a 3D game from beside an entity (from `side`/`right` +x, `left`, `front` +z, `back`, `top` or
-`quarter`; the game plays on with its own camera), and each capture says the `view`'s eye and target. `"crop_to": "hero"`
+`quarter`, or `[dx, dy, dz]` metres from its middle; `"yaw"` in degrees turns the eye round it, 90 taking `side` to `back`;
+`"pitch"` in degrees is how far above the level it looks down from; the game plays on with its own camera), and each capture
+says the `view`'s eye and target. The entity is filmed where it is seen: on the hills of `nova.terrain` the renderer lifts it by
+the ground under it (see "Hills"), and so does the view; the eye never goes under the ground, and it is moved in, along its line
+of sight, in front of a wall, a `solid = true` entity or blocking scenery between it and the entity. `"crop_to": "hero"`
 gives each capture (and the report's `end_box`) the entity's `box` on the picture, `[x0, y0, x1, y1]` in pixels, which
 the MCP `play` tool crops to. The report also has `route` (how each walk and fight went, in words), `read`
-(the input actions the game asked about) and, in each capture and at the end, `render` (for a 3D frame: the camera, the sun,
+(the input actions the game asked about), `records` (each `record` expression with its `frames` and every value as `runs`:
+`[first frame, last frame, value]`, a value held for many frames written once; nothing is ever left out), `drawn` (how many draw calls of
+each kind the last frame made: see "What was drawn" below) and, in each capture and at the end, `render` (for a 3D frame: the camera, the sun,
 whether shadows and fog are on and how many models cast a shadow).
 
 **Holds.** A held button also sets the axis it shares most of its keys with, and a held axis the button on that side (`up`
 and `move_y` = -1, `left` and `move_x` = -1), as the arrow keys and the stick do on a real machine; a step that names both
 is left as written. When nothing in the game asked about a held action while the step played (`nova.input.down`, `axis`,
-`pressed`), a warning says so and lists what the game did read.
+`pressed`), a warning says so and lists what the game did read. When a direction was held and the walker stood still for a
+quarter of the step or more, a warning says how far it moved and what it stands against ("step 5 held up for 59 frames, but
+'hero' stood still for 34 of them (it moved 62.5 units in all): it is against 'rock' (tagged solid) at x 120, y 144"): a
+position printed after such a hold is where something stopped it.
+
+**What was drawn.** A run keeps a list of each frame's draw calls: `nova.testing.drawn(kind, match)` (in a `print`, after a
+frame) gives them as `{ { kind = "ui_text", name = "LAP 2/3", x = 30, y = 30, w = 96, h = 20 }, ... }`, `kind` one of `model`,
+`sprite`, `rect` (the world layer), `ui_sprite`, `ui_rect`, `ui_line`, `ui_text`, `ui_poly`, or `"ui"` for all of the UI's, or
+nil for all; `match` keeps those whose picture or model name, or words, contain it. `nova.testing.drawn_count(kind, match)` is
+how many: "the map is not drawn" is `drawn_count('ui_sprite', 'map') == 0` with no flag in the game. Outside a run (or a test
+that called `Game::record_drawn`) they raise an error rather than answer 0. Scenery kept by `nova.scenery` and tile layers
+are not in the list.
+
+**In a Rust test.** `nova_runtime::testing` plays a plan exactly as `--play` does, without a GPU, so a game's test file needs
+no frame loop of its own: `let mut g = testing::load_dir("examples/my-game")?; let r = testing::play(&mut g, plan_json)?;`
+(or `testing::play_file`, which takes a `play` tool route file as it is: `route` is `steps`, and the tool's own keys about
+pictures, `size`, `crop`, `zoom`, `compare`, `audio`, are left out with a note). The `Report` reads `warnings()`, `errors()`,
+`notes()`, `log()`, `printed(expr)`, `record(expr)` (the runs) and `drawn(kind, match)` / `drawn_count` (the last frame).
 
 **Pictures.** A `capture` on a step that ends because something came true (`until`, `walk_to`, `fight`) is taken one frame
 later, when the game has drawn what changed; on a step of fixed length it is of the step's last frame.

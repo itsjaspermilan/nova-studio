@@ -34,4 +34,17 @@ if [ "${1:-}" = "--print" ]; then
     exit 0
 fi
 [ "$#" -gt 0 ] || fail "usage: scripts/env.sh <command...> | --print"
+
+# In a git worktree with no studio/node_modules, a Node tool that needs them (vitest, svelte-check, vite, npx, anything run from
+# a node_modules folder) gets a copy-on-write clone of the main checkout's, made once, said in one line: scripts/lib/worktree.sh.
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ ! -d "$repo/studio/node_modules" ] && [ -z "${NOVA_NO_CLONE:-}" ]; then
+  case "$1 ${2:-}" in
+    *node_modules*|npx*|*vitest*|*svelte-check*|*vite*|*rolldown*|*tsc*)
+      # shellcheck source=lib/worktree.sh
+      . "$repo/scripts/lib/worktree.sh"
+      nova_clone_node_modules "$repo"
+      ;;
+  esac
+fi
 exec "$@"

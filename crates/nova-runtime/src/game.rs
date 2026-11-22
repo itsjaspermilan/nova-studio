@@ -67,6 +67,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
+mod drawn_api;
 mod fx2d_api;
 mod mesh_api;
 mod morph_api;
@@ -76,6 +77,7 @@ mod playtest;
 mod retained_api;
 mod shader_api;
 mod solid_api;
+mod ui_shapes;
 mod voxel_api;
 mod walls_api;
 
@@ -208,6 +210,8 @@ struct Shared {
     shading: shader_api::ShaderState,
     /// The 2D effects asked for (lights, added light, shadows, reflections, rain): `game/fx2d_api.rs`.
     fx: fx2d_api::Fx2dState,
+    /// The frame's draw calls, kept only for tests and `play` runs (`game/drawn_api.rs`).
+    drawn: Option<Vec<drawn_api::Drawn>>,
 }
 
 impl Shared {
@@ -1232,6 +1236,19 @@ fn sprite_instance(
         cx += w * 0.5;
         cy += h * 0.5;
     }
+    // `flip_x`, `flip_y`: the picture mirrored in its own frame, before `rotation` turns it (a negative sx or sy does the same)
+    let flip = |k: &str| -> mlua::Result<bool> {
+        Ok(match opts {
+            Some(o) => o.get::<Option<bool>>(k)?.unwrap_or(false),
+            None => false,
+        })
+    };
+    if flip("flip_x")? {
+        w = -w;
+    }
+    if flip("flip_y")? {
+        h = -h;
+    }
     Ok(SpriteInstance {
         center: [cx as f32, cy as f32],
         size: [w as f32, h as f32],
@@ -1539,6 +1556,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 // `blend = "add"`, `lit = false`, and `foot` (where it stands, for reflections): 2D effects (game/fx2d_api.rs)
                 let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
                 fx2d_api::mark(&mut sh, style, number_option(&opts, "foot")?);
+                drawn_api::note(
+                    &mut sh,
+                    "sprite",
+                    &id,
+                    [x, y, 0.0],
+                    [inst.size[0] as f64, inst.size[1] as f64],
+                );
                 sh.world.push(inst);
                 shader_api::mark_sprite(&mut sh, false, shading);
                 Ok(())
@@ -1555,6 +1579,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 // `{ blend = "add" }`: adds light (a spark, a beam); `{ lit = false }`: not darkened by the 2D ambient
                 let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
                 fx2d_api::mark(&mut sh, style, None);
+                drawn_api::note(&mut sh, "rect", "", [x, y, 0.0], [w, h]);
                 sh.world.push(inst);
                 Ok(())
             },
@@ -1629,6 +1654,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 if number_option(&opts, "max_distance")?.is_some_and(|m| ground >= m as f32) {
                     return Ok(());
                 }
+                drawn_api::note(&mut sh, "model", &id, [x, y, z], [0.0, 0.0]);
                 // `lod = "name"`: a cheaper model past `lod_distance` metres, the two trading places over `lod_fade` metres
                 // (see `retained_api::lod_state`). It works for animated models too (`clip`, `layers`, `parts`): the far one is
                 // a plain model, drawn in its own rest pose.
@@ -1668,7 +1694,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         shader_api::push_model(&mut sh, ModelDraw { casts, mesh: far_mesh, instance }, shading);
                 }
                 let Some(near_dissolve) = near_dissolve else { return Ok(()) };
-                let rigid = opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("rigid").map(|b| b.unwrap_or(false)))?;
+                // `lift = "origin"`: on the hills, every piece of the model (a car's wheels too) is lifted by the ground under the model's
+                // origin, as one rigid thing; left out, each piece drawn on its own is lifted by the ground under its own origin
+                // (`rigid`) or each vertex by the ground under it (docs/project-format.md, "Hills")
+                let lift_origin = match string_option(&opts, "lift")?.as_deref() {
+                    None | Some("vertex") => false,
+                    Some("origin") => true,
+                    Some(other) => return Err(lua_err(format!("lift is \"origin\" (the whole model by the ground under its origin) or \"vertex\" (the default), not '{other}'"))),
+                };
+                let rigid = lift_origin || opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("rigid").map(|b| b.unwrap_or(false)))?;
+                let ground_at_origin = if lift_origin { Some(sh.lighting.terrain.height(x as f32, z as f32)) } else { None };
                 let dissolve = |i: ModelInstance| {
                     let i = dirtied(i);
                     let i = if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
@@ -1755,7 +1790,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             mesh,
                             // (a piece knows how far its own origin is above the model's: see `ModelInstance::based`)
                             instance: {
-                                let m = matrix * posed.world[i];
+                                let mut m = matrix * posed.world[i];
+                                if let Some(g) = ground_at_origin
+                                    && m.w_axis.y < 30.0
+                                {
+                                    // (the shader adds the ground under the piece's own origin: take that back, give the model's)
+                                    m.w_axis.y += g - sh.lighting.terrain.height(m.w_axis.x, m.w_axis.z);
+                                }
                                 dissolve(ModelInstance { matrix: m.to_cols_array_2d(), tint }.based(m.w_axis.y - y as f32))
                             },
                         }, shading);
@@ -2466,6 +2507,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let mut sh = s.borrow_mut();
                 let inst = sprite_instance(&sh, &id, x, y, &opts)?;
                 let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
+                drawn_api::note(
+                    &mut sh,
+                    "ui_sprite",
+                    &id,
+                    [x, y, 0.0],
+                    [inst.size[0] as f64, inst.size[1] as f64],
+                );
                 sh.ui.push(inst);
                 shader_api::mark_sprite(&mut sh, true, shading);
                 Ok(())
@@ -2476,10 +2524,65 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     ui.set(
         "rect",
         lua.create_function(
-            move |_, (x, y, w, h, color): (f64, f64, f64, f64, Option<Table>)| {
+            move |_, (x, y, w, h, color, opts): (f64, f64, f64, f64, Option<Table>, Option<Table>)| {
                 let mut sh = s.borrow_mut();
-                let inst = rect_instance(&sh, x, y, w, h, rgba(color)?);
-                sh.ui.push(inst);
+                let c = rgba(color)?;
+                drawn_api::note(&mut sh, "ui_rect", "", [x, y, 0.0], [w, h]);
+                if opts.is_none() {
+                    let inst = rect_instance(&sh, x, y, w, h, c);
+                    sh.ui.push(inst);
+                    return Ok(());
+                }
+                // { radius, slant, gradient = { top, bottom }, outline = { color, width }, layer = "top" } (game/ui_shapes.rs)
+                let top = match string_option(&opts, "layer")?.as_deref() {
+                    None | Some("ui") => false,
+                    Some("top") => true,
+                    Some(other) => return Err(lua_err(format!("nova.ui.rect: layer is \"top\" (in order with the text) or \"ui\" (under all text, the default), not '{other}'"))),
+                };
+                let o = opts.as_ref().expect("checked");
+                let bottom = match o.get::<Option<Table>>("gradient")? {
+                    Some(g) => {
+                        let first: Option<Table> = g.get(1)?;
+                        let second: Option<Table> = g.get(2)?;
+                        match (first, second) {
+                            (Some(a), Some(b)) => Some((rgba(Some(a))?, rgba(Some(b))?)),
+                            _ => return Err(lua_err("nova.ui.rect: gradient is { top_colour, bottom_colour }")),
+                        }
+                    }
+                    None => None,
+                };
+                let outline = match o.get::<Value>("outline")? {
+                    Value::Nil => None,
+                    Value::Table(t) => {
+                        let color = match t.get::<Option<Table>>("color")? {
+                            Some(c) => rgba(Some(c))?,
+                            None => rgba(Some(t.clone()))?,
+                        };
+                        Some((color, t.get::<Option<f64>>("width")?.unwrap_or(2.0)))
+                    }
+                    _ => return Err(lua_err("nova.ui.rect: outline is { color = { r, g, b }, width = 2 }")),
+                };
+                let panel = ui_shapes::Panel {
+                    x,
+                    y,
+                    w,
+                    h,
+                    color: bottom.map_or(c, |g| g.0),
+                    bottom: bottom.map(|g| g.1),
+                    radius: number_option(&opts, "radius")?.unwrap_or(0.0).max(0.0),
+                    slant: number_option(&opts, "slant")?.unwrap_or(0.0),
+                    outline,
+                };
+                let scale = f64::from(sh.pixel_scale.max(0.25));
+                for (px, py, pw, ph, pc) in ui_shapes::pieces(&panel, scale) {
+                    let mut inst = rect_instance(&sh, px, py, pw, ph, pc);
+                    if top {
+                        inst.uv = crate::text::TextEngine::white_uv();
+                        sh.text_out.push(inst);
+                    } else {
+                        sh.ui.push(inst);
+                    }
+                }
                 Ok(())
             },
         )?,
@@ -2506,6 +2609,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     rgba(color)?,
                 );
                 inst.rotation = dy.atan2(dx) as f32;
+                drawn_api::note(&mut sh, "ui_line", "", [x1, y1, 0.0], [dx, dy]);
                 sh.ui.push(inst);
                 Ok(())
             },
@@ -2524,6 +2628,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     return Ok(());
                 }
                 let narrow = w.min(w - cut).max(0.0);
+                drawn_api::note(&mut sh, "ui_poly", "slant", [x, y, 0.0], [w, h]);
                 let inst = rect_instance(&sh, x, y, narrow, h, c);
                 sh.ui.push(inst);
                 let scale = f64::from(sh.pixel_scale.max(0.25));
@@ -2547,7 +2652,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         lua.create_function(
             move |_, (x, y, text, opts): (f64, f64, String, Option<Table>)| {
                 let mut sh = s.borrow_mut();
+                let first = sh.text_out.len();
                 let (w, h, size) = draw_text(&mut sh, &text, x as f32, y as f32, &opts, true)?;
+                drawn_api::note(&mut sh, "ui_text", &text, [x, y, 0.0], [w as f64, h as f64]);
+                // `rotation` (radians, clockwise) and `zoom` turn and grow the drawn letters about x, y, without drawing them again
+                // (a tilted label, a banner that slams in); `size` is what makes them crisp at another size
+                let turn = number_option(&opts, "rotation")?.unwrap_or(0.0) as f32;
+                let zoom = number_option(&opts, "zoom")?.unwrap_or(1.0) as f32;
+                if (turn != 0.0 || zoom != 1.0) && zoom.is_finite() && turn.is_finite() {
+                    let (s, c) = turn.sin_cos();
+                    let (ox, oy) = (x as f32, y as f32);
+                    for g in &mut sh.text_out[first..] {
+                        let (dx, dy) = ((g.center[0] - ox) * zoom, (g.center[1] - oy) * zoom);
+                        g.center = [ox + dx * c - dy * s, oy + dx * s + dy * c];
+                        g.size = [g.size[0] * zoom, g.size[1] * zoom];
+                        g.rotation += turn;
+                    }
+                }
                 Ok((w as f64, h as f64, size as f64))
             },
         )?,
@@ -2586,16 +2707,33 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     nova.set("ui", ui)?;
+    drawn_api::register(lua, &nova, shared)?;
 
     // --- view, time, log ---
     let s = shared.clone();
     nova.set(
         "view",
-        lua.create_function(move |_, ()| {
+        lua.create_function(move |_, exact: Option<Value>| {
             // Whole numbers, so scripts can use them with math.random and as grid sizes. On a
             // screen that is not 16:9 the exact width is fractional; this rounds down.
+            // nova.view("exact"): the real size, fractional, for placing things against the right edge or the middle exactly.
             let v = s.borrow().view;
-            Ok((v[0].floor() as i64, v[1].floor() as i64))
+            let whole = || {
+                (
+                    Value::Integer(v[0].floor() as i64),
+                    Value::Integer(v[1].floor() as i64),
+                )
+            };
+            let real = || (Value::Number(v[0] as f64), Value::Number(v[1] as f64));
+            match exact {
+                None | Some(Value::Nil) | Some(Value::Boolean(false)) => Ok(whole()),
+                Some(Value::Boolean(true)) => Ok(real()),
+                Some(Value::String(t)) if t.to_str().is_ok_and(|t| t == "exact") => Ok(real()),
+                Some(other) => Err(lua_err(format!(
+                    "nova.view() gives whole units; nova.view(\"exact\") the real size (got {})",
+                    other.type_name()
+                ))),
+            }
         })?,
     )?;
     let s = shared.clone();
@@ -4349,6 +4487,7 @@ impl Game {
             input_reads: RefCell::new(std::collections::BTreeSet::new()),
             shading: shading_state,
             fx: Default::default(),
+            drawn: None,
         }));
         let lua = new_lua();
         lua.set_memory_limit(LUA_MEMORY_LIMIT)
@@ -4673,6 +4812,7 @@ impl Game {
             sh.shading.models.clear();
             sh.shading.sprites.clear();
             sh.fx.begin_frame();
+            drawn_api::begin_frame(&mut sh);
             sh.pose_cache.clear();
             players_api::update(&mut sh, input);
             sh.frame_dt = dt;

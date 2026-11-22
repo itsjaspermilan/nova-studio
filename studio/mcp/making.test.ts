@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { releaseBinary } from "./binaries";
 import { decodePng } from "./draw";
 import { expandModel } from "./modelkit";
 import { glbBounds } from "./models";
@@ -18,7 +19,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const text = (r: ReturnType<typeof call>) => (r.content[0] as { text: string }).text.replace(/^picture: [^\n]*\n/, "");
 const use = (name: string, args: Record<string, unknown> = {}) => call(name, { project: dir, ...args });
 const picture = (r: ReturnType<typeof call>, n = 1) => decodePng(Buffer.from((r.content[n] as { data: string }).data, "base64"));
-const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../target/release/nova"));
+const built = existsSync(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "nova"));
 
 type V = [number, number, number];
 /// Six times the volume a closed mesh encloses: above 0 when every face is counter-clockwise seen from outside.

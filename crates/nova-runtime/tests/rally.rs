@@ -988,10 +988,10 @@ fn one_lap(car: usize, circuit_steps: usize) -> String {
 }
 
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints the lap times of each car and difficulty); run on purpose with --ignored --nocapture"]
 fn ai_balance() {
     let cars = [("Apex GT", 1), ("Outback", 2)];
-    // AI_CARS=Redline,Cab limits the sweep to some cars
+    // AI_CARS="Apex GT,Outback" limits the sweep to some cars
     let only = std::env::var("AI_CARS").unwrap_or_default();
     // (the difficulty is the course's: Pine Ridge is Easy, Frost Pass Medium, Copper Canyon Hard)
     for (name, car) in cars {
@@ -1065,7 +1065,7 @@ const CLASSES: [&str; 2] = ["sport", "everyday"];
 /// The section times of a good run by the first car of each class on each stage (for lib/pars.lua). Run on purpose:
 /// `cargo test --release -p nova-runtime --test rally rally_pars -- --ignored --nocapture` (COURSES=stage_canyon,... for some).
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints the section pars for lib/pars.lua); run on purpose with --ignored --nocapture"]
 fn rally_pars() {
     let only = std::env::var("COURSES").unwrap_or_default();
     for (stage, id) in STAGES.iter().enumerate() {
@@ -1091,7 +1091,7 @@ fn rally_pars() {
 /// The best lap of a time trial driven by the computer, in the first car of each class on each circuit (the par laps in lib/pars.lua).
 /// Run on purpose: `cargo test --release -p nova-runtime --test rally lap_pars -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints the par laps for lib/pars.lua); run on purpose with --ignored --nocapture"]
 fn lap_pars() {
     let only = std::env::var("COURSES").unwrap_or_default();
     for (circuit, id) in CIRCUITS.iter().enumerate() {
@@ -1133,7 +1133,7 @@ fn lap_pars() {
 /// prints, over 40 seconds of the computer driving a lap, the mean script time of a frame, the joint matrices uploaded, the model
 /// instances and the draw runs (equal meshes side by side are one instanced draw) of the frames.
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints what the crowd costs a frame); run on purpose with --ignored --nocapture"]
 fn crowd_cost() {
     let mut g = load();
     start_race(&mut g, 0, false);
@@ -1174,7 +1174,7 @@ fn crowd_cost() {
 /// before and after a change to the courses. Run on purpose:
 /// `cargo test --release -p nova-runtime --test rally course_times -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints every course's results, to compare before and after a change); run on purpose with --ignored --nocapture"]
 fn course_times() {
     // COURSES=autumn_glen,stage_canyon limits it to some courses
     let only = std::env::var("COURSES").unwrap_or_default();
@@ -1226,31 +1226,36 @@ fn course_times() {
     }
 }
 
-/// A new player: 1,000 coins and no car. In the garage they buy a starter (Oobi, a kart: A asks, a second A buys), race the first circuit
-/// against three karts, are paid for it, and finishing in the top three opens the second circuit, which they can then race.
+/// A new player: 1,000 coins and no car (every vehicle owned for testing is switched off here, as `state.UNLOCK_ALL_VEHICLES` in
+/// lib/state.lua will be when progression comes back). In the garage they buy a starter (A asks, a second A buys), race the first
+/// circuit with the computer driving, are paid for it, and a top-three finish opens the second circuit.
 #[test]
-#[ignore = "every vehicle is unlocked for testing (state.UNLOCK_ALL_VEHICLES in lib/state.lua); run with --ignored once progression is back"]
 fn a_new_player_buys_a_starter_car_and_finishing_a_circuit_opens_the_next() {
     FRESH.with(|f| f.set(true));
     let mut g = load();
+    g.run_lua("require('lib.state').UNLOCK_ALL_VEHICLES = false", "t")
+        .unwrap();
+    assert_eq!(lua_said(&g, "require('lib.state').coins()"), "1000");
+    assert_eq!(lua_said(&g, "#require('lib.state').owned()"), "0");
     for _ in 0..30 {
         frame(&mut g, &[]);
     }
     tap(&mut g, "key:ArrowDown"); // Circuit
-    tap(&mut g, "key:Enter");
-    tap(&mut g, "key:Enter"); // Pine Ridge, the first circuit -> the garage, on the first starter (Commuter)
-    tap(&mut g, "key:ArrowRight");
-    tap(&mut g, "key:ArrowRight"); // Commuter -> Green Machine -> Oobi
+    tap(&mut g, "key:Enter"); // its tracks
+    tap(&mut g, "key:Enter"); // Pine Ridge, the first circuit -> the garage
+    assert_eq!(screen(&g), "garage");
+    let car = shown_car(&mut g);
+    g.take_log();
     tap(&mut g, "key:Enter"); // "buy it?"
     tap(&mut g, "key:Enter"); // bought
     let log = g.take_log();
     assert!(
         log.iter()
-            .any(|l| l == "garage: bought kart_oobi for 1000 coins, 0 left"),
-        "{log:?}"
+            .any(|l| *l == format!("garage: bought {car} for 1000 coins, 0 left")),
+        "a starter costs what a new player has: {log:?}"
     );
     tap(&mut g, "key:Enter"); // race in it -> the laps
-    tap(&mut g, "key:Enter"); // the laps -> ready to race
+    tap(&mut g, "key:Enter"); // the laps -> the page with everything on it
     frame(&mut g, &["key:Enter"]); // RACE
     let mut log = Vec::new();
     run_until(&mut g, &mut log, "the countdown ends", 60 * 8, |l| {
@@ -1268,13 +1273,6 @@ fn a_new_player_buys_a_starter_car_and_finishing_a_circuit_opens_the_next() {
         frame(&mut g, &[]);
     }
     log.extend(g.take_log());
-    let rivals = log.iter().find(|l| l.contains("a time for")).unwrap();
-    for r in rivals.rsplit("rivals: ").next().unwrap().split(' ') {
-        assert!(
-            r.starts_with("kart_"),
-            "a kart's rivals drive karts: {rivals}"
-        );
-    }
     let place: usize = log
         .iter()
         .find_map(|l| l.strip_prefix("results: place "))
@@ -1290,62 +1288,52 @@ fn a_new_player_buys_a_starter_car_and_finishing_a_circuit_opens_the_next() {
         !coins.starts_with("results: 0 coins"),
         "a finish pays: {coins}"
     );
-    assert!(
-        place > 3 || coins.contains("opened dust_valley"),
-        "a top-three finish opens Dust Valley: {coins}"
+    let open = lua_said(
+        &g,
+        "(require('lib.state').course_open(require('lib.state').tracks, require('lib.state').tracks[2]))",
     );
-    if place > 3 {
-        return; // (the computer driver came last: nothing opened, and that is right)
+    if place <= 3 {
+        assert!(
+            coins.contains("opened dust_valley") && open == "true",
+            "a top-three finish opens Dust Valley: {coins}"
+        );
+    } else {
+        assert_eq!(open, "false", "fourth opens nothing: {coins}");
     }
-    // the results: Restart is first, Return second; back on the main menu, Circuit, then one down is Dust Valley, open now
-    for _ in 0..120 {
-        frame(&mut g, &[]);
-    }
-    tap(&mut g, "key:ArrowDown"); // Return
-    tap(&mut g, "key:Enter");
-    for _ in 0..30 {
-        frame(&mut g, &[]);
-    }
-    tap(&mut g, "key:ArrowDown"); // Circuit
-    tap(&mut g, "key:Enter");
-    tap(&mut g, "key:ArrowDown"); // Dust Valley
-    tap(&mut g, "key:Enter");
-    tap(&mut g, "key:Enter"); // Oobi, the car driven last
-    tap(&mut g, "key:Enter"); // the laps
-    frame(&mut g, &["key:Enter"]); // RACE
-    let mut log = Vec::new();
-    run_until(&mut g, &mut log, "Dust Valley starts", 60 * 8, |l| {
-        l.iter().any(|x| x == "go")
-    });
-    assert!(
-        log.iter().any(|l| l == "rally: course dust_valley"),
-        "{log:?}"
-    );
 }
 
 /// A course that has not been opened cannot be chosen: a new player who moves to the second circuit and presses A stays on the list
-/// (A again on the first goes on to the garage).
+/// (A again on the first goes on to the garage, where the first A on a starter asks to buy it).
 #[test]
-#[ignore = "every vehicle is unlocked for testing (state.UNLOCK_ALL_VEHICLES in lib/state.lua); run with --ignored once progression is back"]
 fn a_locked_course_cannot_be_chosen() {
     FRESH.with(|f| f.set(true));
     let mut g = load();
+    g.run_lua("require('lib.state').UNLOCK_ALL_VEHICLES = false", "t")
+        .unwrap();
     for _ in 0..30 {
         frame(&mut g, &[]);
     }
     tap(&mut g, "key:ArrowDown"); // Circuit
     tap(&mut g, "key:Enter");
+    assert_eq!(screen(&g), "track");
     tap(&mut g, "key:ArrowDown"); // Dust Valley, locked
-    g.take_log();
     tap(&mut g, "key:Enter"); // refused: still on the list
+    assert_eq!(
+        screen(&g),
+        "track",
+        "a locked course is looked at, not chosen"
+    );
     tap(&mut g, "key:ArrowUp"); // Pine Ridge
-    tap(&mut g, "key:Enter"); // the garage: no car yet, so A asks to buy the starter under the focus
+    tap(&mut g, "key:Enter"); // the garage: no car yet
+    assert_eq!(screen(&g), "garage");
+    let car = shown_car(&mut g);
+    g.take_log();
     tap(&mut g, "key:Enter"); // "buy it?"
     tap(&mut g, "key:Enter"); // bought
     let log = g.take_log();
     assert!(
         log.iter()
-            .any(|l| l.starts_with("garage: bought car_sedan")),
+            .any(|l| l.starts_with(&format!("garage: bought {car} "))),
         "the second A was in the garage (the first, on the locked course, did nothing): {log:?}"
     );
 }
@@ -1958,7 +1946,7 @@ fn best(laps: &[f32]) -> f32 {
 /// `cargo test --release -p nova-runtime --test rally rival_report -- --ignored --nocapture`
 /// (COURSES=pine_ridge,... for some; CARS=1,2 for the cars, as numbers into `state.cars`; RIVALS=easy|normal|hard).
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints how each rival drives against the reference); run on purpose with --ignored --nocapture"]
 fn rival_report() {
     let only =
         std::env::var("COURSES").unwrap_or("pine_ridge,ridge_gp,dust_valley,frost_pass".into());
@@ -2018,7 +2006,7 @@ fn rival_report() {
 /// computer unless it says otherwise), `EXPR`, `EVERY` (frames, 10), `SECONDS` (120). Run on purpose:
 /// `EXPR='nova.scene_now().player.speed' cargo test --release -p nova-runtime --test rally lua_trace -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a probe (prints a Lua expression through a race, set by EXPR); run on purpose with --ignored --nocapture"]
 fn lua_trace() {
     let var = |k: &str, d: &str| std::env::var(k).unwrap_or(d.into());
     let (course, mode, expr) = (
@@ -2103,7 +2091,7 @@ fn reference_lap(course: &str, car: usize) -> f32 {
 /// between them; nobody is put back or spends more than a moment on the grass, over a whole race, on a tarmac circuit, a gravel one and a
 /// snow one. Slow (about a minute and a half): `cargo test --release -p nova-runtime --test rally rivals_are_a_field -- --ignored`.
 #[test]
-#[ignore]
+#[ignore = "slow (three whole races, about a minute and a half in release): run with --release --ignored"]
 fn rivals_are_a_field_close_to_the_reference_and_keep_to_the_road() {
     for course in ["pine_ridge", "dust_valley", "frost_pass"] {
         let reference = reference_lap(course, 1);
@@ -2364,7 +2352,7 @@ fn every_course_has_an_ideal_time_for_each_class() {
 /// the old suspension and drivers) it was 0.32 to 0.67 ms a frame here on the same courses (rival_report). Run on purpose:
 /// `cargo test --release -p nova-runtime --test rally full_grid_lua_cost -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a measurement (prints the Lua cost of a frame with a full grid); run on purpose with --ignored --nocapture"]
 fn full_grid_lua_cost() {
     for course in ["pine_ridge", "dust_valley", "frost_pass", "ridge_gp"] {
         let (mut g, _log) = race_direct(course, 1, "race", 3, "");

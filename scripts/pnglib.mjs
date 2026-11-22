@@ -1,5 +1,8 @@
-// A small PNG reader and writer (8-bit RGBA, no interlacing) for the tool scripts: the effects' art is drawn here pixel by pixel and
-// written as sprite sheets with their .sprite.json, and the contact sheets that check it are cut from the same files.
+// The one small PNG reader and writer (8-bit RGBA, no interlacing) for the Node scripts: reading pictures, and writing contact sheets
+// and other build/ pictures. To DRAW art for a game (logos, UI panels, icons, glows, store art) use the Nova tools' `image_make`
+// (studio/mcp/image.ts: smooth shapes, gradients, strokes, shadows, text in the game's fonts, placed and scaled pictures), as
+// scripts/rally/logos.mjs does, instead of a rasteriser of your own. The bytes it writes are the same as image_make's (no filter,
+// zlib level 9).
 import fs from "node:fs";
 import zlib from "node:zlib";
 

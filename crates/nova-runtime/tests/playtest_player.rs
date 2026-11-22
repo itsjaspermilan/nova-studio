@@ -86,33 +86,10 @@ fn game() -> Game {
     game
 }
 
-fn play(game: &mut Game, plan: &str, name: &str) -> (Value, Vec<(u32, String)>) {
-    let dir = std::env::temp_dir().join(format!("nova-player-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("plan.json"), plan).unwrap();
-    let plan = Plan::from_file(&dir.join("plan.json")).expect("the plan reads");
-    let mut run = Playtest::new(plan, &dir.join("out")).unwrap();
-    game.reseed(run.seed().unwrap_or(1));
-    if let Some(scene) = run.start_scene() {
-        game.start_in_scene(scene).unwrap();
-    }
-    let mut pictures = Vec::new();
-    let mut frame = 0;
-    while !run.finished(frame) {
-        let mut input = InputFrame::default();
-        run.before_frame(frame, game, &mut input);
-        game.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &input);
-        for caption in run.after_frame(frame, game) {
-            let _ = run.picture(frame, &caption, game);
-            pictures.push((frame + 1, caption));
-        }
-        frame += 1;
-    }
-    let report = run.finish(frame, game).unwrap();
-    let report: Value = serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
-    (report, pictures)
+fn play(game: &mut Game, plan: &str, _name: &str) -> (Value, Vec<(u32, String)>) {
+    // (the runtime's own harness: every key of the plan, a scratch folder of its own per run)
+    let report = nova_runtime::testing::play(game, plan).expect("the plan plays");
+    (report.json, report.pictures)
 }
 
 fn strings(v: &Value) -> Vec<String> {
@@ -332,15 +309,44 @@ fn always_and_record_watch_every_frame() {
     );
     let rec = &report["records"][0];
     assert_eq!(rec["scope"], "step 1");
-    let values = rec["values"].as_array().unwrap();
-    assert_eq!(values.len(), 40);
-    assert_eq!(values[0], serde_json::json!([2, "102"]));
-    assert_eq!(values[39][0], 41);
+    // every frame, as runs of one value: [first frame, last frame, value]
+    assert_eq!(rec["frames"], 40);
+    let runs = rec["runs"].as_array().unwrap();
+    assert_eq!(runs[0], serde_json::json!([2, 2, "102"]));
+    assert_eq!(runs.last().unwrap()[1], 41);
+    let covered: u64 = runs
+        .iter()
+        .map(|r| r[1].as_u64().unwrap() - r[0].as_u64().unwrap() + 1)
+        .sum();
+    assert_eq!(covered, 40);
     assert!(
-        values
-            .iter()
-            .all(|v| v[1].as_str().unwrap().parse::<i64>().is_ok())
+        runs.iter()
+            .all(|v| v[2].as_str().unwrap().parse::<i64>().is_ok())
     );
+
+    // a long run keeps every frame (it used to stop after 3600 values, and the answer after 200): a value held is one run
+    let plan = r#"{ "frames": 5000, "record": ["nova.time() < 40 and 1 or 2", "math.floor(nova.time() * 60) % 7"] }"#;
+    let (report, _) = play(&mut game(), plan, "record-long");
+    let held = &report["records"][0];
+    assert_eq!(
+        held["frames"], 4999,
+        "every frame after the first (the scene coming up)"
+    );
+    assert_eq!(
+        held["runs"].as_array().unwrap().len(),
+        2,
+        "{}",
+        held["runs"]
+    );
+    let busy = &report["records"][1];
+    assert_eq!(busy["frames"], 4999);
+    let covered: u64 = busy["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r[1].as_u64().unwrap() - r[0].as_u64().unwrap() + 1)
+        .sum();
+    assert_eq!(covered, 4999, "no frame left out");
 
     // with stop_on_fail the route ends at the frame it was first false
     let plan = r#"{ "stop_on_fail": true, "steps": [ { "hold": ["move_x=1"], "frames": 40, "always": "nova.named('hero').x < 130" }, { "lua": "nova.log('later')" } ] }"#;
@@ -807,4 +813,177 @@ fn the_racing_starter_drives_a_lap() {
     ] {
         assert!(sounds.contains(s), "{s} never started: {sounds}");
     }
+}
+
+/// `view` films an entity where it is seen: on the hills of `nova.terrain` the renderer lifts it by the ground under it, so
+/// the view does too; the eye stays above the ground, and `from: [dx, dy, dz]`, `yaw` and `pitch` place it freely.
+#[test]
+fn a_view_follows_an_entity_up_the_hills_and_never_films_from_under_the_ground() {
+    let mut g =
+        nova_runtime::testing::load_dir("examples/starter-3d").expect("the 3D starter loads");
+    let plan = r#"{ "frames": 3, "lua": "nova.terrain { waves = { { wavelength = 60, direction = 0, height = 6, phase = 1.2 } } }" }"#;
+    let report = nova_runtime::testing::play(&mut g, plan).unwrap();
+    assert!(report.errors().is_empty(), "{:?}", report.errors());
+    let num = |g: &Game, e: &str| {
+        g.lua_text(e)
+            .unwrap()
+            .trim_matches('"')
+            .parse::<f64>()
+            .unwrap()
+    };
+    let (hx, hy, hz) = (
+        num(&g, "nova.named('hero').x"),
+        num(&g, "nova.named('hero').y"),
+        num(&g, "nova.named('hero').z"),
+    );
+    let ground = num(&g, &format!("nova.terrain_height({hx}, {hz})"));
+    assert!(
+        ground.abs() > 1.0,
+        "the hero stands on a slope ({ground} m)"
+    );
+    let camera = |view: &str| {
+        let plan = Plan::from_json(&format!(r#"{{ "view": {view} }}"#), "view").unwrap();
+        let dir = std::env::temp_dir().join(format!("nova-view-{}", std::process::id()));
+        let mut run = Playtest::new(plan, &dir).unwrap();
+        let cam = run.view_camera(&g).expect("a camera beside the hero");
+        let _ = std::fs::remove_dir_all(&dir);
+        cam
+    };
+    // looks at the hero as drawn: its own y plus the ground under it
+    let side = camera(r#"{ "follow": "hero", "from": "side", "distance": 4, "height": 0 }"#);
+    assert!(
+        (side.target.y as f64) > hy + ground && (side.target.y as f64) < hy + ground + 2.0,
+        "the middle of the hero as it is seen: {} (y {hy}, ground {ground})",
+        side.target.y
+    );
+    // never from under the ground: an eye asked for below the hill comes up above it
+    let low = camera(r#"{ "follow": "hero", "from": [4, -20, 0] }"#);
+    let under = num(
+        &g,
+        &format!("nova.terrain_height({}, {})", low.eye.x, low.eye.z),
+    );
+    assert!(
+        (low.eye.y as f64) >= under + 0.29,
+        "eye {} over ground {under}",
+        low.eye.y
+    );
+    // a free offset, a turn round the hero and a look down
+    let offset = camera(r#"{ "follow": "hero", "from": [0, 3, 5] }"#);
+    assert!(
+        (offset.eye.x - offset.target.x).abs() < 0.01
+            && (offset.eye.z - offset.target.z - 5.0).abs() < 0.01,
+        "{:?} {:?}",
+        offset.eye,
+        offset.target
+    );
+    let turned = camera(r#"{ "follow": "hero", "from": "side", "yaw": 90, "height": 0 }"#);
+    assert!(
+        turned.eye.z < turned.target.z - 3.0 && (turned.eye.x - turned.target.x).abs() < 0.1,
+        "90 takes side (+x) to back (-z): {:?} {:?}",
+        turned.eye,
+        turned.target
+    );
+    let down = camera(r#"{ "follow": "hero", "from": "side", "pitch": 60, "height": 0 }"#);
+    assert!(
+        down.eye.y - down.target.y > 3.0,
+        "60 degrees above: {:?} {:?}",
+        down.eye,
+        down.target
+    );
+    let bad = Playtest::new(
+        Plan::from_json(r#"{ "view": { "follow": "hero", "from": "under" } }"#, "v").unwrap(),
+        &std::env::temp_dir(),
+    );
+    assert!(bad.err().unwrap().contains("or [dx, dy, dz]"));
+}
+
+/// What was drawn: `nova.testing.drawn` in a route's `print`, and the harness's report, list the frame's draw calls with
+/// their names or words, so a test can say "this text is on the screen" or "the map is not drawn" without flags in the game.
+#[test]
+fn a_run_says_what_the_last_frame_drew() {
+    let mut g = nova_runtime::testing::load_files(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        (
+            "main.lua",
+            b"function draw() nova.ui.rect(10, 20, 100, 40, {0,0,0}) nova.ui.text(30, 30, 'LAP 2/3') if nova.time() > 100 then nova.ui.text(0, 0, 'MAP') end end"
+                .to_vec(),
+        ),
+    ])
+    .unwrap();
+    let report = nova_runtime::testing::play(
+        &mut g,
+        r#"{ "frames": 5, "print": ["nova.testing.drawn_count('ui_text', 'LAP')", "nova.testing.drawn('ui_text')[1].name", "nova.testing.drawn_count('ui')"] }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        report
+            .printed("nova.testing.drawn_count('ui_text', 'LAP')")
+            .as_deref(),
+        Some("1")
+    );
+    assert_eq!(
+        report
+            .printed("nova.testing.drawn('ui_text')[1].name")
+            .as_deref(),
+        Some("LAP 2/3")
+    );
+    assert_eq!(
+        report.printed("nova.testing.drawn_count('ui')").as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        report.drawn_count("ui_text", Some("MAP")),
+        0,
+        "the map is not drawn"
+    );
+    let lap = &report.drawn("ui_text", Some("LAP"))[0];
+    assert_eq!(
+        (lap["x"].as_f64(), lap["y"].as_f64()),
+        (Some(30.0), Some(30.0))
+    );
+    assert_eq!(report.drawn("ui_rect", None)[0]["w"].as_f64(), Some(100.0));
+    assert_eq!(report.json["drawn"]["ui_text"], 1);
+    // outside a run (nothing asked to keep them) it says so instead of a count of 0
+    let mut g2 = nova_runtime::testing::load_files(vec![
+        ("nova.json", br#"{"format":1,"name":"T"}"#.to_vec()),
+        ("main.lua", b"function draw() end".to_vec()),
+    ])
+    .unwrap();
+    g2.update_input(1.0 / 60.0, 0.0, [960.0, 540.0], &InputFrame::default());
+    assert!(
+        g2.lua_text("nova.testing.drawn_count('ui_text')")
+            .unwrap_err()
+            .contains("only in a play run")
+    );
+}
+
+/// A route file written for the `play` tool runs in a test as it is, every key honoured (`route`, `always`, `record`),
+/// the tool's own keys about pictures left out with a note.
+#[test]
+fn a_play_tool_route_file_runs_whole_in_the_test_harness() {
+    let mut g = game();
+    let report = nova_runtime::testing::play(
+        &mut g,
+        r#"{ "start_scene": "arena", "size": "1280x720", "crop_to": "hero",
+             "route": [ { "hold": ["move_x=1"], "frames": 20, "record": "math.floor(nova.named('hero').x)" } ],
+             "always": "nova.named('hero').hp == 3", "record": "nova.named('hero').hp" }"#,
+    )
+    .unwrap();
+    assert!(
+        report
+            .notes()
+            .iter()
+            .any(|n| n.contains("held after every one of")),
+        "{:?}",
+        report.notes()
+    );
+    assert!(
+        report.notes().iter().any(|n| n.contains("left out size")),
+        "{:?}",
+        report.notes()
+    );
+    let hp = report.record("nova.named('hero').hp");
+    assert_eq!(hp.len(), 1, "one value all along: {hp:?}");
+    assert_eq!(hp[0].2, "3");
+    assert!(report.record("math.floor(nova.named('hero').x)").len() > 5);
 }

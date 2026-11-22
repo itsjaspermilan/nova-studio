@@ -21,6 +21,23 @@ not your game. There is no usable `python3`: write helper scripts in Node.
 Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools that run the game need it), and
 `scripts/env.sh cargo build --release -p nova-studio --bin nova-ogg` for music (without it songs stay WAV files, which play).
 
+**Working in a worktree** (`.claude/worktrees/agent-*`, or any `git worktree`). Nothing to set up and no symlinks to
+make: the tools find the main checkout of the same repository (`git rev-parse --git-common-dir`) and say in one line,
+starting `worktree:`, what they took from it. They never write into it.
+
+- `studio/node_modules`: `scripts/nova-tool` bundles its server with the main checkout's; `scripts/env.sh` running a
+  Node tool that needs them (vitest, svelte-check, vite, npx, anything under `node_modules/`) first gives the worktree
+  its own copy-on-write clone of the main checkout's (four seconds, no extra disk; ignored by git), when the two
+  `studio/package-lock.json` are the same. When they differ it says so: installing is a download, ask first.
+- The release `nova` (and `nova-ogg`): the worktree's own `target/release` when it has one; otherwise the main
+  checkout's, but only when it is safe: the main checkout has no uncommitted change to the engine's sources, this
+  worktree's are byte for byte that commit's, and the binary is newer than every one of those files. Otherwise the
+  line says why and what to run (`scripts/env.sh cargo build --release -p nova-runtime --bin nova`: about 4 minutes
+  from nothing in a fresh worktree, a minute after an engine edit). So once you change the runtime, build your own.
+  `NOVA_BIN` (and `NOVA_OGG_BIN`) still choose. The rule is `scripts/lib/worktree.sh`; the vitest tests that run the
+  game use the same one (`studio/mcp/binaries.ts`).
+- `cargo test` and `cargo build` always build in the worktree's own `target/` (a first debug build takes minutes).
+
 ## Which tool for what
 
 | You want to | Tool | It shows you |
@@ -34,6 +51,7 @@ Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools th
 | lay out a map from terrains | `scene_write` with `"paint"` | the map; edges and corners chosen for you |
 | get sound fast | `sfx_write { "purpose": "hit" }` (27 purposes, each built in layers like a produced sound), `song_make { "mood": "synthwave" }` | the `sound_report`, free of warnings and of advice |
 | draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
+| smooth art: a logo, a UI panel or button, an icon, a glow, store art | `image_make` (shapes with anti-aliasing, gradients, strokes, shadows and glows, cut-outs, text in the game's fonts, other pictures placed and scaled; several sizes at once). Never write a PNG rasteriser of your own | the picture as `sprite_preview` shows it |
 | look at any sprite again | `sprite_preview` (`frame: n` for one frame close up) | the same; a frame with every pixel a numbered square, and as rows of text to edit |
 | lay out a level | `scene_write` (tile rows as characters with a `legend`) | the level as a map |
 | look at any level again | `scene_preview` | the map, and the layers as text to edit and give back |
@@ -112,7 +130,7 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    | `{ "repeat": 5, "until": "...", "steps": [ ... ] }` | a group of steps again and again, until something holds |
    | `"may_time_out": true` | on an `until`, `walk_to` or `fight` that is allowed to run out: no warning |
    | `"always": "not nova.named('hero'):touching('solid')"` | on a step or group (or the whole call): must hold after every frame it plays; the first frame it does not is a failure with its frame and step, and the answer says how many frames it held on |
-   | `"record": "nova.named('hero').x"` | on a step or group (or the whole call): the value after every frame, a run of one value said once (`f12-f15 120 (x4)`): a hit-stop, a knock-back, health through a fight |
+   | `"record": "nova.named('hero').x"` | on a step or group (or the whole call): the value after every frame, a run of one value said once (`f12-f15 120 (x4)`): a hit-stop, a knock-back, health through a fight. `report.json` (with `out`) keeps every frame; a long record's answer says ABBREVIATED and gives the first 150 and last 50 changes |
 
    A step's `tap`/`press` happen on its first two frames and its `lua` when it starts, never when its `until` comes true:
    to press at a moment, end one step with the `until` and press in the next.
@@ -128,7 +146,12 @@ tiles to the made tileset with `append`. To change a painted map, take the rows 
    every picture tool takes it), `"crop_to": "hero"` (every picture cut to the hero with `crop_margin` pixels round it,
    moved with it, 2D and 3D: no pixel rectangles to guess) and, in 3D, `"view": { "follow": "hero", "from": "side",
    "distance": 4 }` (the pictures from beside the hero, the game playing on with its own camera: with `every`, a side view
-   of a walk). The first line of every answer with a picture is its path (`picture: /tmp/...png`, or `picture saved:`
+   of a walk; `from` may be `[dx, dy, dz]` metres from its middle, and `yaw` and `pitch` in degrees turn the eye round and up; on
+   hills it films the entity where the renderer draws it, lifted by the ground, never from under the ground or through a wall).
+   `size` is from 64x64 up to 3840x2160. A hold of a direction that something stopped is a warning naming what it is against.
+   What the last frame drew is a line of the answer; `print: ["nova.testing.drawn('ui_text')"]` lists every UI text with its
+   words and place, and `nova.testing.drawn_count('ui_sprite', 'map') == 0` is "the map is not drawn" with no flag in the game.
+   The first line of every answer with a picture is its path (`picture: /tmp/...png`, or `picture saved:`
    with `image_out`), so filtering a long answer never loses it.
 
    A `lua` or `until` that fails is reported as `ERROR in step 3 ...` and the run goes on. The picture of a step that ends
@@ -279,7 +302,10 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   draw: `nova.sprite("sword", nova.cam.to_screen(self.x + 8, self.y))`. Forget it and the thing is off the screen.
   A `draw()` of your own replaces the drawing of the entity's `sprite` or `model`: put `nova.Entity.draw(self)` in it
   where the picture should go, or the entity vanishes (`check` warns).
-- **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox.
+- **Facing left:** `self.flip_x = true`. A negative `sx` also mirrors the hitbox. Your own `nova.sprite` takes `flip_x` / `flip_y`
+  too (mirrored first, then turned by `rotation`).
+- **A clip's speed:** `self:play("run", { speed = 1.3 })` (the entity's `anim_speed`; it stays until changed): give it on every
+  call to keep the feet in step with the ground (speed = the hero's speed / the speed the clip was drawn for).
 - **Hitboxes** are in the sprite's pixels from `x, y`, and are scaled by `sx`, `sy`. Put `hitbox_units = "world"` in the
   entity to give them in world units instead: then redrawing the art at another size and changing `sx` leaves every box
   as it is. Hitboxes do not turn with `angle` (they stay upright): give a swing a box per facing.
@@ -317,7 +343,14 @@ wind_loop) and give the recording to `sound_report` (no clipping, no clicks). Th
   (`out`, `image_out`) before judging draw order from a small strip tile.
 - **Every PNG in the project is a sprite** and goes into the atlas. Keep screenshots and scratch files in `build/`, a
   dot-folder, or list them in `nova.json`: `"ignore": ["shots", "tools"]` (also kept out of `nova pack`).
-- **Text** is always drawn over UI rectangles; fade the text itself. `line_spacing = 1.5` for the pixel fonts. The
+- **Text is over the UI's rectangles and sprites** unless a rectangle says `layer = "top"`: then it is drawn in order with the
+  text, over every text drawn before it (a dimming page, a wipe that must cover the HUD). `nova.ui.rect`'s options also make
+  panels: `radius`, `slant` (a leaning banner), `gradient = { top, bottom }`, `outline = { color, width }`; never rows of
+  rectangles. Text turns and grows with `rotation` and `zoom` (no skew). Something that must live across scene changes (a wipe,
+  an overlay) goes in `nova.on_update(fn)` / `nova.on_draw_ui(fn)` in `main.lua`. To centre or right-align by hand on any screen,
+  use `nova.view("exact")` (`nova.view()` rounds the width down). There is no text in the world layer: UI text at
+  `nova.cam.to_screen(x, y)` is over everything and cannot hide behind a wall; for a label that must,
+  draw a sprite made with `image_make` (`text` shape) in the world instead. `line_spacing = 1.5` for the pixel fonts. The
   `pixel` font is monospaced: every letter is `size` units wide (16 by default, so 10 letters are 160 units); other fonts
   vary. Measure before placing: `nova.ui.text_width(text, { font = "pixel", size = 24 })` (`nova.ui.text_size` gives width and height).
 - **Colours** are `{ r, g, b [, a] }` from 0 to 255, never 0 to 1 (`{ 255, 255, 255, 128 }` is half-transparent white).

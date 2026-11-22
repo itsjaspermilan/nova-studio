@@ -167,7 +167,7 @@ pub const OVERLAYS: [&str; 4] = ["hitboxes", "solids", "names", "lights"];
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Plan {
-    #[serde(default)]
+    #[serde(default, alias = "route")]
     pub steps: Vec<Step>,
     /// Frames to take pictures after (counted from 1).
     #[serde(default)]
@@ -218,18 +218,98 @@ pub struct Plan {
 /// A camera for the pictures only (the game plays on with its own): `{ "follow": "hero", "from": "side", "distance": 4 }`
 /// looks at the middle of the entity from `distance` metres away, `height` above its middle. `from` is a side of the
 /// world: "side" or "right" (from +x), "left" (from -x), "front" (from +z), "back" (from -z), "top" (from above), or
-/// "quarter" (from +x and +z, a little above).
+/// "quarter" (from +x and +z, a little above), or `[dx, dy, dz]`: the eye that many metres from the entity's middle.
+/// `yaw` (degrees) turns the eye round the entity from that side, counter-clockwise seen from above; `pitch` (degrees) is
+/// how far above the level it looks down from (90 straight down).
+///
+/// The entity's middle is where it is seen: on the hills of `nova.terrain` the renderer lifts it by the ground under it, and
+/// so does the view. The eye never goes under the ground there, and it is moved in, along its line of sight, in front of a
+/// wall, a solid entity or scenery that would stand between it and the entity.
 #[derive(Deserialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct View {
     pub follow: String,
-    pub from: Option<String>,
+    pub from: Option<ViewFrom>,
     pub distance: Option<f64>,
     pub height: Option<f64>,
+    pub yaw: Option<f64>,
+    pub pitch: Option<f64>,
+}
+
+/// Where a `view` looks from: a side by name, or an offset in metres from the entity's middle.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ViewFrom {
+    Side(String),
+    Offset([f64; 3]),
 }
 
 /// The sides a `view` looks from.
 pub const VIEW_SIDES: [&str; 7] = ["side", "right", "left", "front", "back", "top", "quarter"];
+
+/// Where a `view` puts the eye for an entity whose middle (as it is seen) is `mid`, before anything is in the way.
+fn view_eye(view: &View, mid: glam::DVec3) -> glam::DVec3 {
+    use glam::DVec3;
+    let distance = view.distance.unwrap_or(4.0);
+    let height = view.height.unwrap_or(0.3);
+    let side = match &view.from {
+        Some(ViewFrom::Offset(o)) => return mid + DVec3::from_array(*o),
+        Some(ViewFrom::Side(s)) => s.as_str(),
+        None => "side",
+    };
+    let mut dir = match side {
+        "left" => DVec3::NEG_X,
+        "front" => DVec3::Z,
+        "back" => DVec3::NEG_Z,
+        "top" => DVec3::new(0.0, 1.0, 0.02).normalize(),
+        "quarter" => DVec3::new(0.7, 0.35, 0.7).normalize(),
+        _ => DVec3::X,
+    };
+    if let Some(yaw) = view.yaw {
+        // counter-clockwise seen from above (from +y): +x turns towards -z
+        dir = glam::DQuat::from_rotation_y(yaw.to_radians()) * dir;
+    }
+    if let Some(pitch) = view.pitch {
+        let flat = glam::DVec2::new(dir.x, dir.z);
+        let flat = if flat.length() > 1e-6 {
+            flat.normalize()
+        } else {
+            glam::DVec2::new(0.0, 0.02)
+        };
+        let p = pitch.clamp(-89.0, 89.9).to_radians();
+        dir = DVec3::new(flat.x * p.cos(), p.sin(), flat.y * p.cos());
+    }
+    mid + dir * distance + DVec3::Y * height
+}
+
+/// The eye moved so that it sees the entity: in front of a wall, a solid entity or blocking scenery on the way (looked for
+/// in the solid world, which the hills do not lift, from just outside the entity's own box) and above the ground under it.
+fn clear_eye(game: &Game, b: &[f64], mid: glam::DVec3, eye: glam::DVec3, lift: f64) -> glam::DVec3 {
+    use glam::DVec3;
+    let margin = 0.3;
+    let mut eye = eye;
+    let d = eye - mid;
+    let len = d.length();
+    if len > 1e-3 {
+        let dir = d / len;
+        // (start outside the entity's own box, so that a solid entity does not hide itself)
+        let half = DVec3::new(b[3] - b[0], b[4] - b[1], b[5] - b[2]).length() * 0.5;
+        let start = half.min(len * 0.9);
+        let from = mid - DVec3::Y * lift + dir * start;
+        if let Some(hit) = game.sightline(from.to_array(), dir.to_array(), len - start + margin) {
+            let reach = (start + hit - margin).max(start.min(0.5));
+            if reach < len {
+                eye = mid + dir * reach;
+            }
+        }
+    }
+    // never under the ground: the hills where the eye is (and the flat ground, for an entity standing on or above it)
+    let ground = game.ground_lift(eye.x, eye.z, 0.0);
+    if ground != 0.0 || b[1] - lift >= -0.01 {
+        eye.y = eye.y.max(ground + margin);
+    }
+    eye
+}
 
 /// Where a picture of a 3D world puts a point, in pixels from the top left, as the renderer projects it (right-handed,
 /// y up, a vertical field of view); `None` behind the camera.
@@ -256,13 +336,18 @@ impl Plan {
     pub fn from_file(path: &Path) -> Result<Plan, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-        let plan: Plan = serde_json::from_str(&text).map_err(|e| {
+        Self::from_json(&text, &path.display().to_string())
+    }
+
+    /// A plan from its JSON text (`name` says where it came from in errors). A `play` tool's route file is one too: its
+    /// `route` is the plan's `steps`.
+    pub fn from_json(text: &str, name: &str) -> Result<Plan, String> {
+        let plan: Plan = serde_json::from_str(text).map_err(|e| {
             format!(
-                "{}: not a play plan: {e} (a plan is {{ \"steps\": [ {{ \"hold\": [\"right\"], \"frames\": 40 }}, {{ \"press\": \"a\" }}, {{ \"wait\": 20, \"capture\": \"after\" }} ], \"capture_at\": [1, 60] }})",
-                path.display()
+                "{name}: not a play plan: {e} (a plan is {{ \"steps\": [ {{ \"hold\": [\"right\"], \"frames\": 40 }}, {{ \"press\": \"a\" }}, {{ \"wait\": 20, \"capture\": \"after\" }} ], \"capture_at\": [1, 60] }})"
             )
         })?;
-        unroll(&plan.steps).map_err(|e| format!("{}: {e}", path.display()))?;
+        unroll(&plan.steps).map_err(|e| format!("{name}: {e}"))?;
         Ok(plan)
     }
 }
@@ -313,16 +398,14 @@ struct Watch {
     error: bool,
 }
 
-/// A `record` expression's values, frame by frame.
+/// A `record` expression's values, frame by frame, kept as runs of one value: (first frame, last frame, value). Every frame
+/// of the run is kept (a run is at most [`MAX_FRAMES`] long).
 struct Record {
     expr: String,
     scope: String,
-    values: Vec<(u32, String)>,
-    dropped: u32,
+    runs: Vec<(u32, u32, String)>,
+    frames: u32,
 }
-
-/// The most values one `record` keeps (a minute of frames).
-const RECORD_MAX: usize = 3600;
 
 /// The most steps a plan may unroll to.
 const MAX_STEPS: usize = 50_000;
@@ -606,6 +689,19 @@ struct Running {
     walk: Walk,
     /// The input actions the game asked about while the step played.
     reads: std::collections::BTreeSet<String>,
+    /// Where the walker was while a direction was held: to say a hold that something solid stopped.
+    hold_track: Option<HoldTrack>,
+}
+
+/// The walker during a step that holds a direction: where it started and was last, how far it went, and the frames it stood still.
+#[derive(Default)]
+struct HoldTrack {
+    name: String,
+    unit: String,
+    last: Option<(f64, f64)>,
+    path: f64,
+    still: u32,
+    frames: u32,
 }
 
 impl Running {
@@ -615,6 +711,7 @@ impl Running {
             played: 0,
             walk: Walk::default(),
             reads: Default::default(),
+            hold_track: None,
         }
     }
 }
@@ -695,12 +792,23 @@ impl Playtest {
             }
         }
         if let Some(v) = &plan.view {
-            let from = v.from.as_deref().unwrap_or("side");
-            if !VIEW_SIDES.contains(&from) {
-                return Err(format!(
-                    "\"view\" has \"from\": \"{from}\"; it takes {}",
-                    VIEW_SIDES.join(", ")
-                ));
+            match &v.from {
+                Some(ViewFrom::Side(from)) if !VIEW_SIDES.contains(&from.as_str()) => {
+                    return Err(format!(
+                        "\"view\" has \"from\": \"{from}\"; it takes {}, or [dx, dy, dz] in metres from the entity's middle",
+                        VIEW_SIDES.join(", ")
+                    ));
+                }
+                Some(ViewFrom::Offset(o))
+                    if o.iter().any(|v| !v.is_finite())
+                        || o.iter().map(|v| v * v).sum::<f64>() < 0.01 =>
+                {
+                    return Err("\"view\" has \"from\": [dx, dy, dz], metres from the entity's middle: finite and not all near 0".into());
+                }
+                _ => {}
+            }
+            if [v.yaw, v.pitch].iter().flatten().any(|a| !a.is_finite()) {
+                return Err("\"view\" has \"yaw\" and \"pitch\" in degrees".into());
             }
             if v.distance.is_some_and(|d| !(d > 0.1 && d < 500.0)) {
                 return Err("\"view\" has a \"distance\" in metres, above 0.1".into());
@@ -776,17 +884,9 @@ impl Playtest {
             (b[1] + b[4]) / 2.0,
             (b[2] + b[5]) / 2.0,
         );
-        let distance = view.distance.unwrap_or(4.0);
-        let height = view.height.unwrap_or(0.3);
-        let dir = match view.from.as_deref().unwrap_or("side") {
-            "left" => glam::DVec3::NEG_X,
-            "front" => glam::DVec3::Z,
-            "back" => glam::DVec3::NEG_Z,
-            "top" => glam::DVec3::new(0.0, 1.0, 0.02).normalize(),
-            "quarter" => glam::DVec3::new(0.7, 0.35, 0.7).normalize(),
-            _ => glam::DVec3::X,
-        };
-        let eye = mid + dir * distance + glam::DVec3::Y * height;
+        let lift = b.get(6).copied().unwrap_or(0.0);
+        let eye = view_eye(&view, mid);
+        let eye = clear_eye(game, &b, mid, eye, lift);
         let cam = crate::gfx::Camera {
             eye: eye.as_vec3(),
             target: mid.as_vec3(),
@@ -1616,6 +1716,7 @@ impl Playtest {
         if self.actions.is_empty() {
             self.actions = game.action_names();
             self.links = game.input_links();
+            game.record_drawn();
             if self.plan.invincible {
                 game.set_testing("invincible", true);
             }
@@ -1781,6 +1882,82 @@ impl Playtest {
         ));
     }
 
+    /// Whether a step holds a direction (a button that shares its keys with an axis, `left` and the like, or an axis):
+    /// what moves the walker.
+    fn holds_direction(&self, step: &Step) -> bool {
+        if step.walk_to.is_some() || step.fight.is_some() {
+            return false;
+        }
+        step.hold
+            .as_ref()
+            .map(OneOrMany::list)
+            .unwrap_or_default()
+            .iter()
+            .any(|entry| match held(entry) {
+                Ok((false, name, _)) => {
+                    ["left", "right", "up", "down", "move_x", "move_y"].contains(&name.as_str())
+                        || self.links.iter().any(|(b, a, _)| *b == name || *a == name)
+                }
+                _ => false,
+            })
+    }
+
+    /// Follows the walker while a direction is held (see [`Self::check_hold`]).
+    fn track_hold(&mut self, step: &Step, game: &Game) {
+        if !self.holds_direction(step) {
+            return;
+        }
+        let Ok((x, y, plane, name, _)) = game.walker(step.who.as_deref(), step.plane.as_deref())
+        else {
+            return;
+        };
+        let Some(at) = self.at.as_mut() else { return };
+        let t = at.hold_track.get_or_insert_with(|| HoldTrack {
+            name,
+            unit: if plane == "xz" {
+                "metres".into()
+            } else {
+                "units".into()
+            },
+            ..Default::default()
+        });
+        if let Some((lx, ly)) = t.last {
+            let d = ((x - lx).powi(2) + (y - ly).powi(2)).sqrt();
+            t.path += d;
+            t.frames += 1;
+            // (still: under a hundredth of a unit, or of a millimetre in 3D)
+            if d < if plane == "xz" { 1e-3 } else { 1e-2 } {
+                t.still += 1;
+            }
+        }
+        t.last = Some((x, y));
+    }
+
+    /// Says a hold of a direction during which the walker stood still for a good part of the time, and what it stands
+    /// against: a hold that "did something" but was stopped by a wall or a solid thing halfway.
+    fn check_hold(&mut self, step: &Step, label: &str, game: &Game) {
+        let Some(t) = self.at.as_mut().and_then(|a| a.hold_track.take()) else {
+            return;
+        };
+        if t.frames < 6 || t.still * 4 < t.frames || t.still < 4 {
+            return;
+        }
+        let against = match game.blocked(step.who.as_deref(), step.plane.as_deref(), None, None) {
+            Some((what, _)) => format!("it is against {what}"),
+            None => "nothing solid touches it: the game itself held it (a menu, a pause, a rule of its own)".to_string(),
+        };
+        let held = step
+            .hold
+            .as_ref()
+            .map(OneOrMany::list)
+            .unwrap_or_default()
+            .join(", ");
+        self.warnings.push(format!(
+            "{label} held {held} for {} frames, but '{}' stood still for {} of them (it moved {} {} in all): {against}. A position you `print` or `record` after it is where it was stopped, not where the hold would have taken it",
+            t.frames, t.name, t.still, short(t.path), t.unit
+        ));
+    }
+
     /// Notes what the frame did (log lines, sounds), ends an `until` step whose condition holds, and returns the captions
     /// of the pictures to take of this frame. `frame` counts from 0.
     pub fn after_frame(&mut self, frame: u32, game: &Game) -> Vec<String> {
@@ -1866,8 +2043,10 @@ impl Playtest {
                 ended = true;
                 by_group = true;
             }
+            self.track_hold(&step, game);
             if ended {
                 self.check_reads(&step, &label, played);
+                self.check_hold(&step, &label, game);
                 if let Some(at) = self.at.as_mut() {
                     at.played = u32::MAX; // (ends the step)
                 }
@@ -2026,16 +2205,16 @@ impl Playtest {
                     self.records.push(Record {
                         expr: expr.clone(),
                         scope: scope.clone(),
-                        values: Vec::new(),
-                        dropped: 0,
+                        runs: Vec::new(),
+                        frames: 0,
                     });
                     self.records.last_mut().expect("just pushed")
                 }
             };
-            if r.values.len() < RECORD_MAX {
-                r.values.push((number, value));
-            } else {
-                r.dropped += 1;
+            r.frames += 1;
+            match r.runs.last_mut() {
+                Some(last) if last.2 == value && last.1 + 1 == number => last.1 = number,
+                _ => r.runs.push((number, number, value)),
             }
         }
     }
@@ -2150,9 +2329,11 @@ impl Playtest {
             "records": self.records.iter().map(|r| json!({
                 "expr": r.expr,
                 "scope": r.scope,
-                "values": r.values.iter().map(|(f, v)| json!([f, v])).collect::<Vec<_>>(),
-                "dropped": r.dropped,
+                // every frame, as runs of one value: [first frame, last frame, value]
+                "frames": r.frames,
+                "runs": r.runs.iter().map(|(a, b, v)| json!([a, b, v])).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
+            "drawn": game.drawn(None, None)["counts"].clone(),
             "end": { "prints": self.prints(game), "state": game.snapshot(), "render": game.render_facts() },
             "end_box": end_box,
         });

@@ -17,6 +17,9 @@ use fontdue::{Font, FontSettings};
 use crate::gfx::SpriteInstance;
 
 pub const ATLAS_SIZE: u32 = 2048;
+/// Rows kept free at the bottom of the glyph atlas: a solid block there lets the UI draw a plain rectangle in the text's own list,
+/// in order with the words (`nova.ui.rect` with `layer = "top"`).
+const WHITE_ROWS: u32 = 4;
 pub const DEFAULT_FONT: &str = "sans";
 const MAX_TEXT_CHARS: usize = 20_000;
 
@@ -89,10 +92,32 @@ impl TextEngine {
             shelf: (1, 1, 0),
             full_warning_given: false,
         };
+        engine.paint_white();
         for (name, bytes) in BUILTIN {
             engine.add_font(name, bytes)?;
         }
         Ok(engine)
+    }
+
+    /// The solid block in the bottom-left corner of the atlas (see [`WHITE_ROWS`]).
+    fn paint_white(&mut self) {
+        for y in ATLAS_SIZE - WHITE_ROWS..ATLAS_SIZE {
+            let row = (y * ATLAS_SIZE) as usize;
+            self.atlas[row..row + WHITE_ROWS as usize].fill(255);
+        }
+    }
+
+    /// The texture coordinates of the middle of the solid block: a quad drawn with them in the text's list is a plain rectangle
+    /// of its colour (filtered or not, only solid texels are read).
+    pub fn white_uv() -> [f32; 4] {
+        let a = ATLAS_SIZE as f32;
+        let (lo, hi) = (1.5, WHITE_ROWS as f32 - 1.5);
+        [
+            lo / a,
+            (a - WHITE_ROWS as f32 + lo) / a,
+            hi / a,
+            (a - WHITE_ROWS as f32 + hi) / a,
+        ]
     }
 
     pub fn add_font(&mut self, name: &str, bytes: &[u8]) -> Result<(), String> {
@@ -320,7 +345,7 @@ impl TextEngine {
                 y += row + 1;
                 row = 0;
             }
-            if y + h + 1 > ATLAS_SIZE {
+            if y + h + 1 > ATLAS_SIZE - WHITE_ROWS {
                 // Out of room: start over. Glyphs drawn earlier this frame keep their old
                 // rectangles for one frame, which is acceptable for a rare event.
                 if !self.full_warning_given {
@@ -329,6 +354,7 @@ impl TextEngine {
                 }
                 self.glyphs.clear();
                 self.atlas.fill(0);
+                self.paint_white();
                 (x, y, row) = (1, 1, 0);
             }
             for r in 0..h {
