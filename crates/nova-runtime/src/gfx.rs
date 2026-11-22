@@ -37,6 +37,22 @@ pub struct ModelInstance {
     pub tint: [f32; 4],
 }
 
+/// How a model drawn near the ground rides the hills (`nova.terrain`): see [`ModelInstance::rigid`] and [`ModelInstance::upright`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lift {
+    /// Every vertex rises by the ground's height under it (the default: roads, ground, fences follow the hills).
+    Vertex,
+    /// The whole model rises by the ground's height under its origin (a vehicle the game tilts itself).
+    Rigid,
+    /// The foot follows the ground, the rest rises by the height under the origin: it stands upright on a slope (a tree).
+    Upright,
+}
+
+/// How high above its origin an upright model's foot reaches (metres): below it the vertices follow the ground under them, above
+/// it they rise with the ground under the origin, and in between they blend. Mirrored in `mesh.wgsl` and `shadow.wgsl`.
+pub const UPRIGHT_FOOT: f32 = 0.6;
+const UPRIGHT_CODE: f32 = 1000.0;
+
 impl ModelInstance {
     /// An instance of a skinned mesh: its joints' matrices start at `joint_base` in the frame's palette (see
     /// [`FrameInput::joints`]). The base rides in the one slot of an affine matrix that is always zero.
@@ -56,16 +72,59 @@ impl ModelInstance {
 
     /// The same instance lifted by the hills as one rigid piece: the whole model rises by the ground's height under its origin, instead of
     /// every vertex by the height under that vertex (which shears a car on a slope). Its turn is the game's to set (a car tilts by its
-    /// own pitch and roll). Rides in the sway slot as a negative number, which a swaying model never has.
-    pub fn rigid(mut self) -> Self {
-        self.matrix[2][3] = -1.0;
-        self
+    /// own pitch and roll). Its sway, if any, is kept. See [`Lift`] for how the slot carries both.
+    pub fn rigid(self) -> Self {
+        let sway = self.sway();
+        self.lifted(Lift::Rigid, sway)
+    }
+
+    /// The same instance standing upright on the hills: its foot (the lowest [`UPRIGHT_FOOT`] metres above its origin) follows the
+    /// ground under each vertex, so it sits on a slope with no gap, and everything above rises by the ground's height under its
+    /// origin, so a tree's crown stays level instead of leaning with the hillside. For trees, tall plants, posts. Its sway is kept.
+    pub fn upright(self) -> Self {
+        let sway = self.sway();
+        self.lifted(Lift::Upright, sway)
     }
 
     /// The same instance swaying in the wind: `amount` is how far the top of a thing one metre tall is pushed at full wind (the
-    /// shaders bend a vertex in proportion to its height above the instance's origin). Rides in the w slot of the third column.
-    pub fn swaying(mut self, amount: f32) -> Self {
-        self.matrix[2][3] = amount;
+    /// shaders bend a vertex in proportion to its height above the instance's origin). Rides in the w slot of the third column,
+    /// with the way it is lifted by the hills (kept).
+    pub fn swaying(self, amount: f32) -> Self {
+        let lift = self.lift();
+        self.lifted(lift, amount)
+    }
+
+    /// How this instance rides the hills.
+    pub fn lift(&self) -> Lift {
+        let w = self.matrix[2][3];
+        if w >= 0.0 {
+            Lift::Vertex
+        } else if w > -UPRIGHT_CODE + 0.5 {
+            Lift::Rigid
+        } else {
+            Lift::Upright
+        }
+    }
+
+    /// How much it sways in the wind (0: not at all).
+    pub fn sway(&self) -> f32 {
+        let w = self.matrix[2][3];
+        match self.lift() {
+            Lift::Vertex => w,
+            Lift::Rigid => -w - 1.0,
+            Lift::Upright => -w - UPRIGHT_CODE,
+        }
+    }
+
+    // The slot: `sway` (0 or more) for a model lifted vertex by vertex, `-1 - sway` for a rigid one, `-1000 - sway` for an upright
+    // one. A sway is a few hundredths in practice; it is held under 900 so the three never overlap.
+    fn lifted(mut self, lift: Lift, sway: f32) -> Self {
+        let sway = sway.clamp(0.0, 900.0);
+        self.matrix[2][3] = match lift {
+            Lift::Vertex => sway,
+            Lift::Rigid => -1.0 - sway,
+            Lift::Upright => -UPRIGHT_CODE - sway,
+        };
         self
     }
 

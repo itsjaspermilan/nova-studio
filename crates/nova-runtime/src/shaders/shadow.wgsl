@@ -63,6 +63,32 @@ fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
     return offset;
 }
 
+// The sway and how the instance rides the hills share one slot (mesh.wgsl's `sway_of`, `lift_mode`, `origin_share`; gfx.rs `Lift`).
+fn sway_of(w: f32) -> f32 {
+    if (w >= 0.0) { return w; }
+    if (w > -999.5) { return -w - 1.0; }
+    return -w - 1000.0;
+}
+
+fn lift_mode(w: f32) -> i32 {
+    if (w >= 0.0) { return 0; }
+    if (w > -999.5) { return 1; }
+    return 2;
+}
+
+fn origin_share(mode: i32, h: f32) -> f32 {
+    if (mode == 1) { return 1.0; }
+    if (mode == 2) { return smoothstep(0.0, 0.6, h); }
+    return 0.0;
+}
+
+// The ground's height that lifts a vertex: under it (k = 0), under the origin (k = 1) or between (only what is needed is read)
+fn ground_lift(at: vec2<f32>, origin: vec2<f32>, k: f32) -> f32 {
+    if (k <= 0.0) { return terrain_height(at); }
+    if (k >= 1.0) { return terrain_height(origin); }
+    return mix(terrain_height(at), terrain_height(origin), k);
+}
+
 
 // Hills: the ground's height as a sum of up to eight sine waves over the ground (`nova.terrain`): terrain[0].x is how many, terrain[1..]
 // are (kx, kz, amplitude, phase). Every vertex is lifted by the height under it, so a flat model laid on the ground (a road piece, a
@@ -134,10 +160,12 @@ fn terrain_slope(p: vec2<f32>) -> vec2<f32> {
 fn vs_main(v: Vertex, inst: Instance) -> @builtin(position) vec4<f32> {
     let model = mat4x4<f32>(vec4<f32>(inst.m0.xyz, 0.0), vec4<f32>(inst.m1.xyz, 0.0), vec4<f32>(inst.m2.xyz, 0.0), vec4<f32>(inst.m3.xyz, 1.0));
     var world = model * vec4<f32>(v.position, 1.0);
-    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
+    let above = world.y - inst.m3.y;
+    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, sway_of(inst.m2.w)), 1.0);
     if (terrain_active() && inst.m3.y < 30.0) {
-        let at = select(world.xz, inst.m3.xz, inst.m2.w < 0.0); // rigid models rise by the height under their origin
-        world = vec4<f32>(world.x, world.y + terrain_height(at), world.z, 1.0);
+        // rigid models rise by the height under their origin; upright ones too above their foot
+        let k = origin_share(lift_mode(inst.m2.w), above);
+        world = vec4<f32>(world.x, world.y + ground_lift(world.xz, inst.m3.xz, k), world.z, 1.0);
     }
     return globals.light_view_proj * world;
 }
@@ -179,8 +207,8 @@ fn vs_skinned(v: SkinVertex, inst: Instance) -> @builtin(position) vec4<f32> {
     }
     var world = model * (skin * vec4<f32>(v.position, 1.0));
     if (terrain_active() && inst.m3.y < 30.0) {
-        let at = select(world.xz, inst.m3.xz, inst.m2.w < 0.0); // rigid models rise by the height under their origin
-        world = vec4<f32>(world.x, world.y + terrain_height(at), world.z, 1.0);
+        let k = origin_share(lift_mode(inst.m2.w), world.y - inst.m3.y); // (rigid, upright: see vs_main)
+        world = vec4<f32>(world.x, world.y + ground_lift(world.xz, inst.m3.xz, k), world.z, 1.0);
     }
     return globals.light_view_proj * world;
 }

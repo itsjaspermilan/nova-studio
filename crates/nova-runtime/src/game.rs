@@ -1723,17 +1723,19 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 // `lift = "origin"`: on the hills, every piece of the model (a car's wheels too) is lifted by the ground under the model's
                 // origin, as one rigid thing; left out, each piece drawn on its own is lifted by the ground under its own origin
                 // (`rigid`) or each vertex by the ground under it (docs/project-format.md, "Hills")
-                let lift_origin = match string_option(&opts, "lift")?.as_deref() {
-                    None | Some("vertex") => false,
-                    Some("origin") => true,
-                    Some(other) => return Err(lua_err(format!("lift is \"origin\" (the whole model by the ground under its origin) or \"vertex\" (the default), not '{other}'"))),
+                // (`lift = "upright"`: the foot follows the ground, the rest stays level: a tree on a slope; `ModelInstance::upright`)
+                let (lift_origin, upright) = match string_option(&opts, "lift")?.as_deref() {
+                    None | Some("vertex") => (false, false),
+                    Some("origin") => (true, false),
+                    Some("upright") => (false, true),
+                    Some(other) => return Err(lua_err(format!("lift is \"origin\" (the whole model by the ground under its origin), \"upright\" (its foot on the ground, the rest level: a tree) or \"vertex\" (the default), not '{other}'"))),
                 };
                 let rigid = lift_origin || opts.as_ref().map_or(Ok(false), |o| o.get::<Option<bool>>("rigid").map(|b| b.unwrap_or(false)))?;
                 let ground_at_origin = if lift_origin { Some(sh.lighting.terrain.height(x as f32, z as f32)) } else { None };
                 let dissolve = |i: ModelInstance| {
                     let i = dirtied(i);
                     let i = if near_dissolve == 0.0 { i } else { i.dissolving(near_dissolve) };
-                    if rigid { i.rigid() } else { i }
+                    if rigid { i.rigid() } else if upright { i.upright() } else { i }
                 };
                 // (a model with rules of its own is posed part by part so they apply even at rest)
                 let constrained = constraints_live(&opts)?

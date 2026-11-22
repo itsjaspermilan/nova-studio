@@ -148,6 +148,18 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, raw: &Table) -> m
                     matrix: matrix.to_cols_array_2d(),
                     tint,
                 };
+                // how it rides the hills: "vertex" (the default: every vertex by the ground under it), "upright" (a tree: its foot
+                // on the ground, its crown level) or "origin" (all of it by the ground under its origin)
+                let instance = match string_option(&opts, "lift")?.as_deref() {
+                    None | Some("vertex") => instance,
+                    Some("upright") => instance.upright(),
+                    Some("origin") => instance.rigid(),
+                    Some(other) => {
+                        return Err(lua_err(format!(
+                            "lift is \"upright\" (its foot on the ground, the rest level: a tree on a slope), \"origin\" (all of it by the ground under its origin) or \"vertex\" (the default), not '{other}'"
+                        )));
+                    }
+                };
                 let slot = sh.retained.slot(&found);
                 let lod_slot = lod.map_or(NO_LOD, |name| sh.retained.slot(&name));
                 sh.retained

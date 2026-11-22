@@ -7,8 +7,39 @@
       "origin": [0, 0, 0],
       "rotation": [0, 0, 0],
       "cubes": [
-        { "shape": "cylinder", "from": [-2.4, 0, -2.4], "size": [4.8, 48, 4.8], "segments": 4, "color": "#6b4a35" },
-        { "shape": "cone", "from": [-38.4, 40, -38.4], "size": [76.8, 160, 76.8], "segments": 5, "color": "#8fb35e" }
+        {
+          "shape": "mesh",
+          "color": "#7c5338",
+          "verts": [
+            [0, -4, 0],
+            [3, -4, 0],
+            [3, 0.8, 0],
+            [2.4, 4.8, 0],
+            [1.8, 48, 0],
+            [0, 48, 0]
+          ],
+          "polys": [
+            {"v":[0,1,2,3,4,5]}
+          ],
+          "modifiers": [{"type":"revolve","axis":"y","segments":5,"sharp":50}]
+        },
+        {
+          "shape": "mesh",
+          "color": "#a2c168",
+          "verts": [
+            [0, 46.4, 0],
+            [28.896, 38.4, 0],
+            [33.6, 54.4, 0],
+            [31.248, 76.8, 0],
+            [20.832, 131.2, 0],
+            [6.72, 190.4, 0],
+            [0, 198.4, 0]
+          ],
+          "polys": [
+            {"v":[0,1,2,3,4,5,6]}
+          ],
+          "modifiers": [{"type":"revolve","axis":"y","segments":6,"sharp":50}]
+        }
       ],
       "children": []
     }

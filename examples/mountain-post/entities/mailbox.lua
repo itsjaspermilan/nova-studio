@@ -3,7 +3,7 @@
 local Mailbox = nova.entity { tags = { "mailbox" } }
 
 function Mailbox:create()
-  nova.scenery.add("mailbox", self.x, 0, self.z, { ry = self.ry or 0 })
+  nova.scenery.add("mailbox", self.x, 0, self.z, { ry = self.ry or 0, lift = "upright" })
   local ry = self.ry or 0
   -- the box's sides face its own +x and -x: (cos ry, -sin ry) in x, z
   local sx, sz = math.cos(ry), -math.sin(ry)

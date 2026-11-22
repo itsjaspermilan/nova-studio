@@ -886,3 +886,191 @@ fn hazel_is_a_bear_and_nothing_says_badger() {
         "gruff"
     );
 }
+// ---- the owner's first play on the Retroid (2026-11-22): the van, the trees ----------------------------------------------------------
+
+/// "The back doors on the van aren't really fixed to the van. They slide around when the vehicle turns." The doors are the body's
+/// children in the model now, so whatever the body does (lean, roll, pitch, the lift of its springs), each door's hinge does with
+/// it: in a brisk bend with the doors swung open, every hinge is exactly where the body's own turn puts the hinge's place at rest.
+#[test]
+fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [
+            { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, -78, 1.75); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; require('lib.testkit').drive('hazel')" },
+            { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.25 and math.abs(nova.named('van').speed) > 7", "max": 1500 },
+            { "lua": "nova.named('van').back_want = 1" },
+            { "until": "nova.named('van').back_open > 0.8 and math.abs(nova.named('van').roll) > 0.02", "max": 900 } ] }"#,
+    );
+    // (the body's lean must be real for the check to mean anything)
+    let roll = num(&g, "nova.named('van').roll").abs();
+    assert!(roll > 0.02, "the van leans in the bend: {roll}");
+    assert_eq!(
+        lua(
+            &g,
+            "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[#p + 1] = n end table.sort(p) return table.concat(p, ' ') end)()"
+        ),
+        "body door_l door_r wheel_fl wheel_fr wheel_rl wheel_rr"
+    );
+    // each hinge as posed with the van's own parts table, against the body's turn (its roll about z, then its pitch about x, then
+    // its lift) applied to the hinge at rest
+    let off = num(
+        &g,
+        "(function() local v = nova.named('van'); local b = v.parts_table.body; local now = nova.model_pose('van', { parts = v.parts_table }); \
+         local rest = nova.model_pose('van'); local worst = 0; \
+         for _, n in ipairs({ 'door_l', 'door_r' }) do local h = rest[n]; \
+           local x, y = h.x * math.cos(b.rz) - h.y * math.sin(b.rz), h.x * math.sin(b.rz) + h.y * math.cos(b.rz); \
+           local y2, z = y * math.cos(b.rx) - h.z * math.sin(b.rx), y * math.sin(b.rx) + h.z * math.cos(b.rx); \
+           local p = now[n]; local d = math.sqrt((p.x - x) ^ 2 + (p.y - (y2 + b.y)) ^ 2 + (p.z - z) ^ 2); if d > worst then worst = d end end; \
+         return worst end)()",
+    );
+    assert!(
+        off < 0.01,
+        "a door's hinge is {off} m off the body in the bend"
+    );
+    // and it did move with the body (a door left at its place at rest would be this far off)
+    let moved = num(
+        &g,
+        "(function() local v = nova.named('van'); local now = nova.model_pose('van', { parts = v.parts_table }); local rest = nova.model_pose('van'); \
+         local h, p = rest.door_l, now.door_l; return math.sqrt((p.x - h.x) ^ 2 + (p.y - h.y) ^ 2 + (p.z - h.z) ^ 2) end)()",
+    );
+    assert!(
+        moved > 0.02,
+        "the hinge rode with the leaning body: {moved}"
+    );
+}
+
+/// "There are also blocky black wheels underneath the actual wheels of the van." They were dark discs in the body (round "arches"
+/// at a fixed height that the sprung wheels moved away from). Now every round shape laid along x (a wheel's shape) belongs to one
+/// of the four wheels, each wheel is a tyre with a hub, and each turns in a well cut out of the body ("hollow wheel wells").
+#[test]
+fn the_van_has_four_wheels_in_hollow_wells_and_no_stray_wheel_shapes() {
+    fn walk(
+        p: &Value,
+        wheels: &mut Vec<(String, f64)>,
+        stray: &mut Vec<String>,
+        wells: &mut Vec<(f64, f64)>,
+    ) {
+        let name = p["name"].as_str().unwrap_or("").to_string();
+        let is_wheel = name.starts_with("wheel_");
+        if is_wheel {
+            wheels.push((name.clone(), p["origin"][2].as_f64().unwrap_or(0.0) / 16.0));
+            assert!(
+                p["cubes"].as_array().is_some_and(|c| c.len() >= 3),
+                "{name}: a tyre, a hub and a cap at least"
+            );
+        }
+        for c in p["cubes"].as_array().into_iter().flatten() {
+            let round = c["shape"] == "cylinder" || c["shape"] == "sphere";
+            let along_x = c["rotation"]
+                .as_array()
+                .is_some_and(|r| r.get(2).and_then(Value::as_f64) == Some(90.0));
+            let big = c["size"]
+                .as_array()
+                .and_then(|s| s.first())
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+                / 16.0
+                > 0.25;
+            if round && along_x && big && !is_wheel {
+                stray.push(format!("{name}: a {} disc {:?}", c["shape"], c["size"]));
+            }
+            for m in c["modifiers"].as_array().into_iter().flatten() {
+                for cut in m["cuts"].as_array().into_iter().flatten() {
+                    if cut["remove"] == true && cut["view"] == "side" {
+                        let zs: Vec<f64> = cut["points"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|p| p[0].as_f64().unwrap() / 16.0)
+                            .collect();
+                        wells.push((
+                            zs.iter().cloned().fold(f64::MAX, f64::min),
+                            zs.iter().cloned().fold(f64::MIN, f64::max),
+                        ));
+                    }
+                }
+            }
+        }
+        for ch in p["children"].as_array().into_iter().flatten() {
+            walk(ch, wheels, stray, wells);
+        }
+    }
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/mountain-post/models/van.model.json");
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).expect("the van's model"))
+        .expect("json");
+    let (mut wheels, mut stray, mut wells) = (Vec::new(), Vec::new(), Vec::new());
+    for p in doc["parts"].as_array().expect("parts") {
+        walk(p, &mut wheels, &mut stray, &mut wells);
+    }
+    assert!(
+        stray.is_empty(),
+        "round wheel-like shapes outside the wheels: {stray:?}"
+    );
+    assert_eq!(wheels.len(), 4, "four wheels: {wheels:?}");
+    for (name, z) in &wheels {
+        assert!(
+            wells.iter().any(|&(a, b)| a < *z - 0.3 && b > *z + 0.3),
+            "{name} at z {z} turns in a well cut out of the body: {wells:?}"
+        );
+    }
+    // and in the game: where the van stands, only the van's own model is drawn (no second wheel model, no stand-in)
+    let mut g = game();
+    g.record_drawn();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let (vx, vz) = (
+        num(&g, "nova.named('van').x"),
+        num(&g, "nova.named('van').z"),
+    );
+    let drawn = g.drawn(Some("model"), None);
+    let near_van: Vec<&Value> = drawn["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .filter(|i| {
+            let (x, z) = (
+                i["x"].as_f64().unwrap_or(1e9),
+                i["z"].as_f64().unwrap_or(1e9),
+            );
+            (x - vx).abs() < 2.0 && (z - vz).abs() < 2.0
+        })
+        .collect();
+    assert!(
+        !near_van.is_empty() && near_van.iter().all(|i| i["name"] == "van"),
+        "only the van's own model is drawn where it stands: {near_van:?}"
+    );
+}
+
+/// "The trees do this weird thing where all their leaf cones are sloped the same way the ground is." The renderer lifted every
+/// vertex by the ground under it, which shears a tall thing on a hillside; trees, bushes, the mast, the signposts and the mailboxes
+/// are now drawn `upright` (the engine's `lift = "upright"`, checked on the GPU by tests/upright_gpu.rs): the foot follows the slope,
+/// the crown stays level. Every tree kind in the valley says so, and the valley has trees on slopes steep enough for it to matter.
+#[test]
+fn every_tree_in_the_valley_stands_upright_on_its_slope() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let report = lua(
+        &g,
+        "(function() local kinds, steep, bad = {}, 0, {} \
+           for _, o in ipairs(nova.scene_data('valley').objects) do \
+             if o.kind:match('^pine') or o.kind:match('^larch') or o.kind == 'birch' or o.kind:match('^bush') then \
+               kinds[o.kind] = true; local gx, gz = nova.terrain_slope(o.x, o.z); if math.sqrt(gx * gx + gz * gz) > 0.5 then steep = steep + 1 end end end \
+           local n = 0 for k in pairs(kinds) do n = n + 1; local c = require('entities.' .. k); if c.__lift ~= 'upright' then bad[#bad + 1] = k end end \
+           table.sort(bad) return n .. ' kinds, ' .. steep .. ' on steep ground; not upright: ' .. table.concat(bad, ' ') end)()",
+    );
+    let (kinds, rest) = report.split_once(" kinds, ").expect("the report");
+    assert!(kinds.parse::<u32>().unwrap() >= 8, "{report}");
+    let steep: u32 = rest.split_once(' ').unwrap().0.parse().unwrap();
+    assert!(
+        steep > 50,
+        "the valley has trees on slopes over 50%: {report}"
+    );
+    assert!(report.ends_with("not upright: "), "{report}");
+}

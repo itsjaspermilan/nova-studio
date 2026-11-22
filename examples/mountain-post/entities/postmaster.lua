@@ -9,9 +9,9 @@ local camera = require("lib.camera")
 local face = require("lib.face")
 
 local WALK, RUN, TROT = 0.767, 1.633, 0.997 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
-local STROLL = 1.1                    -- the walk's top: a stick pushed up to TILT walks, up to this
+local STROLL = 1.15                   -- the walk's top: a stick pushed up to TILT walks, up to this
 local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
-local TOP, TOP_CARRY = 2.0, 1.3       -- metres a second at a full push: running (about twice the walk), trotting with a parcel
+local TOP, TOP_CARRY = 2.15, 1.45      -- metres a second at a full push: running (about twice the walk), trotting with a parcel
 -- (the clips are mixed at these speeds and played quicker by as much as they need to keep the feet in step: quick little steps)
 local function pace(speed, laden)
   local top, fast = laden and TOP_CARRY or TOP, laden and TROT or RUN
@@ -42,6 +42,7 @@ function Postmaster:create()
     },
     on_event = function(event) if event == "step" then self:step() end end,
   })
+  self.anim.speed = PACE
   self.carry_layer = { { clip = "carry", time = 0, weight = 0, mask = { "arm_l", "arm_r" } } }
   self.parcel_opts = { ry = 0 }
   self.mood = face.new(5)
@@ -140,7 +141,8 @@ function Postmaster:keep_clear()
   local v = nova.first("van")
   if v then
     local s, c = math.sin(v.heading), math.cos(v.heading)
-    for _, off in ipairs({ -1.3, 0, 1.3 }) do push(v.x + s * off, v.z + c * off, 0.92) end
+    local body = v.BODY or { offs = { 0 }, r = 1 }
+    for _, off in ipairs(body.offs) do push(v.x + s * off, v.z + c * off, body.r) end
   end
   for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.62) end
 end

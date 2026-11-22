@@ -235,7 +235,7 @@ local Scene = { __kind = "scene", __flat = true, __defaults = {}, __settings = {
 Scene.__index = Scene
 local bases = { entity = Entity, scene = Scene }
 
-local RESERVED = { static = true, lod = true, lod_distance = true, sway = true, max_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true, settings = true }
+local RESERVED = { static = true, lod = true, lod_distance = true, sway = true, lift = true, max_distance = true, tags = true, sprite = true, model = true, depth = true, hitbox = true, screen = true, pivot = true, settings = true }
 
 local function define(kind, a, b)
   local parent, spec
@@ -305,6 +305,7 @@ local function finalize(cls)
   cls.__lod = spec.lod or parent.__lod
   cls.__lod_distance = spec.lod_distance or parent.__lod_distance
   cls.__sway = spec.sway or parent.__sway
+  cls.__lift = spec.lift or parent.__lift
   cls.__max_distance = spec.max_distance or parent.__max_distance
   cls.__sprite = spec.sprite or parent.__sprite
   cls.__model = spec.model or parent.__model
@@ -1976,7 +1977,7 @@ local function spawn(what, x, y, props, ground)
     if not cls.__model then error("a static entity needs a model (nova.entity { model = \"pine\", static = true })", 2) end
     local scale = rawget(e, "sx") or 1
     local ez, ery = rawget(e, "z") or 0, rawget(e, "ry") or 0
-    scenery.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, max_distance = cls.__max_distance, shapes = e.solid ~= true })
+    scenery.add(cls.__model, e.x, e.y, ez, { ry = ery, scale = scale, tint = rawget(e, "tint"), lod = cls.__lod, lod_distance = cls.__lod_distance, sway = cls.__sway, lift = cls.__lift, max_distance = cls.__max_distance, shapes = e.solid ~= true })
     -- solid = true: the whole model blocks bodies and the camera (nova.solid). Otherwise a piece that blocks at all (its model
     -- has collision shapes: a tree's trunk) stops the follow camera's line of sight with its whole shape, crown and all.
     if e.solid == true then

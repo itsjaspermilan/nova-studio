@@ -4,6 +4,7 @@
 import { centreline } from "../../../scripts/lib/trackgen.mjs";
 import { BOUNDS_EN, CREEK, GORGE, PLACES, ROADS } from "./layout.mjs";
 import { tool } from "./lib.mjs";
+import { PAL } from "./palette.mjs";
 
 const INK = "#3b2f25", PAPER = "#f2e6c9", BLUE = "#2f5fa6", RED = "#b9372b";
 const img = (name, size, shapes, extra = {}) => tool("image_make", { name, size, shapes, ...extra }, { quiet: true }) && console.log(`made sprites/${name}.png`);
@@ -26,9 +27,10 @@ img("fx/po_sign", [512, 104], [
   { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "serif", align: "center", fill: "#e9dcbccc" },
   { text: "POST OFFICE", at: [256, 88], size: 52, font: "serif", align: "center", fill: "#efe2c2dd" },
 ]);
-img("fx/van_side", [880, 200], [
-  { text: "FERNHOLLOW", at: [440, 100], size: 124, font: "rounded", align: "center", fill: BLUE },
-  { text: "· POST ·", at: [440, 186], size: 70, font: "rounded", align: "center", fill: RED },
+// (the van's sides: chunky painted letters in the stripe's red and the postmaster's blue, thick enough to read from the chase camera)
+img("fx/van_side", [880, 270], [
+  { text: "FERNHOLLOW", at: [440, 128], size: 132, font: "rounded", align: "center", fill: PAL.red, stroke: { color: PAL.red, width: 9 } },
+  { text: "POST", at: [440, 250], size: 104, font: "rounded", align: "center", fill: BLUE, stroke: { color: BLUE, width: 7 } },
 ]);
 img("fx/puff", [64, 64], [{ circle: [32, 32, 22], fill: { radial: [32, 32, 30], stops: [[0, "#ffffffee"], [0.6, "#ffffff88"], [1, "#ffffff00"]] }, blur: 3 }]);
 img("fx/mote", [16, 16], [{ circle: [8, 8, 5], fill: { radial: [8, 8, 7], stops: [[0, "#fff8e0ff"], [1, "#fff8e000"]] } }]);

@@ -253,12 +253,15 @@ const office = [
 tool("scene_write", { name: "office", scene: { version: 1, background: [40, 34, 30], camera: { eye: [0, 2.2, 2.2], target: [0, 1, 0], fov: 60 }, objects: office } }, { quiet: true });
 
 // ---- the static props' entity files: scenery that never moves; trees have a far model and sway; the rest block with their own shapes ---
+// Trees, bushes and tall things stand upright on the hills (`lift = "upright"`: the foot follows the slope, the crown stays level;
+// lifted vertex by vertex, a cone on a hillside leans with the ground: the owner's play notes of 2026-11-22).
+const UP = ', lift = "upright"';
 const statics = {
   post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "", stone_wall: "", gate_post: "",
-  picnic_table: "", bench: "", old_bridge: "", barrier: "", office_room: "", mast: "",
-  pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012', pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012', pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012',
-  larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016', larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018', birch: ", sway = 0.02",
-  rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02", bush2: ", sway = 0.02", flowers: ", sway = 0.3", log: "", stump: "",
+  picnic_table: "", bench: "", old_bridge: "", barrier: "", office_room: "", mast: UP,
+  pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
+  larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
+  rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02" + UP, bush2: ", sway = 0.02" + UP, flowers: ", sway = 0.3", log: "", stump: UP,
 };
 for (const [kind, extra] of Object.entries(statics)) put(`entities/${kind}.lua`, `-- Scenery (tools/scene.mjs writes this file): drawn near the camera, never moves.\nreturn nova.entity { model = "${kind}", static = true${extra} }\n`);
 put("entities/far_mountain.lua", `-- A far blue range (tools/scene.mjs): scenery drawn out to the horizon, never moves.\nreturn nova.entity { model = "mountain", static = true, max_distance = 2000 }\n`);

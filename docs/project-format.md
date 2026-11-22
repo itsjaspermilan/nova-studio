@@ -113,7 +113,12 @@ only a camera, a light or anything else placed by hand adds `nova.terrain_height
 `rigid = true` has each piece lifted by the ground under *that piece's own origin*, not the model's: a wheel whose origin is a
 metre beside the car on a slope is lifted by the ground there, so it floats off (or sinks into) the body. Either give such a
 part's height as the car's (a wheel's `y` relative to the body, the ground's difference left out: what car.lua does), or draw
-the model with `lift = "origin"`: every piece is then lifted by the ground under the model's origin, as one rigid thing. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
+the model with `lift = "origin"`: every piece is then lifted by the ground under the model's origin, as one rigid thing.
+**Trees on a slope:** lifted vertex by vertex, a tall thing is sheared: its crown's downhill side drops with the ground, so on a
+hillside every cone leans the way the slope does. Give trees, tall plants and posts `lift = "upright"` (in `nova.model`'s or
+`nova.scenery.add`'s options, or on a static entity class beside `sway`): its foot (the lowest 0.6 m above its origin) still
+follows the ground under each vertex, so it sits on the slope with no gap, and everything above rises by the ground under its
+origin and stays level. It keeps its `sway`. Because the lifting is by vertex, a flat model must have vertices where the ground bends: a road piece every
 few metres, and a ground made of a grid of squares (`land_make`, `studio/mcp/makers/land.mjs`) rather than one big quad. The slope of a wave is up to
 2 pi x height / wavelength: Pine Ridge Rally's roads keep to about 10% (the `terrain` of each course's `race` object), which a handheld game feels as a real hill.
 Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (made with its scene from `tracks/<course>.track.json` by the studio's

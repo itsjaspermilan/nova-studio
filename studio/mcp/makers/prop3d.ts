@@ -612,6 +612,9 @@ return Thing
   const keys = [`model = "${name}"`, "static = true"];
   if (e.solid) keys.push("solid = true");
   if (e.sway) keys.push(`sway = ${e.sway}`);
+  // a tree (anything tall that sways) stands upright on the hills: lifted vertex by vertex, its crown would lean with the slope
+  const upright = !!e.sway && prop.size.h > 1.2;
+  if (upright) keys.push('lift = "upright"');
   keys.push("on_ground = true");
-  return `-- ${prop.says}.\n-- Scenery: it never moves, and is drawn only near the camera. on_ground = true: it stands on the ground under its x, z (a scene's y is the height above it).${e.solid ? " solid = true: its own shape blocks bodies (nova.solid.move) and the camera." : prop.model.colliders ? " Its model's collision circle blocks bodies moved with nova.solid.move, and its whole shape the camera." : ""}\nreturn nova.entity { ${keys.join(", ")} }\n`;
+  return `-- ${prop.says}.\n-- Scenery: it never moves, and is drawn only near the camera. on_ground = true: it stands on the ground under its x, z (a scene's y is the height above it).${upright ? ' lift = "upright": on a slope its foot follows the ground and its crown stays level.' : ""}${e.solid ? " solid = true: its own shape blocks bodies (nova.solid.move) and the camera." : prop.model.colliders ? " Its model's collision circle blocks bodies moved with nova.solid.move, and its whole shape the camera." : ""}\nreturn nova.entity { ${keys.join(", ")} }\n`;
 }

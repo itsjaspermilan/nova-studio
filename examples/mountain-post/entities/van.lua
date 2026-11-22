@@ -18,13 +18,16 @@ local FEEL = {
   brake = 5.0,          -- m/s^2 at full brake: it takes a moment to stop
   coast = 0.55,         -- m/s^2 rolling and engine braking with nothing pressed
   drag = 0.0045,        -- the air, per (m/s)^2
-  lock = math.rad(33),  -- the front wheels at full lock
+  lock = math.rad(24),  -- the front wheels at full lock (the toy van's short wheelbase turns as tightly as the old long one did at 33)
   steer_rate = 2.6,     -- how fast the wheels follow the stick (1/s): a moment, not a twitch
   grip = 9,             -- how fast a sideways slip dies away (1/s): it holds the road
   pull = 0.0035,        -- radians a second the van wanders to the left with the wheel let go (the Mayor's letter; barely felt)
   hill = 5.5,           -- how much a slope pulls (m/s^2 at 100 %)
 }
 local GEARS = { 7, 12.5, 17.5 }        -- the speed at which each gear runs out (for the engine's note only)
+-- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
+-- The toy van (tools/van.mjs) is 2.9 m long and 1.6 m wide, from z -1.42 (its flat back) to 1.5 (its nose).
+Van.BODY = { offs = { 0.86, 0.04, -0.78 }, r = 0.82 }
 local GRAVITY = 9.8
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 
@@ -80,6 +83,8 @@ function Van:create()
   local layout = wheel_layout("van")
   self.stations, self.wheelbase = layout.stations, layout.wheelbase
   self.ride = ride_of(layout)
+  self.wheel_r = self.stations[1].y
+  -- (the rear doors are children of the body in the model: they lean, roll, pitch and turn with it, and only swing on their hinges)
   self.parts_table = { body = { rx = 0, rz = 0, y = 0 }, door_l = { ry = 0 }, door_r = { ry = 0 } }
   for _, s in ipairs(self.stations) do self.parts_table[s.name] = s.front and { rx = 0, ry = 0, y = 0 } or { rx = 0, y = 0 } end
   local n = #self.stations
@@ -87,7 +92,8 @@ function Van:create()
   self.susp = { y = 0, vy = 0, p = 0, vp = 0, r = 0, vr = 0, ready = false, s = list(0), touch = list(true), load = list(1), g = list(0), t = list(0), gv = list(0), bump = list(0) }
   self.pitch, self.roll, self.lift = 0, 0, 0
   self.last_vf = 0
-  self.draw_opts = { ry = 0, parts = self.parts_table, rigid = true }
+  -- (lifted by the hills as one thing, by the ground under its middle: the springs below put each wheel on its own ground)
+  self.draw_opts = { ry = 0, parts = self.parts_table, lift = "origin" }
   self.back_open = 0      -- the rear doors, 0 shut to 1 open
   self.back_want = 0
   self.knock = 0
@@ -150,12 +156,12 @@ function Van:drive(dt)
   vl = vl * math.exp(-FEEL.grip * dt)
   self.speed = vf
   self.velx, self.velz = vf * sinh + vl * cosh, vf * cosh - vl * sinh
-  -- moving: two circles along the van (its nose and its tail) against the scenery, the water and the map's edges
+  -- moving: three circles along the van (Van.BODY) against the scenery, the water and the map's edges
   local nx, nz = self.x + self.velx * dt, self.z + self.velz * dt
   local hit = 0
-  for _, off in ipairs({ 1.2, -1.2 }) do
+  for _, off in ipairs(Van.BODY.offs) do
     local px, pz = nx + sinh * off, nz + cosh * off
-    local mx, mz, stopped = world.move(px, pz, 0, 0, 0.95)
+    local mx, mz, stopped = world.move(px, pz, 0, 0, Van.BODY.r)
     if stopped then
       local ox, oz = mx - px, mz - pz
       nx, nz = nx + ox, nz + oz
@@ -189,7 +195,7 @@ function Van:drive(dt)
   self.rev = self.rev + (rev_want - self.rev) * math.min(1, dt * 6)
   self:suspension(dt, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)
   self.last_vf = vf
-  self.spin = self.spin + vf / 0.33 * dt
+  self.spin = self.spin + vf / self.wheel_r * dt
   -- the rear doors swing open and shut
   self.back_open = self.back_open + ((self.back_want or 0) - self.back_open) * math.min(1, dt * 6)
   self:sound(dt, go)
@@ -208,6 +214,7 @@ function Van:suspension(dt, accel, lateral_accel)
   local n = #st
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local h0 = nova.terrain_height(self.x, self.z)
+  sp.h0 = h0
   local size = (BUMPS[self.surface] or 0.01) * math.min(1, 0.3 + math.abs(self.speed) / 12)
   local follow = math.min(1, dt * 14)
   for i = 1, n do
@@ -281,9 +288,11 @@ function Van:suspension(dt, accel, lateral_accel)
   self.pitch, self.roll = -sp.p, sp.r
 end
 
+-- How far a wheel's axle is above (or below) where it sits in the model, as the model is drawn: lifted by the ground under the
+-- van's middle (`lift = "origin"`), so the wheel's own ground is in `sp.s` and the spring's travel.
 function Van:wheel_offset(i)
   local sp, s = self.susp, self.stations[i]
-  return sp.y + s.fwd * sp.p + s.left * sp.r + sp.s[i] - sp.t[i]
+  return sp.y + s.fwd * sp.p + s.left * sp.r + sp.s[i] - (sp.h0 or sp.t[i])
 end
 
 -- Where a point of the van's body is in the world, from the van's own metres (right +x is left, as the model): for the
@@ -310,23 +319,18 @@ function Van:draw()
     part.rx = self.spin
     if s.front then part.ry = sv end
   end
-  -- the rear doors open outwards about their hinges (on the van's back corners)
+  -- the rear doors open outwards about their hinges (on the van's back corners); they are the body's children in the model, so the
+  -- body's lean, roll and pitch carry them: only the swing is theirs
   pt.door_l.ry, pt.door_r.ry = -self.back_open * 1.9, self.back_open * 1.9
-  -- (each door is drawn on its own and lifted by the ground under its hinge: give its height above that ground)
-  for _, d in ipairs({ { pt.door_l, 0.88 }, { pt.door_r, -0.88 } }) do
-    local hx, hy, hz = self:to_world(d[2], 0, -2.1)
-    d[1].y = hy + nova.terrain_height(self.x, self.z) - nova.terrain_height(hx, hz)
-  end
-  pt.door_l.rx, pt.door_r.rx, pt.door_l.rz, pt.door_r.rz = self.pitch, self.pitch, self.roll, self.roll
   self.draw_opts.ry = self.heading
   nova.model("van", self.x, 0, self.z, self.draw_opts)
   -- FERNHOLLOW POST on both sides of the box, just off the panel, moving with the body's lean
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.93, 1.42, -1.33)
+    local x, y, z = self:to_world(side * 0.825, 1.44, -0.66)
     SIDE.face = { cosh * side, 0, -sinh * side }
-    SIDE.w, SIDE.h = 1.45, 0.33
-    nova.billboard("van_side", x, y, z, 1.45, SIDE)
+    SIDE.w, SIDE.h = 1.22, 0.374
+    nova.billboard("van_side", x, y, z, 1.22, SIDE)
   end
 end
 
