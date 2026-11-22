@@ -329,7 +329,7 @@ local function stage_route(s, r)
     for i = from, #X do
       if (i - 1) % 5 == 0 then
         local x, z = X[i], Z[i]
-        if x < -B or x > B or z < -B + 100 or z > B + 100 then return false end
+        if x < -B or x > B or z < -B or z > B then return false end
         local d2 = grid:nearest(x, z, function(j) return i - j < 60 end)
         if d2 < GAP_NEAR * GAP_NEAR then return false end
         if d2 < GAP_FAR * GAP_FAR then
@@ -408,7 +408,7 @@ local function stage_route(s, r)
     else
       -- take back the last corner and try again from there
       backs = backs + 1
-      if #marks <= 1 or backs > 60 or tries > 1500 then generate.why = "stuck"; return nil, tries end
+      if #marks <= 1 or backs > 60 or tries > 1500 then return nil, tries end
       local back = table.remove(marks)
       grid:drop_from(back + 1)
       cut(back)
@@ -416,8 +416,8 @@ local function stage_route(s, r)
   end
   -- the finish: a straight to the line and the run-out after it
   local from = #X + 1
-  lay(40 + RUNOUT, 0, 0)
-  if not fits_from(from) then generate.why = "finish"; return nil, tries end
+  lay(40 + RUNOUT + (10 - (#X - 1 + 40 + RUNOUT) % 10) % 10, 0, 0) -- (to a whole number of 10 m: the waypoints, every 10 m, end on the last point)
+  if not fits_from(from) then return nil, tries end
   return { X = X, Z = Z, open = true }, tries
 end
 
@@ -639,7 +639,7 @@ function generate.route(s)
     if route then
       local line, k, m = measure(route)
       local cx = generate.COMPLEXITY[s.complexity]
-      if m.min_radius < cx.rmin * 0.82 or m.closest < GAP_NEAR then route = nil; generate.why = string.format("measure r %.1f gap %.1f", m.min_radius, m.closest)
+      if m.min_radius < cx.rmin * 0.82 or m.closest < GAP_NEAR then route = nil
       else route.line, route.k, route.measure = line, k, m end
     end
   until route or attempts >= 40
@@ -741,6 +741,12 @@ function generate.course(s)
   c.objects = generate.scenery(c)
   courses[code] = c
   return c
+end
+
+-- Forgets the routes and courses made so far (each is kept once made: the menus ask for them every frame).
+function generate.forget()
+  for k in pairs(routes) do routes[k] = nil end
+  for k in pairs(courses) do courses[k] = nil end
 end
 
 -- trackgen's `layout`: the start, the finish and gates, the grid, and the scenery beside the road, from the course's own seed.

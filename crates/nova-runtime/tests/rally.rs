@@ -2386,3 +2386,619 @@ fn full_grid_lua_cost() {
         );
     }
 }
+
+// ---- made-up courses: the custom stage and the Daily Race (lib/generate.lua, lib/daily.lua, lib/targets.lua) ----------------------
+
+/// `nova.utc()` is the wall clock: seconds since 1970 in UTC, as the computer's clock says.
+#[test]
+fn nova_utc_is_the_wall_clock() {
+    let mut g = load();
+    frame(&mut g, &[]);
+    let lua = lua_number(&g, "nova.utc()");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    assert!((lua - now).abs() < 5.0, "nova.utc() {lua} against {now}");
+    assert_eq!(lua.fract(), 0.0, "whole seconds");
+}
+
+/// The Daily Race's date is Toronto's: Eastern time with Canada's summer time (from the second Sunday of March at 2:00 to the first
+/// Sunday of November at 2:00), worked out from UTC; the countdown runs to the next midnight there; Daily #1 is 2026-11-21.
+#[test]
+fn the_daily_race_follows_the_date_in_toronto() {
+    let mut g = load();
+    frame(&mut g, &[]);
+    let at = |g: &Game, t: i64| -> String {
+        g.lua_text(&format!(
+            "(function() local d = require('lib.daily'); local z = d.day_at({t}); return d.key(z) .. ' ' .. (d.offset({t}) // 3600) .. ' ' .. d.until_next({t}) .. ' ' .. d.number(z) end)()"
+        ))
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+    };
+    let date_and_offset = |g: &Game, t: i64| -> String { at(g, t).split(' ').take(2).collect::<Vec<_>>().join(" ") };
+    // 2026-11-22 00:39:52 UTC is 19:39:52 on Saturday the 21st in Toronto (standard time, UTC-5); midnight there is 05:00 UTC
+    assert_eq!(at(&g, 1_795_307_992), "2026-11-21 -5 15608 1");
+    // a minute after midnight in Toronto: the 22nd, Daily #2, 23:59 to go
+    assert_eq!(at(&g, 1_795_323_660), "2026-11-22 -5 86340 2");
+    // summer time starts on Sunday 8 March 2026 at 2:00 EST (07:00 UTC): a second before, still -5; at it, -4
+    assert_eq!(date_and_offset(&g, 1_772_953_199), "2026-03-08 -5");
+    assert_eq!(date_and_offset(&g, 1_772_953_200), "2026-03-08 -4");
+    // and ends on Sunday 1 November 2026 at 2:00 EDT (06:00 UTC)
+    assert_eq!(date_and_offset(&g, 1_793_512_799), "2026-11-01 -4");
+    assert_eq!(date_and_offset(&g, 1_793_512_800), "2026-11-01 -5");
+    // 23:30 on the evening of 7 March (EST) to midnight: 30 minutes, though the clocks change in the night after it
+    assert_eq!(at(&g, 1_772_944_200), "2026-03-07 -5 1800 -258");
+    // 2024 was a leap year: 29 February exists, and the 1st of March follows it; 2026-11-21 is a Saturday
+    let leap = g
+        .lua_text("(function() local d = require('lib.daily'); return d.key(d.days(2024, 2, 29)) .. ' ' .. d.key(d.days(2024, 2, 29) + 1) .. ' ' .. d.weekday(d.days(2026, 11, 21)) end)()")
+        .unwrap();
+    assert_eq!(leap.trim_matches('"'), "2024-02-29 2024-03-01 6");
+    // each day has its own course and car, the same every time it is asked for
+    let day = |g: &Game, k: i64| -> String {
+        g.lua_text(&format!(
+            "(function() local d = require('lib.daily'); local e = d.entry(d.first_day() + {k}); return e.code .. ' ' .. e.car end)()"
+        ))
+        .unwrap()
+    };
+    assert_eq!(day(&g, 0), day(&g, 0));
+    let kinds: std::collections::BTreeSet<String> = (0..14).map(|k| day(&g, k)).collect();
+    assert_eq!(kinds.len(), 14, "two weeks of races differ: {kinds:?}");
+}
+
+/// A share code holds the generator's version, every setting and the seed: it reads back as the same settings; a code with a wrong
+/// letter, a broken check or from another version of the generator is refused with words that say why.
+#[test]
+fn share_codes_read_back_and_bad_ones_are_refused() {
+    let mut g = load();
+    frame(&mut g, &[]);
+    let out = g
+        .lua_text(
+            r#"(function()
+  local gen = require('lib.generate')
+  local bad = 0
+  local n = 0
+  local L = '[2-9A-HJ-NP-Z]'
+  local shape = '^' .. L:rep(4) .. '%-' .. L:rep(4) .. '$'
+  for loc = 1, #gen.LOCATIONS do for ty = 1, 2 do for len = 1, 4 do for cx = 1, 3 do for hills = 1, 3 do for surface = 1, 3 do
+    local s = gen.settings_default()
+    s.location, s.type, s.length, s.complexity, s.hills, s.surface = loc, ty, len, cx, hills, surface
+    s.time, s.weather, s.seed = (n % 3) + 1, (n % 2) + 1, (n * 7919) % gen.SEEDS
+    gen.normalise(s)
+    n = n + 1
+    local code = gen.encode(s)
+    local back = gen.decode(code)
+    if not back or not code:match(shape) then bad = bad + 1
+    else for k, v in pairs(s) do if back[k] ~= v then bad = bad + 1 end end end
+    if gen.decode((code:lower():gsub('-', ' '))) == nil then bad = bad + 1 end
+  end end end end end end
+  -- one letter changed: refused nearly always (a four-bit check, and settings that must make sense)
+  local s = gen.settings_default()
+  local code = gen.encode(s)
+  local passed = 0
+  for i = 1, 9 do if i ~= 5 then for k = 1, #gen.ALPHABET do
+    local ch = gen.ALPHABET:sub(k, k)
+    if ch ~= code:sub(i, i) then
+      local other = code:sub(1, i - 1) .. ch .. code:sub(i + 1)
+      if gen.decode(other) then passed = passed + 1 end
+    end
+  end end end
+  local _, why_letter = gen.decode('ABCD-EFG0')
+  local _, why_short = gen.decode('ABC')
+  gen.VERSION = 2
+  local _, why_old = gen.decode(code)
+  gen.VERSION = 1
+  return n .. ' ' .. bad .. ' ' .. passed .. '|' .. why_letter .. '|' .. why_short .. '|' .. why_old
+end)()"#,
+        )
+        .unwrap();
+    let out = out.trim_matches('"');
+    let mut parts = out.split('|');
+    let counts: Vec<f64> = parts
+        .next()
+        .unwrap()
+        .split(' ')
+        .map(|v| v.parse().unwrap())
+        .collect();
+    println!("codes: {out}");
+    assert_eq!(counts[0], 1080.0);
+    assert_eq!(counts[1], 0.0, "every code reads back as its settings");
+    // 8 places x 31 other letters = 248 one-letter changes: the check alone refuses about 15 in 16
+    assert!(
+        counts[2] < 30.0,
+        "{} of 248 one-letter changes were taken as codes",
+        counts[2]
+    );
+    assert!(parts.next().unwrap().contains("not in any code"));
+    assert!(parts.next().unwrap().contains("eight letters"));
+    assert!(parts.next().unwrap().contains("older version"));
+}
+
+/// What `CHECK(settings)` (below) says about one made-up course: OK and its measures, or what is wrong with it.
+const CHECK_COURSE: &str = r#"
+function CHECK(s)
+  local gen = require('lib.generate')
+  local racing = require('lib.racing')
+  gen.forget()
+  local t0 = nova.clock()
+  local c = gen.course(s)
+  local ms = (nova.clock() - t0) * 1000
+  if not c then return 'ERR no course for ' .. gen.encode(s) end
+  local errs = {}
+  local function err(m) if #errs < 6 then errs[#errs + 1] = m end end
+  local route, wps = c.route, c.route.wps
+  local n, open = #wps, c.open
+  -- the same code makes the same course, byte for byte
+  local fp, count = gen.fingerprint(route), #c.objects
+  local lists = gen.road_lists(c)
+  local function sum(l) local t = 0 for i = 1, #l.positions, 7 do t = t + l.positions[i] * i end for i = 1, #l.uvs, 11 do t = t + l.uvs[i] end return t end
+  local road_sum = sum(lists)
+  gen.forget()
+  local c2 = gen.course(s)
+  local lists2 = gen.road_lists(c2)
+  if gen.fingerprint(c2.route) ~= fp then err('a second making gives another route') end
+  if #c2.objects ~= count then err('a second making gives other scenery') end
+  if sum(lists2) ~= road_sum or #lists.positions ~= #lists2.positions or #lists.indices ~= #lists2.indices then err('a second making gives another road mesh') end
+  -- the waypoints are 10 m apart, and every one has the ordinary width
+  for i = 2, n do
+    local d = math.sqrt((wps[i].x - wps[i - 1].x) ^ 2 + (wps[i].z - wps[i - 1].z) ^ 2)
+    if d < 9.5 or d > 10.5 then err(string.format('waypoints %d and %d are %.1f m apart', i - 1, i, d)) break end
+  end
+  -- the road never comes near itself: parts more than 60 m apart along it are at least 30 m apart, more than 160 m: 45 m
+  local cells = {}
+  local function key(x, z) return math.floor(x / 50) * 100003 + math.floor(z / 50) end
+  for i, w in ipairs(wps) do local k = key(w.x, w.z); cells[k] = cells[k] or {}; table.insert(cells[k], i) end
+  local closest = 1e9
+  for i, w in ipairs(wps) do
+    local cx, cz = math.floor(w.x / 50), math.floor(w.z / 50)
+    for gx = cx - 1, cx + 1 do for gz = cz - 1, cz + 1 do
+      for _, j in ipairs(cells[gx * 100003 + gz] or {}) do
+        local along = math.abs(i - j) * 10
+        if not open then along = math.min(along, (n - math.abs(i - j)) * 10) end
+        if along >= 60 then
+          local d = math.sqrt((w.x - wps[j].x) ^ 2 + (w.z - wps[j].z) ^ 2)
+          if along >= 160 then closest = math.min(closest, d) end
+          if d < 30 or (along >= 160 and d < 45) then err(string.format('the road comes within %.0f m of itself (%d m apart along it)', d, along)) end
+        end
+      end
+    end end
+  end
+  -- no bend tighter than 15 m (a car turns round in 8 m at walking pace), the start and the finish on straights
+  if route.measure.min_radius < 15 then err(string.format('a bend of %.1f m', route.measure.min_radius)) end
+  local function straight(from, to, limit)
+    for i = from, to do local w = wps[(i - 1) % n + 1]; if math.abs(w.k) > limit then return false end end
+    return true
+  end
+  if open then
+    if not straight(1, 10, 0.004) then err('no straight after the start line') end
+    if not straight(n - 8, n, 0.004) then err('no straight at the finish') end
+  elseif not straight(n - 3, n + 3, 0.012) then err('the grid is not on a straight') end
+  -- the length asked for
+  local want = open and gen.LENGTHS[s.length].stage or gen.LENGTHS[s.length].lap
+  if route.length < want * 0.88 or route.length > want * 1.3 then err(string.format('%.0f m long, asked for %d', route.length, want)) end
+  -- inside the land
+  local half = 600 + want / 2
+  for _, w in ipairs(wps) do if math.abs(w.x) > half or math.abs(w.z) > half then err('the road leaves the land') break end end
+  -- no slope steeper than the hills allow (16%), by our own sums and by the engine's
+  nova.terrain(c.props.terrain)
+  local steep, steep_engine = 0, 0
+  for i = 1, n - 1 do
+    local a, b = wps[i], wps[i + 1]
+    local dx, dz = b.x - a.x, b.z - a.z
+    local len = math.sqrt(dx * dx + dz * dz)
+    steep = math.max(steep, math.abs(gen.height(c.props.terrain, b.x, b.z) - gen.height(c.props.terrain, a.x, a.z)) / len)
+    local gx, gz = nova.terrain_slope(a.x, a.z)
+    steep_engine = math.max(steep_engine, math.abs(gx * dx + gz * dz) / len)
+  end
+  nova.terrain()
+  if steep > gen.MAX_SLOPE + 0.002 or steep_engine > gen.MAX_SLOPE + 0.004 then err(string.format('a slope of %.1f%% (engine %.1f%%)', steep * 100, steep_engine * 100)) end
+  -- the scenery stands off the road (only the arches and the start line span it)
+  local near_road = 1e9
+  for _, o in ipairs(c.objects) do
+    if o.kind ~= 'start_arch' and o.kind ~= 'road_start' then
+      local cx, cz = math.floor(o.x / 50), math.floor(o.z / 50)
+      local best = 1e9
+      for gx = cx - 1, cx + 1 do for gz = cz - 1, cz + 1 do
+        for _, i in ipairs(cells[gx * 100003 + gz] or {}) do
+          for _, j in ipairs({ i - 1, i + 1 }) do
+            local b = wps[open and math.max(1, math.min(n, j)) or ((j - 1) % n + 1)]
+            local a = wps[i]
+            local sx, sz = b.x - a.x, b.z - a.z
+            local l2 = math.max(1e-6, sx * sx + sz * sz)
+            local t = math.max(0, math.min(1, ((o.x - a.x) * sx + (o.z - a.z) * sz) / l2))
+            best = math.min(best, math.sqrt((a.x + sx * t - o.x) ^ 2 + (a.z + sz * t - o.z) ^ 2))
+          end
+        end
+      end end
+      near_road = math.min(near_road, best)
+      if best < 6.15 then err(string.format('%s stands %.1f m from the middle of the road', o.kind, best)) end
+    end
+  end
+  -- the racing line and its speeds (what the rivals and the autopilot drive by): a believable average speed for a road car
+  local time = racing.ideal_time(c, 'sport')
+  local speed = route.length / time
+  if not (speed > 10 and speed < 55) then err(string.format('the ideal is %.1f s, %.1f m/s', time, speed)) end
+  if #errs > 0 then return 'ERR ' .. gen.encode(s) .. ': ' .. table.concat(errs, '; ') end
+  return string.format('OK %s %.0f %.0f %d %d %.1f %.1f %.1f %d', gen.encode(s), ms, route.length, route.corners, route.hairpins, closest, near_road, steep * 100, #c.objects)
+end
+"#;
+
+/// Checks `count` made-up courses spread over every setting (the location, type, length, bends, hills, surface, time of day,
+/// weather) with CHECK_COURSE; returns its reports.
+fn check_courses(count: usize) -> Vec<String> {
+    let mut g = load();
+    frame(&mut g, &[]);
+    g.run_lua(CHECK_COURSE, "check").unwrap();
+    let mut out = Vec::new();
+    for i in 0..count {
+        let lua = format!(
+            "(function() local gen = require('lib.generate'); local s = gen.settings_default(); s.location = {} % #gen.LOCATIONS + 1; s.type = {} % 2 + 1; s.length = {} % 4 + 1; s.complexity = {} % 3 + 1; s.hills = {} % 3 + 1; s.surface = {} % 3 + 1; s.time = {} % 3 + 1; s.weather = {} % 2 + 1; s.seed = {}; gen.normalise(s); return CHECK(s) end)()",
+            i,
+            i / 5,
+            i / 10,
+            i / 40,
+            i / 3,
+            i / 7,
+            i / 11,
+            i / 2,
+            (i * 2_654_435_761) % 262_144
+        );
+        let line = g.lua_text(&lua).unwrap().trim_matches('"').to_string();
+        out.push(line);
+    }
+    out
+}
+
+fn assert_sound(reports: &[String]) {
+    let bad: Vec<&String> = reports.iter().filter(|l| !l.starts_with("OK")).collect();
+    let ms: Vec<f64> = reports
+        .iter()
+        .filter_map(|l| l.split(' ').nth(2).and_then(|v| v.parse().ok()))
+        .collect();
+    let worst = ms.iter().cloned().fold(0.0, f64::max);
+    let mean = ms.iter().sum::<f64>() / ms.len().max(1) as f64;
+    println!(
+        "{} courses: {} sound; making one (route and scenery) took {mean:.0} ms on average, {worst:.0} ms at worst, on this machine",
+        reports.len(),
+        reports.len() - bad.len()
+    );
+    assert!(
+        bad.is_empty(),
+        "unsound courses:\n{}",
+        bad.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// Made-up courses are sound (a sample of 24 here; `every_made_up_course_is_sound` checks 360): see CHECK_COURSE.
+#[test]
+fn made_up_courses_are_sound() {
+    assert_sound(&check_courses(24));
+}
+
+/// Several hundred made-up courses over every setting are sound: the same code makes the same route, scenery and road twice; the
+/// waypoints are 10 m apart; the road never comes within 30 m of itself (45 m for parts more than 160 m apart along it); no bend is
+/// tighter than 15 m; a stage starts and ends on a straight and a circuit's grid is on one; the length is the one asked for; the road
+/// stays inside the land; no slope is steeper than 16% (by our sums and by the engine's); no scenery stands within 6.15 m of the middle
+/// of the road (the road is 12 m wide); the racing line gives a believable ideal time. Run on purpose (a few minutes):
+/// `cargo test --release -p nova-runtime --test rally every_made_up_course_is_sound -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn every_made_up_course_is_sound() {
+    let reports = check_courses(360);
+    for l in &reports {
+        println!("{l}");
+    }
+    assert_sound(&reports);
+}
+
+/// A made-up course at the green light, in car `car` (1-based into state.cars), `mode` "rally" (a stage), "race" (a circuit with
+/// rivals) or "trial" (a circuit alone).
+fn made_up_direct(code: &str, car: usize, mode: &str) -> (Game, Vec<String>) {
+    let mut g = load_car(car);
+    frame(&mut g, &[]);
+    g.run_lua(
+        &format!(
+            "local gen = require('lib.generate'); local st = require('lib.state'); local s = assert(gen.decode('{code}')); st.custom = gen.entry(s); st.mode = '{mode}'; st.laps = st.custom.laps; st.car = {car}; nova.goto_scene('generated')"
+        ),
+        "made-up course",
+    )
+    .expect("the course is set up");
+    let mut log = Vec::new();
+    run_until(&mut g, &mut log, "the countdown ends", 60 * 10, |l| {
+        l.iter().any(|x| x == "go")
+    });
+    (g, log)
+}
+
+fn code_of(g: &Game, settings: &str) -> String {
+    g.lua_text(&format!(
+        "(function() local gen = require('lib.generate'); local s = gen.settings_default(); {settings}; gen.normalise(s); return gen.encode(s) end)()"
+    ))
+    .unwrap()
+    .trim_matches('"')
+    .to_string()
+}
+
+fn current_scene(g: &Game) -> String {
+    g.lua_text("nova.current_scene()")
+        .unwrap()
+        .trim_matches('"')
+        .to_string()
+}
+
+/// The computer drives a made-up stage to the finish and the results give its medal; on a made-up circuit three rivals race on the
+/// racing line and every car finishes, the rivals keeping to the road.
+#[test]
+fn made_up_courses_are_driven_to_the_finish() {
+    let mut g = load();
+    frame(&mut g, &[]);
+    let stage = code_of(&g, "s.location = 3; s.type = 1; s.length = 1; s.complexity = 3; s.seed = 31");
+    let circuit = code_of(&g, "s.location = 2; s.type = 2; s.length = 1; s.complexity = 2; s.seed = 77");
+    let (mut g, mut log) = made_up_direct(&stage, 2, "rally");
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the results", 60 * 60 * 4, |l| {
+        l.iter().any(|x| x.starts_with("results:"))
+    });
+    for _ in 0..120 {
+        frame(&mut g, &[]);
+    }
+    log.extend(g.take_log());
+    let line = log
+        .iter()
+        .find(|l| l.starts_with(&format!("results: {stage}")))
+        .unwrap_or_else(|| panic!("a medal line: {log:?}"));
+    println!("{line}");
+    assert_eq!(current_scene(&g), "results");
+    assert!(log.iter().any(|l| l.starts_with("generate: built")));
+
+    let (mut g, mut log) = made_up_direct(&circuit, 1, "race");
+    g.run_lua(
+        "require('lib.state').laps = 1; nova.scene_now().laps = 1",
+        "one lap",
+    )
+    .unwrap();
+    tap(&mut g, "key:F9");
+    run_until(&mut g, &mut log, "the results", 60 * 60 * 4, |l| {
+        l.iter().any(|x| x.starts_with("results: place"))
+    });
+    println!(
+        "{:?}",
+        log.iter()
+            .filter(|l| l.starts_with("results:"))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        log.iter()
+            .any(|l| l.starts_with("results: a time for 4 of 4 cars")),
+        "every car finished: {log:?}"
+    );
+    rivals_keep_to_the_road(&log);
+}
+
+/// The main menu's CUSTOM STAGE: left and right change a setting (and the code), X rolls a new seed, Y keeps the code as a favourite,
+/// a code typed in loads its settings, a bad one is refused with a message, and CHOOSE A CAR goes on to the garage with the course chosen.
+#[test]
+fn the_custom_page_changes_settings_and_reads_codes() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    for _ in 0..4 {
+        tap(&mut g, "key:ArrowDown");
+    }
+    tap(&mut g, "key:Enter"); // CUSTOM STAGE
+    assert_eq!(screen(&g), "custom");
+    let code = |g: &Game| -> String {
+        g.lua_text("require('lib.generate').encode(nova.scene_now().cs)")
+            .unwrap()
+            .trim_matches('"')
+            .to_string()
+    };
+    let first = code(&g);
+    tap(&mut g, "key:ArrowRight"); // the location
+    let second = code(&g);
+    assert_ne!(first, second, "a new location is a new code");
+    assert_eq!(lua_number(&g, "nova.scene_now().cs.location"), 2.0);
+    tap(&mut g, "key:KeyC"); // X: a new seed
+    let third = code(&g);
+    assert_ne!(second, third, "a new seed is a new code");
+    tap(&mut g, "key:KeyV"); // Y: a favourite
+    assert!(
+        g.lua_truth(&format!("require('lib.state').is_favourite('{third}')"))
+            .unwrap()
+    );
+    // ENTER A CODE: a bad one, then a good one (typed with the grid's letters here; Enter is done)
+    g.run_lua("nova.scene_now():open_code()", "code").unwrap();
+    frame(&mut g, &[]);
+    g.run_lua("nova.scene_now().code_text = 'ABCD2345'", "type")
+        .unwrap();
+    tap(&mut g, "key:Enter");
+    assert_eq!(screen(&g), "code");
+    assert!(
+        g.lua_text("nova.scene_now().code_error")
+            .unwrap()
+            .contains("check each letter")
+    );
+    g.run_lua(
+        &format!(
+            "nova.scene_now().code_text = '{}'",
+            first.replace('-', "")
+        ),
+        "type",
+    )
+    .unwrap();
+    tap(&mut g, "key:Enter");
+    assert_eq!(screen(&g), "custom");
+    assert_eq!(code(&g), first, "the code typed in is the course");
+    // CHOOSE A CAR (up from the first row wraps to the last)
+    tap(&mut g, "key:ArrowUp");
+    tap(&mut g, "key:Enter");
+    assert_eq!(screen(&g), "garage");
+    assert_eq!(
+        g.lua_text("require('lib.state').current_track().code")
+            .unwrap()
+            .trim_matches('"'),
+        first
+    );
+}
+
+/// The main menu's DAILY RACE shows today's race; its calendar moves a day with the d-pad and a month with L and R, a day to come is
+/// locked, a past day opens; at midnight in Toronto the page rolls over to the new day; a day's best run and medal are kept.
+#[test]
+fn the_daily_page_its_calendar_and_midnight() {
+    let mut g = load();
+    for _ in 0..30 {
+        frame(&mut g, &[]);
+    }
+    // 23:59:58 on 22 November 2026 in Toronto
+    g.run_lua("require('lib.daily').fake_now = 1795409998", "clock")
+        .unwrap();
+    for _ in 0..3 {
+        tap(&mut g, "key:ArrowDown");
+    }
+    tap(&mut g, "key:Enter"); // DAILY RACE
+    assert_eq!(screen(&g), "daily");
+    let day = |g: &Game| lua_number(g, "require('lib.daily').number(nova.scene_now().daily_z)");
+    let cal = |g: &Game| -> String {
+        g.lua_text("require('lib.daily').key(nova.scene_now().cal_z)")
+            .unwrap()
+            .trim_matches('"')
+            .to_string()
+    };
+    assert_eq!(day(&g), 2.0);
+    // the calendar: right is tomorrow, locked; a month on with R; back with L, but not before the first race; the 21st opens
+    tap(&mut g, "key:ArrowDown");
+    tap(&mut g, "key:Enter");
+    assert_eq!(screen(&g), "calendar");
+    tap(&mut g, "key:ArrowRight");
+    tap(&mut g, "key:KeyZ"); // A
+    assert_eq!(screen(&g), "calendar", "a day to come does not open");
+    assert!(
+        g.lua_text("nova.scene_now().cal_note")
+            .unwrap()
+            .contains("opens at midnight")
+    );
+    tap(&mut g, "key:KeyE"); // R
+    assert_eq!(cal(&g), "2026-12-23");
+    tap(&mut g, "key:KeyQ"); // L
+    tap(&mut g, "key:KeyQ");
+    assert_eq!(cal(&g), "2026-11-21");
+    tap(&mut g, "key:KeyZ");
+    assert_eq!(screen(&g), "daily");
+    assert_eq!(day(&g), 1.0);
+    // back to today, and past midnight: the page shows the new day
+    g.run_lua(
+        "local sc = nova.scene_now(); sc.daily_z = require('lib.daily').day_at()",
+        "today",
+    )
+    .unwrap();
+    frame(&mut g, &[]);
+    g.take_log();
+    g.run_lua("require('lib.daily').fake_now = 1795410001", "midnight")
+        .unwrap();
+    for _ in 0..3 {
+        frame(&mut g, &[]);
+    }
+    assert_eq!(day(&g), 3.0, "the page rolled over");
+    assert!(
+        g.take_log()
+            .iter()
+            .any(|l| l == "daily: a new day, 2026-11-23")
+    );
+    // a day's runs: the best time is kept, and the best medal
+    g.run_lua(
+        "local d = require('lib.daily'); d.record(d.first_day(), 100.5, 2); d.record(d.first_day(), 104, 1)",
+        "record",
+    )
+    .unwrap();
+    assert_eq!(
+        g.lua_text("(function() local d = require('lib.daily'); local r = d.result(d.first_day()); return r.time .. ' ' .. r.medal .. ' ' .. r.runs end)()")
+            .unwrap()
+            .trim_matches('"'),
+        "100.5 2 2"
+    );
+}
+
+/// The data behind the target times (docs/target-times.md, lib/targets.lua): one of the game's own drivers drives 36 made-up courses
+/// alone (every length, bends, surface, hills and place; a road car and a 4x4; stages from a standstill, circuits for their laps), and
+/// its time is printed against the course's ideal time for the car. `driver` is "ideal" (the computer at its best: the autopilot) or a
+/// rival on Normal ("mika", "dax", "rosa": lib/race.lua's RIVALS scaled by state.rival_levels' Normal). One line per course:
+/// `TT code type bends length place loose_share class driver time ideal tight_bends_per_km off_road_%`.
+fn made_up_course_times(driver: &str) {
+    let skill = match driver {
+        "ideal" => "{ pace = 1, bravery = 1, consistency = 1 }",
+        "mika" => "{ pace = 1.0 * 0.97, bravery = 1.0 * 0.96, consistency = 0.97 }",
+        "dax" => "{ pace = 0.955 * 0.97, bravery = 0.95 * 0.96, consistency = 0.92 }",
+        _ => "{ pace = 0.905 * 0.97, bravery = 0.88 * 0.96, consistency = 0.88 }",
+    };
+    let lengths = [1, 2, 3, 1, 2, 4];
+    for i in 0..36usize {
+        let settings = format!(
+            "s.type = {}; s.complexity = {}; s.length = {}; s.location = {}; s.surface = {}; s.hills = {}; s.seed = {}",
+            i % 2 + 1,
+            (i / 2) % 3 + 1,
+            lengths[(i / 6) % 6],
+            i % 5 + 1,
+            (i / 5) % 3 + 1,
+            (i / 3) % 3 + 1,
+            500 + i * 37
+        );
+        let g0 = load();
+        let code = code_of(&g0, &settings);
+        let car = if (i / 4) % 2 == 0 { 1 } else { 2 };
+        let stage = i % 2 == 0;
+        let (mut g, _) = made_up_direct(&code, car, if stage { "rally" } else { "trial" });
+        g.run_lua(
+            &format!(
+                "local sc = nova.scene_now(); sc.player.autopilot = true; sc:setup_driver(sc.player, {skill})"
+            ),
+            "driver",
+        )
+        .unwrap();
+        let mut done = false;
+        for _ in 0..60 * 60 * 9 {
+            frame(&mut g, &[]);
+            g.take_log();
+            if g.lua_truth("nova.scene_now().player ~= nil and nova.scene_now().player.finish_time ~= nil")
+                .unwrap_or(true)
+            {
+                done = true;
+                break;
+            }
+        }
+        let line = g
+            .lua_text(&format!(
+                "(function() local st = require('lib.state'); local t = require('lib.targets'); local e = st.current_track(); local c = require('lib.generate').course(e.generated); local tight, loose = 0, 0; for _, w in ipairs(c.route.wps) do if math.abs(w.k) > 0.03 then tight = tight + 1 end; if (w.road or c.road) ~= 'road_asphalt' then loose = loose + 1 end end; local sc = nova.scene_now(); return string.format('TT %s %d %d %d %d %.2f %s {driver} %.2f %.2f %.2f %.1f', e.code, e.generated.type, e.generated.complexity, e.generated.length, e.generated.location, loose / #c.route.wps, st.current_car().class, {} or -1, t.ideal(e, st.current_car()).total, tight / 3 / (c.route.length / 1000), 100 * (sc.player.rough_time or 0) / math.max(1, sc.player.race_time or 1)) end)()",
+                if done { "sc.player.finish_time" } else { "nil" }
+            ))
+            .unwrap();
+        println!("{}", line.trim_matches('"'));
+    }
+}
+
+/// The four drivers of `made_up_course_times`, one test each so that they run side by side. Run on purpose (some minutes each):
+/// `cargo test --release -p nova-runtime --test rally generated_course_times -- --ignored --nocapture --test-threads 4`.
+#[test]
+#[ignore]
+fn generated_course_times_ideal() {
+    made_up_course_times("ideal");
+}
+#[test]
+#[ignore]
+fn generated_course_times_mika() {
+    made_up_course_times("mika");
+}
+#[test]
+#[ignore]
+fn generated_course_times_dax() {
+    made_up_course_times("dax");
+}
+#[test]
+#[ignore]
+fn generated_course_times_rosa() {
+    made_up_course_times("rosa");
+}
