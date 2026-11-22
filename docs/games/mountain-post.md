@@ -64,3 +64,83 @@ maps, saving.
 **"Right" means, on the Retroid:** the van is pleasant to drive for its own sake; the road and cabins look like a place you want
 to be in; you can find an address without help and it feels good to; the two residents are charming in the first exchange;
 it sounds cozy; it holds its frame rate. The owner judges each of these by playing. Until all are yes, only the slice is worked on.
+
+## Slice spec (agreed by the owner 2026-11-22: "Yes, build that slice")
+
+Everything below is the slice and nothing else. Names here are working names the owner may change.
+
+**Place.** The town is **Fernhollow**, in a larch and pine valley, late morning, clear. The slice's piece of it is roughly 500 m
+across, hilly, with a creek:
+- **Post Road**: the main road. The post office stands on it (a small timber building with a porch, a faded sign, a parking
+  spot where the van waits). It runs on to a barrier with a hand-painted **BRIDGE OUT** board where the old bridge to the lake
+  side is gone (the way to a later map: you can look across, not go).
+- **Fern Lane**: turns off Post Road uphill through ferns and mossy rocks to **No. 3**, Hazel's cabin and workshop, sawhorses
+  outside, a stack of planks.
+- **Kettle Creek Road**: turns off the other way, crosses the creek on a small wooden bridge, and ends at **No. 7**, Pip's cabin
+  with a tall home-made radio mast.
+- Wooden signposts with white lettering at each junction, a numbered mailbox at each gate, chimney smoke, birds, blue mountains
+  far off. There is enough beside the roads (a picnic spot, an overlook, an old stone wall) that driving past a turn is pleasant.
+
+**You.** The postmaster: a fox in a blue postal jacket and cap (looks are customised later, not in the slice).
+
+**The van.** A small high-roofed delivery van, cream with a red stripe, round headlights, a roof rack, slightly toy-like
+proportions, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
+
+**The residents.**
+- **Hazel Brock**, a badger, retired carpenter, 3 Fern Lane. Gruff, dry, kind underneath. Her parcel: a set of chisels she
+  ordered two winters ago.
+- **Pip Tansy**, a young rabbit who runs a one-rabbit radio station from his cabin, 7 Kettle Creek Road. Talks fast, hopeful,
+  easily delighted. His parcel: a valve for his transmitter.
+
+**What happens.**
+1. You start inside the post office: dusty, half the shelves empty, one shelf with **three items**: a letter addressed to "The
+   Postmaster, Post Road", a parcel for "Hazel Brock, 3 Fern Lane", a parcel for "Pip Tansy, 7 Kettle Creek Road".
+2. The letter is for you: read it at the counter. It is from the Mayor (a heron, Odette Marsh, unseen in the slice):
+   "Welcome to Fernhollow. The post office is yours, such as it is. Mr. Pemberton left two winters ago and nobody has had a
+   letter since. Take your time. We have waited this long. P.S. The van pulls a little to the left. So did Mr. Pemberton."
+3. Take a parcel (one at a time), read its label, walk out, get in the van, find the address by the signs and the paper map,
+   get out, hand it over at the door, talk. Come back for the other. The order is the player's.
+4. When both are delivered and you are back at the post office, the slice ends quietly on a card: "Two delivered. A few hundred
+   to go."
+
+**The conversations** (text boxes, a babble voice per character; the player's lines are not shown; keep these words unless the
+owner changes them).
+
+Hazel, when handed her parcel:
+- "Hm. So there IS a postmaster."
+- "Chisels. I ordered these two winters back. Built a whole porch without them."
+- "Pemberton never lost a parcel in forty years, then one morning he just didn't open up. Same winter the lake bridge went."
+- "I'd have rebuilt that bridge myself, if the Mayor and I were speaking. We're not. Don't ask."
+- "...Thank you. Mind the left on Fern Lane. Everybody clips my wall."
+
+Hazel, after that (talk again): "Still here? The wall's fine. Mostly." / "If you see Pip, tell him his aerial hums through my
+teeth."
+
+Pip, when handed his parcel:
+- "IT CAME! It actually came! You're real!"
+- "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!"
+- "This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge."
+- "Hazel says my aerial hums. It does not hum. It SINGS."
+- "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander."
+
+Pip, after that: "Testing, testing. Can you hear that? No? Good, it's not plugged in yet." / "If Hazel asks, the aerial is
+staying."
+
+If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." Pip: "Is it here? Is it? ...Oh. Hello anyway!"
+
+**Finding your way.** Labels give name and street. The **paper map** (one button) is a hand-drawn sheet of the slice's roads with
+their names and the post office marked; no house numbers, no marker for you, no destination. The **minimap** is a small disc that
+shows the roads right around you and you; nothing else. Nothing in the world points the way except signposts and mailbox numbers.
+
+**Controls** (gamepad; letters as engraved on the Retroid: A south, B east, X west, Y north). Walking: left stick moves, right
+stick looks, **A** talks / takes / hands over / reads, **B** gets into the van when beside it, **Y** opens the paper map. Driving:
+R2 goes, L2 brakes then reverses, left stick steers, right stick looks, **B** gets out (when stopped), **X** sounds the horn,
+**Y** opens the paper map. Start pauses (resume, quit).
+
+**Sound.** The van's engine (soft, small, a little rattly), tyres on gravel and tarmac, the horn, doors; forest air, birds, the
+creek near the bridge, Pip's radio faintly near his cabin, sawing near Hazel's; footsteps; a babble voice for each of Hazel
+(low, slow), Pip (high, fast) and paper sounds for labels and the letter. One piece of music: slow, warm, acoustic-feeling (soft
+plucked lead, round bass, brushed drums), quiet enough to drive to, readable on small speakers.
+
+**Quality bar.** Final quality, not a prototype: the owner will judge the van's feel, the look of the place, finding an address
+unaided, the charm of the two exchanges, the sound, and the frame rate, on the Retroid (which gives games a 1280x720 screen).
