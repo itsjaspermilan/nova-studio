@@ -42,11 +42,15 @@ function Title:enter(screen)
   self.screen = screen
   -- (the menus remember their focus while the title scene is up, going between its screens; coming back from a race they start again
   -- on their first row)
-  for _, id in ipairs({ "main", "options", "controls", "pick_track", "garage", "laps", "confirm" }) do nova.ui.forget(id) end
+  for _, id in ipairs({ "main", "options", "controls", "pick_track", "garage", "laps", "confirm", "custom", "code", "saved", "daily" }) do nova.ui.forget(id) end
   self.t = 0
   self.entered = 0
   audio.music("menu", { volume = 0.95, fade = 0.8 })
   state.apply_volumes()
+  -- (back from a made-up course's results: its own page again; otherwise no made-up course is chosen)
+  if screen == "custom" then self:open_custom()
+  elseif screen == "daily" then self:open_daily(state.custom and state.custom.day)
+  else state.custom = nil end
 end
 
 function Title:leave() menu_bg.leave(); backdrop.leave() end
@@ -64,6 +68,7 @@ end
 
 -- ---- the steps of getting a race ready ------------------------------------------------------------------------------------------
 function Title:open_track()
+  state.custom = nil
   self.old_course = course_index()
   nova.ui.forget("pick_track")
   nova.ui.focus("pick_track", "card" .. course_index())
@@ -85,7 +90,7 @@ end
 
 -- after the car: the laps (a circuit race), or straight to the page with everything on it
 function Title:after_car()
-  if state.mode == "race" then
+  if state.mode == "race" and not state.custom then -- (a made-up circuit's laps come with its length)
     nova.ui.forget("laps")
     self:go("laps")
   else
@@ -102,7 +107,7 @@ function Title:start_race()
   state.save_options()
   audio.stop_music(0.6)
   nova.log(string.format("menu: start %s on %s in %s", state.mode, state.current_track().id, state.current_car().id))
-  transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+  transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().scene or state.current_track().id) end)
   self.screen = "starting"
 end
 
@@ -170,8 +175,15 @@ local function logo_tree(size)
 end
 
 -- a course's route drawn into a rectangle: a dark band, the road in white, the start (S, orange) and, on a stage, the finish (F)
+-- (`id` is a course id, a made-up course's entry, or a route preview itself: lib/generate.lua's `preview`)
 local function route(id, r, pad)
-  local c = previews[id]
+  local c = id
+  if type(id) == "table" and id.generated then
+    local generate = require("lib.generate")
+    c = generate.preview(generate.route(id.generated))
+  elseif type(id) ~= "table" then
+    c = previews[id]
+  end
   if not c then return end
   pad = pad or 24
   local k = math.min((r.w - 2 * pad) / c.w, (r.h - 2 * pad) / c.h)
@@ -206,7 +218,7 @@ end
 
 -- the course's facts, as the game knows them
 local function facts(item)
-  local look = require("lib.course").of(item.id)
+  local look = item.generated and require("lib.generate").course(item.generated).props or require("lib.course").of(item.id)
   local surface = (look.surface == "dirt") and (look.weather and look.weather.kind == "snow" and "Snow" or "Gravel") or "Asphalt"
   local weather = (look.weather and look.weather.kind == "snow") and "Snow" or "Clear"
   return {
@@ -290,14 +302,16 @@ function Title:main_menu()
   local u = rects.career
   nova.ui.rect(u.x, u.y, 6, u.h, C.orange)
   local r = nova.ui.menu {
-    id = "main", anchor = "topleft", margin = 0, x = 48, y = 172, w = 352, enter = self.entered,
-    { "button", "RALLY", id = "rally", h = 40 },
-    { "button", "CIRCUIT", id = "race", h = 40 },
-    { "button", "TIME TRIAL", id = "trial", h = 40 },
-    { "button", "GARAGE", id = "garage", h = 40 },
-    { "button", "HOW TO PLAY", id = "howto", h = 40 },
-    { "button", "OPTIONS", id = "options", h = 40 },
-    { "button", "QUIT", id = "quit", h = 40 },
+    id = "main", anchor = "topleft", margin = 0, x = 48, y = 150, w = 352, gap = 0, enter = self.entered,
+    { "button", "RALLY", id = "rally", h = 34 },
+    { "button", "CIRCUIT", id = "race", h = 34 },
+    { "button", "TIME TRIAL", id = "trial", h = 34 },
+    { "button", "DAILY RACE", id = "daily", h = 34, value = require("lib.daily").clock_text(require("lib.daily").until_next()) },
+    { "button", "CUSTOM STAGE", id = "custom", h = 34 },
+    { "button", "GARAGE", id = "garage", h = 34 },
+    { "button", "HOW TO PLAY", id = "howto", h = 34 },
+    { "button", "OPTIONS", id = "options", h = 34 },
+    { "button", "QUIT", id = "quit", h = 34 },
   }
   ui.hints({ { "pad_a", "Select" } })
   if r.pressed then
@@ -306,7 +320,12 @@ function Title:main_menu()
     if id == "race" or id == "trial" or id == "rally" then
       state.mode = id
       self:open_track()
+    elseif id == "daily" then
+      self:open_daily()
+    elseif id == "custom" then
+      self:open_custom()
     elseif id == "garage" then
+      state.custom = nil
       self:open_garage("menu")
     elseif id == "quit" then
       nova.quit() -- (saves and closes the game; on Android it does nothing: the system closes apps there)
@@ -596,7 +615,8 @@ function Title:garage_menu()
     if self.buying then self.buying = nil
     else
       state.car = self.chosen
-      if flow then self:go("track")
+      if flow and state.custom then self:go("custom")
+      elseif flow then self:go("track")
       else self:go("menu") end
     end
   end
@@ -609,7 +629,7 @@ function Title:course_panel(extra)
   local side = { "panel", anchor = "topright", margin = 36, w = 360, pad = { 18, 14 }, gap = 3, y = -6, id = "side",
     { "text", string.upper(level_name(item.level)) .. "  ·  " .. string.upper(f[2][2]), style = "kicker" },
     { "text", string.upper(item.name), font = F.heavy, size = 30 },
-    { "box", h = 150, draw = function(r) route(item.id, r, 16) end } }
+    { "box", h = 150, draw = function(r) route(item.generated and item or item.id, r, 16) end } }
   add(side, extra or {})
   local sr = nova.ui.layout(side).side
   nova.ui.rect(sr.x, sr.y, 6, sr.h, C.orange)
@@ -645,14 +665,26 @@ function Title:confirm_menu()
   local info = state.current_track()
   nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 30, ui.header(MODE_NAMES[state.mode], "Ready to race", 48) }
   local rows = { "column", gap = 0, w = 384,
-    line("Mode", MODE_NAMES[state.mode]),
+    line("Mode", info.daily and "Daily Race" or info.generated and ("Custom " .. string.lower(MODE_NAMES[state.mode])) or MODE_NAMES[state.mode]),
     line(state.mode == "rally" and "Stage" or "Circuit", info.name),
     line("Car", state.current_car().name) }
   if state.mode == "race" then rows[#rows + 1] = line("Laps", tostring(state.laps)) end
-  if state.mode ~= "trial" then rows[#rows + 1] = line("Difficulty", level_name(info.level), LEVEL_COLOR[info.level or 1]) end
-  rows[#rows + 1] = line("Prize", prize_text(info), C.gold)
+  if info.generated then
+    -- a made-up course: its code, and the three times to beat in this car (lib/targets.lua)
+    rows[#rows + 1] = line("Code", info.code, C.gold)
+    local t = require("lib.targets").of(info, state.current_car())
+    local cells = { "row", gap = 6 }
+    for i, medal in ipairs({ "gold", "silver", "bronze" }) do
+      cells[#cells + 1] = cell(require("lib.targets").NAMES[4 - i], ui.time(t[medal]):gsub("%.(%d)%d$", ".%1"), 124)
+    end
+    rows[#rows + 1] = { "space", h = 6 }
+    rows[#rows + 1] = cells
+  else
+    if state.mode ~= "trial" then rows[#rows + 1] = line("Difficulty", level_name(info.level), LEVEL_COLOR[info.level or 1]) end
+    rows[#rows + 1] = line("Prize", prize_text(info), C.gold)
+  end
   nova.ui.layout { anchor = "topleft", margin = 0, x = 48, y = 142, rows }
-  self:course_panel({ { "text", MODE_BLURBS[state.mode], style = "muted", wrap = true } })
+  self:course_panel({ { "text", info.generated and info.blurb or MODE_BLURBS[state.mode], style = "muted", wrap = true } })
   local r = nova.ui.menu {
     id = "confirm", anchor = "topleft", margin = 0, x = 48, y = 348, w = 384, enter = self.entered,
     { "button", "RACE", id = "race", h = 78, size = 48 },
@@ -662,9 +694,14 @@ function Title:confirm_menu()
     audio.sfx("menu_accept")
     self:start_race()
   elseif r.back then
-    if state.mode == "race" then self:go("laps") else self:open_garage("flow") end
+    if info.daily then self:go("daily")
+    elseif state.mode == "race" and not info.generated then self:go("laps")
+    else self:open_garage("flow") end
   end
 end
+
+-- the made-up courses' pages: CUSTOM STAGE (and its code entry and saved codes), DAILY RACE and its calendar
+require("lib.custom_menus")(Title, { route = route, line = line, cell = cell })
 
 function Title:draw_ui()
   if not transition.busy() then self:draw_screens() end
@@ -700,6 +737,11 @@ function Title:draw_screens()
   elseif screen == "garage" then self:garage_menu()
   elseif screen == "laps" then self:laps_menu()
   elseif screen == "confirm" then self:confirm_menu()
+  elseif screen == "custom" then self:custom_menu()
+  elseif screen == "code" then self:code_menu()
+  elseif screen == "saved" then self:saved_menu()
+  elseif screen == "daily" then self:daily_menu()
+  elseif screen == "calendar" then self:calendar_menu()
   end
   -- every screen fades up when it opens
   local fade = 1 - math.min(1, (self.entered or 1) / 0.22)

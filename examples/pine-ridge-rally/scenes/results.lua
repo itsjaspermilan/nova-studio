@@ -124,6 +124,18 @@ function Results:content()
               card("Laps", tostring(r.laps), C.orange) }
     if r.record_time then cards[2][#cards[2]].text = "New!" end
   end
+  local g = r.generated
+  if g then
+    -- a made-up course: the medal won, and the three times it was against (lib/targets.lua)
+    local targets = require("lib.targets")
+    left.badge = string.upper(targets.NAMES[g.medal]) .. ((g.medal > 0) and " MEDAL" or "")
+    if g.daily and g.best then left.badge = left.badge .. "  ·  BEST TODAY" end
+    cards = {}
+    for i, medal in ipairs({ "gold", "silver", "bronze" }) do
+      local won = g.medal == 4 - i
+      cards[i] = card((won and "Won: " or "") .. targets.NAMES[4 - i], ui.time(g.targets[medal]), targets.COLORS[4 - i])
+    end
+  end
   return left, rows, cards, label
 end
 
@@ -177,7 +189,9 @@ function Results:choose(m)
   audio.sfx("menu_accept")
   audio.stop_music(0.4)
   local choice = tonumber(m.pressed)
-  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+  local info = state.current_track()
+  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(info.scene or info.id) end)
+  elseif info.generated then nova.goto_scene("title", info.daily and "daily" or "custom") -- (back to the made-up course's own page)
   else nova.goto_scene("title", "menu") end
 end
 
