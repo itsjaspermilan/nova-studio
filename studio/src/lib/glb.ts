@@ -189,6 +189,8 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
     if (part.constraints?.length) {
       node.extras = { nova: { constraints: part.constraints.map((c) => (c.type === "reach" ? { ...c, target: c.target.map((v) => v * scale) } : c)) } };
     }
+    // (a part hidden at rest: the game draws it only when a script shows it)
+    if (part.hidden) node.extras = { nova: { ...((node.extras as { nova?: object } | undefined)?.nova ?? {}), hidden: true } };
     // Shapes that glow get a material of their own (one per strength), so a part may have several primitives.
     const groups = new Map<number, Cube[]>();
     // (a shape whose Cut-out modifier gave some faces their own surface is written as one shape for each surface)

@@ -7,6 +7,7 @@ import { releaseBinary } from "./binaries";
 import { PRESETS } from "../src/lib/sfx";
 import { encodeWav } from "../src/lib/wav";
 import { decodePng } from "./draw";
+import { encodePng } from "../src/lib/png-encode";
 import { call, EXAMPLES, tools } from "./server";
 
 let dir = "";
@@ -81,6 +82,29 @@ describe("the Nova MCP server", () => {
     expect(() => use("model_write", { name: "bad2", model: { version: 1, parts: "nope" } })).toThrow(/not valid/);
     expect(existsSync(join(dir, "models/bad.model.json"))).toBe(false);
     expect(existsSync(join(dir, "models/bad.glb"))).toBe(false);
+  });
+
+  it("takes a painted picture for a model's texture, and keeps a part hidden at rest", () => {
+    const painted = {
+      version: 1, scale: 0.0625, texture: { size: [16, 16] },
+      parts: [{ name: "body", origin: [0, 0, 0], rotation: [0, 0, 0], cubes: [{ shape: "box", from: [0, 0, 0], size: [4, 4, 4], color: "#ffffff", texture: { at: [0, 0] } }], children: [
+        { name: "hat", origin: [0, 4, 0], rotation: [0, 0, 0], hidden: true, cubes: [{ shape: "box", from: [0, 0, 0], size: [2, 2, 2], color: "#aa3333" }], children: [] },
+      ] }],
+    };
+    const red = { w: 16, h: 16, data: new Uint8ClampedArray(16 * 16 * 4).map((_, i) => (i % 4 === 0 || i % 4 === 3 ? 255 : 0)) };
+    mkdirSync(join(dir, "models"), { recursive: true });
+    writeFileSync(join(dir, "models/painted.texture.png"), encodePng(red));
+    use("model_write", { name: "painted", model: painted, picture: "models/painted.texture.png" });
+    const kept = decodePng(new Uint8Array(readFileSync(join(dir, "models/painted.texture.png"))));
+    expect([kept.data[0], kept.data[1], kept.data[3]]).toEqual([255, 0, 255]);
+    const glb = readFileSync(join(dir, "models/painted.glb"));
+    const json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString());
+    expect(json.nodes.find((n: { name: string }) => n.name === "hat").extras.nova.hidden).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir, "models/painted.model.json"), "utf8")).parts[0].children[0].hidden).toBe(true);
+    // a picture of the wrong size, or for a model with no texture, is refused
+    writeFileSync(join(dir, "models/small.png"), encodePng({ w: 8, h: 8, data: new Uint8ClampedArray(8 * 8 * 4) }));
+    expect(() => use("model_write", { name: "painted", model: painted, picture: "models/small.png" })).toThrow(/is 8x8; the model's texture is 16x16/);
+    expect(() => use("model_write", { name: "crate", model: crate, picture: "models/small.png" })).toThrow(/has no texture/);
   });
 
   it("gives a free-mesh limb automatic weights with bend, so it bends with its parts", () => {

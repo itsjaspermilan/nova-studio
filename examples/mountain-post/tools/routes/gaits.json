@@ -1,0 +1,57 @@
+{
+ "size": "1280x720",
+ "start_scene": "valley",
+ "view": {
+  "follow": "postmaster",
+  "from": "front",
+  "yaw": 35,
+  "distance": 2.2,
+  "height": 0.1
+ },
+ "capture_at": [
+  46,
+  52,
+  58,
+  116,
+  120,
+  124,
+  202,
+  206,
+  210
+ ],
+ "route": [
+  {
+   "wait": 10,
+   "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -140, 0; require('lib.camera').reset(0)"
+  },
+  {
+   "hold": [
+    "move_y=-0.5"
+   ],
+   "frames": 60,
+   "capture": "walk"
+  },
+  {
+   "wait": 25
+  },
+  {
+   "hold": [
+    "move_y=-1"
+   ],
+   "frames": 60,
+   "capture": "run"
+  },
+  {
+   "wait": 25,
+   "lua": "require('lib.state').carrying = 'hazel'"
+  },
+  {
+   "hold": [
+    "move_y=-1"
+   ],
+   "frames": 60,
+   "capture": "trot with a parcel"
+  }
+ ],
+ "out": "build/gaits_run"
+}

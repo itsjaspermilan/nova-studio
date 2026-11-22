@@ -7,7 +7,9 @@ import { releaseBinary } from "../binaries";
 import { parseModel } from "../../src/lib/model-doc";
 import { expandModel } from "../modelkit";
 import { call } from "../server";
-import { CHARACTER3D, EXPRESSIONS, FACE_SETS, makeCharacter3d } from "./character3d";
+import { CHARACTER3D, EXPRESSIONS, FACE_SETS, makeCharacter3d, TALK } from "./character3d";
+import { unwrap } from "../../src/lib/model-uv";
+import type { Cube } from "../../src/lib/model-doc";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
@@ -29,6 +31,13 @@ function parsed(model: unknown) {
   if (!p.ok) throw new Error(p.error);
   return p.doc;
 }
+/// Every shape of a model document.
+const walkCubes = (doc: { parts: { cubes: Cube[]; children: any[] }[] }): Cube[] => {
+  const out: Cube[] = [];
+  const visit = (ps: { cubes: Cube[]; children: any[] }[]) => ps.forEach((q) => { out.push(...q.cubes); visit(q.children ?? []); });
+  visit(doc.parts);
+  return out;
+};
 const points = (model: any): number[][] => {
   const out: number[][] = [];
   const visit = (parts: any[], at: number[]) => {
@@ -134,6 +143,7 @@ describe("character3d_make", () => {
       }
     }
     // (every choice but the one of each part that the base has already)
+    // (the apron is a chibi's, painted on its clothes: on this figure it changes nothing)
     expect(seen.size).toBe(1 + 5 + 5 + 4 + 6 + 3 + 5 + 5 + 4);
     expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet, peaked/);
     expect(() => makeCharacter3d({ species: "dragon" })).toThrow(/species is one of human, fox, badger, rabbit, bear, cat/);
@@ -193,6 +203,62 @@ describe("character3d_make", () => {
     expect(clip("run").events!.map((e) => e.name)).toEqual(["step", "step"]);
     // a human has no face parts to swap
     expect(makeCharacter3d({}).faces).toBeUndefined();
+  });
+
+  it("paints a chibi's face on a squashed round head: every drawing a decal part, all but the first of each set hidden at rest, one texture", () => {
+    for (const species of ["fox", "bear", "rabbit"]) {
+      const made = makeCharacter3d({ species, build: "chibi", head_scale: 1.75, accessory: species === "bear" ? "apron" : "none", emblem: species === "fox" ? "envelope" : "none" });
+      const doc = parsed(made.model);
+      // the head: wider than tall, smooth (many faces, smooth shading)
+      const head = doc.parts[0]!.children.find((p) => p.name === "spine")!.children.find((p) => p.name === "head")!;
+      const shell = head.cubes[0]!;
+      expect(made.head!.width / made.head!.height, species).toBeGreaterThan(1.25);
+      expect(made.head!.height / made.capsule.height, species).toBeGreaterThan(0.38);
+      expect(shell.polys!.length, species).toBeGreaterThan(800);
+      expect(shell.polys!.filter((q) => q.smooth).length / shell.polys!.length, species).toBeGreaterThan(0.95);
+      // each drawing is a part of the head with one textured shape; the first of each set shows, the rest are hidden
+      const parts = new Map(head.children.map((p) => [p.name, p]));
+      for (const [set, names] of Object.entries(FACE_SETS)) {
+        names.forEach((n, i) => {
+          const p = parts.get(n);
+          expect(p, `${species} ${set} ${n}`).toBeDefined();
+          expect(!!p!.hidden, `${species} ${n} hidden`).toBe(i > 0);
+          expect(p!.cubes.length).toBe(1);
+          expect(p!.cubes[0]!.texture, n).toBeDefined();
+        });
+      }
+      // the nose and patches are painted on the head itself; the picture is the model's texture, its see-through texels left undrawn
+      expect(head.cubes.some((c) => c.name === "face_paint" && c.texture)).toBe(true);
+      expect(made.picture).toBeDefined();
+      expect([made.picture!.w, made.picture!.h]).toEqual(doc.texture!.size);
+      let clear = 0, solid = 0;
+      for (let i = 3; i < made.picture!.data.length; i += 4) made.picture!.data[i] === 0 ? clear++ : solid++;
+      expect(clear).toBeGreaterThan(0);
+      expect(solid).toBeGreaterThan(0);
+      // no texture of one drawing runs into another's block
+      const blocks = walkCubes(doc).filter((c) => c.texture).map((c) => ({ at: c.texture!.at, size: unwrap(c).size }));
+      for (let a = 0; a < blocks.length; a++) for (let b = a + 1; b < blocks.length; b++) {
+        const A = blocks[a]!, B = blocks[b]!;
+        const apart = A.at[0] + A.size[0] <= B.at[0] || B.at[0] + B.size[0] <= A.at[0] || A.at[1] + A.size[1] <= B.at[1] || B.at[1] + B.size[1] <= A.at[1];
+        expect(apart, `${species} blocks ${a} and ${b}`).toBe(true);
+      }
+      expect(made.faces).toMatch(/visible = true/);
+    }
+    // the apron and the emblem are painted on the clothes
+    const bear = parsed(makeCharacter3d({ species: "bear", build: "chibi", accessory: "apron" }).model);
+    expect(walkCubes(bear).some((c) => c.name === "body_paint")).toBe(true);
+    expect(walkCubes(bear).some((c) => c.name === "hips_paint")).toBe(true);
+    expect(() => makeCharacter3d({ species: "fox", build: "chibi", emblem: "anchor" })).toThrow(/emblem is one of none, envelope, star, leaf, heart, bolt/);
+  });
+
+  it("swaps a face with expressions by name, and talks with each mouth's partner", () => {
+    for (const [name, [eyes, brows, mouth]] of Object.entries(EXPRESSIONS)) {
+      expect(FACE_SETS.eyes as readonly string[], name).toContain(eyes);
+      expect(FACE_SETS.brows as readonly string[], name).toContain(brows);
+      expect(FACE_SETS.mouth as readonly string[], name).toContain(mouth);
+    }
+    for (const m of FACE_SETS.mouth) expect(FACE_SETS.mouth as readonly string[]).toContain(TALK[m]);
+    expect(EXPRESSIONS.dry![0]).toBe("eye_half");
   });
 
   it.skipIf(!built)("stands on the ground in every clip, bends only its limbs, and writes a walker that walks", () => {

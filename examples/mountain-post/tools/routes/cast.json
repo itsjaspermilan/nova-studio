@@ -1,0 +1,274 @@
+{
+ "size": "1280x720",
+ "start_scene": "valley",
+ "lua": "T = require('lib.testkit'); S = require('lib.state'); CAM = require('lib.camera'); VIEW = function(who, yaw, d, h) local c = nova.named(who); local a = c.face + math.rad(yaw); local g = nova.terrain_height(c.x, c.z) + (c.y or 0); CAM.pinned = { c.x + math.sin(a) * d, g + h + 0.15, c.z + math.cos(a) * d, c.x, g + h, c.z, 34 } end; MEET = function(who, d) local r = nova.named(who); local p = nova.named('postmaster'); S.carrying = who; p.x, p.z = r.x + math.sin(r.face) * d, r.z + math.cos(r.face) * d; p.face = r.face + math.pi; CAM.pinned = nil; CAM.reset(p.face) end; STILL = function(who) local c = nova.named(who); c.mood.wait, c.mood.blink = 99, 0 end",
+ "route": [
+  {
+   "wait": 10,
+   "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face, p.control = 4.5, -125, 0, false"
+  },
+  {
+   "lua": "STILL('postmaster'); local p = nova.named('postmaster'); if 'postmaster' ~= 'postmaster' then local c = nova.named('postmaster'); p.x, p.z = c.x - math.cos(c.face) * 3, c.z + math.sin(c.face) * 3 end; VIEW('postmaster', 0, 2.3, 0.55)"
+  },
+  {
+   "wait": 6,
+   "capture": "postmaster front"
+  },
+  {
+   "lua": "VIEW('postmaster', 40, 2.3, 0.55)"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster three-quarter"
+  },
+  {
+   "lua": "VIEW('postmaster', 90, 2.3, 0.55)"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster side"
+  },
+  {
+   "lua": "VIEW('postmaster', 180, 2.3, 0.55)"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster back"
+  },
+  {
+   "lua": "CAM.pinned = nil; local p = nova.named('postmaster'); p.control = true"
+  },
+  {
+   "lua": "MEET('hazel', 1.7)"
+  },
+  {
+   "wait": 90
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "hazel line 1"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "hazel line 2"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "hazel line 3"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "hazel line 4"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "hazel line 5"
+  },
+  {
+   "repeat": 12,
+   "until": "S.delivered.hazel",
+   "steps": [
+    {
+     "press": "act"
+    },
+    {
+     "wait": 20
+    }
+   ]
+  },
+  {
+   "wait": 30,
+   "capture": "after Hazel's"
+  },
+  {
+   "lua": "STILL('hazel'); local p = nova.named('postmaster'); if 'hazel' ~= 'postmaster' then local c = nova.named('hazel'); p.x, p.z = c.x - math.cos(c.face) * 3, c.z + math.sin(c.face) * 3 end; VIEW('hazel', 0, 2.3, 0.5)"
+  },
+  {
+   "wait": 6,
+   "capture": "hazel front"
+  },
+  {
+   "lua": "VIEW('hazel', 40, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel three-quarter"
+  },
+  {
+   "lua": "VIEW('hazel', 90, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel side"
+  },
+  {
+   "lua": "VIEW('hazel', 180, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel back"
+  },
+  {
+   "lua": "CAM.pinned = nil"
+  },
+  {
+   "lua": "MEET('pip', 1.7)"
+  },
+  {
+   "wait": 90
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "pip line 1"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "pip line 2"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "pip line 3"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "pip line 4"
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 12
+  },
+  {
+   "press": "act"
+  },
+  {
+   "wait": 50,
+   "capture": "pip line 5"
+  },
+  {
+   "repeat": 12,
+   "until": "S.delivered.pip",
+   "steps": [
+    {
+     "press": "act"
+    },
+    {
+     "wait": 20
+    }
+   ]
+  },
+  {
+   "lua": "STILL('pip'); local p = nova.named('postmaster'); if 'pip' ~= 'postmaster' then local c = nova.named('pip'); p.x, p.z = c.x - math.cos(c.face) * 3, c.z + math.sin(c.face) * 3 end; VIEW('pip', 0, 2.3, 0.5)"
+  },
+  {
+   "wait": 6,
+   "capture": "pip front"
+  },
+  {
+   "lua": "VIEW('pip', 40, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "pip three-quarter"
+  },
+  {
+   "lua": "VIEW('pip', 90, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "pip side"
+  },
+  {
+   "lua": "VIEW('pip', 180, 2.3, 0.5)"
+  },
+  {
+   "wait": 4,
+   "capture": "pip back"
+  },
+  {
+   "lua": "CAM.pinned = nil; local h = nova.named('hazel'); h.mode = 'work'; local v = nova.named('van'); local a = math.atan(h.x - 150, h.z - 44); v:teleport(h.x - math.sin(a) * 12, h.z - math.cos(a) * 12, a + 0.4); a = a + 0.4; local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; CAM.reset(a)"
+  },
+  {
+   "wait": 60,
+   "capture": "Hazel from the van, 12 m"
+  },
+  {
+   "lua": "local h = nova.named('hazel'); local v = nova.named('van'); local a = math.atan(h.x - 150, h.z - 44); v:teleport(h.x - math.sin(a) * 6.5, h.z - math.cos(a) * 6.5, a + 0.55); CAM.reset(a + 0.55)"
+  },
+  {
+   "wait": 60,
+   "capture": "Hazel from the van, 6.5 m"
+  }
+ ],
+ "out": "build/cast_run"
+}

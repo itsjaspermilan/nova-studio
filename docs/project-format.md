@@ -497,6 +497,12 @@ nova.model("car", x, y, z, { ry = heading, parts = {
 -- entities do the same with a field:  self.parts = { wheel_fl = { rx = self.spin } }
 ```
 
+`visible = false` leaves a part, and every part under it, out of the draw (`parts = { hat = { visible = false } }`). A part
+the model file marks `"hidden": true` (the model editor's "Hidden in the game until a script shows it"; the `.glb` node's
+`extras.nova.hidden`) is not drawn, in the whole model or in pieces, until `visible = true` shows it. A face painted in several
+expressions is drawn this way: each drawing is a part of the head, all but one of each set hidden at rest, and the game shows
+one of each set (`character3d_make`'s animal people, `examples/mountain-post/lib/face.lua`).
+
 Without `parts` a model is one instanced draw; with it each piece is drawn separately (more draw calls,
 so use it for the few things that move). A mesh with a skin bends with the parts it is weighted to: the GPU bends it from the matrices of its joints
 (one mesh, instanced like any other, so hundreds of animated characters are a few draw calls; at most 16,384 joint matrices a frame, about 680 characters of 24 joints, and a draw past that is skipped with a log line). Without `parts` or a `clip` it shows at rest.

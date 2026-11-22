@@ -714,3 +714,175 @@ fn the_pause_menu_has_resume_and_quit() {
 
 #[allow(dead_code)]
 fn unused(_: Value) {}
+
+/// The cast's faces are painted on their heads (character3d_make's chibi build): each model carries every drawing of the eyes,
+/// brows and mouth as a part of its head, all but the first of each set hidden at rest, and lib/face.lua shows exactly one of
+/// each set: the expression's, a blink, and while a line is said the mouth's open partner. Hazel's face at rest is the
+/// half-lidded "dry" one; the postmaster's and Pip's the plain one.
+#[test]
+fn each_face_shows_one_drawing_of_each_set_and_blinks_and_talks_with_painted_parts() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    let sets = [
+        "eye_open eye_happy eye_wide eye_half eye_shut",
+        "brow_flat brow_frown brow_up brow_sad",
+        "mouth_closed mouth_smile mouth_open mouth_grin mouth_frown mouth_o",
+    ];
+    for who in ["postmaster", "hazel", "pip"] {
+        let parts = lua(&g, &format!("table.concat(nova.model_parts('{who}'), ' ')"));
+        for set in sets {
+            for name in set.split(' ') {
+                assert!(
+                    parts.split(' ').any(|p| p == name),
+                    "{who} has no part {name}: {parts}"
+                );
+            }
+        }
+        // the model file hides all but the first of each set
+        let file =
+            std::fs::read_to_string(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+                format!("../../examples/mountain-post/models/{who}.model.json"),
+            ))
+            .expect("the model file");
+        assert_eq!(
+            file.matches("\"hidden\": true").count(),
+            4 + 3 + 5,
+            "{who}: hidden drawings"
+        );
+        assert!(
+            file.contains("\"name\": \"face_paint\""),
+            "{who}: the nose and patches are painted"
+        );
+        // the parts table shows exactly one of each set, for every expression, blinking or not, talking or not
+        let shown = |expr: &str, blink: bool, open: bool| -> Vec<String> {
+            let shown = lua(
+                &g,
+                &format!(
+                    "(function() local F = require('lib.face'); local f = F.new(1, nova.named('{who}').mood.rest); F.set(f, '{expr}'); \
+                     f.blink = {}; f.open = {open}; local t = F.parts(f); local out = {{}}; \
+                     for k, v in pairs(t) do if v.visible then out[#out + 1] = k end end; table.sort(out); return table.concat(out, ' ') end)()",
+                    if blink { 0.1 } else { 0.0 }
+                ),
+            );
+            shown.split(' ').map(str::to_string).collect()
+        };
+        for expr in [
+            "neutral",
+            "smile",
+            "happy",
+            "delighted",
+            "gruff",
+            "dry",
+            "sad",
+            "surprised",
+            "indignant",
+        ] {
+            for (blink, open) in [(false, false), (true, false), (false, true)] {
+                let on = shown(expr, blink, open);
+                assert_eq!(on.len(), 3, "{who} {expr}: {on:?}");
+                for set in sets {
+                    assert_eq!(
+                        on.iter()
+                            .filter(|p| set.split(' ').any(|n| n == p.as_str()))
+                            .count(),
+                        1,
+                        "{who} {expr}: {on:?}"
+                    );
+                }
+                assert_eq!(
+                    on.iter().any(|p| p == "eye_shut"),
+                    blink,
+                    "{who} {expr} blink {blink}: {on:?}"
+                );
+            }
+            // talking swaps the mouth for its partner, and only the mouth
+            let still = shown(expr, false, false);
+            let open = shown(expr, false, true);
+            assert_ne!(still, open, "{who} {expr}: the mouth moves");
+            assert_eq!(
+                still
+                    .iter()
+                    .filter(|p| !p.starts_with("mouth_"))
+                    .collect::<Vec<_>>(),
+                open.iter()
+                    .filter(|p| !p.starts_with("mouth_"))
+                    .collect::<Vec<_>>()
+            );
+        }
+        let rest = shown("neutral", false, false);
+        let eyes = if who == "hazel" {
+            "eye_half"
+        } else {
+            "eye_open"
+        };
+        assert!(rest.iter().any(|p| p == eyes), "{who} at rest: {rest:?}");
+    }
+}
+
+/// Hazel is a bear now (the owner's first play: "a badger is tough"), in a carpenter's apron; the postmaster a fox in a cap
+/// with an envelope on the chest, Pip a rabbit with headphones. Nothing in the game calls anyone a badger any more.
+#[test]
+fn hazel_is_a_bear_and_nothing_says_badger() {
+    let root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post");
+    let cast = std::fs::read_to_string(root.join("tools/cast.mjs")).expect("the cast's recipe");
+    let line = |name: &str| {
+        cast.lines()
+            .find(|l| l.contains(&format!("name: \"{name}\"")))
+            .unwrap_or_default()
+            .to_string()
+    };
+    assert!(
+        line("hazel").contains("species: \"bear\"")
+            && line("hazel").contains("accessory: \"apron\""),
+        "{}",
+        line("hazel")
+    );
+    assert!(
+        line("postmaster").contains("species: \"fox\"")
+            && line("postmaster").contains("hat: \"peaked\"")
+    );
+    assert!(
+        line("pip").contains("species: \"rabbit\"")
+            && line("pip").contains("accessory: \"headphones\"")
+    );
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("a folder") {
+            let path = entry.expect("an entry").path();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if path.is_dir() {
+                if name != "build" {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if !(name.ends_with(".lua")
+                || name.ends_with(".mjs")
+                || name.ends_with(".scene.json")
+                || name == "nova.json")
+            {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("a text file");
+            assert!(
+                !text.to_lowercase().contains("badger"),
+                "{} still says badger",
+                path.display()
+            );
+        }
+    }
+    // the dialogue itself is unchanged: Hazel is still gruff and dry
+    let g = game();
+    assert_eq!(
+        lua(&g, "require('lib.words').people.hazel.faces.given[1]"),
+        "gruff"
+    );
+}

@@ -123,6 +123,9 @@ export interface Part {
   constraints?: Constraint[];
   /// A high-poly source for baking: the part and everything in it is used only to bake normals (and is left out of what is exported and of the other bakes).
   bakeSource?: boolean;
+  /// Hidden at rest: the game does not draw it (nor what hangs under it) until a script shows it, `parts = { name = { visible = true } }`.
+  /// One of several painted expressions of a face, a hat kept for later. Written as the node's `extras.nova.hidden`.
+  hidden?: boolean;
 }
 
 /// A rule on a part. "limit" keeps its turn (degrees, X then Y then Z) between `min` and `max`; "copy" takes the turn of another part (a path of names joined by "/") on the axes
@@ -382,6 +385,7 @@ export function parseModel(text: string): Parsed {
     if (!isVec3(part.rotation)) return `${at}.rotation must be three numbers`;
     if (!Array.isArray(part.cubes) || !Array.isArray(part.children)) return `${at} needs "cubes" and "children" lists`;
     if (part.bakeSource !== undefined && typeof part.bakeSource !== "boolean") return `${at}.bakeSource must be true or false`;
+    if (part.hidden !== undefined && typeof part.hidden !== "boolean") return `${at}.hidden must be true or false`;
     if (part.constraints !== undefined) {
       const bad = checkConstraints(part.constraints, at);
       if (bad) return bad;
@@ -600,6 +604,7 @@ export function serializeModel(source: ModelDoc): string {
     lines.push(p.cubes.length ? `${i2}"cubes": [\n${p.cubes.map((c) => `${i2}  ${cube(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"cubes": []`);
     if (p.constraints?.length) lines.push(`${i2}"constraints": ${JSON.stringify(p.constraints)}`);
     if (p.bakeSource) lines.push(`${i2}"bakeSource": true`);
+    if (p.hidden) lines.push(`${i2}"hidden": true`);
     lines.push(p.children.length ? `${i2}"children": [\n${p.children.map((c) => `${i2}  ${part(c, `${i2}  `)}`).join(",\n")}\n${i2}]` : `${i2}"children": []`);
     return `{\n${lines.join(",\n")}\n${indent}}`;
   };
@@ -824,9 +829,13 @@ function dropBones(doc: ModelDoc, gone: string[]) {
   }
 }
 
-export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation" | "bakeSource">>): ModelDoc {
+export function updatePart(doc: ModelDoc, parts: number[], change: Partial<Pick<Part, "name" | "origin" | "rotation" | "bakeSource" | "hidden">>): ModelDoc {
   const before = namesOf(doc, parts);
   const out = edit(doc, parts, (p) => {
+    if (change.hidden !== undefined) {
+      if (change.hidden) p.hidden = true;
+      else delete p.hidden;
+    }
     if (change.bakeSource !== undefined) {
       if (change.bakeSource) p.bakeSource = true;
       else delete p.bakeSource;

@@ -31,7 +31,7 @@ return function(who, spec)
     })
     self.carry_layer = { { clip = "carry", time = 0, weight = 1, mask = { "arm_l", "arm_r" } } }
     self.parcel_opts = { ry = 0 }
-    self.mood = face.new(who == "hazel" and 3 or 7)
+    self.mood = face.new(who == "hazel" and 3 or 7, spec.rest)
     self.draw_opts = { ry = 0, parts = nil }
     self.work_sound_t = 0
     -- (the parcel set down on the porch afterwards: beside the door)
