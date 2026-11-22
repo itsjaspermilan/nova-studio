@@ -176,20 +176,25 @@ local FLARE = 0.06       -- what entities/car.lua adds to `rev` with the throttl
 local HEAR = 90          -- metres at which a rival's engine has faded to nothing
 local RIVAL_VOLUME = 0.55
 
--- What the tyres roll on: the loop, how loud it is at speed (beside the engine), its pitch from a crawl to flat out, and how much
--- louder it gets when the car slides (loose ground sprays; tarmac squeals instead, with its own loop).
+-- What the tyres roll on. Each surface has: the rolling loop, how loud it is at speed (beside the engine), its pitch from a crawl to flat
+-- out, and what the loose ones add. Loose ground (gravel, dirt, snow, sand) has a sliding layer (the spray of a sideways slip: `spray` is
+-- its loudness, `spray_pitch` its pitch) and some have stones thrown against the underside (`stones`: how many a second at full speed;
+-- sparse, one-shots). Tarmac squeals when it slides instead, with its own loop. Every level here is smoothed over time (below), and a
+-- change of surface crossfades, so nothing is switched on or off in a step.
 local SURFACES = {
-  road = { sound = "tyre_road", gain = 0.55, lo = 0.7, hi = 1.35, slide = 0.15 },
-  gravel = { sound = "tyre_gravel", gain = 0.9, lo = 0.75, hi = 1.3, slide = 0.6 },
-  dirt = { sound = "tyre_dirt", gain = 0.8, lo = 0.75, hi = 1.3, slide = 0.5 },
-  snow = { sound = "tyre_snow", gain = 0.75, lo = 0.8, hi = 1.25, slide = 0.5 },
-  sand = { sound = "tyre_sand", gain = 0.75, lo = 0.8, hi = 1.25, slide = 0.6 },
-  rough = { sound = "tyre_rough", gain = 1.0, lo = 0.75, hi = 1.3, slide = 0.3 },
+  road = { sound = "tyre_road", gain = 0.55, lo = 0.7, hi = 1.35, slide = 0.15, stones = 0 },
+  gravel = { sound = "tyre_gravel", gain = 0.72, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.8, spray_pitch = 1.0, stones = 7 },
+  dirt = { sound = "tyre_dirt", gain = 0.67, lo = 0.8, hi = 1.2, slide = 0.25, spray = 0.7, spray_pitch = 0.8, stones = 3 },
+  snow = { sound = "tyre_snow", gain = 0.75, lo = 0.85, hi = 1.15, slide = 0.25, spray = 0.6, spray_pitch = 1.1, stones = 0 },
+  sand = { sound = "tyre_sand", gain = 0.75, lo = 0.85, hi = 1.15, slide = 0.25, spray = 0.6, spray_pitch = 0.9, stones = 0 },
+  rough = { sound = "tyre_rough", gain = 1.0, lo = 0.75, hi = 1.3, slide = 0.3, stones = 4 },
 }
+local SURFACE_FADE = { 5, 3 } -- how fast a surface comes in and goes out of the mix (1/s: a third of a second, a bit more)
 -- a stretch of road with a kind of its own (a waypoint's `road`; race.lua keeps the player's in car.road_kind)
 local ROAD_KINDS = { road_asphalt = "road", road_gravel = "gravel", road_dirt = "dirt", road_snow = "snow", road_sand = "sand" }
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
+local function approach(cur, target, dt, up, down) return cur + (target - cur) * math.min(1, dt * (target > cur and up or down)) end
 local function smoothstep(v, a, b) local t = clamp((v - a) / (b - a), 0, 1) return t * t * (3 - 2 * t) end
 
 -- What the course itself is made of, from its settings (the scene's race object): tarmac, snow, sand, gravel or packed dirt.
@@ -371,19 +376,50 @@ function Engine:update(dt, rev, load, rough, slip, car)
     if not self.course_kind then self.course_kind = course_kind() end
     kind = rough and "rough" or self.course_kind
   end
-  local s = SURFACES[kind]
   if self.surface ~= kind then
-    if self.loops.surface then nova.sound.stop(self.loops.surface, 0.3) end
-    self.loops.surface = nil
     -- (on and off the rough at speed: the wheels drop over the edge)
     if self.surface and (kind == "rough" or self.surface == "rough") and speed > 5 then audio.sfx("thump", { volume = clamp(speed / 30, 0.3, 1) }) end
     self.surface = kind
   end
-  local roll = clamp((speed - 0.5) / 40, 0, 1) ^ 0.8
-  set(loop(self, "surface", s.sound), m * s.gain * roll * (1 + s.slide * sliding), s.lo + (s.hi - s.lo) * clamp(speed / 45, 0, 1) + 0.12 * sliding)
+  -- Speed and slip as the tyres feel them: smoothed, so a jumpy value never reaches the sounds as a switch (the mixer itself only
+  -- glides over ten milliseconds). The rolling loops of every surface in the mix follow them; the old surface fades out as the new one fades in.
+  self.speed_s = approach(self.speed_s or speed, speed, dt, 8, 8)
+  self.slip_s = approach(self.slip_s or 0, sliding, dt, 8, 4)
+  local roll = clamp((self.speed_s - 0.5) / 40, 0, 1) ^ 0.8
+  local fast = clamp(self.speed_s / 45, 0, 1)
+  local slip_s = self.slip_s
+  local weights = self.weights
+  if not weights then weights = {} self.weights = weights end
+  for name, s in pairs(SURFACES) do
+    local w = approach(weights[name] or 0, name == kind and 1 or 0, dt, SURFACE_FADE[1], SURFACE_FADE[2])
+    weights[name] = w
+    local key = "surf_" .. name
+    if w > 0.004 then
+      local fade = math.sqrt(w) -- (equal power: the two never add up louder than one)
+      set(loop(self, key, s.sound), m * s.gain * roll * fade * (1 + s.slide * slip_s), s.lo + (s.hi - s.lo) * fast + 0.06 * slip_s)
+      if s.spray then
+        -- the sideways spray of loose ground, a layer of its own that comes in with the slip
+        local spray = clamp((slip_s - 0.15) / 0.6, 0, 1) ^ 0.8 * clamp(self.speed_s / 6, 0, 1)
+        local skey = "spray_" .. name
+        if spray > 0.004 or self.loops[skey] then set(loop(self, skey, "tyre_slide"), m * s.spray * spray * fade, s.spray_pitch * (0.9 + 0.2 * fast)) end
+      end
+      if s.stones > 0 and self.speed_s > 8 then
+        -- stones against the underside: sparse and random (a few a second at full speed, fewer slower)
+        local rate = s.stones * clamp((self.speed_s - 8) / 32, 0, 1) ^ 1.5 * w
+        if math.random() < rate * dt then
+          nova.sound.play("stone", { volume = m * (0.25 + 0.5 * math.random()) * clamp(self.speed_s / 40, 0.4, 1), vary = 0.08 })
+        end
+      end
+    elseif self.loops[key] then
+      nova.sound.stop(self.loops[key], 0.05)
+      self.loops[key] = nil
+      local skey = "spray_" .. name
+      if self.loops[skey] then nova.sound.stop(self.loops[skey], 0.05) self.loops[skey] = nil end
+    end
+  end
   -- tarmac squeals when the tyres slide, higher the more they slide
-  local squeal = kind == "road" and clamp((sliding - 0.3) / 0.6, 0, 1) * clamp(speed / 6, 0, 1) or 0
-  if squeal > 0 or self.loops.squeal then set(loop(self, "squeal", "tyre_squeal"), m * 0.9 * squeal ^ 0.8, 0.85 + 0.35 * sliding) end
+  local squeal = kind == "road" and clamp((slip_s - 0.3) / 0.6, 0, 1) * clamp(self.speed_s / 6, 0, 1) or 0
+  if squeal > 0.004 or self.loops.squeal then set(loop(self, "squeal", "tyre_squeal"), m * 0.9 * squeal ^ 0.8, 0.85 + 0.35 * slip_s) end
   -- the wind, with the square of the speed
   local air = clamp(speed / 50, 0, 1)
   set(loop(self, "wind", "wind_loop"), m * 0.55 * air * air, 0.75 + 0.5 * air)
@@ -455,7 +491,7 @@ local function stop_all(self, fade)
     nova.sound.stop(id, fade)
     self.loops[k] = nil
   end
-  self.surface = nil
+  self.surface, self.weights = nil, nil
 end
 
 -- Quiet until the next update (the game paused, or a rival too far away to hear): its loops stop and give their voices back.
