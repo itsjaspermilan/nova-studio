@@ -21,7 +21,7 @@ import { evaluate } from "../src/lib/modifiers";
 import { encodePng } from "../src/lib/png-encode";
 import { type Raster } from "../src/lib/pixels";
 import { searchApi } from "./api";
-import { pngOf } from "./draw";
+import { decodePng, pngOf } from "./draw";
 import { previewModel, previewModels } from "./models";
 import { expandModel, FEET_HELP, SHAPES_HELP } from "./modelkit";
 import { planScene } from "./plan3d";
@@ -245,6 +245,7 @@ tool(
   {
     name: { type: "string" },
     model: { type: ["object", "string"], description: "The model document (an object, or its JSON as text)." },
+    picture: { type: "string", description: "A PNG in the project (\"models/hero.texture.png\") to use as the model's texture instead of the one baked from the painted shapes' colours: a picture painted in the layout of their blocks (a face painted on a head, a pattern on a shirt). Needs the model's \"texture\": { \"size\" } to be its size; see-through texels (alpha under 0.3) are not drawn, so a shape painted with one is a decal." },
     bend: { type: "boolean", description: 'Give the limbs automatic weights, as the editor\'s "Bend with the parts around it" button does: every free mesh and tube that has no skin then bends with its part, the part above it and the parts below it when they are posed or animated (a sleeve at the elbow). Lathes are left rigid (a turned shape is a body: a torso, a head), and so is any shape that says "bend": false; a shape that says "bend": true bends whatever this is. The answer names the parts whose meshes bend. Make such limbs with several rings of points across the joint.' },
   },
   ["name", "model"],
@@ -285,7 +286,16 @@ tool(
       }
     }
     // make everything first, so a model that cannot be exported leaves nothing half written
-    const image = doc.texture ? fitPicture(doc, bakeAll(doc)) : undefined;
+    let image = doc.texture ? fitPicture(doc, bakeAll(doc)) : undefined;
+    if (a.picture !== undefined) {
+      if (!doc.texture) throw new Error('picture: the model has no texture; give it "texture": { "size": [w, h] } and "texture": { "at": [x, y] } on the shapes painted with it');
+      const file = inside(root, String(a.picture));
+      if (!existsSync(file)) throw new Error(`picture: there is no ${a.picture}`);
+      const given = decodePng(new Uint8Array(readFileSync(file)));
+      const [w, h] = doc.texture.size;
+      if (given.w !== w || given.h !== h) throw new Error(`picture: ${a.picture} is ${given.w}x${given.h}; the model's texture is ${w}x${h}`);
+      image = given;
+    }
     const glb = exportGlb(doc, image);
     if (image) put(root, `models/${name}.texture.png`, encodePng(image));
     put(root, `models/${name}.model.json`, serializeModel(doc));

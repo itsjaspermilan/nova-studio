@@ -1,7 +1,7 @@
 {
- "size": "480x480",
+ "size": "1280x720",
  "start_scene": "valley",
- "lua": "F = require('lib.face'); SHOW = function(who, e) local c = nova.named(who); F.set(c.mood, e); c.mood.wait, c.mood.blink = 99, 0; local g = nova.terrain_height(c.x, c.z) + (c.y or 0); local s, k = math.sin(c.face), math.cos(c.face); local top = ({ postmaster = 0.8, hazel = 0.7, pip = 0.68 })[who]; require('lib.camera').pinned = { c.x + s * 1.15, g + top, c.z + k * 1.15, c.x, g + top, c.z, 36 } end",
+ "lua": "F = require('lib.face'); SHOW = function(who, e) local c = nova.named(who); F.set(c.mood, e); c.mood.wait, c.mood.blink = 99, 0; local g = nova.terrain_height(c.x, c.z) + (c.y or 0); local s, k = math.sin(c.face), math.cos(c.face); local top = ({ postmaster = 0.72, hazel = 0.7, pip = 0.7 })[who]; require('lib.camera').pinned = { c.x + s * 1.15, g + top, c.z + k * 1.15, c.x, g + top, c.z, 36 } end",
  "route": [
   {
    "wait": 10,
@@ -13,6 +13,13 @@
   {
    "wait": 4,
    "capture": "postmaster neutral"
+  },
+  {
+   "lua": "SHOW('postmaster', 'dry')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster dry"
   },
   {
    "lua": "SHOW('postmaster', 'smile')"
@@ -71,6 +78,13 @@
    "capture": "hazel neutral"
   },
   {
+   "lua": "SHOW('hazel', 'dry')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel dry"
+  },
+  {
    "lua": "SHOW('hazel', 'smile')"
   },
   {
@@ -127,6 +141,13 @@
    "capture": "pip neutral"
   },
   {
+   "lua": "SHOW('pip', 'dry')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip dry"
+  },
+  {
    "lua": "SHOW('pip', 'smile')"
   },
   {
@@ -174,7 +195,21 @@
   {
    "wait": 4,
    "capture": "pip indignant"
+  },
+  {
+   "lua": "SHOW('pip', 'neutral'); local c = nova.named('pip'); c.mood.blink = 1"
+  },
+  {
+   "wait": 2,
+   "capture": "pip blink"
+  },
+  {
+   "lua": "SHOW('hazel', 'gruff'); local c = nova.named('hazel'); c.mood.open, c.mood.flap = true, 99; c.mood.talking = true; c.talking = true"
+  },
+  {
+   "wait": 1,
+   "capture": "hazel gruff, talking"
   }
  ],
- "out": "build/g_faces"
+ "out": "build/faces_run"
 }

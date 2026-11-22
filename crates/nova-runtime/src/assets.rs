@@ -18,6 +18,12 @@ pub const STORE_ART: [&str; 3] = ["icon.png", "boxart.png", "boxart-wide.png"];
 /// cannot draw them.
 pub const MODEL_PICTURES: &str = "textures/";
 
+/// The studio's paint of a model (`models/<name>.texture.png` and its layers, surface and normal pictures): the model's .glb carries
+/// what it needs in itself, so these are not sprites and stay out of the sprite atlas.
+pub fn is_model_paint(id: &str) -> bool {
+    id.starts_with("models/") && id.contains(".texture.") && id.ends_with(".png")
+}
+
 pub const MAX_ATLAS: u32 = 4096;
 const GUTTER: u32 = 1;
 
@@ -288,6 +294,14 @@ pub fn build_atlas_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_models_paint_is_not_a_sprite() {
+        assert!(is_model_paint("models/hazel.texture.png"));
+        assert!(is_model_paint("models/car.texture.layer1.png"));
+        assert!(!is_model_paint("sprites/hazel.texture.png"));
+        assert!(!is_model_paint("models/sign.png"));
+    }
 
     #[test]
     fn smooth_atlas_extrudes_edges_and_keeps_rects() {

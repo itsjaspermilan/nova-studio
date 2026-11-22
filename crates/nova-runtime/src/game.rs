@@ -331,6 +331,8 @@ struct PartRt {
     carrier: bool,
     /// The studio's rules for this part (limits, copies, reach), applied to every pose (`constraints = false` turns them off for a draw).
     constraints: Vec<crate::constraints::Constraint>,
+    /// Not drawn unless the script shows it (`parts = { name = { visible = true } }`): the model hides it at rest.
+    hidden: bool,
     /// A mesh that bends with other parts: drawn by the GPU from the joints' matrices.
     skinned: Option<Rc<SkinnedPart>>,
 }
@@ -580,6 +582,30 @@ fn part_worlds(
         world[i] = p.parent.map_or(local, |parent| world[parent] * local);
     }
     Ok((parts, world))
+}
+
+/// Which parts are left out of a draw: those the model hides at rest (`extras.nova.hidden`) unless `parts = { name = { visible =
+/// true } }` shows them, those `visible = false` hides, and everything under a hidden part (a face's painted expressions, of which
+/// one is shown at a time; a hat taken off). The names were checked by `part_worlds`.
+fn hidden_parts(parts: &[PartRt], overrides: &Option<Table>) -> mlua::Result<Vec<bool>> {
+    let mut hidden: Vec<bool> = parts.iter().map(|p| p.hidden).collect();
+    if let Some(t) = overrides {
+        for pair in t.pairs::<String, Table>() {
+            let (name, o) = pair?;
+            if let Some(visible) = o.get::<Option<bool>>("visible")?
+                && let Some(i) = parts.iter().position(|p| p.name == name)
+            {
+                hidden[i] = !visible;
+            }
+        }
+    }
+    // (parents come before their children)
+    for j in 0..parts.len() {
+        if parts[j].parent.is_some_and(|parent| hidden[parent]) {
+            hidden[j] = true;
+        }
+    }
+    Ok(hidden)
 }
 
 /// Whether the studio's constraints apply to this draw (`constraints = false` turns them off).
@@ -1767,7 +1793,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                             posed
                         }
                     };
+                    let hidden = hidden_parts(&posed.parts, &overrides)?;
                     for (i, p) in posed.parts.iter().enumerate() {
+                        if hidden[i] {
+                            continue;
+                        }
                         if let Some(skinned) = &p.skinned {
                             let (Some(&mesh), Some(base)) = (sh.mesh_ids.get(&skinned.key), posed.joint_base[i]) else {
                                 continue;
@@ -4130,9 +4160,11 @@ impl Game {
         let mut fx_images = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
             // the store's pictures (the launcher icon and the box art) are for the APK and launchers, not for drawing: they stay out of the atlas
-            // (and the pictures in `textures/` are for models, which name them in their files: not sprites, so not in the atlas either)
+            // (and the pictures in `textures/` are for models, which name them in their files: not sprites, so not in the atlas either;
+            // nor the studio's paint of a model, `models/<name>.texture.png`, which its .glb carries in itself)
             if assets::STORE_ART.contains(&asset.id.as_str())
                 || asset.id.starts_with(assets::MODEL_PICTURES)
+                || assets::is_model_paint(&asset.id)
             {
                 continue;
             }
@@ -4325,6 +4357,7 @@ impl Game {
                         parent: part.parent,
                         rest: part.rest,
                         constraints: part.constraints,
+                        hidden: part.hidden,
                         mesh_key,
                         points: Rc::new(hull_points(points)),
                         carrier,

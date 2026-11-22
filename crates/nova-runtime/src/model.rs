@@ -739,6 +739,17 @@ pub struct Part {
     pub skin: Option<Skin>,
     /// Rules the studio put on this part (`extras.nova.constraints` of its node), applied live to every pose.
     pub constraints: Vec<crate::constraints::Constraint>,
+    /// The part is not drawn unless a script shows it (`extras.nova.hidden` of its node: one of a face's painted expressions, a
+    /// hat kept for later); neither is anything under it.
+    pub hidden: bool,
+}
+
+/// Whether a node says it is hidden at rest (`extras.nova.hidden: true`).
+fn hidden_at_rest(node: &gltf::Node) -> bool {
+    node.extras()
+        .as_ref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.get()).ok())
+        .is_some_and(|v| v["nova"]["hidden"] == serde_json::Value::Bool(true))
 }
 
 /// One vertex's joints (numbers within the skin) and their weights.
@@ -1160,6 +1171,7 @@ pub fn import_parts_with(bytes: &[u8], pictures: Pictures) -> Result<ModelParts,
                 .as_ref()
                 .map(|raw| crate::constraints::parse(raw.get()))
                 .unwrap_or_default(),
+            hidden: hidden_at_rest(&node),
         });
         let mut children: Vec<gltf::Node> = node.children().collect();
         children.reverse();
@@ -1288,6 +1300,10 @@ pub fn import_glb_with(bytes: &[u8], pictures: Pictures) -> Result<MeshData, Str
     let mut textures = MeshTextures::default();
     let mut stack: Vec<(gltf::Node, Mat4)> = scene.nodes().map(|n| (n, Mat4::IDENTITY)).collect();
     while let Some((node, parent)) = stack.pop() {
+        // (a part hidden at rest, and what hangs under it, is not in the whole model)
+        if hidden_at_rest(&node) {
+            continue;
+        }
         let world = parent * Mat4::from_cols_array_2d(&node.transform().matrix());
         for child in node.children() {
             stack.push((child, world));
@@ -1309,6 +1325,64 @@ mod tests {
     use super::*;
 
     const CAR: &[u8] = include_bytes!("../assets/spike/car.glb");
+
+    /// Two one-triangle parts, the second under the first; `extras` is the second's node extras.
+    fn two_part_glb(extras: &str) -> Vec<u8> {
+        let mut bin = Vec::new();
+        for v in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] {
+            bin.extend(v.to_le_bytes());
+        }
+        let json = format!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],
+            "nodes":[{{"name":"head","mesh":0,"children":[1]}},{{"name":"eye_wide","mesh":0,"extras":{extras}}}],
+            "meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}}}}]}}],
+            "accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,0,1]}}],
+            "bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}}],
+            "buffers":[{{"byteLength":36}}]}}"#
+        );
+        let mut js = json.into_bytes();
+        while js.len() % 4 != 0 {
+            js.push(b' ');
+        }
+        let mut out = Vec::new();
+        out.extend(b"glTF");
+        out.extend(2u32.to_le_bytes());
+        out.extend((12 + 8 + js.len() as u32 + 8 + bin.len() as u32).to_le_bytes());
+        out.extend((js.len() as u32).to_le_bytes());
+        out.extend(b"JSON");
+        out.extend(&js);
+        out.extend((bin.len() as u32).to_le_bytes());
+        out.extend(b"BIN\0");
+        out.extend(&bin);
+        out
+    }
+
+    #[test]
+    fn a_part_hidden_at_rest_is_not_in_the_whole_model_and_says_so_as_a_part() {
+        let hidden = two_part_glb(r#"{"nova":{"hidden":true}}"#);
+        assert_eq!(
+            import_glb(&hidden).unwrap().vertices.len(),
+            3,
+            "only the head"
+        );
+        let parts = import_parts(&hidden).unwrap().parts;
+        assert_eq!(
+            parts
+                .iter()
+                .map(|p| (p.name.as_str(), p.hidden))
+                .collect::<Vec<_>>(),
+            [("head", false), ("eye_wide", true)]
+        );
+        let shown = two_part_glb(r#"{"nova":{"hidden":false}}"#);
+        assert_eq!(import_glb(&shown).unwrap().vertices.len(), 6);
+        assert!(
+            import_parts(&shown)
+                .unwrap()
+                .parts
+                .iter()
+                .all(|p| !p.hidden)
+        );
+    }
 
     /// A one-triangle binary glTF whose material has a base colour picture and a detail picture, both named by `uri`.
     fn shared_picture_glb(detail: &str) -> Vec<u8> {

@@ -78,11 +78,12 @@ function camera.talk(p, r, dt)
   local nx, nz = -az, ax
   local e = cam.eye
   if (e[1] - p.x) * nx + (e[3] - p.z) * nz < 0 then nx, nz = -nx, -nz end
-  local ex, ez = p.x - ax * 1.25 + nx * 1.2, p.z - az * 1.25 + nz * 1.2
+  -- (well out to the side and a little above: the postmaster's big round head stays at the frame's edge, clear of the speaker's)
+  local ex, ez = p.x - ax * 1.0 + nx * 1.6, p.z - az * 1.0 + nz * 1.6
   local base = ground(p.x, p.z) + (p.y or 0)
-  local ey = math.max(base + 1.3, ground(ex, ez) + 1.0)
+  local ey = math.max(base + 1.4, ground(ex, ez) + 1.0)
   local rb = ground(r.x, r.z) + (r.y or 0)
-  camera.set(ex, ey, ez, r.x - ax * 0.25 + nx * 0.2, rb + 0.6, r.z - az * 0.25 + nz * 0.2, 44, dt)
+  camera.set(ex, ey, ez, r.x - ax * 0.2 + nx * 0.35, rb + 0.52, r.z - az * 0.2 + nz * 0.35, 40, dt)
   cam.yaw = math.atan(r.x - ex, r.z - ez)
 end
 

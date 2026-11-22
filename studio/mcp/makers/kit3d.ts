@@ -41,6 +41,9 @@ export interface MeshOpts {
   /// Whether model_write's `bend` skins it (a limb) or leaves it rigid.
   bend?: boolean;
   name?: string;
+  /// Painted with the model's texture at this many texels a model unit (a decal: see decal3d.ts); its place in the picture is set
+  /// when the texture is packed.
+  texture?: number;
 }
 
 export class Mesh3 {
@@ -238,6 +241,7 @@ export class Mesh3 {
     if (this.opts.metallic) out.metallic = this.opts.metallic;
     if (this.opts.roughness !== undefined) out.roughness = this.opts.roughness;
     if (this.opts.bend !== undefined) out.bend = this.opts.bend;
+    if (this.opts.texture) out.texture = { at: [0, 0], scale: this.opts.texture };
     return out;
   }
 }

@@ -72,6 +72,32 @@ fn a_model_is_one_draw_until_a_script_turns_a_part_and_then_one_per_piece() {
 }
 
 #[test]
+fn a_part_that_is_not_visible_is_left_out_of_the_draw() {
+    let draws = |opts: &str| {
+        let mut g = game(
+            &format!(
+                "function update(dt) nova.model('car', 0, 0, 0, {{ parts = {{ {opts} }} }}) end"
+            ),
+            vec![],
+        );
+        frame(&mut g);
+        assert!(g.error.is_none(), "{:?}", g.error);
+        g.frame_input(0).models.len()
+    };
+    assert_eq!(draws("wheel = { visible = false }"), 1, "the body alone");
+    assert_eq!(
+        draws("wheel = { visible = true, rx = 1 }"),
+        2,
+        "shown and turned"
+    );
+    assert_eq!(
+        draws("body = { visible = false }"),
+        0,
+        "the wheel hangs under the body, so it goes too"
+    );
+}
+
+#[test]
 fn a_part_turns_about_its_pivot_and_shifts_in_its_own_space() {
     let draw = |opts: &str| {
         let mut g = game(

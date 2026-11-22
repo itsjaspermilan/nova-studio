@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Host } from "./index";
 import { CHARACTER3D, characterEntity, makeCharacter3d } from "./character3d";
+import { encodePng } from "../../src/lib/png-encode";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { GROUND_KINDS, makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
@@ -103,7 +104,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
     "character3d_make",
     "Make a rigged 3D person from parts, instead of modelling and animating one: `models/<name>.model.json` and `.glb`, a low-poly figure about 1.6 m high standing on y = 0 and facing +z, with limbs that bend at the elbow and knee. " +
       `Parts: build (${CHARACTER3D.builds.join(", ")}), skin (${CHARACTER3D.skins.join(", ")}, or "#rrggbb"), hair (${CHARACTER3D.hairs.join(", ")}) and hair_color, outfit (${CHARACTER3D.outfits.join(", ")}) with outfit_color, trim_color (trousers, belt) and shoe_color, hat (${CHARACTER3D.hats.join(", ")}), pack (${CHARACTER3D.packs.join(", ")}), item (${CHARACTER3D.items.join(", ")}: held in the right hand). ` +
-      `\`species\` (${CHARACTER3D.species.join(", ")}) makes an animal person instead (with \`build: \"chibi\"\` a cozy villager about two heads tall: a big round head, a small pear-shaped body, stubby one-piece arms and legs swinging from shoulder and hip, a waddling walk, a run with the arms held straight out to the sides like wings; and a face of swappable parts for its expressions: neutral, smile, happy, delighted, gruff, sad, surprised, indignant, a blink and a talking mouth): its fur (\`fur\`, \`fur2\`) and pattern, a muzzle, ears, big eyes, paws and a tail (a part, \`tail\`, that the clips swing), with a big head (\`head_scale\`, 1.5 or so; 1 is a person's); \`accessory\` (${CHARACTER3D.accessories.join(", ")}) and \`accent_color\` add one more thing. ` +
+      `\`species\` (${CHARACTER3D.species.join(", ")}) makes an animal person instead (with \`build: \"chibi\"\` a cozy villager about a metre and two heads tall, like a soft toy: a big smooth head squashed wider than tall, a small round body, short arms with round mittens and short legs swinging whole from shoulder and hip, a waddling walk, a run with the arms held straight out to the sides like wings; its clothes painted flat, an \`emblem\` on the chest). An animal person's face is flat art painted on its head (decals that hug it, in the model's texture, models/<name>.texture.png): each drawing of the eyes, brows and mouth is a part of the head, all but the first of each set hidden at rest, swapped with parts = { name = { visible = true } } for nine expressions (neutral, smile, happy, delighted, gruff, dry, sad, surprised, indignant), a blink and a talking mouth, listed in the answer: its fur (\`fur\`, \`fur2\`) and pattern, a muzzle, ears, big eyes, paws and a tail (a part, \`tail\`, that the clips swing), with a big head (\`head_scale\`, 1.5 or so; 1 is a person's); \`accessory\` (${CHARACTER3D.accessories.join(", ")}) and \`accent_color\` add one more thing. ` +
       "Clips: idle, walk, run (both loop, with a `step` event as each foot lands, the feet rolling from heel to toe on the ground, the hips rising over the standing leg, the arms swinging against the legs), jump (crouch, push off, tuck, reach for the ground: play it once while in the air), wave, attack (a swing of the right arm, with a `hit` event), hurt, trot (a brisk hurry with no arm swing, for carrying: lay carry over it), carry (both arms forward round a box at the chest: lay it over another clip's arms as a masked layer, `{ clip = \"carry\", mask = { \"arm_l\", \"arm_r\" } }`), talk (a hand that gestures with each phrase and a nodding head, loops) and work (busy hands in front: sawing, fiddling with a knob, loops). " +
       "The answer gives the part names (to hang things on or turn: parts = { head = { ry = 0.4 } }), each clip's length and events, the speeds at which the walk and the run do not slide, the capsule for nova.solid.move, and the Lua for an entity with an animator. `entity`: \"hero\" also writes entities/hero.lua, a third-person walker (stick relative to the camera, jump, the clips blended by speed) to start from. " +
       "It returns model_preview's picture and the walk as a strip. The model is an ordinary one afterwards: read the .model.json, change a clip or a colour and give it to model_write with bend: true.",
@@ -126,6 +127,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       head_scale: { type: "number", description: "The head's size against a person's, 0.8 to 2.2 (1 for a human, about 1.55 for an animal when left out)." },
       accessory: { type: "string", description: CHARACTER3D.accessories.join(", ") },
       accent_color: { type: "string", description: "The accessory's colour." },
+      emblem: { type: "string", description: `A chibi's: ${CHARACTER3D.emblems.join(", ")}: painted on the chest (a postman's envelope, a radio ham's bolt).` },
       entity: { type: "string", description: 'Also write entities/<this>.lua, a third-person walker using the model ("hero"), unless there is one already.' },
       palette: PALETTE,
       seed: SEED,
@@ -135,7 +137,10 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       const root = h.root(a);
       const name = h.safeName(a.name, "Model");
       const made = makeCharacter3d(a);
-      const wrote = text(h.call("model_write", { project: a.project, name, model: made.model, bend: true }));
+      // (a painted face: its picture goes beside the model, and model_write puts it in the .glb)
+      const picture = made.picture ? `models/${name}.texture.png` : undefined;
+      if (made.picture) h.put(root, picture!, encodePng(made.picture));
+      const wrote = text(h.call("model_write", { project: a.project, name, model: made.model, bend: true, ...(picture ? { picture } : {}) }));
       const speeds: Record<string, number> = {};
       for (const m of wrote.matchAll(/clip "(\w+)": a walk[^\n]*?does not slide when the entity moves ([\d.]+) world units a second|clip "(\w+)": a walk[^\n]*?do not slide when the entity moves ([\d.]+) world units a second/g)) speeds[(m[1] ?? m[3])!] = Number(m[2] ?? m[4]);
       const walk = speeds.walk ?? made.speeds.walk!, run = speeds.run ?? made.speeds.run!, trot = speeds.trot ?? made.speeds.trot!;

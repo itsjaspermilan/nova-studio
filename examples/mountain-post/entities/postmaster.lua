@@ -8,10 +8,17 @@ local state = require("lib.state")
 local camera = require("lib.camera")
 local face = require("lib.face")
 
-local WALK, RUN, TROT = 0.892, 1.9, 1.159 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
-local STROLL = 1.0                    -- the walk's top: a stick pushed up to TILT walks, up to this
+local WALK, RUN, TROT = 0.767, 1.633, 0.997 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
+local STROLL = 1.1                    -- the walk's top: a stick pushed up to TILT walks, up to this
 local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
-local TOP, TOP_CARRY = 1.9, 1.25      -- metres a second at a full push: running (about twice the walk), trotting with a parcel
+local TOP, TOP_CARRY = 2.0, 1.3       -- metres a second at a full push: running (about twice the walk), trotting with a parcel
+-- (the clips are mixed at these speeds and played quicker by as much as they need to keep the feet in step: quick little steps)
+local function pace(speed, laden)
+  local top, fast = laden and TOP_CARRY or TOP, laden and TROT or RUN
+  if speed <= STROLL then return 1 + (STROLL / WALK - 1) * math.max(0, speed) / STROLL end
+  local f = math.min(1, (speed - STROLL) / (top - STROLL))
+  return speed / (WALK + (fast - WALK) * f)
+end
 local RADIUS = 0.26
 
 local Postmaster = nova.entity { model = "postmaster", tags = { "postmaster", "player" }, velocity = false }
@@ -28,9 +35,9 @@ function Postmaster:create()
   self.anim = nova.animator("postmaster", {
     start = "move", fade = 0.18,
     states = {
-      move = { blend = "speed", points = { { 0, "idle" }, { WALK, "walk" }, { RUN, "run" } } },
+      move = { blend = "speed", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP, "run" } } },
       -- (with a parcel: the walk, then the trot; the carry is laid over the arms of both)
-      laden = { blend = "speed", points = { { 0, "idle" }, { WALK, "walk" }, { TROT, "trot" } } },
+      laden = { blend = "speed", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP_CARRY, "trot" } } },
       wave = { clip = "wave", loop = false, next = "move", fade = 0.15 },
     },
     on_event = function(event) if event == "step" then self:step() end end,
@@ -112,6 +119,7 @@ function Postmaster:update(dt)
   self.gait = self.speed < 0.08 and "still" or self.speed <= STROLL + 0.05 and "walk" or laden and "trot" or "run"
   self.anim:play(laden and "laden" or "move", { fade = 0.25 })
   self.anim:set("speed", self.speed)
+  self.anim.speed = self.anim:state() == "wave" and 1 or pace(self.speed, laden)
   self.anim:update(dt)
   for i = #self.dust, 1, -1 do
     local p = self.dust[i]
@@ -121,7 +129,7 @@ function Postmaster:update(dt)
   face.update(self.mood, dt)
 end
 
--- Out of the van's body (three circles along it) and out of the residents' way: nobody walks through a van or a badger.
+-- Out of the van's body (three circles along it) and out of the residents' way: nobody walks through a van or a bear.
 function Postmaster:keep_clear()
   local function push(cx, cz, r)
     local dx, dz = self.x - cx, self.z - cz
@@ -141,7 +149,7 @@ end
 function Postmaster:hands()
   local s, c = math.sin(self.face), math.cos(self.face)
   local bob = math.abs(math.sin(self.steps * 0.5 + nova.time() * 0)) * 0
-  return self.x + s * 0.36, self.y + 0.5 + bob, self.z + c * 0.36
+  return self.x + s * 0.33, self.y + 0.42 + bob, self.z + c * 0.33
 end
 
 local DUST = { color = { 196, 178, 150, 110 } }
