@@ -62,8 +62,14 @@ turns, and its centre moves in whole texels, so shadows do not shimmer as the ca
 pass for the near slice sees few of them). In the shader the nearest map that holds the pixel is used; across the last 15% of a slice
 the shadow blends into the next map's, and fades out at the end of the last one; the normal offset and the bias grow with the
 texel size of the cascade, so far shadows do not get acne. The edge is the engine's 3x3 taps of hardware-filtered comparisons (a soft
-edge about four texels wide) in every cascade.
-`shadow_cascades = 1` is the old single map of `2 x radius` metres, unchanged.
+edge about four texels wide, times `nova.shadows { softness }`) in every cascade.
+`shadow_cascades = 1` is the single map of `2 x radius` metres, with a second, fine map of the view's first `nova.shadows { near }`
+metres (12 by default) in front of it (added 2026-11-21: one more shadow pass, of the few models near the camera).
+
+Since 2026-11-21 every map's depth bias is half a texel, and the normal offset is half a texel plus the filter's reach times the sine
+of the angle between the surface and the sun (nothing for a surface facing the sun, the whole reach for one the light grazes).
+Before, the single map's bias was 0.0015 of its depth range, which at radius 42 was half a metre along the light: everything within
+about 35 cm of the ground (a wheel, a foot, a car's sill) cast no shadow, and shadows started some way from their casters.
 
 ## Image-based light and a clear coat (`ibl`, `KHR_materials_clearcoat`)
 

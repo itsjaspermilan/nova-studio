@@ -21,9 +21,9 @@ struct Globals {
     point_dir: array<vec4<f32>, 20>,   // xyz: the way a spot light points (zero: every way), w: cosine of half its cone
     terrain: array<vec4<f32>, 9>,      // [0].x: how many hill waves; then (kx, kz, amplitude, phase) each
     terrain_map: array<vec4<f32>, 2>,  // [0]: x0, z0, 1 / cell; [1]: samples across - 1, rows - 1
-    cascade_vp: array<mat4x4<f32>, 3>,  // the sun's cascaded shadow maps (more than one cascade only)
-    cascade_info: array<vec4<f32>, 3>,  // x: where the cascade ends (distance along the view), y: depth bias, z: metres a texel spans
-    cascade_count: vec4<f32>,           // x: how many cascades (1: the single map, which uses light_view_proj)
+    cascade_vp: array<mat4x4<f32>, 3>,  // the sun's shadow maps, nearest first (cascades, or the near map and the wide one)
+    cascade_info: array<vec4<f32>, 3>,  // x: where the map ends (distance along the view), y: depth bias, z: metres a texel spans, w: softness
+    cascade_count: vec4<f32>,           // x: how many maps
     ground: vec4<f32>,                  // rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky gave one
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
@@ -250,8 +250,8 @@ fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
 }
 
 // What one shadow map says about a clip-space point: how much light reaches it (3x3 taps of hardware-filtered comparisons, a soft
-// edge about four texels wide), or -1 when the point is outside the map or beyond the light's far plane. (The "level" sampling
-// has no derivatives, so it can sit in non-uniform control flow, as the choice of cascade is.)
+// edge about four texels wide, times the game's `softness`), or -1 when the point is outside the map or beyond the light's far
+// plane. (The "level" sampling has no derivatives, so it can sit in non-uniform control flow, as the choice of map is.)
 fn shadow_lookup(clip: vec4<f32>, layer: i32, bias: f32) -> f32 {
     let uv = vec2<f32>(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
     let depth = clip.z - bias;
@@ -267,25 +267,31 @@ fn shadow_lookup(clip: vec4<f32>, layer: i32, bias: f32) -> f32 {
     return select(-1.0, lit, inside);
 }
 
+// One map's answer for a point. The point is pushed off its surface along the normal by what keeps the surface from shadowing
+// itself: half a texel, and as much again as the filter's taps reach sideways (a texel and a half, times the softness, and the
+// half texel the map's own steps add) times how slanted the surface is to the sun (the sine of the angle between them): a surface
+// facing the sun needs almost nothing, one the light grazes the whole reach. Together with the small depth bias (half a texel,
+// see `CascadePlan`) that is a few centimetres in the near map, so a shadow starts where its caster touches the ground.
 fn cascade_visibility(i: i32, world: vec3<f32>, normal: vec3<f32>) -> f32 {
     let info = globals.cascade_info[i];
-    // push the point along its normal by about a texel and a half, as the texels grow with the cascade
-    let p = world + normal * max(0.03, info.z * 1.5);
+    let to_sun = -globals.light_dir.xyz;
+    let c = min(abs(dot(normal, to_sun)) / max(length(to_sun), 1e-6), 1.0);
+    let slant = sqrt(1.0 - c * c);
+    let p = world + normal * info.z * (0.5 + (1.5 * info.w + 0.5) * slant);
     let r = shadow_lookup(globals.cascade_vp[i] * vec4<f32>(p, 1.0), i, info.y);
     return select(1.0, r, r >= 0.0);
 }
 
-// How much of the sun reaches a point: 1 in the open, less in a shadow. With cascades the nearest map that holds the point is used,
-// and the shadow is blended between two maps near where one ends, and fades out at the end of the last.
+// How much of the sun reaches a point: 1 in the open, less in a shadow. The nearest map that holds the point is used (cascades, or
+// the fine near map and then the wide one), and the shadow is blended between two maps near where one ends, and fades out at the
+// end of the last cascade (the wide map has no end: outside its square a point is lit).
 fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
     if (globals.shadow.x < 0.5) {
         return 1.0;
     }
     let count = i32(globals.cascade_count.x);
     if (count <= 1) {
-        // push the point a little along its normal so that surfaces facing away from the sun do not shadow themselves
-        let r = shadow_lookup(globals.light_view_proj * vec4<f32>(world + normal * 0.03, 1.0), 0, globals.shadow.z);
-        return select(1.0, r, r >= 0.0);
+        return cascade_visibility(0, world, normal);
     }
     let depth = (globals.view_proj * vec4<f32>(world, 1.0)).w;
     var i = 0;
