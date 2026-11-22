@@ -67,6 +67,25 @@ maps, saving.
 to be in; you can find an address without help and it feels good to; the two residents are charming in the first exchange;
 it sounds cozy; it holds its frame rate. The owner judges each of these by playing. Until all are yes, only the slice is worked on.
 
+## The owner's first play on the Retroid (2026-11-22: drove around, delivered nothing)
+
+These replace the matching lines of the slice spec below where they differ.
+
+- **Frame rate:** smooth throughout. **Finding the way:** "fine for the vertical slice but we'll want to make the world much
+  bigger later on". **Sound:** not judged (not noticed or muted). **Residents:** not reached.
+- **One look for everything: a soft toy diorama.** "We should think of a cohesive theme for all the assets so it doesn't look
+  like a mismash asset dump." Everything rounded and chunky like toys, flat painted details, one small warm palette, no
+  realistic proportions. Every model, old or new, follows this.
+- **The van:** "too large and realistic. We need to have some style." The reference the owner sent is a boxy mail delivery
+  truck: a tall square body with rounded top edges, a very short sloping nose, a big upright windscreen and large side windows,
+  small wheels tucked under it, a flat back, a stripe along the side. Ours is a small, stubby toy of that idea (our own design,
+  no real service's marks). Faults to fix: the rear doors "slide around when the vehicle turns" (they must be part of the
+  body); "blocky black wheels underneath the actual wheels"; it needs **hollow wheel wells**.
+- **The characters:** "Look weird honestly. Let's follow Animal Crossing a little closer": squish the heads (wider than tall),
+  and make the faces **flat 2D, painted on the head**, not built from raised parts. Simpler animals: **Hazel is a bear** now
+  ("a badger is tough"); Pip stays a rabbit, the postmaster a fox. Walking is a little faster.
+- **Trees:** "their leaf cones are sloped the same way the ground is. On a hill that looks really weird." Trees stand upright.
+
 ## Slice spec (agreed by the owner 2026-11-22: "Yes, build that slice")
 
 Everything below is the slice and nothing else. Names here are working names the owner may change.
@@ -102,7 +121,7 @@ with soft edges, a short sloping bonnet into a big windscreen, clean flat sides,
 nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
 
 **The residents.**
-- **Hazel Brock**, a badger, retired carpenter, 3 Fern Lane. Gruff, dry, kind underneath. Her parcel: a set of chisels she
+- **Hazel Brock**, a bear (was a badger until the first play), retired carpenter, 3 Fern Lane. Gruff, dry, kind underneath. Her parcel: a set of chisels she
   ordered two winters ago.
 - **Pip Tansy**, a young rabbit who runs a one-rabbit radio station from his cabin, 7 Kettle Creek Road. Talks fast, hopeful,
   easily delighted. His parcel: a valve for his transmitter.
