@@ -14,7 +14,7 @@ local targets = {}
 -- the margins over the ideal, by the kind of course and the car's class
 targets.MARGIN = {
   stage = { sport = { gold = 1.045, silver = 1.065, bronze = 1.13 }, everyday = { gold = 1.015, silver = 1.03, bronze = 1.10 } },
-  circuit = { sport = { gold = 1.07, silver = 1.09, bronze = 1.16 }, everyday = { gold = 1.055, silver = 1.08, bronze = 1.16 } },
+  circuit = { sport = { gold = 1.07, silver = 1.09, bronze = 1.16 }, everyday = { gold = 1.055, silver = 1.08, bronze = 1.165 } },
 }
 -- a circuit is raced from a standing start: the first lap's start costs about this many seconds over a flying lap
 targets.START = 2.5

@@ -580,13 +580,14 @@ local function measure(route)
 end
 
 -- The pace notes' corners (lib/race.lua's pace_notes, on the 10 m waypoints): how many, and how many are hairpins.
+-- (a hairpin: a bend that turns the road round by more than 140 degrees, whatever its radius)
 local function corners_of(wps)
   local count, hairpins = 0, 0
   local cur
   local function close()
     if cur then
       count = count + 1
-      if cur.peak > 0.06 then hairpins = hairpins + 1 end
+      if math.abs(cur.turn) > 2.45 then hairpins = hairpins + 1 end
       cur = nil
     end
   end
@@ -594,8 +595,9 @@ local function corners_of(wps)
     local a = math.abs(w.k)
     if cur and w.k * cur.sign < 0 and a > 0.0085 then close() end
     if not cur then
-      if a > 0.0085 then cur = { sign = w.k > 0 and 1 or -1, peak = a } end
+      if a > 0.0085 then cur = { sign = w.k > 0 and 1 or -1, peak = a, turn = w.k * 10 } end
     else
+      cur.turn = cur.turn + w.k * 10
       if a > cur.peak then cur.peak = a end
       if a < 0.0045 then close() end
     end
