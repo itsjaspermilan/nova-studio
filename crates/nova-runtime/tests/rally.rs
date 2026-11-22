@@ -2746,6 +2746,22 @@ fn made_up_courses_are_driven_to_the_finish() {
         "s.location = 2; s.type = 2; s.length = 1; s.complexity = 2; s.seed = 77",
     );
     let (mut g, mut log) = made_up_direct(&stage, 2, "rally");
+    // a player far off the road is put back on it, facing along it (lib/race.lua's rescue, on the made-up waypoints)
+    g.run_lua(
+        "local p = nova.scene_now().player; local q = require('lib.track').point(12); p:teleport(q.x + q.tz * 45, q.z - q.tx * 45, q.heading)",
+        "off the road",
+    )
+    .unwrap();
+    run_until(&mut g, &mut log, "put back on the road", 60 * 3, |l| {
+        l.iter().any(|x| x.starts_with("You put back on the road"))
+    });
+    for _ in 0..60 {
+        frame(&mut g, &[]);
+    }
+    assert!(
+        lua_number(&g, "nova.scene_now().player.off_middle") < 3.0,
+        "the car is back on the road"
+    );
     tap(&mut g, "key:F9");
     run_until(&mut g, &mut log, "the results", 60 * 60 * 4, |l| {
         l.iter().any(|x| x.starts_with("results:"))
