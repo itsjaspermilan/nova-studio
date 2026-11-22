@@ -7,9 +7,12 @@ local work = {}
 local BUDGET = 0.008 -- seconds of a frame a job may use
 local jobs = {}      -- by key: { co, result, done }
 local started = 0
+local running = nil -- the coroutine of the job being worked on right now, or nil
 
 function work.tick()
-  if coroutine.isyieldable() and nova.clock() - started > BUDGET then coroutine.yield() end
+  -- (only inside one of our own jobs: the engine runs some game code in coroutines of its own, and yielding out of one of those would
+  -- abandon whatever was being worked out there, a racing line half made)
+  if running and coroutine.running() == running and nova.clock() - started > BUDGET then coroutine.yield() end
 end
 require("lib.generate").tick = work.tick
 require("lib.racing").tick = work.tick
@@ -23,7 +26,10 @@ function work.get(key, fn)
   end
   if j.done then return j.result end
   started = nova.clock()
+  local outer = running
+  running = j.co
   local ok, result = coroutine.resume(j.co)
+  running = outer
   if not ok then error(result, 0) end
   if coroutine.status(j.co) == "dead" then j.done, j.result = true, result end
   return j.result

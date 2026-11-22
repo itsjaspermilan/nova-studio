@@ -101,6 +101,8 @@ fn load_with(extra: serde_json::Map<String, serde_json::Value>) -> Game {
         Game::load_with(vfs, &|_| Some(dir.clone())).expect("the game loads")
     };
     g.upload(&mut CountingGpu::default());
+    // the same random numbers every run (Lua seeds its generator from the clock otherwise), as `nova run` and the play tool do
+    g.reseed(1);
     g
 }
 
@@ -2056,7 +2058,9 @@ fn race_laps(course: &str, car: usize, laps: i32, setup: &str) -> Vec<(String, f
         .unwrap();
     // (the longest stretch each car spends with its wheels on the grass)
     g.run_lua(
-        "ROUGH = {}; local probe = PROBE; PROBE = function() probe(); for _, c in ipairs(nova.scene_now().cars) do local r = ROUGH[c.name] or { now = 0, most = 0 }; ROUGH[c.name] = r; if c.surface == 'rough' and not c.finish_time then r.now = r.now + 1 / 60 else r.now = 0 end; if r.now > r.most then r.most = r.now end end end",
+        // (once the player has finished, the race goes on to the results, whose scene has no cars: a rival still racing then is
+        // given an estimated time, and there is nothing more to watch)
+        "ROUGH = {}; local probe = PROBE; PROBE = function() probe(); local sc = nova.scene_now(); if not sc or not sc.cars then return end for _, c in ipairs(sc.cars) do local r = ROUGH[c.name] or { now = 0, most = 0 }; ROUGH[c.name] = r; if c.surface == 'rough' and not c.finish_time then r.now = r.now + 1 / 60 else r.now = 0 end; if r.now > r.most then r.most = r.now end end end",
         "rough",
     )
     .unwrap();
