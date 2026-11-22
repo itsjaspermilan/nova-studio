@@ -14,16 +14,26 @@ export function box(c, size, color, o = {}) {
   return cube;
 }
 
-/// The eight corners of a box (turned about y by `ry` degrees), as a mesh with a bevel modifier: soft edges.
+/// The eight corners of a box (turned about y by `ry` degrees, or by `rot` [x, y, z] degrees about its middle, X then Y then Z as
+/// model_write turns a box), as a mesh with a bevel modifier: soft edges.
 export function bevelled(c, size, color, o = {}) {
   const [w, h, d] = size.map((v) => v / 2);
-  const a = ((o.ry ?? 0) * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const [rx, ry, rz] = (o.rot ?? [0, o.ry ?? 0, 0]).map((v) => (v * Math.PI) / 180);
+  const turn = ([x, y, z]) => {
+    let a = Math.cos(rx), b = Math.sin(rx);
+    [y, z] = [y * a - z * b, y * b + z * a];
+    a = Math.cos(ry); b = Math.sin(ry);
+    [x, z] = [x * a + z * b, -x * b + z * a];
+    a = Math.cos(rz); b = Math.sin(rz);
+    [x, y] = [x * a - y * b, x * b + y * a];
+    return [x, y, z];
+  };
   const t = o.taper ?? 1; // the top narrower (x) than the bottom
   const tz = o.taperZ ?? 1;
   const vs = [];
   for (const sy of [-1, 1]) for (const sz of [-1, 1]) for (const sx of [-1, 1]) {
-    const x = sx * w * (sy > 0 ? t : 1), z = sz * d * (sy > 0 ? tz : 1), y = sy * h;
-    vs.push([c[0] + x * ca + z * sa, c[1] + y, c[2] - x * sa + z * ca]);
+    const [x, y, z] = turn([sx * w * (sy > 0 ? t : 1), sy * h, sz * d * (sy > 0 ? tz : 1)]);
+    vs.push([c[0] + x, c[1] + y, c[2] + z]);
   }
   return mesh(vs, [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]], color, { ...o, modifiers: o.bevel ? [{ type: "bevel", width: u(o.bevel), segments: o.segments ?? 1, angle: 30 }] : undefined });
 }

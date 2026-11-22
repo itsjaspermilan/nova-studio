@@ -14,8 +14,8 @@ local words = require("lib.words")
 local Valley = nova.scene {}
 
 -- Where the postmaster stands to get in (by the driver's door, on the van's left: its +x side) and at the back doors.
-local DOOR = { 1.4, 0, 0.95 }
-local BACK = { 0, 0, -2.85 }
+local DOOR = { 1.26, 0, 0.45 }  -- (the toy van: tools/van.mjs; its cab door is beside the big window)
+local BACK = { 0, 0, -2.15 }   -- (behind the flat back, clear of the doors as they swing out to the sides)
 
 function Valley:enter()
   -- (lib/world.lua was filled by the scene's own objects as they were made, before this runs: the roads' lines, the water, the bridge)
@@ -85,8 +85,8 @@ local function dist(a, x, z) return math.sqrt((a.x - x) ^ 2 + (a.z - z) ^ 2) end
 -- (for tests and pictures: leads the postmaster round the van, on the side nearer to `name`, and to within reach of it)
 function Valley:lead_to(name)
   local t, p = nova.named(name), self.p
-  local lx, lz = self:van_point({ 2.8, 0, -3.4 })
-  local rx, rz = self:van_point({ -2.8, 0, -3.4 })
+  local lx, lz = self:van_point({ 2.0, 0, -2.6 })
+  local rx, rz = self:van_point({ -2.0, 0, -2.6 })
   local side = dist(t, lx, lz) < dist(t, rx, rz) and { lx, lz } or { rx, rz }
   local dx, dz = t.x - side[1], t.z - side[2]
   local d = math.sqrt(dx * dx + dz * dz)
@@ -116,7 +116,7 @@ function Valley:actions()
   local bx, bz = self:van_point(BACK)
   if not a and state.in_van and not state.carrying and dist(p, bx, bz) < 1.6 then a = "unload" end
   local dx, dz = self:van_point(DOOR)
-  if (dist(p, dx, dz) < 2.4 or dist(p, v.x, v.z) < 2.8) and v:stopped() then b = "get_in" end
+  if (dist(p, dx, dz) < 2.0 or dist(p, v.x, v.z) < 2.3) and v:stopped() then b = "get_in" end
   return a, b, r
 end
 

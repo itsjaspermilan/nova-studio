@@ -76,6 +76,36 @@ fn wind_offset(origin: vec3<f32>, world: vec3<f32>, sway: f32) -> vec3<f32> {
     return offset;
 }
 
+// The w slot of the matrix's third column carries the sway and how the instance rides the hills (`ModelInstance::lift` in gfx.rs):
+// `sway` (0 or more) lifted vertex by vertex, `-1 - sway` rigid, `-1000 - sway` upright.
+fn sway_of(w: f32) -> f32 {
+    if (w >= 0.0) { return w; }
+    if (w > -999.5) { return -w - 1.0; }
+    return -w - 1000.0;
+}
+
+// 0 vertex by vertex, 1 rigid, 2 upright
+fn lift_mode(w: f32) -> i32 {
+    if (w >= 0.0) { return 0; }
+    if (w > -999.5) { return 1; }
+    return 2;
+}
+
+// How much of the ground under the origin (rather than under the vertex) lifts a vertex `h` metres above the origin: rigid all of
+// it; upright none at its foot, all of it from `UPRIGHT_FOOT` (gfx.rs, 0.6 m) up, so a tree stands on a slope with its crown level.
+fn origin_share(mode: i32, h: f32) -> f32 {
+    if (mode == 1) { return 1.0; }
+    if (mode == 2) { return smoothstep(0.0, 0.6, h); }
+    return 0.0;
+}
+
+// The ground's height that lifts a vertex: under it (k = 0), under the origin (k = 1) or between (only what is needed is read)
+fn ground_lift(at: vec2<f32>, origin: vec2<f32>, k: f32) -> f32 {
+    if (k <= 0.0) { return terrain_height(at); }
+    if (k >= 1.0) { return terrain_height(origin); }
+    return mix(terrain_height(at), terrain_height(origin), k);
+}
+
 
 // Hills: the ground's height as a sum of up to eight sine waves over the ground (`nova.terrain`): terrain[0].x is how many, terrain[1..]
 // are (kx, kz, amplitude, phase). Every vertex is lifted by the height under it, so a flat model laid on the ground (a road piece, a
@@ -225,17 +255,21 @@ fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
     var world = model * vec4<f32>(v.position, 1.0);
     // how high the vertex is above the model's base: a piece drawn on its own (a wheel) says how far below its origin that is (m0.w)
     out.local = vec4<f32>(v.position, (world.y - inst.m3.y - inst.m0.w) / max(length(inst.m1.xyz), 1e-6));
-    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, inst.m2.w), 1.0);
+    let mode = lift_mode(inst.m2.w);
+    let above = world.y - inst.m3.y;
+    world = vec4<f32>(world.xyz + wind_offset(inst.m3.xyz, world.xyz, sway_of(inst.m2.w)), 1.0);
     var normal = select(safe_normalize((model * vec4<f32>(v.normal, 0.0)).xyz), v.normal, v.emissive < 0.0);
     if (terrain_active() && inst.m3.y < 30.0) {
-        if (inst.m2.w < 0.0) {
+        if (mode == 1) {
             // rigid (see `ModelInstance::rigid`): one height for the whole model, no shear, the normal is left as the game turned it
             world = vec4<f32>(world.x, world.y + terrain_height(inst.m3.xz), world.z, 1.0);
         } else {
-            // on the hills: lifted by the ground's height, and the normal leans with its slope (the shear's inverse transpose)
-            world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
-            if (v.emissive >= 0.0) {
-                let g = terrain_slope(world.xz);
+            // on the hills: lifted by the ground's height, and the normal leans with its slope (the shear's inverse transpose); an
+            // upright model (a tree) only at its foot: above that it rises with the ground under its origin and stays level
+            let k = origin_share(mode, above);
+            world = vec4<f32>(world.x, world.y + ground_lift(world.xz, inst.m3.xz, k), world.z, 1.0);
+            if (v.emissive >= 0.0 && k < 1.0) {
+                let g = terrain_slope(world.xz) * (1.0 - k);
                 normal = safe_normalize(vec3<f32>(normal.x - g.x * normal.y, normal.y, normal.z - g.y * normal.y));
             }
         }
@@ -486,11 +520,13 @@ fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
     out.local = vec4<f32>(v.position, (world.y - inst.m3.y) / max(length(inst.m1.xyz), 1e-6));
     var world_normal = safe_normalize((model * vec4<f32>(normal, 0.0)).xyz);
     if (terrain_active() && inst.m3.y < 30.0) {
-        if (inst.m2.w < 0.0) {
+        let mode = lift_mode(inst.m2.w);
+        if (mode == 1) {
             world = vec4<f32>(world.x, world.y + terrain_height(inst.m3.xz), world.z, 1.0); // rigid
         } else {
-            world = vec4<f32>(world.x, world.y + terrain_height(world.xz), world.z, 1.0);
-            let g = terrain_slope(world.xz);
+            let k = origin_share(mode, world.y - inst.m3.y); // (upright: level above its foot)
+            world = vec4<f32>(world.x, world.y + ground_lift(world.xz, inst.m3.xz, k), world.z, 1.0);
+            let g = terrain_slope(world.xz) * (1.0 - k);
             world_normal = safe_normalize(vec3<f32>(world_normal.x - g.x * world_normal.y, world_normal.y, world_normal.z - g.y * world_normal.y));
         }
     }

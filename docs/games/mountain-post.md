@@ -159,3 +159,29 @@ plucked lead, round bass, brushed drums), quiet enough to drive to, readable on 
 
 **Quality bar.** Final quality, not a prototype: the owner will judge the van's feel, the look of the place, finding an address
 unaided, the charm of the two exchanges, the sound, and the frame rate, on the Retroid (which gives games a 1280x720 screen).
+
+## One look: a soft toy diorama (after the owner's first play, 2026-11-22)
+
+The owner: "We should think of a cohesive theme for all the assets so it doesn't look like a mishmash asset dump." The rule for
+every model that is not a character (trees, rocks, plants, cabins, the post office, signs, mailboxes, the bridge, the barrier,
+furniture, parcels, the van):
+
+- **Rounded and chunky, like toys.** Every edge softened (a box's by a quarter of its thinnest side, up to 14 cm); round things
+  shaded smooth; trees are soft stacked cones and puffs, rocks are pebbles; nothing thinner than about 6 cm.
+- **Flat painted details.** A stripe, a window, a number, bark marks: colour on the surface or a shallow recess, never fiddly
+  geometry.
+- **One small warm palette**, a little muted: creams, a post-office red, mustard, a soft sky blue, three woods, two stones, a slate
+  roof, greens from deep pine to bright larch; no pure black or white (a dark is a warm brown-grey).
+- **No realistic proportions.** Squat and generous, sized for villagers about a metre tall.
+
+The palette and the softening rule live in one module, `examples/mountain-post/tools/palette.mjs`, which every maker in that
+folder imports (`models.mjs`, `nature.mjs`, `van.mjs`, `art.mjs`). Characters are made elsewhere and are not under this rule yet.
+
+**What the first play changed** (besides the characters): the van is now a small stubby toy of a boxy mail truck (2.9 m long,
+1.9 m high: a tall square body with rounded edges, a very short sloping nose, a big upright windscreen, big cab windows, a flat
+back, small wheels in hollow wells, one red stripe, FERNHOLLOW POST); its rear doors are the body's children in the model, so
+they lean, roll, pitch and turn with it (they used to be drawn as pieces of their own, tilted but not carried by the body's
+turn, so they slid off it in a bend); the dark discs that read as a second set of blocky wheels (fixed "arches" in the body that
+the sprung wheels moved away from) are gone. Trees, bushes, the mast, the signposts and the mailboxes stand upright on slopes
+(the renderer used to lift every vertex by the ground under it, which leans a tall cone with the hillside; Nova now has
+`lift = "upright"`). The postmaster walks, runs and trots 15% faster, the clips played 15% faster so the feet keep step.

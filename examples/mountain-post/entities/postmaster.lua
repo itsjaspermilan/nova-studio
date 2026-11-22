@@ -9,9 +9,12 @@ local camera = require("lib.camera")
 local face = require("lib.face")
 
 local WALK, RUN, TROT = 0.892, 1.9, 1.159 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
-local STROLL = 1.0                    -- the walk's top: a stick pushed up to TILT walks, up to this
+-- The owner on the Retroid (2026-11-22): "walk a little faster". Every gait is PACE times the clips' own speed, and the clips play
+-- PACE times faster (the animator's `speed`), so the feet still keep to the ground.
+local PACE = 1.15
+local STROLL = 1.0 * PACE             -- the walk's top: a stick pushed up to TILT walks, up to this
 local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
-local TOP, TOP_CARRY = 1.9, 1.25      -- metres a second at a full push: running (about twice the walk), trotting with a parcel
+local TOP, TOP_CARRY = 1.9 * PACE, 1.25 * PACE -- metres a second at a full push: running (about twice the walk), trotting with a parcel
 local RADIUS = 0.26
 
 local Postmaster = nova.entity { model = "postmaster", tags = { "postmaster", "player" }, velocity = false }
@@ -35,6 +38,7 @@ function Postmaster:create()
     },
     on_event = function(event) if event == "step" then self:step() end end,
   })
+  self.anim.speed = PACE
   self.carry_layer = { { clip = "carry", time = 0, weight = 0, mask = { "arm_l", "arm_r" } } }
   self.parcel_opts = { ry = 0 }
   self.mood = face.new(5)
@@ -111,7 +115,7 @@ function Postmaster:update(dt)
   local laden = state.carrying ~= nil
   self.gait = self.speed < 0.08 and "still" or self.speed <= STROLL + 0.05 and "walk" or laden and "trot" or "run"
   self.anim:play(laden and "laden" or "move", { fade = 0.25 })
-  self.anim:set("speed", self.speed)
+  self.anim:set("speed", self.speed / PACE) -- (the clips' own speeds; they play PACE times faster)
   self.anim:update(dt)
   for i = #self.dust, 1, -1 do
     local p = self.dust[i]
@@ -132,7 +136,8 @@ function Postmaster:keep_clear()
   local v = nova.first("van")
   if v then
     local s, c = math.sin(v.heading), math.cos(v.heading)
-    for _, off in ipairs({ -1.3, 0, 1.3 }) do push(v.x + s * off, v.z + c * off, 0.92) end
+    local body = v.BODY or { offs = { 0 }, r = 1 }
+    for _, off in ipairs(body.offs) do push(v.x + s * off, v.z + c * off, body.r) end
   end
   for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.62) end
 end

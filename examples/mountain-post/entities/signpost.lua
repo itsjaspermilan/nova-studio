@@ -8,7 +8,7 @@ local ARM_Y = { 3.75, 2.95 }
 local function sprite_of(text) return "sign_" .. text:lower():gsub("[^a-z]+", "_"):gsub("_$", "") end
 
 function Signpost:create()
-  nova.scenery.add("signpost", self.x, 0, self.z, { ry = 0 })
+  nova.scenery.add("signpost", self.x, 0, self.z, { ry = 0, lift = "upright" }) -- (upright: it stands straight on a slope)
   self.drawn = {}
   for i, arm in ipairs(self.arms or {}) do
     local ry = arm.ry or 0
@@ -16,12 +16,14 @@ function Signpost:create()
     local ax, az = math.cos(ry), -math.sin(ry)
     local nx, nz = math.sin(ry), math.cos(ry) -- its face
     self.drawn[i] = {
-      opts = { ry = ry, shadow = true },
+      opts = { ry = ry, shadow = true, lift = "origin" }, -- (level, at the height of the ground under the post)
       y = ARM_Y[i] or (2.55 - 0.47 * (i - 1)),
       sprite = sprite_of(arm.text or ""),
       text = arm.text,
       -- the words sit on the middle of the board, 0.95 m out from the post, a hair off each face
       cx = self.x + ax * 1.55, cz = self.z + az * 1.55,
+      -- (a billboard rises with the ground under it: the words keep to the level arm, which rises with the ground under the post)
+      lift = nova.terrain_height(self.x, self.z) - nova.terrain_height(self.x + ax * 1.55, self.z + az * 1.55),
       fronts = { { nx * 0.075, nz * 0.075, { nx, 0, nz } }, { -nx * 0.075, -nz * 0.075, { -nx, 0, -nz } } },
     }
   end
@@ -33,7 +35,7 @@ function Signpost:draw()
     nova.model("sign_arm", self.x, d.y, self.z, d.opts)
     for _, f in ipairs(d.fronts) do
       BOARD.face = f[3]
-      nova.billboard(d.sprite, d.cx + f[1], d.y, d.cz + f[2], BOARD.w, BOARD)
+      nova.billboard(d.sprite, d.cx + f[1], d.y + d.lift, d.cz + f[2], BOARD.w, BOARD)
     end
   end
 end

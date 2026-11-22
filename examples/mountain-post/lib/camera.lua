@@ -98,15 +98,15 @@ function camera.van(v, dt)
   local want = cam.held or 0
   cam.look = cam.look + ((want - cam.look + math.pi) % (2 * math.pi) - math.pi) * math.min(1, dt * (want ~= 0 and 6 or 3))
   local speed = math.abs(v.speed)
-  local back, height = 7.2 + speed * 0.05, 3.3
+  local back, height = 5.6 + speed * 0.05, 2.6 -- (the toy van: 2.9 m long, 1.9 m high)
   local a = cam.heading + cam.look
   local s, c = math.sin(a), math.cos(a)
   local ex, ez = v.x - s * back, v.z - c * back
-  local ahead = 6 * math.max(0, 1 - math.abs(cam.look) / 0.9)
+  local ahead = 5 * math.max(0, 1 - math.abs(cam.look) / 0.9)
   local tx, tz = v.x + math.sin(cam.heading) * ahead, v.z + math.cos(cam.heading) * ahead
   local gv = world.height(v.x, v.z)
-  local ey = math.max(gv + height, ground(ex, ez) + 1.4)
-  camera.set(ex, ey, ez, tx, world.height(tx, tz) + 1.5, tz, 60 + speed * 0.25, dt)
+  local ey = math.max(gv + height, ground(ex, ez) + 1.2)
+  camera.set(ex, ey, ez, tx, world.height(tx, tz) + 1.2, tz, 60 + speed * 0.25, dt)
   cam.yaw = cam.heading
 end
 
