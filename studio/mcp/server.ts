@@ -42,7 +42,7 @@ import { registerMakers } from "./makers";
 import { releaseBinary } from "./binaries";
 import { IMAGE_HELP, makeImage } from "./image";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
-import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
+import { heightmapFromNetwork, heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
 import { analyse as analyseTrack, buildTrack, newTrack, parseTrack, roadOf, sceneOf, serializeTrack, trackOf } from "../src/lib/track-doc";
 
@@ -763,7 +763,8 @@ tool(
   "terrain_write",
   "Make designed ground for a route: a heightmap picture `terrain/<name>.png` (16-bit grey) from the route's control points (the same `control` and `open` as track_write) and an elevation profile along it, with the land around the road blended smoothly into rolling hills. " +
     "`profile` is a list of [metres along the route, road elevation in metres]: [[0, 0], [400, 20], [600, 24], [1000, 4]] is a road that climbs 20 m over its first 400 m, crests at 24 m and drops away (the elevations are smooth between the points, a closed circuit wraps round, and the grade is held to `max_grade`). " +
-    "It returns the line to put in the scene's code: nova.terrain{ heightmap = \"terrain/<name>.png\", x = ..., z = ..., size = ..., height = ... } (the engine lifts everything drawn on the ground, the road ribbon included, by it). Heights below 0 cannot be stored, so if the land dips below 0 the whole map is raised and the report says by how much.",
+    "It returns the line to put in the scene's code: nova.terrain{ heightmap = \"terrain/<name>.png\", x = ..., z = ..., size = ..., height = ... } (the engine lifts everything drawn on the ground, the road ribbon included, by it). Heights below 0 cannot be stored, so if the land dips below 0 the whole map is raised and the report says by how much. " +
+    "For a small map of several roads instead (a valley's main road and its lanes), give `roads` (each { control, profile }), with `bounds`, `pads` (level yards and house plots), `carve` (a creek's channel, cut through everything) and `rim` (hills at the map's edges).",
   {
     name: { type: "string" },
     control: { type: "array", items: { type: "array", items: { type: "number" } } },
@@ -777,19 +778,39 @@ tool(
     margin: { type: "number", description: "Metres of land beyond the route's bounds (150)." },
     cell: { type: "number", description: "Metres between samples (4)." },
     seed: { type: "number" },
+    roads: { type: "array", items: { type: "object" }, description: "Instead of one `control`: a small map's network, [{ control, profile, flat, blend }, ...], each an open route ([x, z] points, two or more); a road that starts or ends on an earlier one is level with it there. With `bounds`, `pads`, `carve` and `rim`." },
+    bounds: { type: "array", items: { type: "number" }, description: "With roads: the map, [x0, z0, x1, z1] in metres (the roads and 120 m round them when left out)." },
+    pads: { type: "array", items: { type: "object" }, description: "With roads: level ground, [{ at: [x, z], radius (8), height (the ground there when left out), blend (14) }]: a yard, a house's plot." },
+    carve: { type: "array", items: { type: "object" }, description: "With roads: channels cut into the land, [{ points: [[x, z], ...], profile: [[d, bed height], ...] or depth (3), width (flat bed, 4), bank (1 in this, 1.5) }]: a creek, a gorge. They cut through roads: draw a bridge there." },
+    rim: { type: "object", description: "With roads: { height (14), width (40) }: the land rises towards the map's edges, so it ends in hills and not at a wall." },
   },
-  ["name", "control"],
+  ["name"],
   (a) => {
     const root = projectRoot(a);
     const name = safeName(a.name, "Terrain");
+    const n = (v: number) => Math.round(v * 10) / 10;
+    if (a.roads !== undefined) {
+      if (a.control !== undefined) throw new Error("give either `control` (one route) or `roads` (a network), not both");
+      const r = heightmapFromNetwork({
+        roads: a.roads, bounds: a.bounds, pads: a.pads, carve: a.carve, rim: a.rim, maxGrade: a.max_grade, hills: a.hills, hillWavelength: a.hill_wavelength, cell: a.cell, seed: a.seed ?? 1,
+      });
+      put(root, `terrain/${name}.png`, r.png);
+      return `terrain/${name}.png: ${r.width} x ${r.rows} samples, ${r.cell} m apart\n` +
+        `nova.terrain{ heightmap = "terrain/${name}.png", x = ${r.x}, z = ${r.z}, size = ${r.size}, height = ${r.height} }\n` +
+        r.report.roads.map((x: Record<string, number>, i: number) => `road ${i + 1}: ${x.length} m long, ${x.start} m at its start, ${x.end} m at its end, from ${x.min} to ${x.max} m`).join("\n") +
+        `\nsteepest grade ${Math.round(r.report.maxGrade * 1000) / 10} %` +
+        (r.notes.length ? `\n${r.notes.join("\n")}` : "") +
+        (r.report.pads.length ? `\npads level at: ${r.report.pads.join(", ")} m` : "") +
+        r.report.carve.map((c: Record<string, number>, i: number) => `\nchannel ${i + 1}: ${c.length} m, its bed from ${c.from} m down to ${c.to} m`).join("") +
+        (r.shift > 0 ? `\nthe whole land was raised ${n(r.shift)} m so that nothing is below 0 (every height above includes it)` : "");
+    }
     const control = a.control as number[][];
-    if (!Array.isArray(control) || control.length < 4 || control.some((p) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points");
+    if (!Array.isArray(control) || control.length < 4 || control.some((p) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points (or give `roads`, a network)");
     const r = heightmapFromTrack({
       control, open: !!a.open, profile: a.profile ?? [[0, 0]], maxGrade: a.max_grade, hills: a.hills, hillWavelength: a.hill_wavelength,
       flat: a.flat, blend: a.blend, margin: a.margin, cell: a.cell, seed: a.seed ?? 1,
     });
     put(root, `terrain/${name}.png`, r.png);
-    const n = (v: number) => Math.round(v * 10) / 10;
     return `terrain/${name}.png: ${r.width} x ${r.rows} samples, ${r.cell} m apart\n` +
       `nova.terrain{ heightmap = "terrain/${name}.png", x = ${r.x}, z = ${r.z}, size = ${r.size}, height = ${r.height} }\n` +
       `road: ${n(r.report.roadStart)} m at the start, ${n(r.report.roadEnd)} m at the end, from ${n(r.report.roadMin)} to ${n(r.report.roadMax)} m, steepest grade ${Math.round(r.report.maxGrade * 1000) / 10} %` +

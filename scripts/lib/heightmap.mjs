@@ -229,3 +229,158 @@ export function heightmapFromTrack(spec) {
     line,
   };
 }
+
+/// Designed ground for a small map with several roads (a valley's main road and the lanes off it), level pads (a yard, a house plot),
+/// channels cut into it (a creek) and a rim of higher ground at its edges (where the map ends without a wall):
+///
+///   heightmapFromNetwork({
+///     bounds: [x0, z0, x1, z1],                               the map (metres)
+///     roads: [{ control, profile, flat, blend }, ...],        each an open route; a road that starts (or ends) on an earlier one takes that
+///                                                             road's elevation there, so a lane leaves the main road level with it
+///     pads: [{ at: [x, z], radius, height, blend }],          level ground; `height` defaults to the ground there before the pad
+///     carve: [{ points, profile, width, bank, depth }],       a channel along a smooth line: its bed follows `profile` ([[d, h], ...]) or lies
+///                                                             `depth` under the ground (never rising downstream); `width` of flat bed and
+///                                                             banks rising 1 in `bank`
+///     rim: { height, width },                                 the land rises `height` metres over the last `width` metres to the edge
+///     hills, hillWavelength, cell, seed, maxGrade })
+///
+/// A channel wins over a road (it is cut through it), so a road that crosses one needs a bridge drawn by the game.
+export function heightmapFromNetwork(spec) {
+  const spacing = 2.5;
+  const maxGrade = spec.maxGrade ?? 0.12;
+  if (!(maxGrade > 0 && maxGrade < 1)) throw new Error("maxGrade is a fraction between 0 and 1 (0.12 is 12 %)");
+  const roadsIn = spec.roads ?? [];
+  if (!Array.isArray(roadsIn) || !roadsIn.length) throw new Error("roads needs at least one road: { control: [[x, z], ...] }");
+  const hills = spec.hills ?? 12, wavelength = spec.hillWavelength ?? 220;
+  if (!(hills >= 0 && wavelength >= 20)) throw new Error("hills and hillWavelength must be positive (hillWavelength at least 20)");
+  const noise = noiseField(spec.seed ?? 1, wavelength);
+  const land = (x, z) => noise(x, z) * hills;
+  // (a line through two or three points: the catmull spline needs four, so its ends are repeated)
+  const lineOf = (pts) => centreline(pts.length < 4 ? [pts[0], ...pts, pts[pts.length - 1]] : pts, spacing, true);
+  const roads = [];
+  const notes = [];
+  roadsIn.forEach((r, k) => {
+    if (!Array.isArray(r.control) || r.control.length < 2 || r.control.some((p) => !Array.isArray(p) || p.length !== 2 || !p.every(Number.isFinite))) throw new Error(`roads[${k}].control needs at least two [x, z] points`);
+    const line = lineOf(r.control);
+    const length = (line.length - 1) * spacing;
+    let profile = (r.profile ?? [[0, land(line[0].x, line[0].z)], [length, land(line.at(-1).x, line.at(-1).z)]]).map((p) => [...p]);
+    // a lane that leaves an earlier road starts at that road's level (and ends at it, when it ends on one)
+    const levelOn = (x, z) => {
+      let best = Infinity, h = 0, which = -1;
+      roads.forEach((o, n) => o.line.forEach((p, i) => { const d = Math.hypot(p.x - x, p.z - z); if (d < best) { best = d; h = o.elev[i]; which = n; } }));
+      return best <= 20 ? { h, which } : null;
+    };
+    const first = levelOn(line[0].x, line[0].z), last = levelOn(line.at(-1).x, line.at(-1).z);
+    if (first) {
+      profile = [[0, first.h], ...profile.filter((p) => p[0] > 0)];
+      notes.push(`road ${k + 1} leaves road ${first.which + 1} level with it (${Math.round(first.h * 10) / 10} m)`);
+    }
+    if (last) profile = [...profile.filter((p) => p[0] < length), [length, last.h]];
+    const elev = elevations(profile, line.length, spacing, true, maxGrade);
+    roads.push({ line, elev, flat: r.flat ?? 6, blend: r.blend ?? 40 });
+  });
+  let [x0, z0, x1, z1] = Array.isArray(spec.bounds) ? spec.bounds : [];
+  if (![x0, z0, x1, z1].every(Number.isFinite)) {
+    x0 = z0 = Infinity; x1 = z1 = -Infinity;
+    for (const r of roads) for (const p of r.line) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    x0 -= 120; z0 -= 120; x1 += 120; z1 += 120;
+  }
+  const cell = Math.max(spec.cell ?? 2, Math.max(x1 - x0, z1 - z0) / 4095);
+  const width = Math.floor((x1 - x0) / cell) + 1, rows = Math.floor((z1 - z0) / cell) + 1;
+  const heights = new Float32Array(width * rows);
+  const weight = new Float32Array(width * rows); // how firmly a road or a pad holds the ground at each sample (the firmest wins)
+  const target = new Float32Array(width * rows);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < width; i++) heights[j * width + i] = land(x0 + i * cell, z0 + j * cell);
+  const near = (ax, az, bx, bz, reach, fn) => {
+    const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach - x0) / cell)), i1 = Math.min(width - 1, Math.ceil((Math.max(ax, bx) + reach - x0) / cell));
+    const j0 = Math.max(0, Math.floor((Math.min(az, bz) - reach - z0) / cell)), j1 = Math.min(rows - 1, Math.ceil((Math.max(az, bz) + reach - z0) / cell));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * width + i, x0 + i * cell, z0 + j * cell);
+  };
+  const hold = (k, w, level) => { if (w > weight[k]) { weight[k] = w; target[k] = level; } };
+  // (the distance from a sample to a segment, and how far along it)
+  const along = (px, pz, a, b) => {
+    const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1;
+    const t = Math.min(1, Math.max(0, ((px - a.x) * dx + (pz - a.z) * dz) / len2));
+    return [Math.hypot(px - (a.x + dx * t), pz - (a.z + dz * t)), t];
+  };
+  for (const r of roads) {
+    const reach = r.flat + r.blend;
+    for (let s = 0; s + 1 < r.line.length; s++) {
+      const a = r.line[s], b = r.line[s + 1], ha = r.elev[s], hb = r.elev[s + 1];
+      near(a.x, a.z, b.x, b.z, reach, (k, px, pz) => {
+        const [d, t] = along(px, pz, a, b);
+        hold(k, 1 - smoothstep(r.flat, reach, d), ha + (hb - ha) * t);
+      });
+    }
+  }
+  const padLevels = [];
+  for (const [n, p] of (spec.pads ?? []).entries()) {
+    const [px0, pz0] = Array.isArray(p.at) ? p.at : [];
+    if (!Number.isFinite(px0) || !Number.isFinite(pz0)) throw new Error(`pads[${n}].at is [x, z]`);
+    const radius = p.radius ?? 8, blend = p.blend ?? 14;
+    const fi = Math.min(width - 1, Math.max(0, Math.round((px0 - x0) / cell))), fj = Math.min(rows - 1, Math.max(0, Math.round((pz0 - z0) / cell)));
+    const k0 = fj * width + fi;
+    const level = p.height ?? heights[k0] + (target[k0] - heights[k0]) * weight[k0];
+    padLevels.push(level);
+    near(px0, pz0, px0, pz0, radius + blend, (k, x, z) => hold(k, 1 - smoothstep(radius, radius + blend, Math.hypot(x - px0, z - pz0)), level));
+  }
+  for (let k = 0; k < heights.length; k++) heights[k] = heights[k] + (target[k] - heights[k]) * weight[k];
+  if (spec.rim) {
+    const rh = spec.rim.height ?? 14, rw = spec.rim.width ?? 40;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < width; i++) {
+      const edge = Math.min(i * cell, x1 - x0 - i * cell, j * cell, z1 - z0 - j * cell);
+      heights[j * width + i] += rh * (1 - smoothstep(0, rw, edge));
+    }
+  }
+  // channels last: they cut through everything
+  const carved = [];
+  for (const [n, c] of (spec.carve ?? []).entries()) {
+    if (!Array.isArray(c.points) || c.points.length < 2) throw new Error(`carve[${n}].points needs at least two [x, z] points`);
+    const line = lineOf(c.points);
+    const depth = c.depth ?? 3;
+    const at = (x, z) => {
+      const i = Math.min(width - 1, Math.max(0, Math.round((x - x0) / cell))), j = Math.min(rows - 1, Math.max(0, Math.round((z - z0) / cell)));
+      return heights[j * width + i];
+    };
+    let bed;
+    if (c.profile) bed = elevations(c.profile, line.length, spacing, true, 0.3, 10);
+    else {
+      bed = line.map((p) => at(p.x, p.z) - depth);
+      for (let i = 1; i < bed.length; i++) bed[i] = Math.min(bed[i], bed[i - 1]);
+    }
+    const half = (c.width ?? 4) / 2, bank = c.bank ?? 1.5;
+    for (let s = 0; s + 1 < line.length; s++) {
+      const a = line[s], b = line[s + 1], ha = bed[s], hb = bed[s + 1];
+      near(a.x, a.z, b.x, b.z, half + 40, (k, px, pz) => {
+        const [d, t] = along(px, pz, a, b);
+        heights[k] = Math.min(heights[k], ha + (hb - ha) * t + Math.max(0, d - half) / bank);
+      });
+    }
+    carved.push({ line, bed });
+  }
+  let lo = Infinity, hi = -Infinity;
+  for (const v of heights) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const shift = lo < 0 ? -lo : 0;
+  const height = Math.max(hi + shift, 1);
+  const values = Uint16Array.from(heights, (v) => Math.round(((v + shift) / height) * 65535));
+  let worst = 0;
+  for (const r of roads) for (let i = 1; i < r.elev.length; i++) worst = Math.max(worst, Math.abs(r.elev[i] - r.elev[i - 1]) / spacing);
+  const m = (v) => Math.round((v + shift) * 10) / 10;
+  return {
+    png: png16(width, rows, values),
+    x: Math.round(x0 * 100) / 100,
+    z: Math.round(z0 * 100) / 100,
+    size: Math.round((width - 1) * cell * 100) / 100,
+    cell, width, rows,
+    height: Math.round(height * 1000) / 1000,
+    shift,
+    notes,
+    report: {
+      roads: roads.map((r) => ({ length: Math.round((r.line.length - 1) * spacing), start: m(r.elev[0]), end: m(r.elev.at(-1)), min: m(Math.min(...r.elev)), max: m(Math.max(...r.elev)) })),
+      pads: padLevels.map(m),
+      carve: carved.map((c) => ({ length: Math.round((c.line.length - 1) * spacing), from: m(c.bed[0]), to: m(c.bed.at(-1)) })),
+      maxGrade: worst,
+    },
+    roads: roads.map((r) => ({ line: r.line, elev: r.elev.map((h) => h + shift) })),
+  };
+}
