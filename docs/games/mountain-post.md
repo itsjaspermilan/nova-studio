@@ -88,6 +88,13 @@ Crossing New Horizons as an example. We don't have to worry too much about elbow
 two to two and a half heads tall, a big head on a small body, stubby arms and legs as single pieces with no elbows or knees,
 mitten hands, simple feet, big simple eyes. About a metre tall, and the world is sized to them.
 
+**Faces** (the owner: "The facial features should also be larger so they can emote."): large wide-set eyes, clear eyebrows, a
+readable mouth, a big simple nose or muzzle, bold enough to read from the driving camera. A small set of expressions (neutral,
+happy, delighted, gruff, surprised, talking, blink) that change with each line of a conversation; idle blinking.
+
+**Running** (the owner: "when the player runs, their arms go wide. Very cute"): a gentle push of the stick walks; a full push
+runs with the arms held straight out to the sides. Carrying a parcel, the run is a trot with the parcel held in front.
+
 **The van.** Simple, like a modern high-roof panel van (the owner: "the van isn't simple like a Sprinter"): one tall smooth box
 with soft edges, a short sloping bonnet into a big windscreen, clean flat sides, two tall rear doors, plain lights; no roof rack,
 nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
