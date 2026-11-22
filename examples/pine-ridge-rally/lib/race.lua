@@ -15,17 +15,24 @@ local horizon = require("lib.horizon")
 local audio = require("lib.audio")
 local haptics = require("lib.haptics")
 local ui = require("lib.ui")
+local racing = require("lib.racing")
 
 local race = {}
 
 local ROAD_OPTS = { shadow = false }
 -- rally: how fast a class of car covers a stage, on average (m/s), for a section's par when no driven pars are recorded
 local TYPICAL_SPEED = { sport = 25, everyday = 22 }
+-- The three rivals, each a driver of their own (see "the computer's driving" below): Mika is the one to beat, Rosa the one you will.
 local RIVALS = {
-  { name = "Mika", skill = 1.0, lane = -1.8 },
-  { name = "Dax", skill = 0.96, lane = 2.2 },
-  { name = "Rosa", skill = 0.92, lane = 0.4 },
+  { name = "Mika", pace = 1.0, bravery = 1.0, consistency = 0.97 },
+  { name = "Dax", pace = 0.955, bravery = 0.95, consistency = 0.92 },
+  { name = "Rosa", pace = 0.905, bravery = 0.88, consistency = 0.88 },
 }
+-- the computer driving the player's car (F9): at its best, and evenly
+local IDEAL = { pace = 1, bravery = 1, consistency = 1 }
+-- (a harder course's rivals are a touch quicker, an easier one's a touch slower: the course's level, Easy to Expert)
+local COURSE_PACE = { 0.985, 1, 1.01, 1.02 }
+local CATCH_UP = 0.02         -- at most this much quicker (never past what the car can do) when far behind you, or slower when far ahead
 local MAP_COLORS = { { 96, 165, 250 }, { 74, 222, 128 }, { 244, 114, 182 } }
 local ROAD_EDGE = 0.2        -- metres from the edge of the road's surface (a waypoint's `w`, 6 on most of a course) to where the grass starts
 -- what a road kind is under the tyres: asphalt is a road, the rest is loose (gravel, sand, snow, dirt)
@@ -33,6 +40,7 @@ local function surface_of(road) if road == "road_asphalt" then return "road", fa
 local RESCUE_FAR = 30         -- metres from the middle of the road at which the player is put back by itself
 local RESCUE_OUT, RESCUE_HOLD, RESCUE_IN = 0.45, 0.2, 0.45 -- the fade to black, the moment of black, and the fade back (seconds)
 local LOOK_FAR = 240         -- metres of scenery drawn around the camera (fog hides its edge)
+local SUSPENSION_NEAR = 110  -- metres from the camera inside which a car's suspension is worked out in full
 
 -- ---- driving: the player's controls and the other drivers ---------------------------------------------------------------
 
@@ -50,63 +58,84 @@ local function read_controls(car)
   c.handbrake = nova.input.down("handbrake")
 end
 
--- Steers a car along the waypoints. `car.skill` (0.8 to 1) is how hard it dares to go.
+-- ---- the computer's driving ------------------------------------------------------------------------------------------------------
+-- Every car the computer drives (the rivals, and the player's car on F9) follows the course's racing line (lib/racing.lua) at the speeds
+-- its own profile allows: the profile is the car's (its grip, brakes, engine, gears) scaled by the driver's skill:
+--   pace         the share of the line's corner speed it dares (1 is the ideal: what the speed profile says the car can do)
+--   bravery      the share of the brakes it uses into a bend (braking later or earlier)
+--   consistency  how evenly it drives: a driver below 1 is a little faster or slower into each bend, a different way each lap
+-- It steers by the turn it wants (the line's own bend, plus a pull back onto the line), not by aiming at a point: so it holds the line
+-- through a bend instead of cutting it. In traffic (Race:update_traffic) it moves off the line to pass a slower car where there is
+-- room, keeps a car's width from one alongside, and otherwise follows without running into it.
+local function point_at(s)
+  if track.open then s = math.max(0, math.min(track.length, s)) else s = s % track.length end
+  local _, _, lo = track.at(s)
+  local p = track.point(lo)
+  return lo, (p.seg or 0) > 0 and (s - p.s) / p.seg or 0
+end
+
+local function lerp_speed(v, L, i, frac)
+  local b = L.open and math.min(L.n, i + 1) or (i % L.n + 1)
+  frac = math.max(0, math.min(1, frac))
+  return v[i] + (v[b] - v[i]) * frac
+end
+
 local function drive_itself(car)
   local c = car.ctl
-  local here = track.point(car.waypoint or 1)
-  local s_here = car.last_s or here.s or 0
-  -- The point it steers for: a little way along the road, further the faster it goes, blended between waypoints so that it glides
-  -- along instead of hopping ten metres at a time. (2026-11-08: it was 3 waypoints plus one for every 8 m/s, up to 80 m ahead at speed:
-  -- through a bend the line to a point that far on ran across the grass on the inside, and the hop from one waypoint to the next jerked
-  -- the wheel. The rivals spent a fifth to a third of a race with their wheels on the grass.)
-  local aim = 9 + math.abs(car.speed) * 0.45
-  local px, pz, _, ptx, ptz = track.at(s_here + aim)
-  -- how sharp the road gets ahead: for each of the next 200 m, the speed that bend allows, less what braking from here can take off
-  -- before it; the car drives at the lowest of them
-  local hold = ({ road = 12, dirt = 8, rough = 7 })[car.surface] or 12  -- (sideways grip the cars really have, m/s squared: they slide past it)
-  local a_lat = hold * car:grip_now() * (car.skill or 0.9)
-  local decel = 9 * (car.brake_power or 30) / 30
-  local want_speed = car.vmax or 40
-  local bend = 0
-  for j = 1, 20 do
-    local q = track.point((car.waypoint or 1) + j)
-    local k = math.abs(q.k)
-    if j <= 14 then bend = math.max(bend, k) end
-    local allowed = math.sqrt(a_lat / math.max(k, 0.0008))
-    local d = math.max(0, j * 10 - 10)
-    want_speed = math.min(want_speed, math.sqrt(allowed * allowed + 2 * decel * d))
-  end
-  -- the car's own line (its lane) is for the straights: into a bend it comes to the middle, where there is room to slide
-  local lane = (car.lane or 0) * (1 - math.min(1, bend / 0.012))
-  if here.w < 6 then lane = lane * here.w / 6 end -- (a narrow stretch: the lanes close up)
-  local tx, tz = px + ptz * lane, pz - ptx * lane
-  local err = track.wrap(math.atan(tx - car.x, tz - car.z) - car.heading)
-  -- off the road, what is in the way (a tree, a barrier) is steered round and eased past. (On the road there is nothing to dodge: the
-  -- scenery stands off it, and dodging the barrier on the outside of every bend made the wheel flick from side to side at the entry.)
+  local ai = car.ai
+  local L = ai.line
+  local v = car.speed
+  local s_here = car.last_s or 0
+  -- the line a little ahead (the steering is a turn rate: it starts turning as the bend arrives, not after)
+  local i, frac = point_at(s_here + math.max(0, v) * 0.05 + 0.5)
+  local o_line, h_line, k_line = racing.at(L, i, frac)
+  local here = track.point(car.waypoint or i)
+  local lim = math.max(0, (here.w or 6) - (math.abs(ai.shift or 0) > 0.3 and 0.9 or 1.1)) -- (passing: right to the edge)
+  local target = math.max(-lim, math.min(lim, o_line + (ai.shift or 0)))
+  local err = target - (car.left or 0)
+  -- the way it should be going: along the line, turned towards it by how far off it is (back onto it in about a third of a second)
+  local want = h_line + math.max(-0.4, math.min(0.4, math.atan(3 * err, math.max(math.abs(v), 6))))
+  -- The car's path swings round towards where it points at the rate its tyres hold it (fast on tarmac, slowly on gravel and snow), so
+  -- to turn its path at a rate it must point that far ahead of its path: the turn it wants of its path, then of its nose.
+  local course = (v > 3) and math.atan(car.velx, car.velz) or car.heading
+  local turn_path = v * k_line + 3 * track.wrap(want - course)
+  local lead = math.max(-0.5, math.min(0.5, turn_path / car:hold_rate()))
+  local yaw = turn_path + 8 * track.wrap(course + lead - car.heading)
+  local capacity = car:yaw_capacity()
+  c.steer = math.max(-1, math.min(1, -yaw / capacity))
+
+  -- the speed: the profile's, a little ahead (the brakes take a moment to bite), as this driver dares (and as the traffic allows)
+  local j, jf = point_at(s_here + math.max(0, v) * 0.18)
+  local want_speed = lerp_speed(ai.speeds, L, j, jf) * (ai.noise and ai.noise[j] or 1) * (ai.push or 1)
+  if ai.ideal then want_speed = math.min(want_speed, lerp_speed(ai.ideal, L, j, jf)) end -- (never faster than the car can go)
+  ai.want = want_speed -- (what it would do with the road to itself: Race:update_traffic compares it with the car ahead)
+  if ai.follow and ai.follow < want_speed then want_speed = ai.follow end
+  if car.cruise then want_speed = math.min(want_speed, car.cruise) end
+  if math.abs(yaw) > capacity * 1.05 and v > 8 then want_speed = math.min(want_speed, v - 0.5) end -- (cannot turn that hard: lift)
+  -- off the road: back on, gently, round anything in the way (on the road there is nothing to dodge: the scenery stands off it)
   local urgency = 0
-  if (car.off_middle or 0) > (here.w or 6) - 0.5 then
+  if (car.off_middle or 0) > (here.w or 6) + 1.5 then
+    if car.off_middle > (here.w or 6) + 3 then want_speed = math.min(want_speed, math.max(14, v * 0.9)) end
     local h = car.heading
-    local ahead = 9 + math.abs(car.speed) * 0.8
+    local ahead = 9 + math.abs(v) * 0.8
     local dist, ox, oz = nova.scenery.ahead(car.x, car.z, math.sin(h), math.cos(h), ahead, 1.45)
     if dist then
       urgency = 1 - dist / ahead
       local on_left = (ox - car.x) * math.cos(h) - (oz - car.z) * math.sin(h) >= 0
-      -- (the heading grows to the left, so turning away from something on the left lowers it)
-      err = err + (on_left and -1 or 1) * (0.25 + 0.9 * urgency)
+      c.steer = math.max(-1, math.min(1, c.steer + (on_left and 1 or -1) * (0.3 + 1.2 * urgency)))
+      if urgency > 0.45 then want_speed = math.max(5, want_speed * (1.3 - urgency)) end
     end
   end
-  c.steer = -err * 3.4
-  -- near the edge of the road, steer back towards the lane, harder the further out (a car's `left` is how far left of the middle it is)
-  local out = math.abs(car.left or 0) - ((here.w or 6) - 1.6)
-  if out > 0 then c.steer = c.steer + (car.left > 0 and 1 or -1) * math.min(1, out * 0.5) end
-  c.steer = math.max(-1, math.min(1, c.steer))
-  want_speed = math.max(want_speed, 7)
-  if urgency > 0.45 then want_speed = math.max(7, want_speed * (1.3 - urgency)) end
-  local diff = want_speed - car.speed
-  c.throttle = diff > 0 and math.min(1, diff / 3) or 0
-  c.brake = diff < -1 and math.min(1, (-diff - 1) / 4) or 0
+  want_speed = math.max(want_speed, 6)
+  local diff = want_speed - v
+  if diff > 0 then
+    c.throttle, c.brake = math.min(1, 0.3 + diff * 1.2), 0
+  elseif diff > -0.4 then
+    c.throttle, c.brake = 0.12, 0
+  else
+    c.throttle, c.brake = 0, math.min(1, (-diff - 0.4) / 1.5)
+  end
   c.handbrake = false
-  if math.abs(err) > 1.0 then c.throttle = math.min(c.throttle, 0.4) end
   -- pinned against something (a barrier on the outside of a bend): back away from it, the wheel turned the other way, and try again
   if (car.reversing or 0) > 0 then
     c.throttle, c.brake, c.steer = 0, 1, -c.steer
@@ -188,7 +217,7 @@ function race.scene()
     for _, car in ipairs(self.cars) do if car.engine then car.engine:stop() end end
     nova.music.volume(state.music_volume)
     nova.hitch(0); nova.weather(); nova.sky(nil); nova.fog(nil); nova.shadows(nil); nova.terrain()
-    crowd.clear(); course.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear()
+    crowd.clear(); course.clear(); stage_lib.clear(); lamps.clear(); track.clear(); grid.clear(); fx.clear(); foliage.clear(); racing.clear()
     nova.look(); nova.wind()
   end
 
@@ -226,19 +255,68 @@ function race.scene()
     self.player.oversteer = state.current_car().oversteer
     self.player.name = "You"
     self.cars[1] = self.player
-    if state.mode == "race" then nova.log("rivals: difficulty " .. state.current_difficulty().id) end
+    local level = state.current_rival_level()
+    if state.mode == "race" then nova.log("rivals: difficulty " .. state.current_difficulty().id); nova.log("rivals: " .. level.id) end
+    local line = racing.line()
+    nova.log(string.format("rivals: ideal %.2f s a %s on the line (%s)", self:ideal_time(self.player), self.stage and "stage" or "lap", self.player.car_id))
     for i, r in ipairs(state.mode == "race" and RIVALS or {}) do
       local car = put(pool[(i - 1) % #pool + 1], slots[i])
-      -- a rival drives its own car (its top speed, its grip) as hard as the difficulty and its own skill say
-      local diff = state.current_difficulty()
-      car.name, car.lane, car.base_lane = r.name, r.lane, r.lane
-      car.skill = diff.corner * r.skill     -- the share of its tyres' grip it dares to use in a bend
-      car.skill_base = car.skill
-      car.vmax_base = car.top * diff.pace * r.skill
-      car.vmax = car.vmax_base
-      car.band = diff.band
+      -- a rival drives its own car (the same machine as yours, in another paint) as well as its skill, the rivals' setting and the
+      -- course's level say
+      car.name = r.name
+      local scale = level.pace * (COURSE_PACE[state.current_track().level or 2] or 1)
+      self:setup_driver(car, { pace = math.min(1.04, r.pace * scale), bravery = math.min(1.04, r.bravery * level.bravery), consistency = math.min(1, r.consistency * level.consistency) })
       car.engine = audio.engine(0.3, car.car_id, true)
       self.cars[#self.cars + 1] = car
+    end
+    assert(line)
+  end
+
+  -- The options of the speed profile on this course (lib/racing.lua), with the hills' slope along the line worked out once.
+  function Race:profile_opts(car, skill)
+    local line = racing.line()
+    if not line.slope then line.slope = line.opts.slope_of(line) end
+    local o = { grip = (line.opts.grip or 1) * (0.7 + 0.3 * (car.tyres or 1)), surface = line.opts.surface, surfaces = line.opts.surfaces, slope = line.slope, standing = false }
+    o.lateral = racing.lateral * skill.pace * skill.pace
+    o.braking = racing.braking * skill.bravery
+    return o
+  end
+
+  -- The ideal time of a lap (or of the stage) for `car` on this course: its speed profile at its best (lib/racing.lua).
+  function Race:ideal_time(car)
+    local o = self:profile_opts(car, IDEAL)
+    o.standing = self.stage
+    return racing.speeds(racing.line(), car, o).time
+  end
+
+  -- A computer driver for `car` with `skill` ({ pace, bravery, consistency }): its speeds along the line, and the car's best speeds (it
+  -- never goes faster than those, whatever the catch-up says).
+  function Race:setup_driver(car, skill)
+    local line = racing.line()
+    car.ai = { line = line, skill = skill, shift = 0, push = 1, lap = nil }
+    self:refresh_driver(car)
+  end
+
+  -- Worked out again each lap: the tyres have worn (and hold less), and a driver who is not perfectly consistent takes each bend a
+  -- little differently.
+  function Race:refresh_driver(car)
+    local ai = car.ai
+    ai.speeds = racing.speeds(ai.line, car, self:profile_opts(car, ai.skill)).v
+    ai.ideal = racing.speeds(ai.line, car, self:profile_opts(car, IDEAL)).v
+    local spread = (1 - ai.skill.consistency) * 0.6
+    if spread > 0 then
+      -- a smooth wobble along the course: some bends a few per cent quicker than its pace, some slower
+      local n = ai.line.n
+      local raw = {}
+      for j = 1, n do raw[j] = (math.random() * 2 - 1) end
+      ai.noise = ai.noise or {}
+      for j = 1, n do
+        local sum = 0
+        for d = -4, 4 do sum = sum + raw[(j + d - 1) % n + 1] end
+        ai.noise[j] = 1 + spread * sum / 9 * 1.5
+      end
+    else
+      ai.noise = nil
     end
   end
 
@@ -356,14 +434,63 @@ function race.scene()
       local now = car.draft or 0
       car.draft = now + (want - now) * math.min(1, dt * (want > now and 1.5 or 0.8))
       if car.is_player and car.draft > 0.5 and not self.drafted then self.drafted = true; nova.log("rally: slipstream") end
-      if not car.is_player and car.base_lane then
-        -- a rival right behind a car, with the wake building, pulls out to the side to pass it, and comes back when it is clear
-        local target = car.base_lane
-        -- (not into a bend: the sharpest of the next 160 m or so must be gentle)
-        local sharpest = 0
-        for j = 1, 16 do sharpest = math.max(sharpest, math.abs(track.point((car.waypoint or 1) + j).k)) end
-        if gap and gap < 10 and car.draft > 0.35 and sharpest < 0.02 then target = math.max(-3.4, math.min(3.4, car.base_lane - (lateral >= 0 and 1 or -1) * 2.6)) end
-        car.lane = (car.lane or target) + (target - (car.lane or target)) * math.min(1, dt * 1.2)
+    end
+  end
+
+  -- The computer's cars in traffic: for each, the cars just ahead of it and beside it. One in its way that it is catching is passed
+  -- on the side with room (it moves off its line by `ai.shift`, at a walking pace sideways: no swerves) or, with no room, followed
+  -- (`ai.follow`, its speed, plus what the gap allows) so that it is never run into; one alongside is given a car's width. A car being
+  -- caught does nothing about it: it keeps its line (no weaving to block), and it leaves room for one alongside, the player too.
+  local PASS_ROOM, ALONGSIDE = 2.3, 2.2
+  function Race:update_traffic(dt)
+    local cars, length = self.cars, self.length
+    for _, car in ipairs(cars) do
+      local ai = car.ai
+      if ai and (not car.is_player or car.autopilot) then
+        local here = track.point(car.waypoint or 1)
+        local lim = math.max(0, (here.w or 6) - 0.9)
+        local line_o = racing.at(ai.line, car.waypoint or 1, 0)
+        local my_o, v = car.left or 0, car.speed
+        local my_s = car.last_s or 0
+        local shift_target, follow = 0, nil
+        for _, other in ipairs(cars) do
+          if other ~= car then
+            local ds = (other.last_s or 0) - my_s
+            if not self.stage then
+              if ds > length / 2 then ds = ds - length elseif ds < -length / 2 then ds = ds + length end
+            end
+            local oo = other.left or 0
+            if ds > 4.2 and ds < 12 + math.max(0, v) * 0.9 then
+              -- how much quicker this driver would go here than the car ahead is going
+              local closing = (ai.want or v) - other.speed
+              local in_path = math.abs(oo - my_o) < 2.2 or math.abs(oo - (line_o + ai.shift)) < 2.2
+              if in_path and (closing > 0.3 or ds < 9) then
+                -- pass where there is room (on the side its own line is on, if both have room), else follow
+                local room_left, room_right = lim - oo, oo + lim
+                local side
+                if room_left >= PASS_ROOM and room_right >= PASS_ROOM then side = line_o >= oo and 1 or -1
+                elseif room_left >= PASS_ROOM then side = 1
+                elseif room_right >= PASS_ROOM then side = -1 end
+                if side and closing > 0.3 then shift_target = oo + side * PASS_ROOM - line_o end
+                -- never into it: while still behind it (not yet moved across), no faster than it plus what the gap beyond a safe one
+                -- allows (a car moving out to pass keeps its speed until it is close)
+                if math.abs(oo - my_o) < 1.9 then
+                  local safe = 4.5 + math.max(0, v) * 0.12
+                  local allow = other.speed + math.max(-4, (ds - safe) * (side and closing > 0.3 and 1.2 or 0.6))
+                  if not follow or allow < follow then follow = allow end
+                end
+              end
+            elseif ds > -7.5 and ds <= 4.2 and math.abs(oo - my_o) < ALONGSIDE then
+              -- alongside: keep a car's width (move to the side of it this car is already on)
+              local side = my_o >= oo and 1 or -1
+              shift_target = oo + side * ALONGSIDE - line_o
+            end
+          end
+        end
+        shift_target = math.max(-lim - line_o, math.min(lim - line_o, shift_target))
+        local step = dt * 2.2
+        ai.shift = ai.shift + math.max(-step, math.min(step, shift_target - ai.shift))
+        ai.follow = follow
       end
     end
   end
@@ -443,7 +570,7 @@ function race.scene()
       self.player_finished_at = self.clock
       self:say("FINISH!", 4)
       p.autopilot = true
-      p.skill, p.vmax, p.lane = 0.8, 16, 0
+      p.cruise = 16 -- (the computer drives it on, gently)
     else
       self.section = self.section + 1
       audio.sfx(delta <= 0 and "best_lap" or "lap")
@@ -545,7 +672,7 @@ function race.scene()
       self.player_finished_at = self.clock
       self:say("FINISH!", 4)
       car.autopilot = true
-      car.skill, car.vmax, car.lane = 0.8, 30, 0
+      car.cruise = 30
     end
   end
 
@@ -619,7 +746,7 @@ function race.scene()
     -- F9 lets the computer drive for you (for demos, and for testing the circuits without a controller)
     if nova.input.pressed("autodrive") then
       self.player.autopilot = not self.player.autopilot
-      self.player.skill, self.player.vmax, self.player.lane = 0.95, self.player.top * 0.97, 0
+      if self.player.autopilot then self:setup_driver(self.player, IDEAL) end
     end
 
     if self.phase == "countdown" and transition.covering() then
@@ -645,9 +772,24 @@ function race.scene()
       self.clock = self.clock + dt
     end
 
+    local cam = self.camera
+    if self.phase == "racing" then self:update_traffic(dt) end
     for _, car in ipairs(self.cars) do
-      if car.is_player and not car.autopilot then read_controls(car) else drive_itself(car) end
-      if car.finish_time and not car.is_player then car.vmax = 26 end
+      -- (a car far from the camera has a cheaper suspension: one step a frame, no bumps; entities/car.lua)
+      car.far = not car.is_player and (car.x - cam.x) ^ 2 + (car.z - cam.z) ^ 2 > SUSPENSION_NEAR * SUSPENSION_NEAR
+      if car.is_player and not car.autopilot then
+        read_controls(car)
+      else
+        if not car.ai then self:setup_driver(car, IDEAL) end
+        -- each lap: the driver's speeds again, for the tyres as they are now (and its bends taken a little differently)
+        local lap = math.floor((car.progress or 0) / math.max(1, self.length))
+        if car.ai.lap ~= lap then
+          if car.ai.lap ~= nil then self:refresh_driver(car) end
+          car.ai.lap = lap
+        end
+        drive_itself(car)
+      end
+      if car.finish_time and not car.is_player then car.cruise = 26 end
       car:drive(dt)
       if car.is_player then
         if (car.lock or 0) > 0.3 and not self.lock_logged then self.lock_logged = true; nova.log("brake: the wheels locked") end
@@ -668,14 +810,12 @@ function race.scene()
     end
 
     if self.phase == "racing" then
-      -- rivals try a little harder when behind the player, and a little less when far ahead: on the straights, and in the bends (where
-      -- the twisty courses are won), up to what their tyres hold
+      -- a rival far behind you tries a little harder, one far ahead eases a little: at most CATCH_UP of its speed, and never faster
+      -- than its car can go (drive_itself caps it at the car's own best speeds), so it is never seen to do the impossible
       for _, car in ipairs(self.cars) do
-        if not car.is_player and not car.finish_time then
+        if car.ai and not car.is_player and not car.finish_time then
           local gap = self.player.progress - car.progress        -- positive: the rival is behind
-          local push = math.max(-car.band, math.min(car.band, gap * 0.0004))
-          car.vmax = math.min(car.top * (1 + 0.05 * (car.draft or 0)), car.vmax_base * (1 + 0.05 * (car.draft or 0)) * (1 + push))
-          if car.skill_base then car.skill = math.min(1.03, car.skill_base * (1 + push)) end
+          car.ai.push = 1 + math.max(-CATCH_UP, math.min(CATCH_UP, gap * 0.00005))
         end
       end
       if self.stage then

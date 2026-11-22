@@ -204,6 +204,21 @@ state.difficulties = {
   { id = "expert", name = "Expert", blurb = "Rivals drive at the limit and never give up. In a rally the section times to beat leave nothing spare.", pace = 1.03, corner = 1.1, band = 0.12, allow = 0.93 },
 }
 -- (each course's level picks its difficulty: Easy, Medium, Hard or Expert, in the order of state.levels)
+-- How good the rivals are (race mode), the player's choice: each rival's own skill (lib/race.lua's RIVALS: pace, bravery, consistency)
+-- scaled by these. `pace` is the share of the racing line's corner speed (lib/racing.lua), `bravery` of the brakes, `consistency` how
+-- evenly they drive. On Normal the best rival is a few per cent off the car's ideal lap and the slowest about ten: a field to fight
+-- through, where a good clean race wins. (Since 2026-11-21 the course's level only nudges this by a per cent or two; its `pace`,
+-- `corner` and `band` above were the old drivers'.) The options page needs a line for it: "RIVALS" cycling state.rival_levels.
+state.rival_levels = {
+  { id = "easy", name = "Easy", blurb = "Rivals brake early and take the bends gently.", pace = 0.92, bravery = 0.88, consistency = 0.95 },
+  { id = "normal", name = "Normal", blurb = "Rivals drive well: you have to drive well to win.", pace = 0.97, bravery = 0.96, consistency = 1 },
+  { id = "hard", name = "Hard", blurb = "Rivals drive at the limit of their cars, and rarely slip.", pace = 1.0, bravery = 1.0, consistency = 1.04 },
+}
+state.rival_level = "normal"
+function state.current_rival_level()
+  for _, l in ipairs(state.rival_levels) do if l.id == state.rival_level then return l end end
+  return state.rival_levels[2]
+end
 
 state.track = 1       -- index into state.tracks
 state.stage = 1       -- index into state.stages (in rally mode)
@@ -228,6 +243,7 @@ function state.load()
   if saved.effects ~= nil then state.effects = saved.effects end
   if saved.smooth ~= nil then state.smooth = saved.smooth end
   if saved.music_style then state.music_style = saved.music_style end
+  if saved.rivals then state.rival_level = saved.rivals end
   state.track = nova.save.get("last_track", 1)
   state.stage = nova.save.get("last_stage", 1)
   state.car = nova.save.get("last_car", 1)
@@ -253,7 +269,7 @@ function state.apply_look(look, extra)
 end
 
 function state.save_options()
-  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, smooth = state.smooth, music_style = state.music_style })
+  nova.save.set("options", { music = state.music_volume, sfx = state.sfx_volume, shadows = state.shadows, vibration = state.vibration, effects = state.effects, smooth = state.smooth, music_style = state.music_style, rivals = state.rival_level })
   nova.save.set("last_track", state.track)
   nova.save.set("last_stage", state.stage)
   nova.save.set("last_car", state.car)
