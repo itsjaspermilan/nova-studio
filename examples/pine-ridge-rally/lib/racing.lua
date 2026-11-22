@@ -301,6 +301,30 @@ end
 
 -- ---- where a car is on the line ---------------------------------------------------------------------------------------------------
 
+-- The time to drive each stretch of the line at the speeds `v` (racing.speeds(...).v), the stretches being between the point numbers
+-- `cuts` (a point's number plus how far to the next one, so 12.5 is half way from point 12 to 13): a list of seconds, one fewer than
+-- the cuts. Their sum is the time of the line from the first cut to the last (for a whole stage, racing.speeds's own time). This is what
+-- `ideal_time` is made of, restricted to part of the road: lib/sections.lua gives each section of a stage its target with it.
+function racing.section_times(L, v, cuts)
+  local n = L.n
+  local segments = L.open and n - 1 or n
+  local cum = { 0 }
+  local function seg_time(i)
+    local b = (i % n) + 1
+    return L.seg[i] / math.max(1, (v[i] + v[b]) / 2)
+  end
+  for i = 1, segments do cum[i + 1] = cum[i] + seg_time(i) end
+  local function at(x)
+    if x >= segments + 1 then return cum[segments + 1] end
+    local i = math.max(1, math.floor(x))
+    local f = math.max(0, math.min(1, x - i))
+    return cum[i] + seg_time(i) * f
+  end
+  local times = {}
+  for k = 1, #cuts - 1 do times[k] = at(cuts[k + 1]) - at(cuts[k]) end
+  return times
+end
+
 -- The line's offset from the road's middle, its heading and its bend at distance `s` along the road (lib/track.lua's distance), blended
 -- between the points either side; and the index of the point before it.
 function racing.at(L, i, frac)

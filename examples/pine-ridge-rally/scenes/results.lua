@@ -4,6 +4,7 @@ local audio = require("lib.audio")
 local ui = require("lib.ui")
 local menu_bg = require("lib.menu_bg")
 local transition = require("lib.transition")
+local sections = require("lib.sections")
 
 local Results = nova.scene {}
 
@@ -85,14 +86,20 @@ function Results:content()
     local h = math.min(40, math.floor(270 / math.max(1, n)) - 3)
     rows[#rows + 1] = { "row", h = 24, pad = { 15, 0 }, gap = 9,
       { "text", "#", style = "label", size = 15, w = 30 }, { "text", "TIME", style = "label", size = 15, grow = 1 },
-      { "text", "TO BEAT", style = "label", size = 15, w = 110 }, { "text", "POINTS", style = "label", size = 15, w = 80, align = "right" } }
+      { "text", "TARGET", style = "label", size = 15, w = 110 }, { "text", "POINTS", style = "label", size = 15, w = 80, align = "right" } }
     for i, sec in ipairs(rally.sections) do
-      local good = sec.time <= sec.par * 1.1
+      -- (its colour on the bar: green, yellow or red against the target, lib/sections.lua; the time to beat is that target)
+      local shade = sec.colour and sections.COLOURS[sec.colour] or nil
       rows[#rows + 1] = table_row(self, i, h, {
-        { text = tostring(i), font = F.heavy, w = 30 },
-        { text = ui.time(sec.time), font = F.semi, size = 19.5, color = good and C.green or C.white },
-        { text = ui.time(sec.par), font = F.medium, size = 18, color = C.dim, w = 110 },
+        { text = tostring(i), font = F.heavy, w = 30, color = shade },
+        { text = ui.time(sec.time), font = F.semi, size = 19.5, color = shade },
+        { text = ui.time(sec.target or sec.par), font = F.medium, size = 18, color = C.dim, w = 110 },
         { text = tostring(sec.score), font = F.heavy, color = C.gold, w = 80, align = "right" } })
+    end
+    -- the finished bar of the stage (the one along the bottom of the screen in the race): every section in the colour it was driven in
+    if rally.bar then
+      rows[#rows + 1] = { "space", h = 4 }
+      rows[#rows + 1] = { "box", h = 14, draw = function(r) sections.draw_into({ x = r.x, y = r.y + 4, w = r.w, h = 6 }, rally.bar, rally.length) end }
     end
     cards = { card("Score", rally.score .. " / " .. rally.max, C.orange), card("Stars", rally.stars .. " of 3", C.gold),
               card("Best time", ui.time(state.best("rally", r.track)), C.green) }

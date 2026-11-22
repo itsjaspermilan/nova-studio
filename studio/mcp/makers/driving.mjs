@@ -98,29 +98,48 @@ function driving() {
   loop("tyre_road", times(mix(LONG,
     [noiseLoop(LONG, rand, (f) => bump(f, 1000, 0.9)), 1],
     [noiseLoop(LONG, rand, (f) => bump(f, 130, 1.1)), 0.7]), swell(LONG, rand, 0.3, 5, 0.1)));
-  // gravel: a crunching bed, stones rattling off each other (sharp grains at many pitches), and now and then one against the floor
+  // The loose surfaces (gravel, dirt, snow) are dense, broadband, continuous textures: a bed of filtered noise under thousands of tiny
+  // grains a second (far too many to hear one by one: they read as one crunch), with only a slow breath of loudness (under 4 Hz).
+  // The first version had a flutter of 8 to 50 Hz on the bed and 228 sharp, ringing grains a second in six narrow bands: heard
+  // as a stream of separate pops ("suction cups"). What the car does on top of the rolling is separate: a sliding layer (tyre_slide,
+  // sideways slip) and sparse stones against the underside (stone, a group of takes); lib/audio.lua of Pine Ridge Rally plays them.
+  /// Dense grains: `bands` is [[hz, q, perSecond, gain]], each a Poisson train of clicks (exponentially spread strengths) ringing through a wide band.
+  const dense = (n, r, bands) => mix(n, ...bands.map(([hz, q, per, g]) => [grains(n, r, per, (f) => bp(f, hz, q)), g]));
   {
-    const bed = times(noiseLoop(LONG, rand, (f) => bump(f, 320, 1.2)), swell(LONG, rand, 8, 50, 0.5, 0.25));
-    const parts = [[bed, 1]];
-    for (const [hz, q] of [[1200, 2.5], [1900, 3], [2700, 3], [3800, 3.5], [5200, 3.5], [7000, 4]]) parts.push([grains(LONG, rand, 38, (f) => bp(f, hz, q)), 0.24]);
-    parts.push([grains(LONG, rand, 5, (f) => { const a = bp(f, 520, 5), b = bp(f, 880, 4); return [a[0] + 0.7 * b[0], a[1] + 0.7 * b[1]]; }), 0.35]);
-    loop("tyre_gravel", mix(LONG, ...parts));
+    const r = new Rand(20261122 + SALT);
+    const bed = noiseLoop(LONG, r, (f) => 1.2 * bump(f, 520, 1.5) + 0.4 * bump(f, 2400, 1.3) + 0.06 * bump(f, 6500, 1));
+    const fine = dense(LONG, r, [[900, 0.9, 1800, 0.6], [2200, 1, 2200, 0.6], [4800, 1, 2200, 0.32]]);
+    const coarse = dense(LONG, r, [[1500, 1.2, 260, 0.5], [3400, 1.4, 240, 0.45]]);
+    loop("tyre_gravel", times(mix(LONG, [bed, 0.9], [fine, 1], [coarse, 0.5]), swell(LONG, r, 0.4, 3.5, 0.1, 0.5)));
   }
-  // dirt: packed earth: a duller, softer rumble, a few small stones
+  // dirt: packed earth: duller and softer than gravel (a low rumble, the same dense grains kept in the low mids)
   {
-    const bed = times(noiseLoop(LONG, rand, (f) => bump(f, 210, 1.1)), swell(LONG, rand, 4, 30, 0.35, 0.3));
-    loop("tyre_dirt", mix(LONG, [bed, 1], [noiseLoop(LONG, rand, (f) => bump(f, 1500, 1.0)), 0.22],
-      [grains(LONG, rand, 30, (f) => bp(f, 1100, 2)), 0.16], [grains(LONG, rand, 22, (f) => bp(f, 2300, 2.5)), 0.12]));
+    const r = new Rand(20261123 + SALT);
+    const bed = noiseLoop(LONG, r, (f) => bump(f, 230, 1.2) + 0.5 * bump(f, 1300, 1.2));
+    const fine = dense(LONG, r, [[600, 0.9, 1600, 0.6], [1400, 1, 1800, 0.45], [3000, 1, 1600, 0.25]]);
+    loop("tyre_dirt", times(mix(LONG, [bed, 1], [fine, 0.9], [dense(LONG, r, [[800, 1.2, 160, 0.5]]), 0.35]), swell(LONG, r, 0.3, 3, 0.1, 0.5)));
   }
-  // snow: the squeak and crunch of packed snow giving under the tread (it comes in creaks), a soft low press, a hiss of loose powder
+  // snow: packed snow giving under the tread: a soft crunch (dense grains in the upper mids, slowly rising and falling), a low press, a hiss of powder
   {
-    const creak = drift(LONG, rand, 12, 45);
-    for (let i = 0; i < LONG; i++) creak[i] = 0.2 + creak[i] * creak[i];
+    const r = new Rand(20261124 + SALT);
+    const creak = drift(LONG, r, 0.4, 3.5);
+    for (let i = 0; i < LONG; i++) creak[i] = Math.max(0.35, 1 + 0.35 * creak[i]);
+    const crunch = times(dense(LONG, r, [[2200, 0.9, 2000, 0.6], [3800, 1, 2000, 0.5], [1300, 1, 1200, 0.4]]), creak);
     loop("tyre_snow", mix(LONG,
-      [times(noiseLoop(LONG, rand, (f) => bump(f, 2400, 0.8)), creak), 0.55],
-      [times(noiseLoop(LONG, rand, (f) => bump(f, 170, 1.0)), swell(LONG, rand, 2, 12, 0.3)), 0.6],
-      [noiseLoop(LONG, rand, (f) => bump(f, 6500, 0.7)), 0.16]));
+      [crunch, 0.9],
+      [times(noiseLoop(LONG, r, (f) => bump(f, 170, 1.0)), swell(LONG, r, 0.5, 3, 0.2, 0.4)), 0.5],
+      [noiseLoop(LONG, r, (f) => bump(f, 6500, 0.8)), 0.2]));
   }
+  // sliding on loose ground (sideways slip: the tyre ploughs and sprays): brighter and smoother than rolling, a rush more than a crunch
+  {
+    const r = new Rand(20261125 + SALT);
+    const spray = noiseLoop(LONG, r, (f) => bump(f, 2200, 1.3) + 0.55 * bump(f, 5200, 1.0));
+    const plough = noiseLoop(LONG, r, (f) => bump(f, 380, 1.3));
+    loop("tyre_slide", times(mix(LONG, [spray, 1], [plough, 0.55], [dense(LONG, r, [[2000, 0.9, 2400, 0.5], [4200, 1, 2400, 0.4]]), 0.8]), swell(LONG, r, 0.5, 3.5, 0.15, 0.5)));
+  }
+  // (the shared random stream is moved on to where the first versions of gravel, dirt and snow left it, so that the loops after them,
+  // sand to scrape, are exactly the files first made)
+  rand.s = 3848194887572453 + SALT;
   // sand: a smooth, dry hiss that breathes, and the soft drag of the tyre sinking in
   loop("tyre_sand", mix(LONG,
     [times(noiseLoop(LONG, rand, (f) => bump(f, 3800, 1.0)), swell(LONG, rand, 1.5, 6, 0.3)), 0.7],
@@ -191,6 +210,15 @@ function driving() {
   }
   group("thump", thumps);
 
+  // -- a stone thrown up against the underside or the wheel arch: a short dry tock, now and then (sparse; four takes; lib/audio.lua) --
+  const stones = [];
+  for (const [k, tune] of [0.85, 1, 1.15, 1.3].entries()) {
+    const n = secs(0.14), r = new Rand(800 + k + SALT);
+    shot(`stone${k + 1}`, n, [burst(n, r, 0, 1500 * tune, 1.4, 0.009, 1), thud(n, 0, 520 * tune, 300 * tune, 0.012, 0.016, 0.5), burst(n, r, 0.004, 3600 * tune, 2, 0.004, 0.3)], 0.55);
+    stones.push(`stone${k + 1}`);
+  }
+  group("stone", stones, [0.85, 1.2]);
+
   // -- hitting a barrier or another car: a heavy thud, the crunch of the panel (several cracks close together), the panel's
   // own ring, and a short rattle of what came loose (three takes) --
   const impacts = [];
@@ -256,7 +284,7 @@ function driving() {
 
 
 /// The files driving_sounds_make writes, in the order they are made (each loop's random numbers follow the ones before: all are always made).
-export const DRIVING_SOUNDS = ["tyre_road", "tyre_gravel", "tyre_dirt", "tyre_snow", "tyre_sand", "tyre_rough", "tyre_squeal", "wind_loop", "turbo_loop", "whine_loop", "scrape_loop", "thump", "impact", "shift_quick", "shift_stick", "shift_clunk", "bov", "pop", "whoosh"];
+export const DRIVING_SOUNDS = ["tyre_road", "tyre_gravel", "tyre_dirt", "tyre_snow", "tyre_slide", "tyre_sand", "tyre_rough", "tyre_squeal", "wind_loop", "turbo_loop", "whine_loop", "scrape_loop", "thump", "stone", "impact", "shift_quick", "shift_stick", "shift_clunk", "bov", "pop", "whoosh"];
 
 /// Makes every driving sound, handing each file to `put(fileName, bytes)` (a .wav, or a .group.json for the ones with takes).
 export function makeDriving(seed = 1, put) {

@@ -45,3 +45,6 @@ examples/*.zip
 
 # the studio's activity logs (they hold local paths)
 .nova/
+
+# Pine Ridge Rally's co-driver clips are made on the machine that builds the game (scripts/rally/voice.mjs, Apple's `say`); the system voices are for personal, non-commercial use, so they are not committed
+examples/pine-ridge-rally/sounds/voice/
