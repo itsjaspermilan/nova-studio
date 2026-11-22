@@ -53,7 +53,9 @@ moments off line):
 | circuit, 4x4 | 1.055 | 1.08 | 1.165 |
 
 With them the drivers' medals over the 36 courses are: autopilot 30 gold, 5 silver, 1 bronze; Mika 25 gold, 9 silver, 2 bronze; Dax 7
-gold, 17 silver, 12 bronze; Rosa 2 gold, 8 silver, 26 bronze; nobody went without a medal. A rally stage's section "times to beat" on a
+gold, 17 silver, 12 bronze; Rosa 2 gold, 8 silver, 26 bronze; nobody went without a medal. (A third run, after the game's new
+section bar, pace notes and co-driver came in from main, gave the same courses and ideals and every mean within 0.5%: medals 30 / 24 /
+8 / 1 gold for the four drivers.) A rally stage's section "times to beat" on a
 made-up stage are each section's ideal at the gold pace.
 
 **How long that is, in seconds**: a Short (2 km) stage takes a road car about 50 to 85 s ideal depending on its bends and surface, a
