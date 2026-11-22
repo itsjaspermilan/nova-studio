@@ -113,7 +113,7 @@ describe("character3d_make", () => {
     const a = makeCharacter3d(base);
     expect(JSON.stringify(a.model)).toBe(JSON.stringify(makeCharacter3d(base).model));
     const doc = parsed(a.model);
-    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "jump", "wave", "attack", "hurt"]);
+    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "jump", "wave", "attack", "hurt", "carry", "talk", "work"]);
     for (const name of ["walk", "run"]) expect(doc.clips!.find((c) => c.name === name)!.events!.map((e) => e.name)).toEqual(["step", "step"]);
     expect(doc.clips!.find((c) => c.name === "attack")!.events).toEqual([{ t: 0.22, name: "hit" }]);
     expect(a.speeds.walk).toBeGreaterThan(0.8);
@@ -121,7 +121,7 @@ describe("character3d_make", () => {
     expect(a.capsule.height).toBeGreaterThan(1.4);
     expect(a.parts).toContain("hand_r");
     const seen = new Set([JSON.stringify(a.model)]);
-    for (const [key, list] of [["build", CHARACTER3D.builds], ["hair", CHARACTER3D.hairs], ["outfit", CHARACTER3D.outfits], ["hat", CHARACTER3D.hats], ["pack", CHARACTER3D.packs], ["item", CHARACTER3D.items]] as const) {
+    for (const [key, list] of [["build", CHARACTER3D.builds], ["hair", CHARACTER3D.hairs], ["outfit", CHARACTER3D.outfits], ["hat", CHARACTER3D.hats], ["pack", CHARACTER3D.packs], ["item", CHARACTER3D.items], ["species", CHARACTER3D.species], ["accessory", CHARACTER3D.accessories]] as const) {
       for (const value of list) {
         const made = makeCharacter3d({ ...base, [key]: value });
         expect(parsed(made.model).parts[0]!.name, `${key} ${value}`).toBe("hips");
@@ -129,9 +129,28 @@ describe("character3d_make", () => {
       }
     }
     // (every choice but the one of each part that the base has already)
-    expect(seen.size).toBe(1 + 3 + 5 + 4 + 5 + 3 + 5);
-    expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet/);
+    expect(seen.size).toBe(1 + 4 + 5 + 4 + 6 + 3 + 5 + 5 + 4);
+    expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet, peaked/);
+    expect(() => makeCharacter3d({ species: "dragon" })).toThrow(/species is one of human, fox, badger, rabbit, bear, cat/);
+    expect(() => makeCharacter3d({ species: "fox", head_scale: 3 })).toThrow(/head_scale is a number from 0.8 to 2.2/);
     expect(() => makeCharacter3d({ outfit_color: "blurple" })).toThrow(/outfit_color: 'blurple' is not a colour/);
+  });
+
+  it("makes animal people: a bigger head, no hair unless asked, a tail part that the clips swing, the carry pose for the arms", () => {
+    const fox = makeCharacter3d({ species: "fox", hat: "peaked", accessory: "satchel" });
+    const human = makeCharacter3d({});
+    expect(fox.parts).toContain("tail");
+    expect(human.parts).not.toContain("tail");
+    expect(fox.says).toMatch(/fox figure .* \(its head 1\.55 times a person's\) with fur, wearing a tunic, a peaked cap and a satchel/);
+    const doc = parsed(fox.model);
+    const tailTracks = doc.clips!.filter((c) => (c.tracks ?? []).some((t: any) => t.part.join("/") === "hips/tail")).map((c) => c.name);
+    expect(tailTracks).toEqual(expect.arrayContaining(["idle", "walk", "run", "talk", "work"]));
+    const carry = doc.clips!.find((c) => c.name === "carry")!;
+    expect(new Set(carry.tracks!.map((t: any) => t.part[t.part.length - 1]))).toEqual(new Set(["arm_l", "fore_l", "arm_r", "fore_r"]));
+    // the head is the given share of a person's: the highest point rises with it
+    const big = makeCharacter3d({ species: "rabbit", head_scale: 2 }), small = makeCharacter3d({ species: "rabbit", head_scale: 1 });
+    expect(big.capsule.height).toBeGreaterThan(small.capsule.height + 0.1);
+    for (const s of CHARACTER3D.species) expect(JSON.stringify(makeCharacter3d({ species: s }).model), s).toBe(JSON.stringify(makeCharacter3d({ species: s }).model));
   });
 
   it.skipIf(!built)("stands on the ground in every clip, bends only its limbs, and writes a walker that walks", () => {
