@@ -3178,6 +3178,14 @@ fn the_custom_page_changes_settings_and_reads_codes() {
     // CHOOSE A CAR (up from the first row wraps to the last)
     tap(&mut g, "key:ArrowUp");
     tap(&mut g, "key:Enter");
+    // (the course is made a few milliseconds a frame by the clock, lib/work.lua, and the page goes on when it is made: on a busy
+    // machine that is more frames than a tap's five)
+    for _ in 0..600 {
+        if screen(&g) == "garage" {
+            break;
+        }
+        frame(&mut g, &[]);
+    }
     assert_eq!(screen(&g), "garage");
     assert_eq!(
         g.lua_text("require('lib.state').current_track().code")
