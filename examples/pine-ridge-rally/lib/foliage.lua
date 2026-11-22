@@ -49,6 +49,15 @@ end
 
 -- What is being planted: a list of jobs, each a list of road points (x, z, tx, tz) and the plan of what to put beside them.
 local jobs, job
+-- The planting has its own random numbers. It plants as much as a few milliseconds of each frame allow, so how many it plants in a frame
+-- depends on the machine's speed; drawn from math.random it moved everything else that uses math.random during a race (the rivals'
+-- wobble, the dust), and no two races ran alike, not even in a test with the same seed. (A small linear congruential generator: plenty for
+-- where a tuft of grass goes; started again with each planting, so a course is always planted alike.)
+local seed = 1
+local function rand()
+  seed = (seed * 1103515245 + 12345) % 2147483648
+  return seed / 2147483648
+end
 
 local function plan_of(list, density, n)
   local out = {}
@@ -73,7 +82,7 @@ end
 -- Several sets at once (free roam: each course's roads with that course's own grass): `sets` is a list of { points, plants }, where
 -- each plant's `count` is spread over that set's points.
 function foliage.start_sets(density, sets)
-  planted, jobs, job, next_point = 0, {}, 1, 1
+  planted, jobs, job, next_point, seed = 0, {}, 1, 1, 1
   if density <= 0 then return end
   local all = {}
   for _, set in ipairs(sets) do
@@ -99,14 +108,14 @@ function foliage.plant_some()
         local o = f.opts
         while f.carry >= 1 do
           f.carry = f.carry - 1
-          local side = math.random() < 0.5 and -1 or 1
-          local off = side * (7.6 + math.random() ^ 1.6 * 22)
-          local along = (math.random() - 0.5) * 9
+          local side = rand() < 0.5 and -1 or 1
+          local off = side * (7.6 + rand() ^ 1.6 * 22)
+          local along = (rand() - 0.5) * 9
           local x, z = p.x + nx * off + p.tx * along, p.z + nz * off + p.tz * along
           if road_distance(x, z) > 7.2 then
-            o.ry, o.scale = math.random() * 6.28, 0.8 + math.random() * 0.7
+            o.ry, o.scale = rand() * 6.28, 0.8 + rand() * 0.7
             local tints = f.tints
-            o.tint = #tints > 0 and tints[math.random(#tints)] or nil
+            o.tint = #tints > 0 and tints[1 + math.floor(rand() * #tints)] or nil
             nova.scenery.add(f.model, x, 0, z, o)
             planted = planted + 1
           end

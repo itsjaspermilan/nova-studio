@@ -900,6 +900,44 @@ fn first_line(s: &str) -> String {
         .to_string()
 }
 
+#[cfg(test)]
+#[test]
+fn an_error_without_a_place_takes_it_from_the_traceback() {
+    let raised = "runtime error: attempt to index a nil value\nstack traceback:\n\t[C]: in ?\n\t[C]: in for iterator 'for iterator'\n\trough:1: in function 'PROBE'\n\tprobe:1: in main chunk";
+    assert_eq!(
+        with_place(raised),
+        "attempt to index a nil value (at rough:1: in function 'PROBE')"
+    );
+    let placed = "runtime error: probe:3: attempt to index a nil value (global 'x')\nstack traceback:\n\tprobe:3: in main chunk";
+    assert_eq!(
+        with_place(placed),
+        "probe:3: attempt to index a nil value (global 'x')"
+    );
+}
+
+/// An error's first line, with where it happened when that line does not say: an error raised inside the engine's own C or Rust (an
+/// `ipairs` over nil fails in its iterator, "attempt to index a nil value" with no place) is given the first line of the traceback that
+/// names a chunk and a line ("... (at rough:1: in function 'PROBE')").
+fn with_place(s: &str) -> String {
+    let first = first_line(s);
+    let placed = |l: &str| {
+        let mut parts = l.splitn(3, ':');
+        matches!((parts.next(), parts.next(), parts.next()), (Some(src), Some(n), Some(_))
+            if !src.is_empty() && !src.contains(' ') && !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    };
+    if placed(&first) {
+        return first;
+    }
+    match s
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.starts_with("[C]") && placed(l))
+    {
+        Some(at) => format!("{first} (at {at})"),
+        None => first,
+    }
+}
+
 impl Game {
     fn playtest_helpers(&self) -> Result<Table, String> {
         if let Ok(t) = self.lua.named_registry_value::<Table>("nova.playtest") {
@@ -945,7 +983,7 @@ impl Game {
             .load(source)
             .set_name(format!("={name}"))
             .exec()
-            .map_err(|e| first_line(&e.to_string()))
+            .map_err(|e| with_place(&e.to_string()))
     }
 
     /// The value of a Lua expression as short text (`hero.x`, `nova.count("enemy")`, a table, an entity).
