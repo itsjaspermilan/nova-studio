@@ -67,6 +67,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
 mod animated;
 mod billboard_api;
 mod debug_api;
+mod drawn_api;
 mod fx2d_api;
 mod morph_api;
 mod physics_api;
@@ -205,6 +206,8 @@ struct Shared {
     shading: shader_api::ShaderState,
     /// The 2D effects asked for (lights, added light, shadows, reflections, rain): `game/fx2d_api.rs`.
     fx: fx2d_api::Fx2dState,
+    /// The frame's draw calls, kept only for tests and `play` runs (`game/drawn_api.rs`).
+    drawn: Option<Vec<drawn_api::Drawn>>,
 }
 
 impl Shared {
@@ -1536,6 +1539,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 // `blend = "add"`, `lit = false`, and `foot` (where it stands, for reflections): 2D effects (game/fx2d_api.rs)
                 let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
                 fx2d_api::mark(&mut sh, style, number_option(&opts, "foot")?);
+                drawn_api::note(
+                    &mut sh,
+                    "sprite",
+                    &id,
+                    [x, y, 0.0],
+                    [inst.size[0] as f64, inst.size[1] as f64],
+                );
                 sh.world.push(inst);
                 shader_api::mark_sprite(&mut sh, false, shading);
                 Ok(())
@@ -1552,6 +1562,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 // `{ blend = "add" }`: adds light (a spark, a beam); `{ lit = false }`: not darkened by the 2D ambient
                 let style = fx2d_api::style_option(&opts, crate::gfx::Shape2d::Picture)?;
                 fx2d_api::mark(&mut sh, style, None);
+                drawn_api::note(&mut sh, "rect", "", [x, y, 0.0], [w, h]);
                 sh.world.push(inst);
                 Ok(())
             },
@@ -1626,6 +1637,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 if number_option(&opts, "max_distance")?.is_some_and(|m| ground >= m as f32) {
                     return Ok(());
                 }
+                drawn_api::note(&mut sh, "model", &id, [x, y, z], [0.0, 0.0]);
                 // `lod = "name"`: a cheaper model past `lod_distance` metres, the two trading places over `lod_fade` metres
                 // (see `retained_api::lod_state`). It works for animated models too (`clip`, `layers`, `parts`): the far one is
                 // a plain model, drawn in its own rest pose.
@@ -2453,6 +2465,13 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let mut sh = s.borrow_mut();
                 let inst = sprite_instance(&sh, &id, x, y, &opts)?;
                 let shading = shader_api::shading_option(&mut sh, v.as_ref(), &opts)?;
+                drawn_api::note(
+                    &mut sh,
+                    "ui_sprite",
+                    &id,
+                    [x, y, 0.0],
+                    [inst.size[0] as f64, inst.size[1] as f64],
+                );
                 sh.ui.push(inst);
                 shader_api::mark_sprite(&mut sh, true, shading);
                 Ok(())
@@ -2466,6 +2485,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             move |_, (x, y, w, h, color): (f64, f64, f64, f64, Option<Table>)| {
                 let mut sh = s.borrow_mut();
                 let inst = rect_instance(&sh, x, y, w, h, rgba(color)?);
+                drawn_api::note(&mut sh, "ui_rect", "", [x, y, 0.0], [w, h]);
                 sh.ui.push(inst);
                 Ok(())
             },
@@ -2493,6 +2513,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     rgba(color)?,
                 );
                 inst.rotation = dy.atan2(dx) as f32;
+                drawn_api::note(&mut sh, "ui_line", "", [x1, y1, 0.0], [dx, dy]);
                 sh.ui.push(inst);
                 Ok(())
             },
@@ -2511,6 +2532,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     return Ok(());
                 }
                 let narrow = w.min(w - cut).max(0.0);
+                drawn_api::note(&mut sh, "ui_poly", "slant", [x, y, 0.0], [w, h]);
                 let inst = rect_instance(&sh, x, y, narrow, h, c);
                 sh.ui.push(inst);
                 let scale = f64::from(sh.pixel_scale.max(0.25));
@@ -2535,6 +2557,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             move |_, (x, y, text, opts): (f64, f64, String, Option<Table>)| {
                 let mut sh = s.borrow_mut();
                 let (w, h, size) = draw_text(&mut sh, &text, x as f32, y as f32, &opts, true)?;
+                drawn_api::note(&mut sh, "ui_text", &text, [x, y, 0.0], [w as f64, h as f64]);
                 Ok((w as f64, h as f64, size as f64))
             },
         )?,
@@ -2573,6 +2596,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     nova.set("ui", ui)?;
+    drawn_api::register(lua, &nova, shared)?;
 
     // --- view, time, log ---
     let s = shared.clone();
@@ -4334,6 +4358,7 @@ impl Game {
             input_reads: RefCell::new(std::collections::BTreeSet::new()),
             shading: shading_state,
             fx: Default::default(),
+            drawn: None,
         }));
         let lua = new_lua();
         lua.set_memory_limit(LUA_MEMORY_LIMIT)
@@ -4658,6 +4683,7 @@ impl Game {
             sh.shading.models.clear();
             sh.shading.sprites.clear();
             sh.fx.begin_frame();
+            drawn_api::begin_frame(&mut sh);
             sh.pose_cache.clear();
             players_api::update(&mut sh, input);
             sh.frame_dt = dt;

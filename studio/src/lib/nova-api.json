@@ -434,6 +434,20 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.testing.drawn",
+  "kind": "function",
+  "signature": "nova.testing.drawn(kind?, match?) -> { { kind, name, x, y, z?, w?, h? }, ... }",
+  "doc": "What the frame drew (in a play run's print, after a frame: the whole frame), for tests: each draw call with its kind (\"model\", \"sprite\", \"rect\", \"ui_sprite\", \"ui_rect\", \"ui_line\", \"ui_text\", \"ui_poly\"; \"ui\" for all of the UI's, nil for all), its name (the picture or model, or the text's words), its place and size. `match` keeps those whose name or words contain it. Kept only in a play run (or a Rust test that called Game::record_drawn); elsewhere an error, never an empty answer. `print: [\"nova.testing.drawn('ui_text')\"]` lists the HUD's words.",
+  "group": "Scenes and entities"
+ },
+ {
+  "name": "nova.testing.drawn_count",
+  "kind": "function",
+  "signature": "nova.testing.drawn_count(kind?, match?) -> number",
+  "doc": "How many of the frame's draw calls are of that kind and contain `match` (see nova.testing.drawn): \"the map is not drawn\" is `nova.testing.drawn_count('ui_sprite', 'map') == 0`, with no flag in the game. An error outside a play run, so a test cannot pass by accident.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.ui",
   "kind": "namespace",
   "signature": "nova.ui",

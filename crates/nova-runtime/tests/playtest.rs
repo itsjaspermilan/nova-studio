@@ -6,10 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 
-use nova_runtime::actions::InputFrame;
 use nova_runtime::game::{Game, Uploader};
 use nova_runtime::model::{Image, MeshData};
-use nova_runtime::playtest::{Plan, Playtest};
+use nova_runtime::playtest::Plan;
 use nova_runtime::vfs::{MemVfs, Vfs};
 use serde_json::Value;
 
@@ -106,31 +105,10 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 /// Plays a plan the way the headless runner does, without a GPU. Returns the report and the frames pictures were asked for.
-fn play(game: &mut Game, plan: &str, name: &str) -> (Value, Vec<(u32, String)>) {
-    let dir = scratch(name);
-    std::fs::write(dir.join("plan.json"), plan).unwrap();
-    let plan = Plan::from_file(&dir.join("plan.json")).expect("the plan reads");
-    let mut run = Playtest::new(plan, &dir.join("out")).unwrap();
-    game.reseed(run.seed().unwrap_or(1));
-    if let Some(scene) = run.start_scene() {
-        game.start_in_scene(scene).unwrap();
-    }
-    let mut pictures = Vec::new();
-    let mut frame = 0;
-    while !run.finished(frame) {
-        let mut input = InputFrame::default();
-        run.before_frame(frame, game, &mut input);
-        game.update_input(1.0 / 60.0, frame as f64 / 60.0, [960.0, 540.0], &input);
-        for caption in run.after_frame(frame, game) {
-            let _ = run.picture(frame, &caption, game);
-            pictures.push((frame + 1, caption));
-        }
-        frame += 1;
-    }
-    let report = run.finish(frame, game).unwrap();
-    let report: Value = serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
-    (report, pictures)
+fn play(game: &mut Game, plan: &str, _name: &str) -> (Value, Vec<(u32, String)>) {
+    // (the runtime's own harness: every key of the plan, a scratch folder of its own per run)
+    let report = nova_runtime::testing::play(game, plan).expect("the plan plays");
+    (report.json, report.pictures)
 }
 
 fn texts(list: &Value) -> Vec<String> {
@@ -632,7 +610,19 @@ fn the_top_down_starter_plays_through() {
     }"#;
     let (report, pictures) = play(&mut g, plan, "starter");
     assert_eq!(report["error"], Value::Null, "{report}");
-    assert_eq!(report["warnings"].as_array().unwrap().len(), 0, "{report}");
+    // the one warning: the hold into the rock is stopped by it, and the answer says so and names the rock
+    let warnings: Vec<&str> = report["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w.as_str().unwrap())
+        .collect();
+    assert_eq!(warnings.len(), 1, "{report}");
+    assert!(
+        warnings[0].starts_with("step 5 held up for 59 frames, but 'hero' stood still for ")
+            && warnings[0].contains("it is against 'rock' (tagged solid) at x 120, y 144"),
+        "{warnings:?}"
+    );
     let captions: Vec<&str> = pictures.iter().map(|p| p.1.as_str()).collect();
     assert_eq!(captions, ["inside", "under the rock", "out"]);
     let log = texts(&report["log"]);

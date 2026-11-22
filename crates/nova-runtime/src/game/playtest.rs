@@ -640,6 +640,21 @@ end
 -- What a picture is framed on (`crop_to`, `view`): the living entity with this name, tag or kind. In a flat game its box
 -- on the screen (units of nova.view(), from the top left) and the view's size; in a 3D one a box round its model in the
 -- world (the model's parts at rest, scaled by sx: a person 1.6 high when it has no model).
+-- How far the renderer lifts something at x, z standing y above its ground (nova.terrain: the hills; nothing above 30 m, as
+-- the shaders do).
+function H.ground(x, z, y)
+  if (y or 0) >= 30 or not nova.terrain_height then return 0 end
+  local ok, h = pcall(nova.terrain_height, x, z)
+  return ok and type(h) == "number" and h or 0
+end
+
+-- The first solid thing on a line through the (unlifted) solid world, in metres, or nil.
+function H.sight(x, y, z, dx, dy, dz, len)
+  if not (nova.solid and nova.solid.sightline) then return nil end
+  local ok, hit = pcall(nova.solid.sightline, x, y, z, dx, dy, dz, len)
+  return ok and hit or nil
+end
+
 function H.extent(name)
   if not (W and W.started) then error("this project does not call nova.start, so it has no entities", 0) end
   local e = nova.named(name)
@@ -671,7 +686,10 @@ function H.extent(name)
       end
     end
     local ex, ey, ez = e.x, e.y or 0, e.z or 0
-    return "3d", ex + x0 * s, ey + y0 * s, ez + z0 * s, ex + x1 * s, ey + y1 * s, ez + z1 * s
+    -- (on the hills the renderer lifts what is drawn by the ground under it: the box is where the entity is seen, and the
+    -- 7th number is that lift, for a ray through the solid world, which is not lifted)
+    local lift = H.ground(ex, ez, ey)
+    return "3d", ex + x0 * s, ey + y0 * s + lift, ez + z0 * s, ex + x1 * s, ey + y1 * s + lift, ez + z1 * s, lift
   end
   local x0, y0, x1, y1 = e:bounds()
   local ax, ay = nova.cam.to_screen(x0, y0)
@@ -1303,5 +1321,25 @@ impl Game {
     /// The sounds and music scripts started since the last call, by name (`play hit`, `music town`).
     pub fn take_sound_log(&self) -> Vec<String> {
         std::mem::take(&mut self.shared.borrow_mut().sound_log)
+    }
+}
+
+// ---- for `view`'s camera (the playtest's pictures from beside an entity) ----
+impl Game {
+    /// How far the renderer lifts what stands `y` above the ground at x, z (the hills of `nova.terrain`; 0 without them).
+    pub fn ground_lift(&self, x: f64, z: f64, y: f64) -> f64 {
+        self.playtest_call::<f64>("ground", (x, z, y))
+            .unwrap_or(0.0)
+    }
+
+    /// The distance to the first solid thing (walls, `solid = true` entities, scenery that blocks) on the line from `from`
+    /// along the unit direction `dir`, within `len` metres, in the solid world (which the hills do not lift).
+    pub fn sightline(&self, from: [f64; 3], dir: [f64; 3], len: f64) -> Option<f64> {
+        self.playtest_call::<Option<f64>>(
+            "sight",
+            (from[0], from[1], from[2], dir[0], dir[1], dir[2], len),
+        )
+        .ok()
+        .flatten()
     }
 }

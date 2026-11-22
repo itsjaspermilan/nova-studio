@@ -70,6 +70,14 @@ enum Command {
         input: PathBuf,
         out: PathBuf,
     },
+    /// `nova glyphs <font> <px> <out.png> [--text words] [--project folder]`: text as a picture of its coverage (`glyphs.rs`).
+    Glyphs {
+        font: String,
+        px: f32,
+        out: PathBuf,
+        text: String,
+        project: Option<PathBuf>,
+    },
     Info {
         folder: PathBuf,
     },
@@ -129,6 +137,26 @@ fn parse() -> Result<Command, String> {
             input: input.into(),
             out: out.into(),
             linear,
+        });
+    }
+    if args.peek().map(String::as_str) == Some("glyphs") {
+        args.next();
+        let usage = "`nova glyphs` needs a font, a size in pixels and an output file: nova glyphs sans 64 out.png --text \"Pine Ridge\" [--project folder]";
+        let (mut plain, mut text, mut project) = (Vec::new(), String::new(), None);
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--text" => text = args.next().ok_or(usage)?,
+                "--project" => project = Some(PathBuf::from(args.next().ok_or(usage)?)),
+                _ => plain.push(arg),
+            }
+        }
+        let [font, px, out] = <[String; 3]>::try_from(plain).map_err(|_| usage)?;
+        return Ok(Command::Glyphs {
+            font,
+            px: px.parse().map_err(|_| usage)?,
+            out: out.into(),
+            text,
+            project,
         });
     }
     if args.peek().map(String::as_str) == Some("wav") {
@@ -628,6 +656,13 @@ fn main() {
         Command::Pack { folder, out } => pack(folder, out),
         Command::Ktx2 { input, out, linear } => ktx2(input, out, linear),
         Command::Wav { input, out } => wav(input, out),
+        Command::Glyphs {
+            font,
+            px,
+            out,
+            text,
+            project,
+        } => nova_runtime::glyphs::command(&font, px, &text, &out, project.as_deref()),
         Command::Info { folder } => info(folder),
         Command::Export {
             target,

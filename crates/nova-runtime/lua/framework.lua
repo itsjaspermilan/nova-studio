@@ -48,7 +48,8 @@ local W = {
 nova.world = W
 -- What a scripted run (the `play` tool, `nova run --play`) asks of the game. `invincible` is true in a run with
 -- "invincible": true, for a game whose damage code wants to know: `if nova.testing.invincible then return end`.
-nova.testing = { invincible = false }
+nova.testing = nova.testing or {} -- (drawn and drawn_count are the engine's: game/drawn_api.rs)
+nova.testing.invincible = false
 
 -- ------------------------------------------------------------------ names and files
 local function image_id(name, what)
