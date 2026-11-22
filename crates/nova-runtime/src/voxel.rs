@@ -2691,7 +2691,7 @@ mod tests {
                 MeshOp::Free(id) => {
                     alive.remove(id);
                 }
-                MeshOp::SetAtlas(_) | MeshOp::Variant { .. } => {}
+                MeshOp::SetAtlas(_) | MeshOp::Variant { .. } | MeshOp::Styled { .. } => {}
             }
         }
         (
