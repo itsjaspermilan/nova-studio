@@ -283,7 +283,12 @@ function state.apply_volumes()
 end
 
 -- How hard the rivals drive and how tight a stage's times are: the chosen course's level.
-function state.difficulty_of(course) return state.difficulties[math.max(1, math.min(#state.difficulties, (course and course.level) or 1))] end
+-- (a made-up course's section times to beat are its gold pace already, lib/targets.lua: no more time is allowed on them)
+local MADE_UP = { id = "made_up", name = "Made-up", blurb = "Section times to beat at the gold medal's pace.", pace = 0.88, corner = 0.92, band = 0.06, allow = 1 }
+function state.difficulty_of(course)
+  if course and course.generated then return MADE_UP end
+  return state.difficulties[math.max(1, math.min(#state.difficulties, (course and course.level) or 1))]
+end
 function state.current_difficulty() return state.difficulty_of(state.current_track()) end
 -- A course made up on the device (lib/generate.lua: the custom stage or the Daily Race), while one is chosen: its entry, which the menus
 -- and the race treat like any other course's (its `scene` is scenes/generated). Nil for the courses of the lists above.

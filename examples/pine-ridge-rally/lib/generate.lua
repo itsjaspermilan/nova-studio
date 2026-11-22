@@ -738,7 +738,7 @@ function generate.course(s)
     for _, z in ipairs(c.zones) do if at >= z.from and at < z.to then w.road = z.road end end
   end
   c.laps = route.open and 1 or generate.LENGTHS[s.length].laps
-  c.sections = route.open and math.max(3, math.floor(route.length / 450 + 0.5)) or 0
+  c.sections = route.open and math.max(3, math.min(8, math.floor(route.length / 450 + 0.5))) or 0 -- (as the hand-made stages: 3 to 8)
   c.plants = loc.plants
   c.objects = generate.scenery(c)
   courses[code] = c

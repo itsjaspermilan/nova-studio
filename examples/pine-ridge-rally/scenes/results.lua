@@ -128,7 +128,13 @@ function Results:content()
   if g then
     -- a made-up course: the medal won, and the three times it was against (lib/targets.lua)
     local targets = require("lib.targets")
-    left.badge = string.upper(targets.NAMES[g.medal]) .. ((g.medal > 0) and " MEDAL" or "")
+    if r.rally then
+      -- (a made-up stage is won by its medal: that is the big word, and the stage's points go in the badge)
+      left.big, left.small, left.big_size = string.upper(targets.NAMES[g.medal]), "", g.medal > 0 and 80 or 56
+      left.badge = r.rally.score .. " points"
+    else
+      left.badge = string.upper(targets.NAMES[g.medal]) .. ((g.medal > 0) and " MEDAL" or "")
+    end
     if g.daily and g.best then left.badge = left.badge .. "  ·  BEST TODAY" end
     cards = {}
     for i, medal in ipairs({ "gold", "silver", "bronze" }) do
@@ -153,7 +159,7 @@ function Results:draw_screens()
   local col = { "column", anchor = "topleft", x = 6, w = 285, gap = 0,
     { "text", left.kicker, font = F.bold, size = 18, spacing = 0.2, color = C.ink },
     { "row", h = 104, align = "end", gap = 0,
-      { "text", left.big, font = F.title, size = 112, color = C.ink, h = 104 },
+      { "text", left.big, font = F.title, size = left.big_size or 112, color = C.ink, h = 104 },
       { "text", left.small, font = F.title, size = 48, color = C.ink, h = 60, align_self = "start", grow = 1 } },
     { "text", string.upper(r.track_name), font = F.heavy, size = 30, color = C.ink },
     { "space", h = 14 },
