@@ -583,7 +583,7 @@ function race.scene()
     local colour, ratio = sections_lib.grade(t, target)
     entry.colour, entry.target, entry.ratio = colour, target, ratio
     self.bar[self.section].colour = colour
-    nova.log(string.format("section %d %s: %.3f of its target %.2f s (split %+.2f %s)", self.section, colour, ratio, target, t - (self.section_bests[self.section] or target), self.section_bests[self.section] and "vs best" or "vs target"))
+    nova.log(string.format("rally: section %d %s: %.3f of its target %.2f s (split %+.2f %s)", self.section, colour, ratio, target, t - (self.section_bests[self.section] or target), self.section_bests[self.section] and "vs best" or "vs target"))
     local best = self.section_bests[self.section]
     delta = t - (best or target)
     if not best or t < best then

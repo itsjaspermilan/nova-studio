@@ -83,6 +83,52 @@ function scenic.draw(id, r)
     local half = 2 + (r.w * 0.2) * (i / rows) ^ 1.1
     nova.ui.rect(r.x + r.w / 2 - half, y, half * 2, 1.5, rgb(road))
   end
+  -- trees along the road (cacti and mesas in the desert), nearer ones bigger: stacked blocks, no two stages the same
+  local desert = (look.horizon == "desert")
+  local items = {}
+  for i = 1, 14 do
+    local u = ((seed * (i * 37 + 11)) % 1000) / 1000
+    local v = ((seed * (i * 53 + 7)) % 1000) / 1000
+    items[#items + 1] = { y = horizon_y + 5 + (rows - 8) * u ^ 1.6, side = (i % 2 == 0) and -1 or 1, off = v }
+  end
+  table.sort(items, function(a, b) return a.y < b.y end)
+  local leaf = mix(ground, { 8, 24, 12 }, 0.55)
+  if snow then leaf = { 40, 70, 56 } end
+  if look.horizon == "autumn" then leaf = { 150, 82, 30 } end
+  if desert then leaf = mix(ground, { 40, 70, 30 }, 0.5) end
+  if look.night then leaf = mix(leaf, { 6, 8, 18 }, 0.6) end
+  for _, t in ipairs(items) do
+    local depth = (t.y - horizon_y) / rows
+    local half = 2 + (r.w * 0.2) * depth ^ 1.1
+    local x = r.x + r.w / 2 + t.side * (half + 10 + 20 * depth + r.w * 0.3 * t.off)
+    local h = 12 + 0.7 * (t.y - horizon_y)
+    local w = h * 0.5
+    if x > r.x + 4 and x < r.x + r.w - 4 and t.y + 1 < r.y + r.h then
+      if desert then
+        -- a cactus: a trunk and two arms
+        nova.ui.rect(x - w * 0.12, t.y - h * 0.8, w * 0.24, h * 0.8, rgb(leaf))
+        nova.ui.rect(x - w * 0.4, t.y - h * 0.55, w * 0.3, w * 0.14, rgb(leaf))
+        nova.ui.rect(x - w * 0.4, t.y - h * 0.55 - h * 0.18, w * 0.14, h * 0.18, rgb(leaf))
+        nova.ui.rect(x + w * 0.1, t.y - h * 0.4, w * 0.3, w * 0.14, rgb(leaf))
+        nova.ui.rect(x + w * 0.26, t.y - h * 0.4 - h * 0.16, w * 0.14, h * 0.16, rgb(leaf))
+      else
+        nova.ui.rect(x - w * 0.07, t.y - h * 0.18, w * 0.14, h * 0.18, rgb(mix(leaf, { 40, 24, 12 }, 0.5)))
+        for k = 0, 2 do
+          local lw = w * (1 - k * 0.3)
+          nova.ui.rect(x - lw / 2, t.y - h * 0.18 - h * 0.27 * (k + 1), lw, h * 0.29, rgb(snow and mix(leaf, { 230, 236, 244 }, 0.25 * k) or mix(leaf, { 255, 255, 255 }, 0.05 * k)))
+        end
+      end
+    end
+  end
+  if desert then
+    -- mesas on the far skyline
+    for i = 1, 3 do
+      local mw, mh = r.w * 0.2, r.h * 0.11
+      local mx = math.max(r.x + mw / 2 + 6, math.min(r.x + r.w - mw / 2 - 6, r.x + r.w * (0.1 + 0.3 * i) + ((seed * i) % 40) - 20))
+      nova.ui.rect(mx - mw / 2, horizon_y - mh, mw, mh, rgb(mix(far, { 120, 70, 40 }, 0.5)))
+      nova.ui.rect(mx - mw / 2 - 6, horizon_y - mh * 0.45, mw + 12, mh * 0.45, rgb(mix(far, { 120, 70, 40 }, 0.5)))
+    end
+  end
   -- the snow falls where it is snowing
   if snow then
     for i = 1, 46 do

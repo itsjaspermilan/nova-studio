@@ -215,6 +215,27 @@ The fight and boss tracks are now bass-heavy (about 70 % of the energy below 150
 handheld's speaker plays little of it; `sound_report` did not warn (under 50 % lies below 80 Hz). The loops are 8 bars (16 and 14
 seconds), shorter than before (20 and 23); `song_make` makes 8 bars.
 
+## Looping surface sounds: "a bunch of suction cups" (2026-11-21)
+
+The owner played Pine Ridge Rally on the handheld: the gravel "seems like a bunch of suction cups going on and off". The cause was the
+loop, not the game's volume steering (the mixer glides every `nova.sound.set` over about 10 ms, and the game steers it every step). Measured
+on the old `tyre_gravel.wav` (2.97 s, built round the circle so it had no seam): its bed was noise through one narrow 320 Hz hump (three
+spectral lines of 6 to 8 % at 332, 423 and 483 Hz: a faint pitch) multiplied by an 8 to 50 Hz random swell (depth 0.5, floor 0.25), under
+228 sharp, ringing grains a second in six narrow bands (38 a second each, Q 2.5 to 4). The 1 ms level had a spread (CV) of 0.57 (plain noise
+of the same spectrum: 0.12) and 52 % of the level's movement lay between 16 and 64 Hz (noise: 19 %): a flutter of roughly 30 times a second
+plus pips well apart enough to be heard one by one. Dirt (CV 0.50, 39 % flutter) and snow (CV 0.56, 48 %; its "creak" swell ran at 12 to 45
+Hz) had the same fault; tarmac (CV 0.31, 17 %) and sand did not (its ripple is the low band's own, no flutter).
+
+What a loose surface needs: a dense, broadband texture (thousands of small random grains a second, far past what the ear separates, under a
+bed of filtered noise), no pitch, and only a slow breath of level (under 4 Hz). `driving_sounds_make` now makes `tyre_gravel`, `tyre_dirt`
+and `tyre_snow` that way (CV 0.26, 0.28, 0.35; flutter 18, 17, 17 %; no spectral line above 2 %), and two layers of their own: `tyre_slide` (the
+spray of a sideways slip: brighter, smoother) and `stone` (four takes of a short dry tock; played now and then at speed, a few a second at most). In
+the game (`lib/audio.lua`) speed and slip are smoothed over time, every surface in the mix has a weight that fades in and out (an equal-power
+crossfade when the surface changes) instead of a loop that is stopped and started, and the slide layer follows the slip. The new loops are
+about 2 dB louder than the old ones at the same RMS (they are brighter: K-weighted loudness), so the game's gains were lowered to keep the mix.
+Nobody has listened to it: a test (`studio/mcp/makers/engine.test.ts`) keeps the numbers above from sliding back, which is not the same as
+the sound being good.
+
 ## Not done, and why
 
 - **No listening test.** Measurements are not a listening test; the owner should play the game and say.
