@@ -333,6 +333,7 @@ function Title:options_menu()
     { "button", "EFFECTS", value = on_off(state.effects), id = "effects", adjust = true, h = 38 },
     { "button", "SMOOTH EDGES", value = on_off(state.smooth), id = "smooth", adjust = true, h = 38 },
     { "button", "VIBRATION", value = on_off(state.vibration), id = "vibration", adjust = true, h = 38 },
+    { "button", "RIVALS", value = "< " .. state.current_rival_level().name .. " >", id = "rivals", adjust = true, h = 38 },
     { "button", "CONTROLS", id = "controls", h = 38 },
   }
   ui.hints({ { "pad_dpad", "Change" }, { "pad_a", "Select" }, { "pad_b", "Back" } })
@@ -347,6 +348,12 @@ function Title:options_menu()
   if id == "shadows" then state.shadows = not state.shadows end
   if id == "effects" then state.effects = not state.effects end
   if id == "smooth" then state.smooth = not state.smooth end
+  if id == "rivals" then
+    local i = 1
+    for k, l in ipairs(state.rival_levels) do if l.id == state.rival_level then i = k end end
+    i = (i - 1 + ((r.step or 1) < 0 and -1 or 1)) % #state.rival_levels + 1
+    state.rival_level = state.rival_levels[i].id
+  end
   if id == "vibration" then
     state.vibration = not state.vibration
     if state.vibration then nova.input.rumble(0.6, 0.15) end
