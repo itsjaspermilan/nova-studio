@@ -939,9 +939,9 @@ function race.scene()
       local ox, oz = math.sin(a), math.cos(a)
       cam.x, cam.y, cam.z = p.x - ox * back, height, p.z - oz * back
       -- looking ahead of the car when behind it, at the car itself as it swings away
-      -- (the near view sits a little higher and looks further up the road, so the car is low in the picture and the road ahead fills it)
-      local ahead = (near and 8 or 5) * math.max(0, 1 - oy / 0.9)
-      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, near and 1.7 or 1.1, p.z + ch * ahead
+      -- (the near view sits close behind and well above the car, looking down over its roof at the road ahead: the whole car is in the picture, low in it)
+      local ahead = (near and 5 or 5) * math.max(0, 1 - oy / 0.9)
+      cam.tx, cam.ty, cam.tz = p.x + sh * ahead, near and 0.5 or 1.1, p.z + ch * ahead
       cam.fov = 62 + speed * 0.2
       cam.bonnet = false
     end
