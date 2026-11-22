@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { releaseBinary } from "./binaries";
 import { PRESETS } from "../src/lib/sfx";
 import { encodeWav } from "../src/lib/wav";
 import { decodePng } from "./draw";
@@ -514,7 +515,7 @@ describe("hearing without ears", () => {
 });
 
 // The tools that run the game need the runtime built (`cargo build --release -p nova-runtime`); without it these are skipped.
-const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../target/release/nova"));
+const built = existsSync(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "nova"));
 
 describe.skipIf(!built)("playing the game", () => {
   const game = () => {

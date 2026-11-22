@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { releaseBinary } from "../binaries";
 import { parseModel } from "../../src/lib/model-doc";
 import { expandModel } from "../modelkit";
 import { call } from "../server";
@@ -12,7 +13,7 @@ import { makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
 import { makeProp, PROP_KINDS, propEntity } from "./prop3d";
 
-const built = existsSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../target/release/nova"));
+const built = existsSync(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), "nova"));
 
 let dir = "";
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), "nova-makers3d-test-"))));

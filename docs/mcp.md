@@ -23,6 +23,9 @@ scripts/nova-tool play @/path/to/args.json     # arguments from a file; NOVA_PRO
 `scripts/nova-tool` is `scripts/env.sh node scripts/nova-mcp-call.mjs "$@"`, so it runs from any folder (plain `node` is not
 set up on this machine: always go through `scripts/env.sh`, and give paths whole). A tool's name may be written with or
 without its `nova_` prefix. Every tool gives one working call as the example of its schema (`inputSchema.examples`).
+In a git worktree with no `studio/node_modules` or release build of its own, the server uses the main checkout's (the binary
+only when the worktree's engine sources are the ones it was built from) and says so in a `worktree:` line: `docs/agent-guide.md`,
+"Working in a worktree". `NOVA_BIN` and `NOVA_OGG_BIN` choose the binaries.
 
 **Making a game with these tools, step by step, and how to check each step: `docs/agent-guide.md`.**
 

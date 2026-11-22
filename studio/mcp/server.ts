@@ -39,6 +39,7 @@ import { expandPaint } from "./makers/terrain-paint";
 import { FEATURE_KINDS } from "./makers/wear-paint";
 import { PURPOSE_NAMES, purposeParams } from "./makers/sound";
 import { registerMakers } from "./makers";
+import { releaseBinary } from "./binaries";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -47,8 +48,8 @@ import { analyse as analyseTrack, buildTrack, newTrack, parseTrack, roadOf, scen
 // ---- where things are ----------------------------------------------------------------------------------------------
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = process.env.NOVA_REPO ?? resolve(here, here.endsWith("mcp") ? "../.." : "..");
-const novaBin = process.env.NOVA_BIN ?? join(repo, "target/release/nova");
-const oggBin = process.env.NOVA_OGG_BIN ?? join(repo, "target/release/nova-ogg");
+const novaBin = releaseBinary(repo, "nova");
+const oggBin = releaseBinary(repo, "nova-ogg");
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };

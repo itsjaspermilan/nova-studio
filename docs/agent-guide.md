@@ -21,6 +21,23 @@ not your game. There is no usable `python3`: write helper scripts in Node.
 Build once: `scripts/env.sh cargo build --release -p nova-runtime` (the tools that run the game need it), and
 `scripts/env.sh cargo build --release -p nova-studio --bin nova-ogg` for music (without it songs stay WAV files, which play).
 
+**Working in a worktree** (`.claude/worktrees/agent-*`, or any `git worktree`). Nothing to set up and no symlinks to
+make: the tools find the main checkout of the same repository (`git rev-parse --git-common-dir`) and say in one line,
+starting `worktree:`, what they took from it. They never write into it.
+
+- `studio/node_modules`: `scripts/nova-tool` bundles its server with the main checkout's; `scripts/env.sh` running a
+  Node tool that needs them (vitest, svelte-check, vite, npx, anything under `node_modules/`) first gives the worktree
+  its own copy-on-write clone of the main checkout's (four seconds, no extra disk; ignored by git), when the two
+  `studio/package-lock.json` are the same. When they differ it says so: installing is a download, ask first.
+- The release `nova` (and `nova-ogg`): the worktree's own `target/release` when it has one; otherwise the main
+  checkout's, but only when it is safe: the main checkout has no uncommitted change to the engine's sources, this
+  worktree's are byte for byte that commit's, and the binary is newer than every one of those files. Otherwise the
+  line says why and what to run (`scripts/env.sh cargo build --release -p nova-runtime --bin nova`: about 4 minutes
+  from nothing in a fresh worktree, a minute after an engine edit). So once you change the runtime, build your own.
+  `NOVA_BIN` (and `NOVA_OGG_BIN`) still choose. The rule is `scripts/lib/worktree.sh`; the vitest tests that run the
+  game use the same one (`studio/mcp/binaries.ts`).
+- `cargo test` and `cargo build` always build in the worktree's own `target/` (a first debug build takes minutes).
+
 ## Which tool for what
 
 | You want to | Tool | It shows you |
