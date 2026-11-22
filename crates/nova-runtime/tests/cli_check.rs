@@ -401,6 +401,8 @@ fn names_of_files_that_do_not_exist_are_found_without_running_the_line() {
     copy_from("starter-3d", "models/crate.glb", &dir, "models/crate.glb");
     write(&dir, "main.lua", "nova.start(\"meadow\")\n");
     write(&dir, "scenes/meadow.lua", "return nova.scene {}\n");
+    // a random sound group is played by its own name (sounds/<name>.group.json): not a missing sound
+    write(&dir, "sounds/steps.group.json", r#"{ "sounds": ["step"] }"#);
     write(
         &dir,
         "entities/thing.lua",
@@ -412,6 +414,7 @@ function Thing:on_collide_hero(hero)
   nova.model("crat", self.x, 0, self.y)
   nova.sound.play("step") nova.music.play("garden") nova.goto_scene("meadow") nova.model("crate", 0, 0, 0)
   nova.sound.play("step_" .. self.ground) nova.sprite(self.name, 0, 0) nova.sprite("rock", 0, 0)
+  nova.sound.play("steps")
 end
 function Thing:draw() nova.Entity.draw(self) end
 return Thing

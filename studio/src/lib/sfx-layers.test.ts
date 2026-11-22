@@ -143,4 +143,18 @@ describe("the fuller sound effect (layers and the finish)", () => {
     // a cutoff alone means a low-pass
     expect(cleanLayer({ wave: "noise", cutoff: 500 }).filter).toBe("lowpass");
   });
+
+  it("makes a seamless loop with `loop`: its last sample runs on into its first as the material does, and the file keeps the key", () => {
+    const bed: SfxParams = { ...DEFAULTS, volume: 1, loop: 1, layers: [cleanLayer({ wave: "pink", filter: "lowpass", cutoff: 900, attack: 0.5, hold: 2.5, decay: 0.3 })] };
+    const ch = render(bed).channels[0]!;
+    const plain = render({ ...bed, loop: 0 }).channels[0]!;
+    expect(ch.length).toBeLessThan(plain.length); // (cut before the part crossfaded into the start)
+    let biggest = 0;
+    for (let i = 1; i < ch.length; i++) biggest = Math.max(biggest, Math.abs(ch[i]! - ch[i - 1]!));
+    expect(Math.abs(ch[0]! - ch[ch.length - 1]!)).toBeLessThanOrEqual(biggest * 1.5);
+    // it starts sounding (no fade in from silence: that would be a dip every time round)
+    expect(Math.abs(ch[0]!)).toBeGreaterThan(0);
+    expect(toJson(bed)).toContain('"loop": 1');
+    expect((parseSfx(toJson(bed)) as { params: SfxParams }).params.loop).toBe(1);
+  });
 });
