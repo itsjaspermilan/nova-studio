@@ -132,6 +132,28 @@ nothing changes. `scripts/lib/heightmap.mjs` (and the MCP tool `terrain_write`) 
 profile along it (`[[0, 0], [400, 20], [600, 24], [1000, 4]]`: climb 20 m over 400 m, crest, drop), keeps the road's grade under `max_grade`, and
 blends the land around the road into hills. Pine Ridge Rally's Frost Pass stage uses one (`examples/pine-ridge-rally/terrain/frost_pass.png`).
 
+### Meshes made at run time (`nova.mesh`)
+
+A game that makes its world from a seed (a road laid out on the device, a ground, a ribbon) builds the mesh from lists of numbers
+and draws it like a model: lifted by the hills vertex by vertex, lit, fogged, and shadowed if asked.
+
+```lua
+local road, points, ms = nova.mesh.make {
+  positions = { 0, 0, 0,  1, 0, 0,  1, 0, 1,  0, 0, 1 },   -- x, y, z for each point (metres)
+  indices = { 1, 3, 2,  1, 4, 3 },                          -- three point numbers from 1 for each triangle, counter-clockwise from the front
+  colors = { ... }, uvs = { ... },                          -- optional: r, g, b, a (0 to 255, sRGB) and u, v for each point
+  look = "road_pine_ridge",                                 -- optional: the pictures and surface of that model's mesh
+}
+nova.mesh.draw(road)                                        -- every frame, from draw; { x, y, z, ry, scale, tint, shadow = true }
+nova.mesh.free(road)                                        -- when the scene ends
+```
+
+Normals left out are worked out from the triangles (smooth where triangles share points; give a flat face its own points).
+`look` borrows a loaded model's base picture, detail picture and surface, so a mesh built from the same numbers as a road made by
+`road_make` looks exactly like it (Pine Ridge Rally's generated stages, `examples/pine-ridge-rally/lib/generate.lua`). The mesh is
+kept on the GPU (and remade after a lost device) until it is freed. Making it is a copy of the lists: 5 to 9 ms for a road of 30,000
+points on a desktop (Apple M4); filling the lists in Lua costs more than that (about 30 ms for the same road).
+
 ### Icon and box art
 
 `icon.png` (square, 512 x 512 is plenty) in the project folder becomes the Android app's launcher icon, and `boxart.png` (a cover, any size) is
@@ -723,6 +745,7 @@ inputs drive which action.
 | `nova.input.next_source()` | The source pressed since you last asked (each press once, then `nil`): call it once to drop the press that opened your screen, then every frame until it returns something. |
 | `nova.input.rumble(strength, seconds)` | Shake a gamepad (`nova.input.rumble{ strong, weak, seconds, pad }` for the two motors and one pad). Pads that cannot rumble ignore it. |
 | `nova.time()` | Seconds since the game started. |
+| `nova.utc()` | The wall clock: whole seconds since 1970-01-01 00:00 UTC, as the device says (for a daily challenge or a date; a wrong device clock gives that wrong time). Work out a local date yourself from it. |
 | `nova.log(text)` | Write to the log. |
 
 **The desktop window closes on Escape** unless the game uses `key:Escape` in an action (a pause, say).

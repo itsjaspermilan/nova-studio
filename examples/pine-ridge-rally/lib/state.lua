@@ -285,10 +285,20 @@ function state.apply_volumes()
 end
 
 -- How hard the rivals drive and how tight a stage's times are: the chosen course's level.
-function state.difficulty_of(course) return state.difficulties[math.max(1, math.min(#state.difficulties, (course and course.level) or 1))] end
+-- (a made-up course's section times to beat are its gold pace already, lib/targets.lua: no more time is allowed on them)
+local MADE_UP = { id = "made_up", name = "Made-up", blurb = "Section times to beat at the gold medal's pace.", pace = 0.88, corner = 0.92, band = 0.06, allow = 1 }
+function state.difficulty_of(course)
+  if course and course.generated then return MADE_UP end
+  return state.difficulties[math.max(1, math.min(#state.difficulties, (course and course.level) or 1))]
+end
 function state.current_difficulty() return state.difficulty_of(state.current_track()) end
--- The circuit that is chosen, or in rally mode the stage.
+-- A course made up on the device (lib/generate.lua: the custom stage or the Daily Race), while one is chosen: its entry, which the menus
+-- and the race treat like any other course's (its `scene` is scenes/generated). Nil for the courses of the lists above.
+state.custom = nil
+
+-- The circuit that is chosen, or in rally mode the stage (or the made-up course, when one is chosen).
 function state.current_track()
+  if state.custom then return state.custom end
   if state.mode == "rally" then return state.stages[state.stage] end
   return state.tracks[state.track]
 end
@@ -415,6 +425,33 @@ function state.courses_done(list)
   return n
 end
 function state.current_car() return state.cars[state.car] end
+
+-- ---- made-up courses: the codes played lately and the favourites (saved), and the settings last used -------------------------------
+local RECENT_MAX, FAVOURITE_MAX = 8, 12
+function state.recent_codes() return nova.save.get("custom_recent", {}) end
+function state.favourite_codes() return nova.save.get("custom_favourites", {}) end
+-- puts `code` first in the list kept under `key` (once), keeping at most `max`
+local function remember(key, code, max)
+  local list = { code }
+  for _, c in ipairs(nova.save.get(key, {})) do if c ~= code and #list < max then list[#list + 1] = c end end
+  nova.save.set(key, list)
+end
+function state.add_recent(code) remember("custom_recent", code, RECENT_MAX) end
+function state.is_favourite(code)
+  for _, c in ipairs(state.favourite_codes()) do if c == code then return true end end
+  return false
+end
+-- Adds or takes away a favourite; true when it is now one.
+function state.toggle_favourite(code)
+  if state.is_favourite(code) then
+    local list = {}
+    for _, c in ipairs(state.favourite_codes()) do if c ~= code then list[#list + 1] = c end end
+    nova.save.set("custom_favourites", list)
+    return false
+  end
+  remember("custom_favourites", code, FAVOURITE_MAX)
+  return true
+end
 
 -- Best race time and best lap per track, saved with the track's id.
 function state.best(kind, track_id) return nova.save.get(kind .. "_" .. track_id, nil) end

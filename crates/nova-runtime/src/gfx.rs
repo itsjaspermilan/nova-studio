@@ -431,6 +431,13 @@ pub enum MeshOp {
         base: usize,
         vertices: Vec<MeshVertex>,
     },
+    /// Makes a mesh (`nova.mesh.make`) with the pictures and surface of the loaded mesh `look` (none: plain colours).
+    Styled {
+        id: usize,
+        look: Option<usize>,
+        vertices: Vec<MeshVertex>,
+        indices: Vec<u32>,
+    },
     Free(usize),
 }
 
@@ -954,6 +961,8 @@ fn instance_visible(
 /// reset, or the system taking the GPU away): see [`Gfx::recover`].
 /// A vertex's four joints and their weights.
 type Influence = ([u16; 4], [f32; 4]);
+/// A mesh made by a script with a loaded mesh's look (`MeshOp::Styled`): that mesh, the vertices and the indices.
+type StyledMesh = (Option<usize>, Vec<MeshVertex>, Vec<u32>);
 
 #[derive(Default)]
 struct Backup {
@@ -966,6 +975,8 @@ struct Backup {
     dyn_meshes: HashMap<usize, (Vec<MeshVertex>, Vec<u32>, bool)>,
     /// Shape-key variants of loaded meshes: the base mesh and the blended vertices.
     variants: HashMap<usize, (usize, Vec<MeshVertex>)>,
+    /// Meshes made by scripts that borrow a loaded mesh's look: that mesh, the vertices and the indices.
+    styled: HashMap<usize, StyledMesh>,
     /// Custom shaders' sources in the order they were added (their ids), and their pictures.
     shaders: Vec<String>,
     shader_textures: HashMap<usize, Image>,
@@ -2679,6 +2690,14 @@ impl Gfx {
         for (id, (base, vertices)) in backup.variants {
             ops.push(MeshOp::Variant { id, base, vertices });
         }
+        for (id, (look, vertices, indices)) in backup.styled {
+            ops.push(MeshOp::Styled {
+                id,
+                look,
+                vertices,
+                indices,
+            });
+        }
         fresh.apply_mesh_ops(&ops);
         for source in &backup.shaders {
             // (the same ids again; a shader that failed before fails again and keeps its place)
@@ -3114,9 +3133,66 @@ impl Gfx {
                         },
                     );
                 }
+                MeshOp::Styled {
+                    id,
+                    look,
+                    vertices,
+                    indices,
+                } => {
+                    self.dyn_meshes.remove(id);
+                    self.backup.styled.remove(id);
+                    if indices.is_empty() {
+                        continue;
+                    }
+                    let base = look.and_then(|l| self.mesh(l)).map(|b| {
+                        (
+                            b.texture.clone(),
+                            b.translucent,
+                            b.material.clone(),
+                            b.detail.clone(),
+                        )
+                    });
+                    let (texture, base_translucent, material, detail) = match base {
+                        Some(b) => b,
+                        None => (self.white_group(), false, None, None),
+                    };
+                    let vertex_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("made mesh vertices"),
+                                contents: bytemuck::cast_slice(vertices),
+                                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            });
+                    let index_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("made mesh indices"),
+                                contents: bytemuck::cast_slice(indices),
+                                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                            });
+                    self.backup
+                        .styled
+                        .insert(*id, (*look, vertices.clone(), indices.clone()));
+                    self.dyn_meshes.insert(
+                        *id,
+                        GpuMesh {
+                            vertices: vertex_buffer,
+                            indices: index_buffer,
+                            index_count: indices.len() as u32,
+                            texture,
+                            translucent: base_translucent
+                                || vertices.iter().any(|v| v.color[3] < 255),
+                            skin: None,
+                            bounds: bounding_sphere(vertices),
+                            material,
+                            detail,
+                        },
+                    );
+                }
                 MeshOp::Free(id) => {
                     // (a shape-key variant shares its base mesh's triangles: that index buffer is not ours to reuse)
                     let variant = self.backup.variants.remove(id).is_some();
+                    self.backup.styled.remove(id);
                     self.backup.dyn_meshes.remove(id);
                     if let Some(m) = self.dyn_meshes.remove(id) {
                         if self.spare_vertices.len() < 64 {

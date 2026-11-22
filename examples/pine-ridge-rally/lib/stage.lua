@@ -3,8 +3,13 @@
 local stage = {}
 
 local gates = {}
+local finish
 
-function stage.clear() gates = {} end
+function stage.clear() gates, finish = {}, nil end
+
+-- A stage without gates (a made-up one, lib/generate.lua) says where its finish line is: the road runs on past it.
+function stage.set_finish(x, z) finish = { x = x, z = z } end
+function stage.finish() return finish end
 
 function stage.add(order, x, z) gates[#gates + 1] = { order = order, x = x, z = z } end
 

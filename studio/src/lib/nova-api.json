@@ -2108,6 +2108,41 @@
   "group": "Walls and paths"
  },
  {
+  "name": "nova.mesh",
+  "kind": "namespace",
+  "signature": "nova.mesh",
+  "doc": "Meshes a script builds at run time from lists of numbers (a road laid from a seed, a ground, a ribbon) and draws like a model: lifted by the hills, lit, fogged and shadowed like one.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.mesh.make",
+  "kind": "function",
+  "signature": "nova.mesh.make{ positions, indices [, colors, uvs, normals, look, colors_rgb] } -> handle, points, ms",
+  "doc": "Makes a mesh: `positions` = { x1, y1, z1, x2, ... } (metres), `indices` = three point numbers from 1 for each triangle, counter-clockwise seen from the front. Optional: `colors` (r, g, b, a for each point, 0 to 255 sRGB like every colour in Lua; `colors_rgb = true` for three a point), `uvs` (u, v for each point), `normals` (x, y, z for each point; left out, they are worked out from the triangles, smooth where they share points). `look = \"road_pine_ridge\"` borrows the pictures (base and detail) and the surface of that model's mesh, so a mesh made from the same numbers as a model file looks the same; without it the mesh is its colours only. Gives the handle for `draw` and `free`, how many points, and the milliseconds it took. It lasts until freed.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.mesh.draw",
+  "kind": "function",
+  "signature": "nova.mesh.draw(handle [, { x, y, z, ry, scale, tint, shadow }])",
+  "doc": "Draws a made mesh for this frame (call it every frame, from draw), at x, y, z (0 by default), turned by `ry`, sized by `scale`, tinted by `tint`; `shadow = true` lets it cast one (off by default: a road or a ground).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.mesh.free",
+  "kind": "function",
+  "signature": "nova.mesh.free(handle)",
+  "doc": "Drops a made mesh (when its scene ends, or before making the next).",
+  "group": "3D"
+ },
+ {
+  "name": "nova.utc",
+  "kind": "function",
+  "signature": "nova.utc() -> seconds",
+  "doc": "The wall clock: whole seconds since 1970-01-01 00:00 UTC, as the device's clock says (a daily challenge, a date). Not for timing: nova.time and nova.clock are stopwatches. A device whose clock is wrong gives that wrong time.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.cam3.basis",
   "kind": "function",
   "signature": "nova.cam3.basis() -> forward, right, up",

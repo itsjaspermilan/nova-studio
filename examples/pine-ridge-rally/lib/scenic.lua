@@ -20,7 +20,7 @@ function scenic.draw(id, r)
   local ok, look = pcall(course.of, id)
   if not ok or not look.sky then return end
   local sky = look.sky
-  local seed = seed_of(id)
+  local seed = seed_of(type(id) == "table" and (id.code or id.id) or id)
   local horizon_y = r.y + r.h * 0.62
   -- the sky, in bands from its top to its horizon
   local bands = 28

@@ -68,6 +68,7 @@ mod animated;
 mod billboard_api;
 mod debug_api;
 mod fx2d_api;
+mod mesh_api;
 mod morph_api;
 mod physics_api;
 mod players_api;
@@ -178,6 +179,8 @@ struct Shared {
     nav: crate::walls::Nav,
     /// Meshes made by `nova.bake.level`, by the handle the script holds (None once freed).
     baked: Vec<Option<usize>>,
+    /// Meshes made by `nova.mesh.make`, by the handle the script holds less one (None once freed).
+    made_meshes: Vec<Option<usize>>,
     cursor: PadCursor,
     /// Typed characters that no script has read yet.
     typed: String,
@@ -2655,6 +2658,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     shader_api::install(lua, shared, vfs, &nova)?;
     physics_api::install(lua, shared, vfs, &nova)?;
     walls_api::install(lua, shared, &nova)?;
+    mesh_api::install(lua, shared, &nova)?;
     billboard_api::install(lua, shared, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
@@ -4321,6 +4325,7 @@ impl Game {
             walls: crate::walls::Walls::default(),
             nav: crate::walls::Nav::default(),
             baked: Vec::new(),
+            made_meshes: Vec::new(),
             retained: Default::default(),
             solid: Default::default(),
             physics: Default::default(),

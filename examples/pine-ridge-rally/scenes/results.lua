@@ -131,6 +131,24 @@ function Results:content()
               card("Laps", tostring(r.laps), C.orange) }
     if r.record_time then cards[2][#cards[2]].text = "New!" end
   end
+  local g = r.generated
+  if g then
+    -- a made-up course: the medal won, and the three times it was against (lib/targets.lua)
+    local targets = require("lib.targets")
+    if r.rally then
+      -- (a made-up stage is won by its medal: that is the big word, and the stage's points go in the badge)
+      left.big, left.small, left.big_size = string.upper(targets.NAMES[g.medal]), "", g.medal > 0 and 80 or 56
+      left.badge = r.rally.score .. " points"
+    else
+      left.badge = string.upper(targets.NAMES[g.medal]) .. ((g.medal > 0) and " MEDAL" or "")
+    end
+    if g.daily and g.best then left.badge = left.badge .. "  ·  BEST TODAY" end
+    cards = {}
+    for i, medal in ipairs({ "gold", "silver", "bronze" }) do
+      local won = g.medal == 4 - i
+      cards[i] = card((won and "Won: " or "") .. targets.NAMES[4 - i], ui.time(g.targets[medal]), targets.COLORS[4 - i])
+    end
+  end
   return left, rows, cards, label
 end
 
@@ -148,7 +166,7 @@ function Results:draw_screens()
   local col = { "column", anchor = "topleft", x = 6, w = 285, gap = 0,
     { "text", left.kicker, font = F.bold, size = 18, spacing = 0.2, color = C.ink },
     { "row", h = 104, align = "end", gap = 0,
-      { "text", left.big, font = F.title, size = 112, color = C.ink, h = 104 },
+      { "text", left.big, font = F.title, size = left.big_size or 112, color = C.ink, h = 104 },
       { "text", left.small, font = F.title, size = 48, color = C.ink, h = 60, align_self = "start", grow = 1 } },
     { "text", string.upper(r.track_name), font = F.heavy, size = 30, color = C.ink },
     { "space", h = 14 },
@@ -184,7 +202,9 @@ function Results:choose(m)
   audio.sfx("menu_accept")
   audio.stop_music(0.4)
   local choice = tonumber(m.pressed)
-  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(state.current_track().id) end)
+  local info = state.current_track()
+  if choice == 1 then transition.cover(transition.race_spec(), function() nova.goto_scene(info.scene or info.id) end)
+  elseif info.generated then nova.goto_scene("title", info.daily and "daily" or "custom") -- (back to the made-up course's own page)
   else nova.goto_scene("title", "menu") end
 end
 

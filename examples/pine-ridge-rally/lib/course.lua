@@ -31,7 +31,12 @@ function course.clear() current = nil end
 
 -- The settings of course `id` read from its scene file without going to it (for the menus' backdrop), kept once read.
 local read = {}
+-- (`id` may also be a made-up course's menu entry, lib/generate.lua: its settings are made, not read)
 function course.of(id)
+  if type(id) == "table" and id.generated then
+    if not read[id.code] then read[id.code] = settings_of(require("lib.generate").course(id.generated).props, id.code) end
+    return read[id.code]
+  end
   if read[id] then return read[id] end
   local data = nova.scene_data(id)
   assert(data, "no scenes/" .. id .. ".scene.json")
