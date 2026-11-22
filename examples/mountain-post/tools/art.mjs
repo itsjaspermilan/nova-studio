@@ -26,9 +26,9 @@ img("fx/po_sign", [512, 104], [
   { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "serif", align: "center", fill: "#e9dcbccc" },
   { text: "POST OFFICE", at: [256, 88], size: 52, font: "serif", align: "center", fill: "#efe2c2dd" },
 ]);
-img("fx/van_side", [880, 152], [
-  { text: "FERNHOLLOW", at: [440, 70], size: 72, font: "rounded", align: "center", fill: BLUE },
-  { text: "· POST ·", at: [440, 140], size: 58, font: "rounded", align: "center", fill: RED },
+img("fx/van_side", [880, 200], [
+  { text: "FERNHOLLOW", at: [440, 100], size: 124, font: "rounded", align: "center", fill: BLUE },
+  { text: "· POST ·", at: [440, 186], size: 70, font: "rounded", align: "center", fill: RED },
 ]);
 img("fx/puff", [64, 64], [{ circle: [32, 32, 22], fill: { radial: [32, 32, 30], stops: [[0, "#ffffffee"], [0.6, "#ffffff88"], [1, "#ffffff00"]] }, blur: 3 }]);
 img("fx/mote", [16, 16], [{ circle: [8, 8, 5], fill: { radial: [8, 8, 7], stops: [[0, "#fff8e0ff"], [1, "#fff8e000"]] } }]);

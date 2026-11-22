@@ -4,6 +4,8 @@
 -- entities/hazel.lua and entities/pip.lua are this with their own model, voice and work.
 local state = require("lib.state")
 local world = require("lib.world")
+local face = require("lib.face")
+local dialogue = require("lib.dialogue")
 
 local PARCELS = { hazel = "parcel_hazel", pip = "parcel_pip" }
 
@@ -29,6 +31,8 @@ return function(who, spec)
     })
     self.carry_layer = { { clip = "carry", time = 0, weight = 1, mask = { "arm_l", "arm_r" } } }
     self.parcel_opts = { ry = 0 }
+    self.mood = face.new(who == "hazel" and 3 or 7)
+    self.draw_opts = { ry = 0, parts = nil }
     self.work_sound_t = 0
     -- (the parcel set down on the porch afterwards: beside the door)
     local door = nova.named("door_" .. who)
@@ -41,7 +45,15 @@ return function(who, spec)
     return d
   end
 
+  -- The face for what is being said (lib/face.lua): kept until the next line, back to neutral when the talk ends.
+  function R:look(expr)
+    face.set(self.mood, expr)
+    nova.log("face " .. who .. " " .. expr)
+  end
+
   function R:update(dt)
+    self.mood.talking = self.talking and dialogue.typing()
+    face.update(self.mood, dt)
     local p = nova.named("postmaster")
     local d = p and not p.hidden and self:notice(p) or 99
     local tx, tz, want_speed = self.x, self.z, 0
@@ -54,8 +66,8 @@ return function(who, spec)
       self.mode = "meet"
       -- (to a spot 1.6 m short of the postmaster, never more than 5 m from home)
       local ax, az = p.x - self.x, p.z - self.z
-      if d > 1.7 then
-        tx, tz = self.x + ax / d * (d - 1.6), self.z + az / d * (d - 1.6)
+      if d > 1.4 then
+        tx, tz = self.x + ax / d * (d - 1.3), self.z + az / d * (d - 1.3)
         local hx, hz = tx - self.home[1], tz - self.home[2]
         local hd = math.sqrt(hx * hx + hz * hz)
         if hd > 5 then tx, tz = self.home[1] + hx / hd * 5, self.home[2] + hz / hd * 5 end
@@ -109,13 +121,16 @@ return function(who, spec)
   function R:end_talk()
     self.mode = "meet"
     self.talking = false
+    face.set(self.mood, "neutral")
     if self.holding then self.holding = false; self.set_down = true end
   end
   function R:wave() self.anim:play("wave", { restart = true }) end
 
   function R:draw()
     local extra = self.holding and self.carry_layer or nil
-    self.anim:draw(self.x, self.y, self.z, { ry = self.face, extra = extra })
+    local o = self.draw_opts
+    o.ry, o.extra, o.parts = self.face, extra, face.parts(self.mood)
+    self.anim:draw(self.x, self.y, self.z, o)
     if self.holding then
       local s, c = math.sin(self.face), math.cos(self.face)
       self.parcel_opts.ry = self.face + math.pi / 2

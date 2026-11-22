@@ -50,8 +50,8 @@ function camera.foot(p, dt, indoors)
       if cam.toward > 0.7 then cam.yaw = cam.yaw + (diff > 0 and 1 or -1) * math.min(math.abs(diff), dt * 1.6) end
     end
   end
-  local dist = indoors and 3.4 or 4.8
-  local height = indoors and 2.0 or 2.25
+  local dist = indoors and 2.9 or 3.8
+  local height = indoors and 1.55 or 1.75
   local s, c = math.sin(cam.yaw), math.cos(cam.yaw)
   local len = clear_boom(p.x, p.z, -s, -c, dist)
   if indoors and len < 1.3 then height = height + (1.3 - len) * 0.5 end
@@ -61,29 +61,29 @@ function camera.foot(p, dt, indoors)
   local base = ground(p.x, p.z, indoors) + (p.y or 0)
   local ey = base + height * (0.6 + 0.4 * len / dist)
   if not indoors then ey = math.max(ey, ground(ex, ez) + 0.7) end
-  if indoors then ey = math.min(ey, 2.6) end
-  local tx, ty, tz = p.x + s * 0.6, base + (indoors and 0.95 or 1.25), p.z + c * 0.6
+  if indoors then ey = math.min(ey, 2.3) end
+  local tx, ty, tz = p.x + s * 0.6, base + (indoors and 0.65 or 0.8), p.z + c * 0.6
   camera.set(ex, ey, ez, tx, ty, tz, indoors and 66 or 58, dt)
 end
 
--- Two people talking: a view from beside them both, a little above, the one who speaks nearer the middle; from the side the
--- camera already looks from, so the cut is short.
+-- Two people talking: over the postmaster's shoulder, close, on the resident's face (they face the postmaster, so nearly
+-- straight at the camera: their expressions read), the postmaster at the frame's edge; from the side the camera already looks
+-- from, so the cut is short. The words' box covers the lowest third: the faces sit above the middle.
 function camera.talk(p, r, dt)
-  local mx, mz = (p.x + r.x) / 2, (p.z + r.z) / 2
   local ax, az = r.x - p.x, r.z - p.z
   local l = math.sqrt(ax * ax + az * az)
   if l < 1e-3 then return camera.foot(p, dt) end
+  ax, az = ax / l, az / l
   -- the two sides of the line between them; the one nearer the camera's present eye
-  local nx, nz = -az / l, ax / l
+  local nx, nz = -az, ax
   local e = cam.eye
-  if (e[1] - mx) * nx + (e[3] - mz) * nz < 0 then nx, nz = -nx, -nz end
-  -- a little behind the postmaster's shoulder, so the resident faces the camera more
-  local bx, bz = -ax / l * 1.3, -az / l * 1.3
-  local ex, ez = mx + nx * 3.9 + bx, mz + nz * 3.9 + bz
-  local base = ground(mx, mz)
-  local ey = math.max(base + 1.45, ground(ex, ez) + 1.2)
-  camera.set(ex, ey, ez, mx + ax / l * 0.35, base + 0.62, mz + az / l * 0.35, 54, dt)
-  cam.yaw = math.atan(mx - ex, mz - ez)
+  if (e[1] - p.x) * nx + (e[3] - p.z) * nz < 0 then nx, nz = -nx, -nz end
+  local ex, ez = p.x - ax * 1.25 + nx * 1.2, p.z - az * 1.25 + nz * 1.2
+  local base = ground(p.x, p.z) + (p.y or 0)
+  local ey = math.max(base + 1.3, ground(ex, ez) + 1.0)
+  local rb = ground(r.x, r.z) + (r.y or 0)
+  camera.set(ex, ey, ez, r.x - ax * 0.25 + nx * 0.2, rb + 0.6, r.z - az * 0.25 + nz * 0.2, 44, dt)
+  cam.yaw = math.atan(r.x - ex, r.z - ez)
 end
 
 -- Behind the van: the chase view.
@@ -122,6 +122,8 @@ end
 
 -- Puts the view on the screen (from draw): the glide between two views, eased.
 function camera.apply(dt)
+  -- (a view pinned by the gallery's routes, for the face sheets and film strips; the game never pins one)
+  if camera.pinned then return nova.camera(table.unpack(camera.pinned)) end
   local w = cam.want
   if not w then return end
   local ex, ey, ez, tx, ty, tz, fov = w[1], w[2], w[3], w[4], w[5], w[6], w[7]

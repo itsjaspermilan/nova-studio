@@ -112,14 +112,15 @@ def("office_room", () => {
   // the door (a gap; the doorway is bright: the porch in the sun)
   c.push(box([0.9, 1.07, Z + 0.22], [1.1, 2.15, 0.02], "#fff2cc", { emissive: 0.85 }));
   // the counter: across the room in front of the shelves, a flap at its left end
-  c.push(box([0.4, 0.5, -0.6], [4.2, 1.0, 0.7], C.wood));
-  c.push(box([0.4, 1.04, -0.6], [4.4, 0.08, 0.85], C.woodLight));
-  for (let x = -1.5; x <= 2.3; x += 0.95) c.push(box([x, 0.5, -0.24], [0.04, 0.9, 0.02], shade(C.wood, -0.3)));
-  c.push(cyl([1.6, 1.12, -0.6], 0.08, 0.06, "#d9b25a")); // a bell
-  c.push(cone([1.6, 1.2, -0.6], 0.07, 0.1, "#d9b25a"));
-  c.push(box([-0.8, 1.13, -0.5], [0.42, 0.1, 0.32], "#7c7f86")); // scales
-  c.push(box([-0.8, 1.3, -0.5], [0.3, 0.03, 0.3], "#a8abb2"));
-  c.push(box([2.1, 1.1, -0.75], [0.3, 0.04, 0.22], "#e9dfc6")); // a ledger
+  // (at the height of the cast: villagers a little over a metre tall, who look over it)
+  c.push(box([0.4, 0.36, -0.6], [4.2, 0.72, 0.7], C.wood));
+  c.push(box([0.4, 0.76, -0.6], [4.4, 0.08, 0.85], C.woodLight));
+  for (let x = -1.5; x <= 2.3; x += 0.95) c.push(box([x, 0.36, -0.24], [0.04, 0.64, 0.02], shade(C.wood, -0.3)));
+  c.push(cyl([1.6, 0.84, -0.6], 0.08, 0.06, "#d9b25a")); // a bell
+  c.push(cone([1.6, 0.92, -0.6], 0.07, 0.1, "#d9b25a"));
+  c.push(box([-0.8, 0.85, -0.5], [0.42, 0.1, 0.32], "#7c7f86")); // scales
+  c.push(box([-0.8, 1.02, -0.5], [0.3, 0.03, 0.3], "#a8abb2"));
+  c.push(box([2.1, 0.82, -0.75], [0.3, 0.04, 0.22], "#e9dfc6")); // a ledger
   // the pigeonholes on the back wall: a grid of cubbies, mostly empty
   const px0 = -2.6, py0 = 1.15, cw = 0.36, ch = 0.3, cols = 10, rows = 4;
   c.push(box([px0 + (cols * cw) / 2, py0 + (rows * ch) / 2, -Z + 0.2], [cols * cw + 0.08, rows * ch + 0.08, 0.36], C.plankDark));
@@ -129,8 +130,8 @@ def("office_room", () => {
   for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) if (R() < 0.12) c.push(box([px0 + (i + 0.5) * cw, py0 + j * ch + 0.08, -Z + 0.22], [0.24, 0.12, 0.2], R() < 0.5 ? "#e7dcc3" : "#d6c7a5", { rot: [0, 0, R() * 20 - 10] }));
   c.push(box([px0 + (cols * cw) / 2, py0 + rows * ch + 0.06, -Z + 0.22], [cols * cw, 0.04, 0.3], C.dust)); // dust on the top
   // the shelf of what is to go out today (left wall, +x): three boards on brackets
-  for (let j = 0; j < 3; j++) c.push(box([X - 0.25, 0.75 + j * 0.55, 1.0], [0.42, 0.05, 1.4], C.woodLight));
-  for (const z of [0.4, 1.6]) c.push(box([X - 0.1, 1.3, z], [0.08, 1.4, 0.06], C.plankDark));
+  for (let j = 0; j < 3; j++) c.push(box([X - 0.25, 0.42 + j * 0.42, 1.0], [0.42, 0.05, 1.4], C.woodLight));
+  for (const z of [0.4, 1.6]) c.push(box([X - 0.1, 0.65, z], [0.08, 1.3, 0.06], C.plankDark));
   // a noticeboard with yellowed papers, a calendar, a clock that has stopped
   c.push(box([X - 0.03, 1.8, -1.2], [0.04, 0.8, 1.1], "#b08d5a"));
   for (const [y, z, w, h] of [[1.95, -1.45, 0.3, 0.38], [1.75, -1.0, 0.36, 0.3], [1.6, -1.42, 0.25, 0.2]]) c.push(box([X - 0.06, y, z], [0.02, h, w], "#e8d8a8", { rot: [0, 0, 0] }));
@@ -282,10 +283,10 @@ def("sign_arm", () => {
   return one([mesh(v, [[0, 1, 2, 3, 4], [5, 9, 8, 7, 6], [0, 5, 6, 1], [1, 6, 7, 2], [2, 7, 8, 3], [3, 8, 9, 4], [4, 9, 5, 0]], C.sign, { inside: [L / 2, 0, 0] })]);
 });
 def("mailbox", () => one([
-  box([0, 0.55, 0], [0.12, 1.1, 0.12], C.sign),
-  bevelled([0, 1.22, 0.05], [0.36, 0.3, 0.55], "#3f6a54", { bevel: 0.06 }),
-  box([0.2, 1.3, 0.12], [0.03, 0.25, 0.04], C.red),
-  box([0, 1.2, 0.33], [0.26, 0.2, 0.02], shade("#3f6a54", -0.3)),
+  box([0, 0.4, 0], [0.12, 0.8, 0.12], C.sign),
+  bevelled([0, 0.92, 0.05], [0.36, 0.3, 0.55], "#3f6a54", { bevel: 0.06 }),
+  box([0.2, 1.0, 0.12], [0.03, 0.25, 0.04], C.red),
+  box([0, 0.9, 0.33], [0.26, 0.2, 0.02], shade("#3f6a54", -0.3)),
 ], { colliders: [{ x: 0, z: 0, r: 0.15 }] }));
 def("gate_post", () => one([box([0, 0.7, 0], [0.2, 1.4, 0.2], C.log), box([0, 1.42, 0], [0.24, 0.06, 0.24], C.logDark)], { colliders: [{ x: 0, z: 0, r: 0.15 }] }));
 def("fence", () => {

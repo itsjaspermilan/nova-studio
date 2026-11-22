@@ -34,6 +34,8 @@ words.people = {
       "If you see Pip, tell him his aerial hums through my teeth.",
     },
     without = "Unless that's my chisels, I'm busy.",
+    -- the face for each line (lib/face.lua): gruff, then dry, a flicker of sadness for Pemberton, gruff again, a small smile at the end
+    faces = { given = { "gruff", "neutral", "sad", "gruff", "smile" }, after = { "neutral", "gruff" }, without = "gruff" },
   },
   pip = {
     name = "Pip",
@@ -49,6 +51,8 @@ words.people = {
       "If Hazel asks, the aerial is staying.",
     },
     without = "Is it here? Is it? ...Oh. Hello anyway!",
+    -- delighted and wide-eyed throughout; indignant about the aerial
+    faces = { given = { "delighted", "delighted", "happy", "indignant", "delighted" }, after = { "happy", "indignant" }, without = "surprised" },
   },
 }
 

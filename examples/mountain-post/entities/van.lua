@@ -153,7 +153,7 @@ function Van:drive(dt)
   -- moving: two circles along the van (its nose and its tail) against the scenery, the water and the map's edges
   local nx, nz = self.x + self.velx * dt, self.z + self.velz * dt
   local hit = 0
-  for _, off in ipairs({ 1.15, -1.15 }) do
+  for _, off in ipairs({ 1.2, -1.2 }) do
     local px, pz = nx + sinh * off, nz + cosh * off
     local mx, mz, stopped = world.move(px, pz, 0, 0, 0.95)
     if stopped then
@@ -313,8 +313,8 @@ function Van:draw()
   -- the rear doors open outwards about their hinges (on the van's back corners)
   pt.door_l.ry, pt.door_r.ry = -self.back_open * 1.9, self.back_open * 1.9
   -- (each door is drawn on its own and lifted by the ground under its hinge: give its height above that ground)
-  for _, d in ipairs({ { pt.door_l, 0.84 }, { pt.door_r, -0.84 } }) do
-    local hx, hy, hz = self:to_world(d[2], 0, -1.95)
+  for _, d in ipairs({ { pt.door_l, 0.88 }, { pt.door_r, -0.88 } }) do
+    local hx, hy, hz = self:to_world(d[2], 0, -2.1)
     d[1].y = hy + nova.terrain_height(self.x, self.z) - nova.terrain_height(hx, hz)
   end
   pt.door_l.rx, pt.door_r.rx, pt.door_l.rz, pt.door_r.rz = self.pitch, self.pitch, self.roll, self.roll
@@ -323,10 +323,10 @@ function Van:draw()
   -- FERNHOLLOW POST on both sides of the box, just off the panel, moving with the body's lean
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.885, 1.6, -0.55)
+    local x, y, z = self:to_world(side * 0.93, 1.42, -1.33)
     SIDE.face = { cosh * side, 0, -sinh * side }
-    SIDE.w, SIDE.h = 2.2, 0.38
-    nova.billboard("van_side", x, y, z, 2.2, SIDE)
+    SIDE.w, SIDE.h = 1.45, 0.33
+    nova.billboard("van_side", x, y, z, 1.45, SIDE)
   end
 end
 

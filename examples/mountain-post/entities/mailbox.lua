@@ -16,7 +16,7 @@ function Mailbox:create()
 end
 
 function Mailbox:draw()
-  for _, s in ipairs(self.sides) do nova.billboard(self.sprite, s.x, 1.22, s.z, 0.26, s.o) end
+  for _, s in ipairs(self.sides) do nova.billboard(self.sprite, s.x, 0.92, s.z, 0.26, s.o) end
 end
 
 return Mailbox

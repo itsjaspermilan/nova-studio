@@ -1,0 +1,180 @@
+{
+ "size": "480x480",
+ "start_scene": "valley",
+ "lua": "F = require('lib.face'); SHOW = function(who, e) local c = nova.named(who); F.set(c.mood, e); c.mood.wait, c.mood.blink = 99, 0; local g = nova.terrain_height(c.x, c.z) + (c.y or 0); local s, k = math.sin(c.face), math.cos(c.face); local top = ({ postmaster = 0.8, hazel = 0.7, pip = 0.68 })[who]; require('lib.camera').pinned = { c.x + s * 1.15, g + top, c.z + k * 1.15, c.x, g + top, c.z, 36 } end",
+ "route": [
+  {
+   "wait": 10,
+   "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face, p.control = 4.5, -125, 0, false"
+  },
+  {
+   "lua": "SHOW('postmaster', 'neutral')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster neutral"
+  },
+  {
+   "lua": "SHOW('postmaster', 'smile')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster smile"
+  },
+  {
+   "lua": "SHOW('postmaster', 'happy')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster happy"
+  },
+  {
+   "lua": "SHOW('postmaster', 'delighted')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster delighted"
+  },
+  {
+   "lua": "SHOW('postmaster', 'gruff')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster gruff"
+  },
+  {
+   "lua": "SHOW('postmaster', 'sad')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster sad"
+  },
+  {
+   "lua": "SHOW('postmaster', 'surprised')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster surprised"
+  },
+  {
+   "lua": "SHOW('postmaster', 'indignant')"
+  },
+  {
+   "wait": 4,
+   "capture": "postmaster indignant"
+  },
+  {
+   "lua": "SHOW('hazel', 'neutral')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel neutral"
+  },
+  {
+   "lua": "SHOW('hazel', 'smile')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel smile"
+  },
+  {
+   "lua": "SHOW('hazel', 'happy')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel happy"
+  },
+  {
+   "lua": "SHOW('hazel', 'delighted')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel delighted"
+  },
+  {
+   "lua": "SHOW('hazel', 'gruff')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel gruff"
+  },
+  {
+   "lua": "SHOW('hazel', 'sad')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel sad"
+  },
+  {
+   "lua": "SHOW('hazel', 'surprised')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel surprised"
+  },
+  {
+   "lua": "SHOW('hazel', 'indignant')"
+  },
+  {
+   "wait": 4,
+   "capture": "hazel indignant"
+  },
+  {
+   "lua": "SHOW('pip', 'neutral')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip neutral"
+  },
+  {
+   "lua": "SHOW('pip', 'smile')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip smile"
+  },
+  {
+   "lua": "SHOW('pip', 'happy')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip happy"
+  },
+  {
+   "lua": "SHOW('pip', 'delighted')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip delighted"
+  },
+  {
+   "lua": "SHOW('pip', 'gruff')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip gruff"
+  },
+  {
+   "lua": "SHOW('pip', 'sad')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip sad"
+  },
+  {
+   "lua": "SHOW('pip', 'surprised')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip surprised"
+  },
+  {
+   "lua": "SHOW('pip', 'indignant')"
+  },
+  {
+   "wait": 4,
+   "capture": "pip indignant"
+  }
+ ],
+ "out": "build/g_faces"
+}

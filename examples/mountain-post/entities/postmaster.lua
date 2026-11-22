@@ -1,13 +1,18 @@
--- The postmaster: a fox in a blue postal jacket and a peaked cap (models/postmaster.glb, character3d_make). The left stick walks
--- as the camera sees it; carrying a parcel, the arms hold it at the chest (the "carry" clip laid over the arms) and the walk is
--- a little slower. The scene decides what A and B do; this file only walks, animates and is heard.
+-- The postmaster: a fox in a blue postal jacket and a peaked cap (models/postmaster.glb, character3d_make). The left stick moves
+-- as the camera sees it, in two gaits by how far it is pushed: a gentle tilt is the waddling walk; a full push is a run with the
+-- arms held straight out to the sides like wings (the "run" clip; the walk and run clips are mixed by speed, so the arms ease up
+-- and down as it speeds up and slows). Carrying a parcel, the arms hold it at the chest (the "carry" clip laid over the arms) and
+-- the full push is a brisk trot instead. The scene decides what A and B do; this file only moves, animates and is heard.
 local world = require("lib.world")
 local state = require("lib.state")
 local camera = require("lib.camera")
+local face = require("lib.face")
 
-local WALK, RUN = 0.837, 2.857        -- the speeds at which the walk and the run clips do not slide (character3d_make's answer)
-local TOP, TOP_CARRY = 2.3, 1.7       -- metres a second at full tilt, empty and carrying
-local RADIUS = 0.3
+local WALK, RUN, TROT = 0.892, 1.9, 1.159 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
+local STROLL = 1.0                    -- the walk's top: a stick pushed up to TILT walks, up to this
+local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
+local TOP, TOP_CARRY = 1.9, 1.25      -- metres a second at a full push: running (about twice the walk), trotting with a parcel
+local RADIUS = 0.26
 
 local Postmaster = nova.entity { model = "postmaster", tags = { "postmaster", "player" }, velocity = false }
 
@@ -24,20 +29,38 @@ function Postmaster:create()
     start = "move", fade = 0.18,
     states = {
       move = { blend = "speed", points = { { 0, "idle" }, { WALK, "walk" }, { RUN, "run" } } },
+      -- (with a parcel: the walk, then the trot; the carry is laid over the arms of both)
+      laden = { blend = "speed", points = { { 0, "idle" }, { WALK, "walk" }, { TROT, "trot" } } },
       wave = { clip = "wave", loop = false, next = "move", fade = 0.15 },
     },
     on_event = function(event) if event == "step" then self:step() end end,
   })
   self.carry_layer = { { clip = "carry", time = 0, weight = 0, mask = { "arm_l", "arm_r" } } }
   self.parcel_opts = { ry = 0 }
+  self.mood = face.new(5)
+  self.gait = "still"           -- still, walk, run or trot (what the stick asks for; the tests read it)
+  self.dust = {}                 -- little puffs kicked up by the run's steps
+  self.draw_opts = { ry = 0 }
 end
+
+-- A smile for a moment (a parcel handed over, a letter read).
+function Postmaster:smile(seconds) face.set(self.mood, "happy", seconds or 2.5); nova.log("face postmaster happy") end
 
 function Postmaster:step()
   self.steps = self.steps + 1
   if self.hidden then return end
   local s = self.indoors and "wood" or world.surface(self.x, self.z)
   local name = (s == "road" and "step_road") or ((s == "gravel") and "step_gravel") or ((s == "bridge" or s == "wood") and "step_wood") or "step_grass"
-  nova.sound.play(name, { volume = 0.32 + 0.12 * math.min(1, self.speed / TOP), vary = 0.07 })
+  if self.gait == "run" or self.gait == "trot" then
+    -- (light quick steps, a touch higher and softer; a tiny puff of dust off the ground outdoors)
+    nova.sound.play(name, { volume = 0.26, pitch = 1.12, vary = 0.08 })
+    if self.gait == "run" and not self.indoors and #self.dust < 8 then
+      local s, c = math.sin(self.face), math.cos(self.face)
+      self.dust[#self.dust + 1] = { x = self.x - s * 0.2, z = self.z - c * 0.2, age = 0 }
+    end
+  else
+    nova.sound.play(name, { volume = 0.32 + 0.12 * math.min(1, self.speed / STROLL), vary = 0.07 })
+  end
 end
 
 -- Turn to face a point (for a resident, a shelf, the van's door).
@@ -56,7 +79,9 @@ function Postmaster:update(dt)
   local len = math.sqrt(dx * dx + dz * dz)
   if len > 1 then dx, dz, len = dx / len, dz / len, 1 end
   local top = state.carrying and TOP_CARRY or TOP
-  local want = len > 0.15 and top * len or 0
+  -- (the walk up to TILT, then the run: the speed climbs from the walk's top to the run's over the rest of the push)
+  local want = 0
+  if len > 0.15 then want = len <= TILT and STROLL * len / TILT or STROLL + (top - STROLL) * math.min(1, (len - TILT) / (0.95 - TILT)) end
   -- (a few points to walk through in turn: a test leading it round the van)
   if not self.walk_to and self.walk_path and #self.walk_path > 0 then self.walk_to = table.remove(self.walk_path, 1) end
   if self.walk_to then
@@ -64,9 +89,10 @@ function Postmaster:update(dt)
     local tx, tz = self.walk_to[1] - self.x, self.walk_to[2] - self.z
     local d = math.sqrt(tx * tx + tz * tz)
     -- (a point it cannot reach, against a post or the van's side, is given up when it has had the time the walk should take)
-    if self.walk_for ~= self.walk_to then self.walk_for, self.walk_budget = self.walk_to, d / 1.2 + 1.5 end
+    local pace = math.min(top, self.walk_pace or STROLL)
+    if self.walk_for ~= self.walk_to then self.walk_for, self.walk_budget = self.walk_to, d / pace + 1.5 end
     self.walk_budget = self.walk_budget - dt
-    if d < 0.12 or self.walk_budget <= 0 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(top * 0.95, d * 4) end
+    if d < 0.12 or self.walk_budget <= 0 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(pace, d * 4) end
     len = 1
   end
   self.speed = self.speed + (want - self.speed) * math.min(1, dt * 9)
@@ -82,8 +108,17 @@ function Postmaster:update(dt)
   if not self.hidden then self:keep_clear() end
   self.y = self.indoors and 0 or world.lift(self.x, self.z)
   self.carry_w = self.carry_w + ((state.carrying and 1 or 0) - self.carry_w) * math.min(1, dt * 8)
+  local laden = state.carrying ~= nil
+  self.gait = self.speed < 0.08 and "still" or self.speed <= STROLL + 0.05 and "walk" or laden and "trot" or "run"
+  self.anim:play(laden and "laden" or "move", { fade = 0.25 })
   self.anim:set("speed", self.speed)
   self.anim:update(dt)
+  for i = #self.dust, 1, -1 do
+    local p = self.dust[i]
+    p.age = p.age + dt
+    if p.age > 0.5 then table.remove(self.dust, i) end
+  end
+  face.update(self.mood, dt)
 end
 
 -- Out of the van's body (three circles along it) and out of the residents' way: nobody walks through a van or a badger.
@@ -97,22 +132,30 @@ function Postmaster:keep_clear()
   local v = nova.first("van")
   if v then
     local s, c = math.sin(v.heading), math.cos(v.heading)
-    for _, off in ipairs({ -1.25, 0, 1.25 }) do push(v.x + s * off, v.z + c * off, 0.86) end
+    for _, off in ipairs({ -1.3, 0, 1.3 }) do push(v.x + s * off, v.z + c * off, 0.92) end
   end
-  for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.75) end
+  for _, r in ipairs(nova.all("resident")) do push(r.x, r.z, 0.62) end
 end
 
 -- Where the parcel it carries is: at the chest, in front of it.
 function Postmaster:hands()
   local s, c = math.sin(self.face), math.cos(self.face)
   local bob = math.abs(math.sin(self.steps * 0.5 + nova.time() * 0)) * 0
-  return self.x + s * 0.34, self.y + 0.72 + bob, self.z + c * 0.34
+  return self.x + s * 0.36, self.y + 0.5 + bob, self.z + c * 0.36
 end
 
+local DUST = { color = { 196, 178, 150, 110 } }
 function Postmaster:draw()
   if self.hidden or self.visible == false then return end
   self.carry_layer[1].weight = self.carry_w
-  self.anim:draw(self.x, self.y, self.z, { ry = self.face, extra = self.carry_w > 0.01 and self.carry_layer or nil })
+  local o = self.draw_opts
+  o.ry, o.extra, o.parts = self.face, self.carry_w > 0.01 and self.carry_layer or nil, face.parts(self.mood)
+  self.anim:draw(self.x, self.y, self.z, o)
+  for _, p in ipairs(self.dust) do
+    local k = p.age / 0.5
+    DUST.color[4] = math.floor(110 * (1 - k))
+    nova.billboard("puff", p.x, self.y + 0.06 + k * 0.12, p.z, 0.16 + k * 0.3, DUST)
+  end
   if state.carrying then
     local x, y, z = self:hands()
     self.parcel_opts.ry = self.face + math.pi / 2

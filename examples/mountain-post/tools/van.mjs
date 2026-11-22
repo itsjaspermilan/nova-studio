@@ -1,89 +1,88 @@
-// The post van: a small high-roofed delivery van, cream with a red stripe, round headlights, a roof rack, slightly toy-like
-// proportions (big round wheels, a short nose, a tall box). Low-poly with softened edges, like everything else in Fernhollow.
-// Its four wheels are parts named wheel_fl, wheel_fr, wheel_rl, wheel_rr at their axles (entities/van.lua finds them with
-// nova.model_pose and hangs each on a spring), and the rear doors are parts too (door_l, door_r) so they can swing open.
-// FERNHOLLOW POST is painted on by the game (image_make lettering, entities/van.lua), not modelled.
-import { bevelled, box, cyl, model, part, shade } from "./geo.mjs";
+// The post van: the silhouette of a modern high-roof panel van, kept simple and a little cute by proportion (slightly short and tall,
+// slightly big wheels): one tall smooth body with softly rounded edges, a short sloping bonnet flowing into a big raked windscreen,
+// flat clean sides with a sliding-door line and one cab window each side, two tall rear doors with small windows, small wheels in
+// plain arches, round-cornered lamps. Cream with a red stripe; FERNHOLLOW POST is painted on by the game (image_make lettering,
+// entities/van.lua). No maker's badge, no grille design. The four wheels are parts wheel_fl, wheel_fr, wheel_rl, wheel_rr at their
+// axles (entities/van.lua hangs each on a spring), and the rear doors are parts door_l and door_r, hinged at the back corners.
+import { bevelled, box, cyl, mesh, model, part, shade } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 
-const CREAM = "#f1e6c8", RED = "#c8402f", DARK = "#2a2b30", GLASS = "#4b6a7c", CHROME = "#d4d6d8", TRIM = "#6d6a64", TYRE = "#232327";
-const L = 3.9, W = 1.72, H = 2.08; // length, width, height (metres)
-const R = 0.33, AX = 1.28, TR = 0.74; // wheel radius, axle from the middle, wheel from the centre line
+const CREAM = "#f2e8cc", RED = "#c8402f", DARK = "#2a2b30", GLASS = "#3f5d70", TRIM = "#6d6a64", TYRE = "#232327", LAMP = "#fbf3d2";
+const W = 1.82, HW = W / 2; // width
+const R = 0.34, AX = 1.32, TR = 0.76; // wheel radius, axle from the middle, wheel from the centre line
+const Z0 = -2.1, Z1 = 2.12; // tail, nose
 
-const body = [];
-const z0 = -L / 2, z1 = L / 2;
-// the lower body: a full-length box above the arches, sills between them, the nose and tail below the arch line
-body.push(bevelled([0, 0.94, -0.05], [W, 0.62, L - 0.1], CREAM, { bevel: 0.07 }));
-body.push(bevelled([0, 0.5, 0], [W - 0.04, 0.32, 2 * AX - 2 * R - 0.12], CREAM, { bevel: 0.05 }));
-body.push(bevelled([0, 0.52, z1 - 0.28], [W - 0.06, 0.36, 0.5], CREAM, { bevel: 0.06 }));
-body.push(bevelled([0, 0.52, z0 + 0.25], [W - 0.06, 0.36, 0.42], CREAM, { bevel: 0.06 }));
-// the box behind the cab: tall, its top a little narrower
-body.push(bevelled([0, 1.66, -0.52], [W - 0.02, 0.86, L - 1.1], CREAM, { bevel: 0.09, taper: 0.96 }));
-// the cab: the windscreen leans back from a short bonnet up to the roof
-const cabZ = 0.95;
-body.push(bevelled([0, 1.5, cabZ], [W - 0.06, 0.56, 0.42], CREAM, { bevel: 0.06, taper: 0.96, taperZ: 0.55 }));
-body.push(bevelled([0, 1.86, cabZ - 0.1], [W - 0.08, 0.36, 0.3], CREAM, { bevel: 0.05, taper: 0.97 }));
-// a rounded bonnet
-body.push(bevelled([0, 1.28, z1 - 0.42], [W - 0.12, 0.12, 0.62], shade(CREAM, -0.04), { bevel: 0.05, taper: 0.92 }));
-// the red stripe all round, and the roof's cream lip
-body.push(box([0, 0.86, -0.05], [W + 0.012, 0.13, L - 0.06], RED));
-// glass: the windscreen (leaning), the cab's side windows; the box has none (it is a delivery van)
-body.push(box([0, 1.58, cabZ + 0.21], [W - 0.32, 0.5, 0.04], GLASS, { rot: [-26, 0, 0] }));
-for (const s of [1, -1]) {
-  body.push(box([s * (W / 2 - 0.01), 1.6, cabZ - 0.02], [0.03, 0.46, 0.5], GLASS));
-  // a door line and a handle
-  body.push(box([s * (W / 2 + 0.004), 1.0, cabZ - 0.32], [0.008, 0.85, 0.02], shade(CREAM, -0.18)));
-  body.push(box([s * (W / 2 + 0.012), 1.14, cabZ - 0.18], [0.02, 0.04, 0.12], TRIM));
-  // a mirror on a stalk
-  body.push(box([s * (W / 2 + 0.1), 1.62, cabZ + 0.12], [0.06, 0.2, 0.13], DARK));
-  body.push(box([s * (W / 2 + 0.04), 1.55, cabZ + 0.1], [0.1, 0.03, 0.03], DARK));
-  // round headlights with a chrome ring, an indicator
-  body.push(cyl([s * 0.56, 0.98, z1 - 0.03], 0.15, 0.05, CHROME, { axis: "z", segments: 14 }));
-  body.push(cyl([s * 0.56, 0.98, z1 - 0.0], 0.12, 0.05, "#fbf3d2", { axis: "z", segments: 14, emissive: 0.35 }));
-  body.push(box([s * 0.78, 0.74, z1 - 0.04], [0.08, 0.06, 0.04], "#f0a33a", { emissive: 0.2 }));
-  // tail lamps
-  body.push(box([s * 0.62, 0.62, z0 - 0.02], [0.2, 0.12, 0.05], "#b5241c", { emissive: 0.25 }));
-  // dark wheel arches (the inside of each opening)
-  for (const az of [AX, -AX]) body.push(cyl([s * (W / 2 - 0.12), R + 0.02, az], R + 0.07, 0.22, "#3a3833", { axis: "x", segments: 14 }));
-}
-// a grille between the lamps, bumpers, a number plate
-body.push(bevelled([0, 0.86, z1 - 0.02], [0.62, 0.26, 0.06], DARK, { bevel: 0.03 }));
-for (let i = 0; i < 4; i++) body.push(box([0, 0.77 + i * 0.06, z1 + 0.012], [0.56, 0.018, 0.02], "#4d4f55"));
-body.push(bevelled([0, 0.45, z1 + 0.03], [W - 0.02, 0.15, 0.14], TRIM, { bevel: 0.04 }));
-body.push(bevelled([0, 0.45, z0 - 0.03], [W - 0.02, 0.15, 0.14], TRIM, { bevel: 0.04 }));
-body.push(box([0, 0.6, z1 + 0.035], [0.4, 0.11, 0.02], "#efeee6"));
-// the roof rack: two rails on feet and four cross bars
-for (const s of [1, -1]) {
-  body.push(box([s * 0.66, H + 0.06, -0.55], [0.05, 0.05, 2.5], DARK));
-  for (const fz of [-1.7, -0.55, 0.62]) body.push(box([s * 0.66, H + 0.0, fz], [0.06, 0.1, 0.06], DARK));
-}
-for (const fz of [-1.6, -1.0, -0.2, 0.5]) body.push(box([0, H + 0.08, fz], [1.32, 0.035, 0.05], DARK));
-// under the van: a dark floor so nothing shows through from a low view
-body.push(box([0, 0.36, 0], [W - 0.25, 0.08, L - 0.5], "#1e1e22"));
+// the body's side outline (z, y), tail to nose over the roof: a tall box, the roof's front edge rounding into the raked windscreen,
+// a short sloping bonnet, a rounded nose
+const outline = [
+  [Z0, 0.42], [Z0, 2.04], [Z0 + 0.12, 2.17], [0.78, 2.19], [1.02, 2.13], [1.6, 1.36], [1.95, 1.18], [Z1, 1.02], [Z1 + 0.03, 0.62], [Z1 - 0.05, 0.42],
+];
+// extruded across the van, the upper half a touch narrower (a slight tumblehome), with a bevel for the soft edges
+const verts = [], faces = [];
+for (const s of [1, -1]) for (const [z, y] of outline) verts.push([s * (y > 1.3 ? HW - 0.04 : HW), y, z]);
+const n = outline.length;
+faces.push([...Array(n).keys()]);
+faces.push([...Array(n).keys()].map((i) => n + i).reverse());
+for (let i = 0; i < n; i++) faces.push([i, (i + 1) % n, n + ((i + 1) % n), n + i]);
+const body = [mesh(verts, faces, CREAM, { modifiers: [{ type: "bevel", width: 1.6, segments: 2, angle: 30 }] })];
 
-// the wheels: a fat tyre and a cream hub with a chrome cap
+// the windscreen: a big raked pane, inset from the edges; the cab's side windows following its slope
+const ws = (t, x) => { const a = outline[4], b = outline[5]; return [x, a[1] + (b[1] - a[1]) * t, a[0] + (b[0] - a[0]) * t]; };
+const wn = [0, 0.8, 0.6]; // (its outward normal, roughly)
+const off = (p, d) => [p[0], p[1] + wn[1] * d, p[2] + wn[2] * d];
+body.push(mesh([off(ws(0.08, HW - 0.16), 0.02), off(ws(0.08, -HW + 0.16), 0.02), off(ws(0.94, -HW + 0.12), 0.02), off(ws(0.94, HW - 0.12), 0.02),
+  off(ws(0.08, HW - 0.16), -0.01), off(ws(0.08, -HW + 0.16), -0.01), off(ws(0.94, -HW + 0.12), -0.01), off(ws(0.94, HW - 0.12), -0.01)],
+[[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], GLASS));
+for (const s of [1, -1]) {
+  const x = s * (HW - 0.035);
+  // one cab window each side: its front edge leans with the windscreen
+  body.push(mesh([[x, 1.36, 0.62], [x, 1.98, 0.62], [x, 1.98, 0.92], [x, 1.36, 1.5], [x + s * 0.03, 1.36, 0.62], [x + s * 0.03, 1.98, 0.62], [x + s * 0.03, 1.98, 0.92], [x + s * 0.03, 1.36, 1.5]],
+    [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], GLASS));
+  // the sliding door's line (a thin dark frame on the flat side) and its handle; the cab door's line
+  const sx = s * (HW + 0.004);
+  for (const [z, y, w, h] of [[-0.55, 1.2, 0.02, 1.5], [0.42, 1.2, 0.02, 1.5], [-0.065, 1.95, 0.99, 0.02], [-0.065, 0.46, 0.99, 0.02], [1.55, 0.95, 0.02, 1.0]]) body.push(box([sx, y, z], [0.012, h, w], shade(CREAM, -0.22)));
+  body.push(box([s * (HW + 0.012), 1.12, 0.3], [0.02, 0.05, 0.16], TRIM));
+  // the red stripe along the side, under the windows, round the nose's corner
+  body.push(box([s * (HW + 0.006), 0.92, -0.02], [0.012, 0.13, Z1 - Z0 - 0.3], RED));
+  // a small mirror
+  body.push(bevelled([s * (HW + 0.1), 1.5, 1.42], [0.07, 0.2, 0.13], DARK, { bevel: 0.025 }));
+  // plain dark arches round the wheels
+  for (const az of [AX, -AX]) body.push(cyl([s * (HW - 0.1), R + 0.02, az], R + 0.08, 0.22, "#3a3833", { axis: "x", segments: 16 }));
+  // round-cornered lamps: the headlamp wrapping the nose's corner, a tall tail lamp on each rear corner, an indicator
+  body.push(bevelled([s * 0.6, 1.0, Z1 - 0.02], [0.4, 0.2, 0.08], LAMP, { bevel: 0.05, emissive: 0.4 }));
+  body.push(bevelled([s * 0.79, 0.84, Z0 - 0.0], [0.14, 0.42, 0.06], "#b5241c", { bevel: 0.04, emissive: 0.25 }));
+  body.push(bevelled([s * 0.84, 0.86, Z1 - 0.12], [0.06, 0.08, 0.16], "#f0a33a", { bevel: 0.02, emissive: 0.2 }));
+}
+// the nose: a plain dark band for the air (no grille design) and a number plate; bumpers in soft grey
+body.push(bevelled([0, 0.72, Z1 + 0.01], [1.1, 0.14, 0.06], DARK, { bevel: 0.04 }));
+body.push(box([0, 0.55, Z1 + 0.06], [0.42, 0.11, 0.02], "#efeee6"));
+body.push(bevelled([0, 0.47, Z1 + 0.04], [W - 0.02, 0.16, 0.14], TRIM, { bevel: 0.05 }));
+body.push(bevelled([0, 0.47, Z0 - 0.04], [W - 0.02, 0.16, 0.14], TRIM, { bevel: 0.05 }));
+body.push(box([0, 0.38, 0], [W - 0.3, 0.08, Z1 - Z0 - 0.5], "#1e1e22")); // (underneath, so a low view shows nothing through)
+
+// the wheels: a fat tyre, a plain hub
 const wheel = (name, x, z) => {
   const s = Math.sign(x);
   return part(name, [x, R, z], [
-    cyl([0, 0, 0], R, 0.24, TYRE, { axis: "x", segments: 16 }),
-    cyl([s * 0.05, 0, 0], R * 0.6, 0.16, CREAM, { axis: "x", segments: 14 }),
-    cyl([s * 0.1, 0, 0], R * 0.25, 0.08, CHROME, { axis: "x", segments: 10 }),
-    box([s * 0.11, 0, 0], [0.04, R * 0.9, 0.05], shade(CREAM, -0.2)),
+    cyl([0, 0, 0], R, 0.25, TYRE, { axis: "x", segments: 18 }),
+    cyl([s * 0.06, 0, 0], R * 0.55, 0.15, "#d9d4c4", { axis: "x", segments: 14 }),
+    cyl([s * 0.1, 0, 0], R * 0.2, 0.08, "#a9abb0", { axis: "x", segments: 10 }),
   ]);
 };
-// the rear doors, hinged at the back corners
-const door = (name, s) => part(name, [s * (W / 2 - 0.02), 1.36, z0 + 0.0], [
-  box([-s * 0.42, 0, -0.035], [0.82, 1.3, 0.06], CREAM),
-  box([-s * 0.42, -0.5, -0.07], [0.83, 0.13, 0.02], RED),
-  box([-s * 0.42, 0.42, -0.07], [0.6, 0.34, 0.02], GLASS),
-  box([-s * 0.76, -0.05, -0.08], [0.04, 0.12, 0.03], TRIM),
+// the two tall rear doors, hinged at the back corners, each with a small window and the stripe across it
+const door = (name, s) => part(name, [s * (HW - 0.03), 1.25, Z0], [
+  box([-s * 0.43, 0, -0.03], [0.86, 1.56, 0.05], CREAM),
+  box([-s * 0.43, -0.33, -0.06], [0.87, 0.13, 0.02], RED),
+  bevelled([-s * 0.43, 0.48, -0.06], [0.56, 0.36, 0.02], GLASS, { bevel: 0.03 }),
+  box([-s * 0.8, 0.02, -0.07], [0.04, 0.14, 0.03], TRIM),
 ]);
 const van = model([
   part("body", [0, 0, 0], body),
   wheel("wheel_fl", TR, AX), wheel("wheel_fr", -TR, AX), wheel("wheel_rl", TR, -AX), wheel("wheel_rr", -TR, -AX),
   door("door_l", 1), door("door_r", -1),
-], { boxes: [{ x: 0, z: 0, hw: W / 2, hl: L / 2, turn: 0 }] });
+], { boxes: [{ x: 0, z: 0, hw: HW, hl: (Z1 - Z0) / 2, turn: 0 }] });
 
 tool("model_write", { name: "van", model: van });
-tool("model_preview", { name: "van", yaw: 35, pitch: 14, image_out: "build/look/van.png" });
-tool("model_preview", { name: "van", yaw: 200, pitch: 10, image_out: "build/look/van-back.png" });
+tool("model_preview", { name: "van", yaw: 35, pitch: 12, image_out: "build/look/van.png" });
+tool("model_preview", { name: "van", yaw: 210, pitch: 10, image_out: "build/look/van-back.png" });
+tool("model_preview", { name: "van", yaw: 90, pitch: 0, image_out: "build/look/van-side.png" });

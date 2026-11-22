@@ -14,8 +14,8 @@ local words = require("lib.words")
 local Valley = nova.scene {}
 
 -- Where the postmaster stands to get in (by the driver's door, on the van's left: its +x side) and at the back doors.
-local DOOR = { 1.35, 0, 0.55 }
-local BACK = { 0, 0, -2.75 }
+local DOOR = { 1.4, 0, 0.95 }
+local BACK = { 0, 0, -2.85 }
 
 function Valley:enter()
   -- (lib/world.lua was filled by the scene's own objects as they were made, before this runs: the roads' lines, the water, the bridge)
@@ -120,7 +120,7 @@ function Valley:actions()
   return a, b, r
 end
 
-function Valley:say(r, lines, on_done)
+function Valley:say(r, lines, faces, on_done)
   r:begin_talk()
   self.talking_to = r
   camera.glide(0.55)
@@ -130,8 +130,10 @@ function Valley:say(r, lines, on_done)
   -- (a comfortable step apart to talk: the postmaster steps back if they stand too close)
   local dx, dz = self.p.x - r.x, self.p.z - r.z
   local d = math.sqrt(dx * dx + dz * dz)
-  if d < 1.35 and d > 1e-3 then self.p.walk_to = { r.x + dx / d * 1.45, r.z + dz / d * 1.45 } end
+  if d < 1.1 and d > 1e-3 then self.p.walk_to = { r.x + dx / d * 1.2, r.z + dz / d * 1.2 } end
   dialogue.start(r.who, words.people[r.who].name, lines, {
+    -- (each line comes with its face: lib/words.lua `faces`)
+    on_line = function(i) r:look(faces[i] or "neutral") end,
     on_done = function()
       r:end_talk()
       self.talking_to = nil
@@ -148,8 +150,9 @@ function Valley:act(a, r)
     nova.log("handed " .. r.who .. " the parcel")
     state.carrying = nil
     r.holding = true
+    self.p:smile(3)
     nova.sound.play("parcel_down", { volume = 0.5 })
-    self:say(r, words.people[r.who].given, function()
+    self:say(r, words.people[r.who].given, words.people[r.who].faces.given, function()
       state.delivered[r.who] = true
       state.steps = state.steps + 1
       nova.log("delivered " .. r.who)
@@ -157,10 +160,10 @@ function Valley:act(a, r)
   elseif a == "talk" then
     local n = state.after[r.who] % #words.people[r.who].after + 1
     state.after[r.who] = n
-    self:say(r, { words.people[r.who].after[n] })
+    self:say(r, { words.people[r.who].after[n] }, { words.people[r.who].faces.after[n] })
   elseif a == "knock" then
     nova.sound.play("knock", { volume = 0.6, at = { r.x, world.height(r.x, r.z) + 1, r.z }, range = 30 })
-    self:say(r, { words.people[r.who].without })
+    self:say(r, { words.people[r.who].without }, { words.people[r.who].faces.without })
   elseif a == "unload" then
     -- out of the back: the doors open, the parcel comes into the arms, the doors shut
     self.seq = { kind = "unload", t = 0 }
@@ -258,7 +261,10 @@ function Valley:update(dt)
     end
   end
   if self.mode == "van" then camera.van(v, dt)
-  elseif self.talking_to and dialogue.active() then camera.talk(p, self.talking_to, dt)
+  elseif self.talking_to and dialogue.active() then
+    -- (the postmaster faces whoever they talk with, once any step back is taken)
+    if not p.walk_to then p:face_to(self.talking_to.x, self.talking_to.z, dt) end
+    camera.talk(p, self.talking_to, dt)
   else camera.foot(p, dt) end
   local e = camera.state.eye
   ambience.update(dt, e[1], e[3], self.mode == "van")
