@@ -164,42 +164,92 @@ take(ov, 8);
 for (let i = 0; i < 6; i++) { const at = [-46 + i * 3.6, 66 + i * 1.2]; if (i !== 3) obj("stone_wall", at, { ry: r2(ry_facing(1, 0.33) + Math.PI / 2) }); take(at, 2); }
 obj("log", [-40, 70], { ry: 1.1 }); obj("stump", [-38, 61]);
 
-// ---- the forest -------------------------------------------------------------------------------------------------------------------------
+// ---- the trees ----------------------------------------------------------------------------------------------------------------------------
+// A toy diorama's planting, not a forest of thousands (the owner, 2026-11-22: "Can we cut the trees a bit? Or do it in a different
+// way?"): near the roads and the houses, deliberate clumps of three to seven chunky trees with open grass between them; one big
+// "hero" tree at each junction's signpost and at each gate, landmarks to learn the roads by; and where nobody goes (the valley's sides,
+// beyond the creek, the far bank, the map's edges) no single trees at all but a few dozen soft forest masses (tools/nature.mjs).
+// The sight lines stay: no crown over a road, the picnic spot's view east kept open, the inside of Fern Lane's bend thick so Hazel's
+// cabin shows only once you are round it.
 const R = rng(11);
 const roadsAll = Object.values(roadLines);
 const B = BOUNDS_EN;
 const placeCentres = [po.building, hz.building, pp.building, pic, ov, PLACES.post_office.parking];
-const groves = (e, n) => 0.5 + 0.28 * Math.sin(e * 0.031 + 1.3) * Math.sin(n * 0.027 - 0.4) + 0.22 * Math.sin(e * 0.071 - n * 0.053 + 2.1);
-let trees = 0, rocks = 0;
-for (let n = B.n0 + 3; n < B.n1; n += 7) for (let e = B.e0 + 3; e < B.e1; e += 7) {
-  const p = [e + (R() - 0.5) * 6, n + (R() - 0.5) * 6];
-  if (p[1] > 232 && (p[1] < 266 || p[1] > 288)) continue; // the gorge and the lake; the far bank between them is wooded
-  const dRoad = Math.min(...roadsAll.map((l) => distTo(l, p)));
-  const dWater = distTo(creekLine, p);
-  const dPlace = Math.min(...placeCentres.map((c) => Math.hypot(c[0] - p[0], c[1] - p[1])));
-  const edge = Math.min(p[0] - B.e0, B.e1 - p[0], p[1] - B.n0, 232 - p[1]);
-  if (dRoad < 7 || dWater < 4.5 || dPlace < 20 || !free(p, 2.5)) {
-    if (dRoad > 4.5 && dRoad < 9 && dWater > 4 && free(p, 2) && R() < 0.06) { obj(R() < 0.5 ? "rock" : "rock_small", p, { ry: r2(R() * 6.28), sx: r2(0.7 + R() * 0.6) }); rocks++; }
-    continue;
-  }
-  let density = 0.62 * groves(...p);
-  if (dRoad < 16) density *= 0.55; // the verges are open; a few trees frame the road
-  if (edge < 70) density = Math.max(density, 0.95 - edge / 140); // thick wood at the map's edges
-  if (dPlace < 34) density *= 0.35; // the houses' clearings
-  if (dWater < 14) density *= 0.6;
-  // the picnic spot looks east over the creek valley: keep that view open
-  if (p[0] > pic[0] && p[0] < pic[0] + 70 && Math.abs(p[1] - pic[1]) < 26) density *= 0.15;
-  // the inside of Fern Lane's bend is thick, so the cabin shows only once you are round it
-  if (Math.hypot(p[0] + 128, p[1] + 2) < 26) density = Math.max(density, 0.85);
-  if (R() > density) continue;
-  const near = dRoad < 40 || dPlace < 60;
-  const k = R();
-  const kind = k < 0.36 ? "larch" : k < 0.5 ? "larch_small" : k < 0.67 ? "pine" : k < 0.84 ? "pine2" : k < 0.97 ? "pine3" : "birch";
-  const size = kind.startsWith("pine") ? 1.7 + R() * 1.1 : kind === "birch" ? 1.1 + R() * 0.4 : 0.85 + R() * 0.45;
-  if (dRoad < 6.5 + size * (kind.startsWith("pine") ? 1.6 : 1.2)) continue; // (no crown over the road: the chase camera passes through it)
+const dRoadOf = (p) => Math.min(...roadsAll.map((l) => distTo(l, p)));
+const dPlaceOf = (p) => Math.min(...placeCentres.map((c) => Math.hypot(c[0] - p[0], c[1] - p[1])));
+const inGorge = (p) => p[1] > 232 && (p[1] < 266 || p[1] > 288);
+const picnicView = (p) => p[0] > pic[0] && p[0] < pic[0] + 70 && Math.abs(p[1] - pic[1]) < 26;
+const SPECIES = ["larch", "larch", "larch_small", "pine", "pine2", "pine3", "pine", "birch"];
+let trees = 0, rocks = 0, masses = 0;
+// one tree, where it may stand: chunky (a little larger than before), never with its crown over a road
+const tree = (p, kind, grow = 1) => {
+  if (inGorge(p) || distTo(creekLine, p) < 5 || !free(p, 2.2) || dPlaceOf(p) < 13) return false;
+  const size = grow * (kind.startsWith("pine") ? 1.9 + R() * 1.0 : kind === "birch" ? 1.3 + R() * 0.4 : 1.0 + R() * 0.45);
+  if (dRoadOf(p) < 6.5 + size * (kind.startsWith("pine") ? 1.6 : kind === "birch" ? 2.0 : 1.2)) return false;
   obj(kind, p, { ry: r2(R() * 6.28), sx: r2(size) });
+  take(p, 2.2);
   trees++;
-  if (near && R() < 0.12) { obj(R() < 0.5 ? "bush" : "bush2", [p[0] + 2.5, p[1] - 1.5], { sx: r2(0.8 + R() * 0.5) }); }
+  return true;
+};
+// a clump: three to seven trees of one or two kinds round a middle, a bush at its edge now and then
+const clump = (c, n, spread = 5) => {
+  if (picnicView(c)) return;
+  const a = SPECIES[Math.floor(R() * SPECIES.length)], b = SPECIES[Math.floor(R() * SPECIES.length)];
+  let placed = 0;
+  for (let i = 0; i < n * 3 && placed < n; i++) {
+    const ang = R() * 6.28, d = i === 0 ? 0 : 2.6 + R() * spread;
+    if (tree([c[0] + Math.sin(ang) * d, c[1] + Math.cos(ang) * d], R() < 0.7 ? a : b)) placed++;
+  }
+  if (placed && R() < 0.5) {
+    const ang = R() * 6.28, p = [c[0] + Math.sin(ang) * (spread + 3), c[1] + Math.cos(ang) * (spread + 3)];
+    if (free(p, 1.2) && dRoadOf(p) > 5) obj(R() < 0.5 ? "bush" : "bush2", p, { sx: r2(0.9 + R() * 0.5) });
+  }
+};
+// clumps along each road, on either side, with stretches of open grass between them; a second, sparser row further out
+for (const pts of roadsAll) {
+  const L = lengthOf(pts);
+  for (let d = 6 + R() * 8; d < L - 6; d += 11 + R() * 10) {
+    if (R() < 0.15) continue; // (an open stretch)
+    const { p, dir } = along(pts, d), side = R() < 0.5 ? 1 : -1, right = [dir[1], -dir[0]];
+    const off = 12 + R() * 10;
+    clump([p[0] + right[0] * off * side, p[1] + right[1] * off * side], 4 + Math.floor(R() * 5));
+    if (R() < 0.8) {
+      const off2 = 26 + R() * 16;
+      clump([p[0] - right[0] * off2 * side, p[1] - right[1] * off2 * side], 4 + Math.floor(R() * 4), 6);
+    }
+  }
+}
+// round the houses: a few clumps behind and beside each, never in front of its door
+for (const [c, face] of [[po.building, po.face], [hz.building, hz.face], [pp.building, pp.face]]) {
+  const f = norm(face);
+  for (let i = 0; i < 6; i++) {
+    const ang = R() * 6.28, dir = [Math.sin(ang), Math.cos(ang)];
+    if (dir[0] * f[0] + dir[1] * f[1] > 0.3) continue;
+    const d = 20 + R() * 12;
+    clump([c[0] + dir[0] * d, c[1] + dir[1] * d], 4 + Math.floor(R() * 4));
+  }
+}
+// the inside of Fern Lane's bend: thick, so the cabin shows only once you are round it
+for (let i = 0; i < 4; i++) clump([-128 + (R() - 0.5) * 22, -2 + (R() - 0.5) * 22], 7, 4);
+// hero trees: one big tree beside each signpost and each gate, on the side away from the road
+for (const at of [...SIGNS.map((s) => s.at), hz.gate, pp.gate]) {
+  for (let k = 0; k < 16; k++) {
+    const ang = (k / 16) * 6.28, p = [at[0] + Math.sin(ang) * 9, at[1] + Math.cos(ang) * 9];
+    if (dRoadOf(p) > 9 && tree(p, k % 2 ? "pine2" : "birch", 1.35)) break;
+  }
+}
+// the forest masses where nobody goes: away from the roads and the houses, the far bank, the map's edges
+for (let n = B.n0 + 20; n < B.n1 + 10; n += 46) for (let e = B.e0 + 10; e < B.e1; e += 48) {
+  const p = [e + (R() - 0.5) * 22, n + (R() - 0.5) * 22];
+  const farBank = p[1] > 268 && p[1] < 286;
+  if (inGorge(p) && !farBank) continue;
+  const dRoad = dRoadOf(p), dWater = distTo(creekLine, p), edge = Math.min(p[0] - B.e0, B.e1 - p[0], p[1] - B.n0);
+  if (!farBank && (dRoad < 48 || dPlaceOf(p) < 60 || dWater < 16 || picnicView(p))) continue;
+  if (!farBank && edge > 60 && R() < 0.35) continue; // (an open meadow here and there inside the valley)
+  const kind = ["forest_long", "forest_tall", "forest_round"][Math.floor(R() * 3)];
+  obj(kind, p, { ry: r2(R() * 6.28), sx: r2(1.0 + R() * 0.5) });
+  take(p, 14);
+  masses++;
 }
 // mossy rocks and ferns' stones along Fern Lane, a few logs in the wood
 {
@@ -237,7 +287,7 @@ obj("groundcover", [0, 0], {
 const ring = [[0, 900, 2.6], [-420, 820, 2.2], [380, 860, 2.4], [-820, 420, 2.0], [800, 300, 2.3], [-760, -300, 1.8], [700, -500, 2.0], [0, -900, 1.7], [-300, -820, 1.6], [420, -760, 1.8], [-600, 700, 2.1], [650, 650, 2.0]];
 ring.forEach(([e, n, s], i) => obj("far_mountain", [e, n], { ry: r2(i * 1.7), sx: s }));
 
-console.log(`valley: ${objects.length} objects, ${trees} trees, ${rocks} rocks`);
+console.log(`valley: ${objects.length} objects, ${trees} trees, ${masses} forest masses, ${rocks} rocks`);
 tool("scene_write", { name: "valley", scene: { version: 1, background: [196, 222, 236], camera: { eye: [10, 30, -200], target: [20, 15, -170], fov: 60 }, objects } }, { quiet: true });
 
 // ---- the office: one room, the shelf of today's post, the door out ------------------------------------------------------------------
@@ -245,8 +295,8 @@ const office = [
   { kind: "office_room", name: "room", x: 0, y: 0, z: 0 },
   { kind: "postmaster", name: "postmaster", x: 0.3, y: 0, z: 0.55, props: { ry: 3.14 } },
   { kind: "item", name: "letter", x: 1.0, y: 0.81, z: -0.45, props: { item: "letter", ry: 0.25 } },
-  { kind: "item", name: "parcel_hazel", x: 3.25, y: 0.45, z: 1.25, props: { item: "hazel", ry: 1.57 } },
-  { kind: "item", name: "parcel_pip", x: 3.25, y: 0.45, z: 0.55, props: { item: "pip", ry: 1.57 } },
+  { kind: "item", name: "parcel_hazel", x: 3.25, y: 1.29, z: 1.25, props: { item: "hazel", ry: 1.57 } },
+  { kind: "item", name: "parcel_pip", x: 3.25, y: 1.29, z: 0.55, props: { item: "pip", ry: 1.57 } },
   { kind: "spot", name: "office_exit", x: 0.9, y: 0, z: 2.55 },
   { kind: "spot", name: "counter_spot", x: 0.4, y: 0, z: 0.1 },
 ];
@@ -261,6 +311,7 @@ const statics = {
   picnic_table: "", bench: "", old_bridge: "", barrier: "", office_room: "", mast: UP,
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
+  forest_long: ", max_distance = 1500", forest_tall: ", max_distance = 1500", forest_round: ", max_distance = 1500",
   rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02" + UP, bush2: ", sway = 0.02" + UP, flowers: ", sway = 0.3", log: "", stump: UP,
 };
 for (const [kind, extra] of Object.entries(statics)) put(`entities/${kind}.lua`, `-- Scenery (tools/scene.mjs writes this file): drawn near the camera, never moves.\nreturn nova.entity { model = "${kind}", static = true${extra} }\n`);

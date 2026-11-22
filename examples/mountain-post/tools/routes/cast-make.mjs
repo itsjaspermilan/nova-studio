@@ -46,7 +46,7 @@ const cast = {
     ...talk("pip", 5),
     ...turn("pip", 0.5),
     // the van stopped on Fern Lane a few metres from Hazel, the chase camera behind it
-    { lua: "CAM.pinned = nil; local h = nova.named('hazel'); h.mode = 'work'; local v = nova.named('van'); local a = math.atan(h.x - 150, h.z - 44); v:teleport(h.x - math.sin(a) * 12, h.z - math.cos(a) * 12, a + 0.4); a = a + 0.4; local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; CAM.reset(a)" },
+    { lua: "CAM.pinned = nil; local h = nova.named('hazel'); h.mode = 'work'; local v = nova.named('van'); local a = math.atan(h.x - 150, h.z - 44); v:teleport(h.x - math.sin(a) * 12, h.z - math.cos(a) * 12, a + 0.4); a = a + 0.4; local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(a)" },
     { wait: 60, capture: "Hazel from the van, 12 m" },
     { lua: "local h = nova.named('hazel'); local v = nova.named('van'); local a = math.atan(h.x - 150, h.z - 44); v:teleport(h.x - math.sin(a) * 6.5, h.z - math.cos(a) * 6.5, a + 0.55); CAM.reset(a + 0.55)" },
     { wait: 60, capture: "Hazel from the van, 6.5 m" },

@@ -17,7 +17,7 @@
       "kind": "item",
       "name": "parcel_hazel",
       "x": 3.25,
-      "y": 0.45,
+      "y": 1.29,
       "z": 1.25,
       "props": { "item": "hazel", "ry": 1.57 }
     },
@@ -25,7 +25,7 @@
       "kind": "item",
       "name": "parcel_pip",
       "x": 3.25,
-      "y": 0.45,
+      "y": 1.29,
       "z": 0.55,
       "props": { "item": "pip", "ry": 1.57 }
     },

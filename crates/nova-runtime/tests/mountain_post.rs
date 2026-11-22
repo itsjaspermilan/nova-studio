@@ -470,17 +470,17 @@ fn getting_in_and_out_works_only_where_it_should() {
         r#"{ "start_scene": "valley", "steps": [ { "wait": 10, "lua": "local p = nova.named('postmaster'); p.x, p.z = 2, -160" }, { "press": "van" }, { "wait": 60 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
-    // beside it, B gets in (round to the door, a door's sound, the van rocks)
+    // beside its left doorway, B gets in (at once: the engine starts)
     let r = play(
         &mut g,
         r#"{ "lua": "T = require('lib.testkit')", "steps": [ { "lua": "T.to_van('door')" }, { "until": "not T.walking()", "max": 900 }, { "press": "van" },
         { "until": "nova.scene_now().mode == 'van'", "max": 300 }, { "wait": 30 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "van");
-    assert_eq!(lua(&g, "nova.named('postmaster').hidden"), "true");
+    assert_eq!(lua(&g, "nova.named('postmaster').seated"), "true");
     assert!(
-        r.json["sounds"].to_string().contains("van_door"),
-        "the door is heard: {}",
+        r.json["sounds"].to_string().contains("engine_start"),
+        "the engine is heard: {}",
         r.json["sounds"]
     );
     // moving, B does not get out
@@ -522,7 +522,7 @@ fn the_van_and_the_postmaster_cannot_leave_the_map_or_enter_the_creek() {
     let drive_at = |g: &mut Game, x: f64, z: f64, heading: f64| {
         let plan = format!(
             r#"{{ "start_scene": "valley", "always": "{always}", "steps": [
-                {{ "wait": 5, "lua": "local v = nova.named('van'); v:teleport({x}, {z}, {heading}); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true" }},
+                {{ "wait": 5, "lua": "local v = nova.named('van'); v:teleport({x}, {z}, {heading}); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true" }},
                 {{ "hold": ["go"], "frames": 600 }} ] }}"#
         );
         play(g, &plan)
@@ -626,8 +626,8 @@ fn nothing_on_screen_points_at_a_destination() {
     // driving with a parcel in the back, at the junction with Fern Lane
     let r = play(
         &mut g,
-        r#"{ "start_scene": "valley", "lua": "require('lib.state').in_van = 'pip'", "steps": [
-        { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(6, -100, 0); nova.scene_now().mode = 'van'; v.driven = true; nova.named('postmaster').hidden = true" },
+        r#"{ "start_scene": "valley", "lua": "require('lib.state').van_load = { 'pip' }", "steps": [
+        { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(6, -100, 0); nova.scene_now().mode = 'van'; v.driven = true; nova.named('postmaster').seated = true" },
         { "hold": ["go"], "frames": 200 } ] }"#,
     );
     check(&r, "driving");
@@ -897,7 +897,7 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
     play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [
-            { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, -78, 1.75); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; require('lib.testkit').drive('hazel')" },
+            { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, -78, 1.75); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.testkit').drive('hazel')" },
             { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.25 and math.abs(nova.named('van').speed) > 7", "max": 1500 },
             { "lua": "nova.named('van').back_want = 1" },
             { "until": "nova.named('van').back_open > 0.8 and math.abs(nova.named('van').roll) > 0.02", "max": 900 } ] }"#,
@@ -910,7 +910,7 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
             &g,
             "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[#p + 1] = n end table.sort(p) return table.concat(p, ' ') end)()"
         ),
-        "body door_l door_r wheel_fl wheel_fr wheel_rl wheel_rr"
+        "body door_l door_r steering wheel_fl wheel_fr wheel_rl wheel_rr"
     );
     // each hinge as posed with the van's own parts table, against the body's turn (its roll about z, then its pitch about x, then
     // its lift) applied to the hinge at rest
@@ -1073,4 +1073,378 @@ fn every_tree_in_the_valley_stands_upright_on_its_slope() {
         "the valley has trees on slopes over 50%: {report}"
     );
     assert!(report.ends_with("not upright: "), "{report}");
+}
+
+// ---- the owner's second notes (2026-11-22): no forced walks, a van that holds both parcels, an open cab, the cameras -------------
+
+/// "When leaving any building, there is this awkward walk the character does that's super jank and can't be skipped. The user
+/// should just be outside." Through the post office's door either way: a short fade (under half a second), then the postmaster
+/// stands a step from the door facing away from it, the stick theirs at once, with nowhere they are being walked to. And no scene
+/// walks the postmaster anywhere: the only walk in the game's scenes is the tests' own `lead_to`.
+#[test]
+fn going_through_the_post_office_door_is_a_short_fade_and_no_forced_walk() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 10 }, { "walk_to": [0.9, 1.7], "max": 300 },
+        { "hold": ["move_y=1"], "until": "nova.current_scene() == 'valley'", "max": 120 }, { "wait": 1 } ] }"#,
+    );
+    let log = r.log();
+    let frame = |line: &str| {
+        log.iter()
+            .find(|(_, l)| l.starts_with(line))
+            .unwrap_or_else(|| panic!("{line}: {log:?}"))
+            .0
+    };
+    let fade = frame("valley: entered") - frame("office: out of the door");
+    assert!(fade <= 24, "out of the door in {fade} frames");
+    assert_eq!(lua(&g, "nova.named('postmaster').control"), "true");
+    assert_eq!(lua(&g, "tostring(nova.named('postmaster').walk_to)"), "nil");
+    let d = num(
+        &g,
+        "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.sqrt((p.x - d.x)^2 + (p.z - d.z)^2) end)()",
+    );
+    assert!((1.0..1.6).contains(&d), "a step out from the door: {d}");
+    let away = num(
+        &g,
+        "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.abs((p.face - (d.ry or 0) + math.pi) % (2 * math.pi) - math.pi) end)()",
+    );
+    assert!(away < 0.05, "facing away from the door: {away}");
+    // and straight back in: the same short fade, standing just inside, free at once
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1"], "until": "nova.current_scene() == 'office'", "max": 120 }, { "wait": 1 } ] }"#,
+    );
+    let log = r.log();
+    let entered = log
+        .iter()
+        .find(|(_, l)| l.starts_with("office: entered"))
+        .expect("in");
+    let left = log
+        .iter()
+        .find(|(_, l)| l.starts_with("valley: into the office"))
+        .expect("through the door");
+    assert!(entered.0 - left.0 <= 24);
+    assert_eq!(lua(&g, "nova.named('postmaster').control"), "true");
+    assert_eq!(lua(&g, "tostring(nova.named('postmaster').walk_to)"), "nil");
+    assert!(num(&g, "nova.named('postmaster').z") < num(&g, "nova.named('office_exit').z") - 0.5);
+    // no scene leads the postmaster by the hand
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/mountain-post/scenes");
+    for name in ["valley.lua", "office.lua", "title.lua"] {
+        let text = std::fs::read_to_string(root.join(name)).unwrap();
+        assert!(
+            !text.contains("walk_to = {"),
+            "{name} walks the postmaster somewhere"
+        );
+        let paths = text.matches("walk_path = ").count();
+        assert!(
+            paths == 0
+                || (name == "valley.lua" && paths == 1 && text.contains("function Valley:lead_to")),
+            "{name}: a scripted walk"
+        );
+        assert!(
+            !text.contains("self.seq"),
+            "{name}: a sequence that takes the stick"
+        );
+    }
+}
+
+/// "As the player approaches, the van doors automatically open with a prompt for the user that says 'load package'." The rear doors
+/// swing open by themselves as the postmaster comes near the back and shut as they walk away; with a parcel in the arms the prompt
+/// is "Load package", and A puts it in the hold at once (the stick never taken).
+#[test]
+fn the_rear_doors_open_by_themselves_and_a_loads_the_package() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.carrying = 'hazel'; S.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 0, 0, -6 }); p.face = nova.named('van').heading" },
+        { "wait": 20, "lua": "DOORS0 = nova.named('van').back_want" },
+        { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.named('van').back_open > 0.9", "max": 60 }, { "wait": 2 } ] }"#,
+    );
+    assert_eq!(lua(&g, "DOORS0"), "0", "shut while the postmaster is away");
+    assert!(logged(&r).iter().any(|l| l == "back doors open"));
+    assert_eq!(lua(&g, "(nova.scene_now():actions())"), "load");
+    assert_eq!(r.drawn_count("ui_text", Some("Load package")), 1);
+    let r = play(
+        &mut g,
+        r#"{ "always": "nova.named('postmaster').control", "steps": [ { "press": "act" }, { "wait": 5 } ] }"#,
+    );
+    assert!(
+        r.warnings().iter().all(|w| !w.contains("always")),
+        "{:?}",
+        r.warnings()
+    );
+    assert!(logged(&r).iter().any(|l| l == "loaded hazel"));
+    assert_eq!(lua(&g, "tostring(require('lib.state').carrying)"), "nil");
+    assert_eq!(
+        lua(&g, "table.concat(require('lib.state').van_load, ' ')"),
+        "hazel"
+    );
+    // walking away, they shut
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); nova.named('postmaster').walk_to = { s:van_point({ 0, 0, -6 }) }" },
+        { "until": "not require('lib.testkit').walking()", "max": 600 }, { "wait": 40 } ] }"#,
+    );
+    assert!(logged(&r).iter().any(|l| l == "back doors shut"));
+    assert!(num(&g, "nova.named('van').back_open") < 0.05);
+}
+
+/// "When going to the back of the van to pick up a package, a menu will appear where the user can press LB or RB to cycle through
+/// the packages that are in the van and select which one they want to load." The van holds both of the day's parcels (two trips
+/// from the shelf); at the open back with empty hands a panel shows them one at a time, L1 and R1 go round, A takes the one shown;
+/// with one parcel left the panel shows it without the shoulder buttons.
+#[test]
+fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.carrying = 'hazel'",
+        "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "act" }, { "wait": 5, "lua": "S.carrying = 'pip'" },
+        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "act" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, "require('lib.state').VAN_HOLDS"), "2");
+    assert_eq!(
+        lua(&g, "table.concat(require('lib.state').van_load, ' ')"),
+        "hazel pip"
+    );
+    // the panel: the first loaded, its label, and L1 and R1 to go round
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 3 } ] }"#);
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
+    assert_eq!(r.drawn_count("ui_text", Some("In the van")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    assert!(r.drawn_count("ui_text", Some("Hazel Brock")) >= 1);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "next" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "pip");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "next" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel", "round again");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "prev" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "pip");
+    // A takes the one shown, and the other stays in the van
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "act" }, { "wait": 3 } ] }"#,
+    );
+    assert!(logged(&r).iter().any(|l| l == "unloaded pip"));
+    assert_eq!(lua(&g, "require('lib.state').carrying"), "pip");
+    assert_eq!(
+        lua(&g, "table.concat(require('lib.state').van_load, ' ')"),
+        "hazel"
+    );
+    // carrying one, the back offers to load it, not the panel; loaded and taken again, the panel shows the one shown
+    assert_eq!(lua(&g, "(nova.scene_now():actions())"), "load");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "act" }, { "wait": 3 }, { "press": "next" }, { "wait": 3 }, { "press": "act" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "require('lib.state').carrying"), "pip");
+    assert_eq!(
+        lua(&g, "table.concat(require('lib.state').van_load, ' ')"),
+        "hazel"
+    );
+    // with empty hands and one parcel in the van: the panel shows it, with no L1 and R1
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.carrying = nil; S.delivered.pip = true" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
+    assert_eq!(r.drawn_count("ui_text", Some("In the van")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
+    // the corner cards: each parcel in the van
+    assert_eq!(r.drawn_count("ui_text", Some("in the van")), 1);
+}
+
+/// "We can also make the truck have no doors." B gets in only at the LEFT doorway (the driver's side, the van's +x), with the
+/// prompt "Get in", and at once (no walk round); not at the right doorway. Getting out puts the postmaster beside the left doorway.
+/// Carrying a parcel, the doorway says to load it at the back.
+#[test]
+fn getting_in_is_at_the_left_doorway_and_at_once() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ -1.2, 0, 0.26 })" },
+        { "wait": 5 }, { "press": "van" }, { "wait": 10 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "nova.scene_now().mode"),
+        "foot",
+        "not from the right side"
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 1);
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "van" }, { "wait": 2 } ] }"#,
+    );
+    let log = r.log();
+    assert!(
+        log.iter().any(|(f, l)| l == "in the van" && *f <= 2),
+        "{log:?}"
+    );
+    assert_eq!(lua(&g, "nova.scene_now().mode"), "van");
+    assert_eq!(lua(&g, "nova.named('postmaster').seated"), "true");
+    // out again: beside the left doorway
+    play(
+        &mut g,
+        r#"{ "steps": [ { "wait": 20 }, { "press": "van" }, { "wait": 2 } ] }"#,
+    );
+    let side = num(
+        &g,
+        "(function() local v, p = nova.named('van'), nova.named('postmaster'); local dx, dz = p.x - v.x, p.z - v.z; return dx * math.cos(v.heading) - dz * math.sin(v.heading) end)()",
+    );
+    assert!((1.0..1.5).contains(&side), "out on the left: {side} m");
+    // carrying a parcel, the doorway does not take it in: it is loaded at the back
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "require('lib.state').carrying = 'hazel'" }, { "wait": 3 }, { "press": "van" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
+    assert_eq!(r.drawn_count("ui_text", Some("Load it at the back")), 1);
+}
+
+/// "When leaving the van, currently the camera is like clipped inside the van facing the player." From the moment B is pressed,
+/// for every frame of the glide and after, the camera's eye is outside the van's body and nothing solid stands between it and the
+/// postmaster.
+#[test]
+fn the_camera_is_outside_the_van_after_getting_out() {
+    let mut g = game();
+    let inside = "(function() local e, v = require('lib.camera').state.eye, nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); \
+        if e[2] > nova.terrain_height(v.x, v.z) + 2.2 then return false end; \
+        for _, off in ipairs(v.BODY.offs) do if (e[1] - v.x - s * off)^2 + (e[3] - v.z - c * off)^2 < v.BODY.r^2 then return true end end; return false end)()";
+    let clear = "(function() local C, e, p = require('lib.camera'), require('lib.camera').state.eye, nova.named('postmaster'); local tx, ty, tz = p.x, require('lib.world').height(p.x, p.z) + 0.55, p.z; \
+        local dx, dy, dz = e[1] - tx, e[2] - ty, e[3] - tz; local l = math.sqrt(dx*dx + dy*dy + dz*dz); return C.clear_to(tx, ty, tz, dx / l, dy / l, dz / l, l) > l - 0.45 end)()";
+    for (x, z, h) in [(13.5, -170.5, 0.3), (8.0, -60.0, 0.1), (150.0, 30.0, 0.9)] {
+        let plan = format!(
+            r#"{{ "start_scene": "valley", "steps": [
+            {{ "wait": 5, "lua": "local v = nova.named('van'); v:teleport({x}, {z}, {h}); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); require('lib.camera').reset({h})" }},
+            {{ "wait": 60 }}, {{ "press": "van" }},
+            {{ "always": "not {inside} and {clear}", "wait": 90 }} ] }}"#
+        );
+        let r = play(&mut g, &plan);
+        assert!(
+            r.warnings().iter().all(|w| !w.contains("always")),
+            "at {x}, {z}: {:?}",
+            r.warnings()
+        );
+        assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
+    }
+}
+
+/// "The player should be visible through the windows of the truck also." Driving, the postmaster is drawn sitting in the cab (the
+/// sit clip), at the seat as the body carries it, the steering wheel turning with the front wheels and the head into the bend.
+#[test]
+fn the_driver_is_drawn_in_the_seat_while_driving() {
+    let mut g = game();
+    g.record_drawn();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "hold": ["go", "steer=0.8"], "frames": 90 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('postmaster').anim:state()"), "sit");
+    let drawn = g.drawn(Some("model"), None);
+    let items = drawn["items"].as_array().expect("items");
+    let pm: Vec<&Value> = items.iter().filter(|i| i["name"] == "postmaster").collect();
+    assert_eq!(pm.len(), 1, "the postmaster is drawn once");
+    let seat_x = num(
+        &g,
+        "(function() local v, p = nova.named('van'), nova.named('postmaster'); local x = v:to_world(p.SEAT[1], p.SEAT[2], p.SEAT[3]); return x end)()",
+    );
+    let seat_z = num(
+        &g,
+        "(function() local v, p = nova.named('van'), nova.named('postmaster'); local _, _, z = v:to_world(p.SEAT[1], p.SEAT[2], p.SEAT[3]); return z end)()",
+    );
+    let (x, z) = (pm[0]["x"].as_f64().unwrap(), pm[0]["z"].as_f64().unwrap());
+    assert!(
+        (x - seat_x).abs() < 0.05 && (z - seat_z).abs() < 0.05,
+        "drawn at the seat: {x}, {z} against {seat_x}, {seat_z}"
+    );
+    // on the driver's (left) side of the cab, the steering wheel and the head turned with the steering
+    let side = num(
+        &g,
+        &format!(
+            "(function() local v = nova.named('van'); return ({x} - v.x) * math.cos(v.heading) - ({z} - v.z) * math.sin(v.heading) end)()"
+        ),
+    );
+    assert!(
+        (0.1..0.6).contains(&side),
+        "on the driver's side of the cab: {side}"
+    );
+    assert!(num(&g, "nova.named('van').steer") > 0.3);
+    assert!(num(&g, "nova.named('van').parts_table.steering.ry") < -0.4);
+    assert!(num(&g, "nova.named('postmaster').mood.table.head.ry").abs() > 0.1);
+}
+
+/// "When in a building, we should just have a simple top down view like Animal Crossing." In the post office the view is one fixed
+/// place high over the cut-away front wall looking down into the room, whatever the postmaster does, and the stick moves them as the
+/// screen shows it (up is into the room, away from the camera).
+#[test]
+fn the_post_office_is_seen_from_one_fixed_view_from_above() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 10, "lua": "nova.named('postmaster').z = 1.5; E0 = { table.unpack(require('lib.camera').state.eye) }; Z0 = nova.named('postmaster').z" },
+        { "hold": ["move_y=-1"], "frames": 40 }, { "hold": ["move_x=1"], "frames": 30 } ] }"#,
+    );
+    let moved = num(
+        &g,
+        "math.abs(require('lib.camera').state.eye[1] - E0[1]) + math.abs(require('lib.camera').state.eye[2] - E0[2]) + math.abs(require('lib.camera').state.eye[3] - E0[3])",
+    );
+    assert!(moved < 1e-6, "the view never moves: {moved}");
+    assert!(
+        num(&g, "require('lib.camera').state.eye[2]") > 6.0,
+        "high over the room"
+    );
+    assert!(
+        num(&g, "nova.named('postmaster').z") < num(&g, "Z0") - 0.5,
+        "up on the stick goes into the room"
+    );
+}
+
+/// "Can we cut the trees a bit? Or do it in a different way?" The valley is planted as a toy diorama is: some 400 to 600 real trees
+/// in clumps by the roads and the houses (it had about 2,400), a few dozen soft forest masses where nobody goes, and the ferns and
+/// grass no thicker than before to make up for it.
+#[test]
+fn the_valley_has_clumps_of_trees_and_forest_masses_not_thousands_of_trees() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let count = |pattern: &str| {
+        num(
+            &g,
+            &format!(
+                "(function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind:match('{pattern}') then n = n + 1 end end return n end)()"
+            ),
+        )
+    };
+    let trees = count("^pine") + count("^larch") + count("^birch$");
+    assert!((400.0..=600.0).contains(&trees), "{trees} trees");
+    let masses = count("^forest_");
+    assert!((20.0..=80.0).contains(&masses), "{masses} forest masses");
+    let plants = num(
+        &g,
+        "(function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind == 'groundcover' then for _, p in ipairs(o.props.plants) do n = n + p.count end end end return n end)()",
+    );
+    assert!(plants <= 6360.0, "{plants} ferns, grasses and flowers");
 }

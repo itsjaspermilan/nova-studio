@@ -744,6 +744,23 @@ export function makeCharacter3d(a: Args): Character3d {
         ...tailSwing(0.8, 8),
       ],
     },
+    {
+      // sitting at a wheel (a driver's seat, a bench): the thighs straight out in front, the shins hanging, both hands reaching
+      // forward to hold something at chest height, a slow breath. The figure's origin stays where its feet would stand: set it a
+      // seat's height up (minus the hips' height) and the bottom rests on the seat; turn the arms on top with `parts` to steer
+      name: "sit", duration: 2.0, loop: true,
+      tracks: [
+        ...(["l", "r"] as const).flatMap((s) => [
+          rot(P(`leg_${s}`), [key(0, [-84, 0, 0]), key(2.0, [-84, 0, 0])]),
+          rot(P(`leg_${s}`, `shin_${s}`), [key(0, [84, 0, 0]), key(2.0, [84, 0, 0])]),
+          rot(arm(s), [key(0, [-50, 0, -restZ(s) * 0.6], "inout"), key(1.0, [-52, 0, -restZ(s) * 0.6], "inout"), key(2.0, [-50, 0, -restZ(s) * 0.6])]),
+          rot(foreP(s), [key(0, [-34, s === "l" ? -10 : 10, 0]), key(2.0, [-34, s === "l" ? -10 : 10, 0])]),
+        ]),
+        rot(spine, [key(0, [-3, 0, 0], "inout"), key(1.0, [-1.5, 0, 0], "inout"), key(2.0, [-3, 0, 0])]),
+        rot(headP, [key(0, [2, 0, 0], "inout"), key(1.0, [1, 0, 0], "inout"), key(2.0, [2, 0, 0])]),
+        ...tailSwing(2.0, 4),
+      ],
+    },
   ];
   // chibi: no elbows or knees to bend, so the clips swing whole limbs from the shoulder and the hip; the walk is a waddle with a little
   // bob (the hips rise as the legs pass upright and roll towards the leg that stands), the carry holds the parcel out with both arms,
@@ -797,6 +814,16 @@ export function makeCharacter3d(a: Args): Character3d {
       rot(spine, [key(0, [10, -6, 0], "inout"), key(0.4, [13, 5, 0], "inout"), key(0.8, [10, -6, 0])]),
       rot(headP, [key(0, [8, 6, 4], "inout"), key(0.4, [10, -4, -4], "inout"), key(0.8, [8, 6, 4])]),
       ...tailSwing(0.8, 10),
+    ] });
+    // (sitting: the stubby legs straight out in front, both mittens forward at the chest as on a steering wheel)
+    replace("sit", { name: "sit", duration: 2.0, loop: true, tracks: [
+      ...(["l", "r"] as const).flatMap((s) => [
+        rot(P(`leg_${s}`), [key(0, [-82, 0, 0]), key(2.0, [-82, 0, 0])]),
+        rot(arm(s), [key(0, [-64, 0, -restZ(s) * 0.8], "inout"), key(1.0, [-66, 0, -restZ(s) * 0.8], "inout"), key(2.0, [-64, 0, -restZ(s) * 0.8])]),
+      ]),
+      rot(spine, [key(0, [-3, 0, 0], "inout"), key(1.0, [-1.5, 0, 0], "inout"), key(2.0, [-3, 0, 0])]),
+      rot(headP, [key(0, [2, 0, 0], "inout"), key(1.0, [1, 0, 0], "inout"), key(2.0, [2, 0, 0])]),
+      ...tailSwing(2.0, 4),
     ] });
     // (the other clips bend forearms and shins, which a chibi does not have: those turns are left out)
     for (const c of clips) if (c.tracks) c.tracks = c.tracks.filter((t: Args) => !/^(fore|shin|hand|foot)_/.test(t.part[t.part.length - 1]));

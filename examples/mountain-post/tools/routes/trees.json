@@ -1,0 +1,19 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(h) end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; TREES = function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind:match('^pine') or o.kind:match('^larch') or o.kind == 'birch' then n = n + 1 end end return n end; MASSES = function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind:match('^forest') then n = n + 1 end end return n end",
+  "route": [
+    { "wait": 10, "lua": "IN_VAN(13.5, -170.5, 0.3); T.drive('bridge_out')" },
+    { "until": "nova.named('van').z > -60", "max": 1800, "capture": "a road view while driving: Post Road, coming up to Fern Lane" },
+    { "lua": "IN_VAN(-40, -78, 1.75); T.drive('hazel')" },
+    { "until": "nova.named('van').x > 100", "max": 2400, "capture": "a road view while driving: Fern Lane" },
+    { "lua": "nova.named('van').autopilot = nil; AT(150, 16, 40, 40, 0, -60, 55)" },
+    { "wait": 5, "capture": "the valley from the Fern Lane hillside" },
+    { "lua": "AT(-92, 4, 50, -200, 6, 95, 55)" },
+    { "wait": 5, "capture": "a far view across the creek" },
+    { "lua": "AT(20, 30, -60, -60, 0, 60, 60)" },
+    { "wait": 5, "capture": "from above: clumps and open grass" }
+  ],
+  "print": ["TREES()", "MASSES()", "nova.stats().triangles", "nova.stats().draws", "nova.stats().scenery"],
+  "out": "build/trees"
+}

@@ -29,7 +29,7 @@ exchange, and a small piece of the town's story.
 | Van feel | **Gentle with some weight**: forgiving, leans and rolls on its springs, takes a moment to stop; rain, snow and mud make it slip a little. No damage, no fuel. |
 | Finding places | The label says **name and street** ("Hazel Badger, 3 Fern Lane"). Roads have names on signs, houses have numbers, and a paper map of the town can be opened. The **minimap shows only where you are**: no destination pin, no route. |
 | Time | **Days with a bedtime**: a clock from morning to night; you sleep at home to start the next day; nothing is lost by staying out. You may drive by day or night; night is harder (few lights). Storms affect driving. |
-| Carrying | The van holds **one parcel** at first (upgradable). On foot you carry one and are slower. |
+| Carrying | The van holds **both of the slice's parcels** (it was one until the owner's second notes; upgradable later). On foot you carry one and are slower. |
 | Progress | Deliveries pay **coins** and raise that resident's **friendship**. Coins buy van and post office upgrades. Named **town projects** (a bridge, a rockslide) need coins, materials or favours; finishing one opens the next map. |
 | The post office | The backlog sits on shelves as real parcels; you **pick** what to take, new mail comes each morning, residents drop in to post things, and you **repair and decorate** the room. |
 | World | **Three maps**. The first has the post office and your home; the other two are blocked to cars until the town is rebuilt. Small enough to learn, large enough to explore. |
@@ -118,7 +118,8 @@ runs with the arms held straight out to the sides. Carrying a parcel, the run is
 
 **The van.** Simple, like a modern high-roof panel van (the owner: "the van isn't simple like a Sprinter"): one tall smooth box
 with soft edges, a short sloping bonnet into a big windscreen, clean flat sides, two tall rear doors, plain lights; no roof rack,
-nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
+nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds both of the slice's parcels (carried out one at a time, so
+loading two is two trips from the shelf). A cheerful horn. (The shape since the owner's second notes: see the end of this file.)
 
 **The residents.**
 - **Hazel Brock**, a bear (was a badger until the first play), retired carpenter, 3 Fern Lane. Gruff, dry, kind underneath. Her parcel: a set of chisels she
@@ -132,8 +133,11 @@ nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds one p
 2. The letter is for you: read it at the counter. It is from the Mayor (a heron, Odette Marsh, unseen in the slice):
    "Welcome to Fernhollow. The post office is yours, such as it is. Mr. Pemberton left two winters ago and nobody has had a
    letter since. Take your time. We have waited this long. P.S. The van pulls a little to the left. So did Mr. Pemberton."
-3. Take a parcel (one at a time), read its label, walk out, get in the van, find the address by the signs and the paper map,
-   get out, hand it over at the door, talk. Come back for the other. The order is the player's.
+3. Take a parcel (one at a time), read its label, walk out, put it in the back of the van (its rear doors open as you come near;
+   A loads it), get in at the left doorway, find the address by the signs and the paper map, get out, take it from the van's
+   back (a small panel shows the parcels in the van one at a time, name and street; L1 and R1 go through them, A takes the one
+   shown), hand it over at the door, talk. Come back for the other, or load both before setting out: the van holds both. The
+   order is the player's.
 4. When both are delivered and you are back at the post office, the slice ends quietly on a card: "Two delivered. A few hundred
    to go."
 
@@ -167,7 +171,9 @@ their names and the post office marked; no house numbers, no marker for you, no 
 shows the roads right around you and you; nothing else. Nothing in the world points the way except signposts and mailbox numbers.
 
 **Controls** (gamepad; letters as engraved on the Retroid: A south, B east, X west, Y north). Walking: left stick moves, right
-stick looks, **A** talks / takes / hands over / reads, **B** gets into the van when beside it, **Y** opens the paper map. Driving:
+stick looks, **A** talks / takes / hands over / reads (at the van's open back: loads the parcel carried, or takes the one the
+panel shows; **L1** / **R1** go through the parcels in the van), **B** gets into the van at its left doorway, **Y** opens the
+paper map. Driving:
 R2 goes, L2 brakes then reverses, left stick steers, right stick looks, **B** gets out (when stopped), **X** sounds the horn,
 **Y** opens the paper map. Start pauses (resume, quit).
 
@@ -204,3 +210,37 @@ turn, so they slid off it in a bend); the dark discs that read as a second set o
 the sprung wheels moved away from) are gone. Trees, bushes, the mast, the signposts and the mailboxes stand upright on slopes
 (the renderer used to lift every vertex by the ground under it, which leans a tall cone with the hillside; Nova now has
 `lift = "upright"`). The postmaster walks, runs and trots 15% faster, the clips played 15% faster so the feet keep step.
+
+## The owner's second notes (2026-11-22, from pictures of the build)
+
+These replace the matching lines above where they differ.
+
+- **The van:** "Let's shorten it and add that slope at the back that the reference image has. Also the windows look really weird."
+  "The player should be visible through the windows of the truck also. We can also make the truck have no doors." Now a stubby
+  toy of the classic boxy mail truck, 2.4 m long (2.5 with its chunky dark bumpers), 1.48 wide, 2.0 high: a tall square box
+  over the rear two thirds whose front is the cab, a big upright windscreen in a dark frame, a low short bonnet stepping down
+  from it to a blunt nose (two small square lamps, a small grille), small dark steel wheels in round hollow wells, and behind
+  the rear wheel the underside sweeping up to the rear bumper while the back leans in to a roof with a rounded lip all round.
+  Cream above, sand below, one red band between that sweeps down along the bonnet. The cab is **open-sided**: a tall rounded
+  doorway each side, no doors, a seat and a steering wheel inside; the windscreen is a real opening (a toy's: no glass). The
+  rear doors (part of the body) have open windows into a lined hold, and the hold has a window into the cab, so from the chase
+  camera behind the driver's head shows through the back. **The postmaster sits at the wheel** while driving (the
+  `sit` clip of character3d_make), carried by the body as it leans, hands on the wheel, which turns with the steering, the head
+  turning a little into a bend, a smile at the horn. The parcels in the van ride on the hold's floor.
+- **Getting in and out, loading:** "the player is forced to watch the character walking slowly with the package to the back...
+  Let's scrap all that." Nothing walks the postmaster anywhere now. The rear doors swing open by themselves as they come near
+  the back and shut as they walk away; carrying a parcel there, the prompt is **Load package** (A), and it goes in at once. With
+  empty hands and parcels in the van, a panel shows them one at a time (L1 / R1, A takes). B at the **left doorway** (the
+  driver's side) puts them in the seat at once; getting out puts them beside it, facing the way the van faces.
+- **Buildings:** "When leaving any building ... The user should just be outside." A short fade (0.3 s) through the post office's
+  door either way; outside they stand a step from the door facing away from it, inside just within it, the stick theirs at once.
+- **Cameras:** on foot outdoors the camera is further back and higher, looking down on a small character in a diorama ("zoom out
+  the camera and raise a bit to make the world feel a little smaller"); the driving camera a little higher too. Neither goes
+  inside the van, a tree or a building: the boom comes in where something solid is in the way (the scenery's shapes, tree
+  crowns, the van's body). Getting out of the van the view glides from behind the van to behind the postmaster, beside it,
+  outside. Inside the post office: one fixed view from high over the room ("a simple top down view like Animal Crossing"), the
+  front wall cut away to a low stub and no ceiling; the stick moves the postmaster as the screen shows the room.
+- **Trees:** "Can we cut the trees a bit? Or do it in a different way?" About 2,400 single trees became some 440 in deliberate
+  clumps of three to eight by the roads and the houses with open grass between, a big "hero" tree at each signpost and gate, and
+  where nobody goes (the valley's sides, beyond the creek, the far bank, the edges) a few dozen soft forest masses: lumpy rows of
+  big puffs in the pine greens with a scalloped top and a darker foot (tools/nature.mjs, placed by tools/scene.mjs).

@@ -18,8 +18,10 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
   its detail is in `docs/studio-workspaces.md` (features) and `docs/studio-ux.md` (menus, toolbars, input, windows).
 - **Art direction (2026-11-09):** Switch 1-class graphics at 60 fps on the Retroid (decisions table below).
 - **The mountain post office slice (2026-11-22):** `examples/mountain-post` (Fernhollow Post) is the agreed slice of `docs/games/mountain-post.md`,
-  built from its spec and nothing beyond it, with `crates/nova-runtime/tests/mountain_post.rs` (13 tests: both orders played start to finish, the
-  spec's words and each line's face, the two gaits, the rules). **Next:** the owner plays it on the Retroid and says what is not right; only the slice is worked on until all of its
+  built from its spec and nothing beyond it, with `crates/nova-runtime/tests/mountain_post.rs` (26 tests: both orders played start to finish, the
+  spec's words and each line's face, the two gaits, the rules, and the owner's second notes: no forced walks, the self-opening rear doors and
+  Load package, the parcel panel and a van that holds both, the open cab's left doorway and the driver in the seat, the cameras, clumps of trees and
+  forest masses instead of 2,400 trees; docs/games/mountain-post.md, "The owner's second notes"). **Next:** the owner plays it on the Retroid and says what is not right; only the slice is worked on until all of its
   "right means" are yes. Not played by a person, not listened to, not run on the device.
 - **Examples:** `examples/pine-ridge-rally` is the one game kept. The others were removed on 2026-11-09 and live in git tag
   `archive/examples-2026-11`. Small feature fixtures stay (`stress`, `material-demo`, `physics-toybox`, `skin-demo`, `ik-demo`, `menus`,

@@ -34,6 +34,8 @@
     "horn": ["pad:west", "key:KeyH"],
     "map": ["pad:north", "key:KeyM", "key:Tab"],
     "pause": ["pad:start", "key:Escape", "key:KeyP"],
+    "prev": ["pad:l1", "key:KeyZ"],
+    "next": ["pad:r1", "key:KeyC"],
     "menu_up": ["key:ArrowUp", "pad:dpad_up", "axis:left_y-"],
     "menu_down": ["key:ArrowDown", "pad:dpad_down", "axis:left_y+"]
   }

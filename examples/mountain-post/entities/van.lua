@@ -3,9 +3,12 @@
 -- are taken from Pine Ridge Rally's car (examples/pine-ridge-rally/entities/car.lua, 2026-11-21: `wheel_layout`, `ride_of`,
 -- `Car:suspension`, `Car:wheel_offset`), copied here and cut down to one vehicle; the driving is new and gentle: modest power,
 -- a top speed of about 63 km/h, brakes that take a moment, steering that forgives, no damage, no fuel, no gears to think about.
--- The scene sets `ctl` from the pad while the postmaster is in it; empty, it stands with its handbrake on.
+-- The scene sets `ctl` from the pad while the postmaster is in it; empty, it stands with its handbrake on. The postmaster sits in
+-- its open cab while driving (entities/postmaster.lua draws them there); the parcels it holds ride in the hold behind, seen through
+-- the back windows and when the rear doors swing open.
 local engine_sound = require("nova.engine_sound")
 local world = require("lib.world")
+local state = require("lib.state")
 
 local Van = nova.entity { model = "van", tags = { "van" }, velocity = false }
 
@@ -18,7 +21,7 @@ local FEEL = {
   brake = 5.0,          -- m/s^2 at full brake: it takes a moment to stop
   coast = 0.55,         -- m/s^2 rolling and engine braking with nothing pressed
   drag = 0.0045,        -- the air, per (m/s)^2
-  lock = math.rad(24),  -- the front wheels at full lock (the toy van's short wheelbase turns as tightly as the old long one did at 33)
+  lock = math.rad(18),  -- the front wheels at full lock (the stubby van's 1.32 m wheelbase turns as tightly as the 1.8 m one did at 24)
   steer_rate = 2.6,     -- how fast the wheels follow the stick (1/s): a moment, not a twitch
   grip = 9,             -- how fast a sideways slip dies away (1/s): it holds the road
   pull = 0.0035,        -- radians a second the van wanders to the left with the wheel let go (the Mayor's letter; barely felt)
@@ -26,8 +29,9 @@ local FEEL = {
 }
 local GEARS = { 7, 12.5, 17.5 }        -- the speed at which each gear runs out (for the engine's note only)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
--- The toy van (tools/van.mjs) is 2.9 m long and 1.6 m wide, from z -1.42 (its flat back) to 1.5 (its nose).
-Van.BODY = { offs = { 0.86, 0.04, -0.78 }, r = 0.82 }
+-- The stubby van (tools/van.mjs) is 2.4 m long (2.5 with its bumpers) and 1.48 wide, from z -1.13 (the foot of its leaning back)
+-- to 1.27 (its nose).
+Van.BODY = { offs = { 0.58, 0, -0.58 }, r = 0.72 }
 local GRAVITY = 9.8
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 
@@ -85,7 +89,7 @@ function Van:create()
   self.ride = ride_of(layout)
   self.wheel_r = self.stations[1].y
   -- (the rear doors are children of the body in the model: they lean, roll, pitch and turn with it, and only swing on their hinges)
-  self.parts_table = { body = { rx = 0, rz = 0, y = 0 }, door_l = { ry = 0 }, door_r = { ry = 0 } }
+  self.parts_table = { body = { rx = 0, rz = 0, y = 0 }, door_l = { ry = 0 }, door_r = { ry = 0 }, steering = { ry = 0 } }
   for _, s in ipairs(self.stations) do self.parts_table[s.name] = s.front and { rx = 0, ry = 0, y = 0 } or { rx = 0, y = 0 } end
   local n = #self.stations
   local function list(v) local t = {} for i = 1, n do t[i] = v end return t end
@@ -297,9 +301,12 @@ end
 
 -- Where a point of the van's body is in the world, from the van's own metres (right +x is left, as the model): for the
 -- lettering on its sides, the postmaster at its door, the parcel at its back.
+-- (the body's small pitch and roll, as the model turns it: about x, then about z, for a few degrees taken as straight lines)
 function Van:to_world(lx, ly, lz)
+  local p, r = self.pitch or 0, self.roll or 0
+  lx, ly, lz = lx - r * ly, ly - p * lz + r * lx, lz + p * ly
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
-  return self.x + sinh * lz + cosh * lx, (self.lift or 0) + ly - (self.pitch or 0) * lz + (self.roll or 0) * lx, self.z + cosh * lz - sinh * lx
+  return self.x + sinh * lz + cosh * lx, (self.lift or 0) + ly, self.z + cosh * lz - sinh * lx
 end
 
 function Van:update(dt)
@@ -309,6 +316,7 @@ function Van:update(dt)
 end
 
 local SIDE = { color = { 255, 255, 255, 255 } }
+local PARCEL = { hazel = "parcel_hazel", pip = "parcel_pip" }
 function Van:draw()
   local pt = self.parts_table
   pt.body.rx, pt.body.rz, pt.body.y = self.pitch, self.roll, self.lift or 0
@@ -322,16 +330,31 @@ function Van:draw()
   -- the rear doors open outwards about their hinges (on the van's back corners); they are the body's children in the model, so the
   -- body's lean, roll and pitch carry them: only the swing is theirs
   pt.door_l.ry, pt.door_r.ry = -self.back_open * 1.9, self.back_open * 1.9
+  -- the steering wheel turns with the front wheels, about a quarter turn each way
+  pt.steering.ry = -self.steer * 1.6
   self.draw_opts.ry = self.heading
   nova.model("van", self.x, 0, self.z, self.draw_opts)
-  -- FERNHOLLOW POST on both sides of the box, just off the panel, moving with the body's lean
+  -- FERNHOLLOW POST on both sides of the box, behind the doorways, just off the panel, moving with the body's lean
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.825, 1.44, -0.66)
+    local x, y, z = self:to_world(side * 0.765, 1.42, -0.46)
     SIDE.face = { cosh * side, 0, -sinh * side }
-    SIDE.w, SIDE.h = 1.22, 0.374
-    nova.billboard("van_side", x, y, z, 1.22, SIDE)
+    SIDE.w, SIDE.h = 0.76, 0.259
+    nova.billboard("van_side", x, y, z, 0.76, SIDE)
   end
+  -- the parcels in the hold, on its floor, the first loaded furthest in
+  for i, which in ipairs(state.van_load) do
+    self:draw_inside(PARCEL[which], i == 1 and 0.22 or -0.24, 0.67, i == 1 and -0.55 or -0.8, i * 0.4)
+  end
+end
+
+-- Draws a model at a place in the van's body (its own metres), turned with the van and carried by the body's lean.
+local INSIDE = { ry = 0, rx = 0, rz = 0, lift = "origin" }
+function Van:draw_inside(model, lx, ly, lz, turn)
+  local x, y, z = self:to_world(lx, ly, lz)
+  y = y + nova.terrain_height(self.x, self.z) - nova.terrain_height(x, z)
+  INSIDE.ry, INSIDE.rx, INSIDE.rz = self.heading + (turn or 0), self.pitch or 0, self.roll or 0
+  nova.model(model, x, y, z, INSIDE)
 end
 
 return Van

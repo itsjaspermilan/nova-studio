@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "sphere", "from": [-234.618, -52.349, -149.474], "size": [237.237, 261.743, 237.237], "segments": 7, "color": "#49784c" },
+        { "shape": "sphere", "from": [-176.838, -66.256, -116.325], "size": [276.344, 331.28, 276.344], "segments": 7, "color": "#45714c" },
+        { "shape": "sphere", "from": [-75.254, -19.061, -144.367], "size": [227.841, 284.801, 227.841], "segments": 7, "color": "#859e55" },
+        { "shape": "sphere", "from": [-16.108, -54.339, -101.585], "size": [264.217, 271.697, 264.217], "segments": 7, "color": "#859f55" },
+        { "shape": "sphere", "from": [-267.2, -39.264, -139.2], "size": [278.4, 116.928, 278.4], "segments": 7, "color": "#2d4d32" },
+        { "shape": "sphere", "from": [-11.2, -39.264, -139.2], "size": [278.4, 116.928, 278.4], "segments": 7, "color": "#2a482f" }
+      ],
+      "children": []
+    }
+  ],
+  "capsules": [{ "ax": -128, "az": 0, "bx": 128, "bz": 0, "r": 100.8 }]
+}

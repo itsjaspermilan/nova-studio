@@ -127,7 +127,7 @@ describe("character3d_make", () => {
     const a = makeCharacter3d(base);
     expect(JSON.stringify(a.model)).toBe(JSON.stringify(makeCharacter3d(base).model));
     const doc = parsed(a.model);
-    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "trot", "jump", "wave", "attack", "hurt", "carry", "talk", "work"]);
+    expect(doc.clips!.map((c) => c.name)).toEqual(["idle", "walk", "run", "trot", "jump", "wave", "attack", "hurt", "carry", "talk", "work", "sit"]);
     for (const name of ["walk", "run", "trot"]) expect(doc.clips!.find((c) => c.name === name)!.events!.map((e) => e.name)).toEqual(["step", "step"]);
     expect(doc.clips!.find((c) => c.name === "attack")!.events).toEqual([{ t: 0.22, name: "hit" }]);
     expect(a.speeds.walk).toBeGreaterThan(0.8);
@@ -201,6 +201,17 @@ describe("character3d_make", () => {
     expect(fox.speeds.trot).toBeGreaterThan(fox.speeds.walk);
     expect(fox.speeds.trot).toBeLessThan(fox.speeds.run);
     expect(clip("run").events!.map((e) => e.name)).toEqual(["step", "step"]);
+    // sitting at a wheel: both legs straight out in front (a stubby leg turned forward, -x, near a right angle) and held there,
+    // both arms forward at the chest (not out to the sides), the spine leaning back a touch; it loops
+    expect(clip("sit").loop).toBe(true);
+    for (const leg of ["leg_l", "leg_r"]) for (const k of track("sit", leg).keys) expect(k.value[0]).toBeLessThan(-70);
+    for (const a of ["arm_l", "arm_r"]) for (const k of track("sit", a).keys) { expect(k.value[0]).toBeLessThan(-50); expect(Math.abs(k.value[2])).toBeLessThan(15); }
+    expect(track("sit", "spine").keys[0].value[0]).toBeLessThan(0);
+    // a person with knees bends them: the thigh forward, the shin back down
+    const seated = parsed(makeCharacter3d({}).model).clips!.find((c) => c.name === "sit")!;
+    const thigh = seated.tracks!.find((t: any) => t.part.at(-1) === "leg_l") as any, shin = seated.tracks!.find((t: any) => t.part.at(-1) === "shin_l") as any;
+    expect(thigh.keys[0].value[0]).toBeLessThan(-70);
+    expect(shin.keys[0].value[0]).toBeGreaterThan(70);
     // a human has no face parts to swap
     expect(makeCharacter3d({}).faces).toBeUndefined();
   });

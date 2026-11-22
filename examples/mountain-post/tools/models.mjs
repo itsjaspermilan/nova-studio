@@ -103,6 +103,8 @@ function gableSide(x, D, y0, y1, color) {
 }
 
 // ---- the post office, inside: a room 7 x 5 m, the door in the front wall (+z), a window in the right-hand wall --------------------------
+// Seen from one fixed view high over the front (scenes/office.lua, lib/camera.lua ROOM), like a diorama: no ceiling, and the front
+// wall cut away to a low stub either side of the doorway, a mat in the doorway.
 def("office_room", () => {
   const X = 3.5, Z = 2.6, H = 3.0;
   const c = [];
@@ -112,10 +114,11 @@ def("office_room", () => {
   const wall = (cx, cz, w, d, h = H, y = H / 2) => c.push(box([cx, y, cz], [w, h, d], C.wall));
   wall(0, -Z - 0.1, 2 * X + 0.4, 0.2);
   wall(X + 0.1, 0, 0.2, 2 * Z);
-  // the front: either side of the door (1.1 wide at x = 0.9) and over it
-  wall((-X + 0.35) / 2, Z + 0.1, X + 0.35, 0.2);
-  wall((X + 1.45) / 2, Z + 0.1, X - 1.45, 0.2);
-  wall(0.9, Z + 0.1, 1.1, 0.2, H - 2.15, 2.15 + (H - 2.15) / 2);
+  // the front, cut away: a low stub either side of the door (1.1 wide at x = 0.9), its cut top a darker wood
+  const STUB = 0.32;
+  wall((-X + 0.35) / 2, Z + 0.1, X + 0.35, 0.2, STUB, STUB / 2);
+  wall((X + 1.45) / 2, Z + 0.1, X - 1.45, 0.2, STUB, STUB / 2);
+  for (const [cx, w] of [[(-X + 0.35) / 2, X + 0.35], [(X + 1.45) / 2, X - 1.45]]) c.push(box([cx, STUB + 0.015, Z + 0.1], [w + 0.02, 0.03, 0.22], C.plankDark));
   // the right-hand wall with a window 1.4 wide, 1.2 high
   wall(-X - 0.1, (-Z - 0.7) / 2 - 0.0, 0.2, Z - 0.7 + 0.0001 + 0.0);
   wall(-X - 0.1, (Z + 0.7) / 2, 0.2, Z - 0.7);
@@ -131,11 +134,10 @@ def("office_room", () => {
     c.push(box([cx, 0.5, cz], [w, 1.0, d], shade(C.wall, -0.18)));
     c.push(box([cx, 2.45, cz], [w, 0.06, d + 0.02], shade(C.wall, -0.3)));
   }
-  // the ceiling and its beams
-  c.push(box([0, H + 0.05, 0], [2 * X + 0.4, 0.1, 2 * Z + 0.4], shade(C.wall, -0.3)));
-  for (let x = -X + 0.8; x < X; x += 1.6) c.push(box([x, H - 0.1, 0], [0.18, 0.2, 2 * Z], C.plankDark));
-  // the door (a gap; the doorway is bright: the porch in the sun)
-  c.push(box([0.9, 1.07, Z + 0.22], [1.1, 2.15, 0.02], shade(PAL.lit, 0.3), { emissive: 0.85 }));
+  // the walls' cut tops (no ceiling: the room is seen from above), and a mat in the doorway
+  for (const [cx, cz, w, d] of [[0, -Z - 0.1, 2 * X + 0.42, 0.22], [X + 0.1, 0, 0.22, 2 * Z + 0.4], [-X - 0.1, 0, 0.22, 2 * Z + 0.4]]) c.push(box([cx, H + 0.015, cz], [w, 0.03, d], C.plankDark));
+  c.push(box([0.9, 0.012, Z - 0.15], [1.0, 0.02, 0.55], PAL.mustard));
+  c.push(box([0.9, 0.018, Z - 0.15], [0.8, 0.02, 0.4], shade(PAL.mustard, -0.15)));
   // the counter: across the room in front of the shelves, a flap at its left end
   // (at the height of the cast: villagers a little over a metre tall, who look over it)
   c.push(box([0.4, 0.36, -0.6], [4.2, 0.72, 0.7], C.wood));

@@ -62,7 +62,10 @@ words.ending = "Two delivered. A few hundred to go."
 words.hint = {
   take = "Take", read = "Read", talk = "Talk", give = "Hand over", knock = "Knock", get_in = "Get in", get_out = "Get out",
   map = "Map", close = "Close", next = "Next", put_back = "Put back", go_in = "Go in", go_out = "Go out",
+  load = "Load package", load_at_back = "Load it at the back", choose = "Choose",
 }
+-- the panel at the van's open back that shows its parcels one at a time
+words.picker = { title = "In the van" }
 words.pause = { title = "Paused", resume = "Resume", quit = "Quit" }
 
 return words
