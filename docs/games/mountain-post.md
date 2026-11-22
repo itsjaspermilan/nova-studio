@@ -83,8 +83,14 @@ across, hilly, with a creek:
 
 **You.** The postmaster: a fox in a blue postal jacket and cap (looks are customised later, not in the slice).
 
-**The van.** A small high-roofed delivery van, cream with a red stripe, round headlights, a roof rack, slightly toy-like
-proportions, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
+**How people are built** (the owner, 2026-11-22, on seeing the first pictures: "I don't like how tall the characters are. Use Animal
+Crossing New Horizons as an example. We don't have to worry too much about elbows and knees that way."): short and round, about
+two to two and a half heads tall, a big head on a small body, stubby arms and legs as single pieces with no elbows or knees,
+mitten hands, simple feet, big simple eyes. About a metre tall, and the world is sized to them.
+
+**The van.** Simple, like a modern high-roof panel van (the owner: "the van isn't simple like a Sprinter"): one tall smooth box
+with soft edges, a short sloping bonnet into a big windscreen, clean flat sides, two tall rear doors, plain lights; no roof rack,
+nothing fussy. Cream with a red stripe, FERNHOLLOW POST on its side. Holds one parcel. A cheerful horn.
 
 **The residents.**
 - **Hazel Brock**, a badger, retired carpenter, 3 Fern Lane. Gruff, dry, kind underneath. Her parcel: a set of chisels she
