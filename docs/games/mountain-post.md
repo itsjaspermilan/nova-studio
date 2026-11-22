@@ -1,6 +1,8 @@
 # The mountain post office (working title)
 
-Status: **design draft, 2026-11-22, for the owner to correct. Nothing is built.**
+Status: **design draft, 2026-11-22, for the owner to correct.** The slice below ("Slice spec") is built as `examples/mountain-post`
+(Fernhollow Post, 2026-11-22; its tests are `crates/nova-runtime/tests/mountain_post.rs`). Nobody has played it yet, heard it, or run it on
+the Retroid: it waits for the owner's play.
 Rule for this game (the owner's, 2026-11-21): plan it properly, build ONE vertical slice, and add nothing more until the owner
 has played the slice on the Retroid and said it is right.
 
