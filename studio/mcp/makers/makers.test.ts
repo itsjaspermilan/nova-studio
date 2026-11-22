@@ -293,7 +293,7 @@ describe("sounds and songs by what they are for", () => {
       expect(said, mood).toMatch(/loop seam: matches|the end meets the start/);
       const parsed = parseSong(bytes(`music/${name}.song.json`).toString());
       if (!parsed.ok) throw new Error(parsed.error);
-      expect(parsed.song.tracks.map((t) => t.name).filter((n) => n !== "arp")).toEqual(["melody", "harmony", "bass", "drums"]);
+      expect(parsed.song.tracks.map((t) => t.name).filter((n) => n !== "arp" && n !== "bass_hi")).toEqual(["melody", "harmony", "bass", "drums"]);
       expect(parsed.song.tracks.some((t) => t.name === "arp"), mood).toBe(mood.startsWith("synthwave"));
       // the fuller voices, not the chip voice and the chip kit: and the report finds nothing to advise
       expect(parsed.song.tracks.find((t) => t.name === "bass")!.wave, mood).toBe("saw");
@@ -301,11 +301,22 @@ describe("sounds and songs by what they are for", () => {
       expect(said, mood).not.toContain("advice:");
       for (const t of parsed.song.tracks) {
         expect(t.notes.length, `${mood} ${t.name}`).toBeGreaterThan(2);
-        expect(t.notes.some((n) => n.step === 0), `${mood} ${t.name} starts on the first step`).toBe(true);
+        // (a song plays its intro once and loops from the first A: every part sounds where the loop starts)
+        const from = parsed.song.loop?.from ?? 0;
+        expect(t.notes.some((n) => n.step === from), `${mood} ${t.name} sounds where the loop starts`).toBe(true);
         for (const n of t.notes) expect(n.step + n.len).toBeLessThanOrEqual(parsed.song.length);
       }
       // the bass stays where a small speaker can play it
       expect(Math.min(...parsed.song.tracks.find((t) => t.name === "bass")!.notes.map((n) => n.pitch))).toBeGreaterThanOrEqual(43);
+      // a real song form by default: an intro, then A, B, a break and A again, 32 bars or more, a loop of 45 seconds or more
+      if (mood !== "victory jingle") {
+        const s = parsed.song;
+        expect(s.length / 16, mood).toBeGreaterThanOrEqual(32);
+        expect(s.loop, mood).toEqual({ from: 64, to: s.length });
+        expect(((s.loop!.to - s.loop!.from) * 15) / s.bpm, mood).toBeGreaterThanOrEqual(45);
+        expect(s.markers!.map((m) => m.name).slice(0, 3), mood).toEqual(["intro", "A", "B"]);
+        expect(said, mood).toMatch(/the game loops from the first A/);
+      }
       // it can be given back to song_write as it is
       expect(() => use("song_write", { name: `${name}_again`, song: bytes(`music/${name}.song.json`).toString() })).not.toThrow();
     }
@@ -315,6 +326,13 @@ describe("sounds and songs by what they are for", () => {
     const second = JSON.parse(bytes("music/boss.song.json").toString());
     expect(second.bpm).toBe(170);
     expect(bytes("music/boss.song.json").toString()).not.toBe(first);
+    // the old short loop on request, which the report says is short
+    use("song_make", { name: "short", mood: "synthwave", form: "loop" });
+    const short = JSON.parse(bytes("music/short.song.json").toString());
+    expect(short.length).toBe(128);
+    expect(short.loop).toBeUndefined();
+    expect(text(use("sound_report", { sound: "music/short", picture: false }))).toMatch(/WARNING: it loops every 16 s: under about 45 s/);
+    expect(() => use("song_make", { name: "x", mood: "boss", form: "medley" })).toThrow(/"form" is "song"/);
     expect(() => use("song_make", { name: "x", mood: "polka" })).toThrow(/"mood" is one of: "calm village"/);
     expect(() => use("song_make", { name: "x", mood: "boss", key: "H" })).toThrow(/"key" is a note name/);
   }, 120_000);

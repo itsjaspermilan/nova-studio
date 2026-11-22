@@ -1058,15 +1058,18 @@ export function punchDrumHit(pitch: number, rate = RATE): Float32Array {
     return f.high;
   };
   switch (pitch) {
-    case 36: { // kick: beater click + body falling 174 -> 64 Hz (the drop is what a small speaker plays), soft-clipped
-      let phase = 0;
+    case 36: { // kick: a beater click, a knock at 260 -> 150 Hz with a third harmonic (what a handheld's speaker plays), and a body
+      // falling 174 -> 64 Hz under it (what headphones add), soft-clipped
+      let phase = 0, knock = 0;
       const click = new Svf();
       return make(0.4, (t) => {
         phase += (64 + 110 * Math.exp(-t * 26)) / rate;
+        knock += (150 + 110 * Math.exp(-t * 30)) / rate;
         click.step(noise(), 4200, rate, 0.9);
         const body = Math.sin(2 * Math.PI * phase) * Math.exp(-t * 9);
-        const beat = click.band * Math.exp(-t * 300) * 1.1 + Math.sin(2 * Math.PI * 1100 * t) * Math.exp(-t * 180) * 0.25;
-        return softClip(body * 1.25 + beat, 2.2) * 0.9;
+        const mid = (Math.sin(2 * Math.PI * knock) + 0.3 * Math.sin(6 * Math.PI * knock)) * Math.exp(-t * 20);
+        const beat = click.band * Math.exp(-t * 300) * 1.3 + Math.sin(2 * Math.PI * 1100 * t) * Math.exp(-t * 180) * 0.3;
+        return softClip(body * 0.6 + mid * 0.8 + beat, 2.2) * 0.9;
       });
     }
     case 38: case 39: { // snare (and clap): crack, two tones, clap bursts, a gated room
@@ -1127,7 +1130,8 @@ export function duckCurve(song: Song, kicks: number[], depth: number, total: num
 
 /// A room: eight comb filters and four all-passes per side (the classic Freeverb layout), fed the mix of both channels.
 /// The sends are run through twice so that what rings past the end wraps round to the start, as the notes' tails do.
-function reverb(sendL: Float32Array, sendR: Float32Array, room: Room, rate: number): [Float32Array, Float32Array] {
+/// With `loopStart` (a song with an intro that plays once) it runs once from the top and what rings on past the end is added from the loop's start.
+function reverb(sendL: Float32Array, sendR: Float32Array, room: Room, rate: number, loopStart = 0): [Float32Array, Float32Array] {
   const scale = rate / 44100;
   const combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
   const allpass = [556, 441, 341, 225];
@@ -1139,9 +1143,12 @@ function reverb(sendL: Float32Array, sendR: Float32Array, room: Room, rate: numb
   });
   const sides = [build(0), build(23)];
   const out: [Float32Array, Float32Array] = [new Float32Array(sendL.length), new Float32Array(sendL.length)];
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 0; i < sendL.length; i++) {
-      const input = (sendL[i]! + sendR[i]!) * 0.015;
+  const n = sendL.length;
+  const tail = loopStart > 0 ? Math.min(n - loopStart, Math.round(rate * 4)) : 0;
+  for (let pass = loopStart > 0 ? 1 : 0; pass < 2; pass++) {
+    for (let j = 0; j < n + tail; j++) {
+      const i = j < n ? j : loopStart + (j - n);
+      const input = j < n ? (sendL[i]! + sendR[i]!) * 0.015 : 0;
       for (let ch = 0; ch < 2; ch++) {
         const side = sides[ch]!;
         let y = 0;
@@ -1158,7 +1165,7 @@ function reverb(sendL: Float32Array, sendR: Float32Array, room: Room, rate: numb
           y = v - y;
           if (++a.pos >= a.buf.length) a.pos = 0;
         }
-        if (pass === 1) out[ch]![i] = y * 3 * room.mix;
+        if (pass === 1) out[ch]![i] = (j < n ? 0 : out[ch]![i]!) + y * 3 * room.mix;
       }
     }
   }
@@ -1330,6 +1337,10 @@ export function renderSong(source: Song, rate = RATE): Sound {
   const sendL = anyRoom ? new Float32Array(total) : null;
   const sendR = anyRoom ? new Float32Array(total) : null;
   const richSong = song.tracks.some((t) => isAudible(song, t) && isRich(t));
+  // where a tail that runs past the end lands: the start, or, for a song whose loop runs to its end (an intro that plays once, then
+  // the loop), the loop's start, which is where the game goes back to
+  const loopStart = song.loop && song.loop.to === song.length && song.loop.from > 0 ? Math.round(stepTime(song, song.loop.from) * rate) : 0;
+  const wrap = (index: number) => (index < total ? index : loopStart + ((index - total) % Math.max(1, total - loopStart)));
   // where the heard kicks fall, for the tracks that duck under them
   const kicks = song.tracks.some((t) => isAudible(song, t) && (t.duck ?? 0) > 0)
     ? song.tracks.filter((t) => isAudible(song, t) && t.kind === "drums").flatMap((t) => t.notes.filter((n) => n.pitch === 36 && n.vel > 0).map((n) => Math.round((song.tempos?.length ? stepTime(song, n.step) : n.step * stepSec) * rate) % Math.max(1, total)))
@@ -1358,7 +1369,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
     let noteSend = send;
     // (a note's own pan moves it within the track's: `gl`/`gr` are the track's gains, `pl`/`pr` the note's)
     const mix = (index: number, v: number, pl = gl, pr = gr) => {
-      const i = index % total; // wrap the tail onto the start
+      const i = wrap(index); // wrap the tail onto the start (of the loop)
       outL[i] = outL[i]! + v * pl;
       outR[i] = outR[i]! + v * pr;
       if (echoL && echoR) {
@@ -1372,7 +1383,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
     };
     // the same for a stereo pair of values already panned by the voice (a track's pan and volume are applied here)
     const mixStereo = (index: number, l: number, r: number) => {
-      const i = index % total;
+      const i = wrap(index);
       outL[i] = outL[i]! + l;
       outR[i] = outR[i]! + r;
       if (echoL && echoR) {
@@ -1430,7 +1441,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
       const wr = echoOf(echoR, delay, feedback, tail);
       // (the repeats of a looping song's last notes come round to its start)
       for (let i = 0; i < wl.length; i++) {
-        const j = i % total;
+        const j = wrap(i);
         outL[j] = outL[j]! + wl[i]! * echo;
         outR[j] = outR[j]! + wr[i]! * echo;
       }
@@ -1484,7 +1495,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
   });
   if (sendL && sendR) {
     const room = song.room ?? { size: 0.55, damping: 0.4, mix: 1 };
-    const [wl, wr] = reverb(sendL, sendR, room, rate);
+    const [wl, wr] = reverb(sendL, sendR, room, rate, loopStart);
     for (let i = 0; i < total; i++) {
       left[i] = left[i]! + wl[i]!;
       right[i] = right[i]! + wr[i]!;

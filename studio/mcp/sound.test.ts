@@ -54,6 +54,37 @@ describe("the make-up of a sound and the advice on it", () => {
     }
   });
 
+  it("warns when most of a sound is below what a handheld's speaker plays, and not when a knock carries it", () => {
+    const layered = (layers: Record<string, unknown>[]): SfxParams => ({ ...DEFAULTS, volume: 0.8, layers: layers.map((l) => cleanLayer({ hold: 0.05, decay: 0.3, ...l })) });
+    const sub = analyse("x", render(layered([{ wave: "sine", freq: 110, pitch: 12 }])), { source: { sfx: layered([{ wave: "sine", freq: 110, pitch: 12 }]) } });
+    expect(sub.speaker.below).toBeGreaterThan(0.9);
+    expect(sub.speaker.lossDb).toBeGreaterThan(6);
+    expect(sub.warnings.join(" ")).toMatch(/most of the energy \(\d+ %\) is below 200 Hz, under what a handheld's or a phone's speaker plays: .* Add harmonics or a layer an octave up/);
+    const knock = layered([{ wave: "sine", freq: 60, pitch: 12, volume: 0.3 }, { wave: "triangle", freq: 180, pitch: 12, filter: "lowpass", cutoff: 1400, volume: 0.6 }]);
+    const ok = analyse("x", render(knock), { source: { sfx: knock } });
+    expect(ok.speaker.below).toBeLessThan(0.6);
+    expect(ok.warnings.join(" ")).not.toContain("below 200 Hz");
+    expect(words(ok)).toMatch(/on a small speaker \(a handheld's or a phone's, little below 200 Hz\): \d+ % of the energy/);
+  });
+
+  it("judges a song with an intro at its loop's start, and warns when a loop is short", () => {
+    const bar = (from: number) => [0, 4, 8, 12].map((s) => ({ step: from + s, len: 4, pitch: 57, vel: 0.8 }));
+    const intro: Song = {
+      version: 1, bpm: 120, stepsPerBeat: 4, length: 64, loop: { from: 16, to: 64 },
+      // (the intro is a different, quieter note than the loop: judged from the top, the seam would not match)
+      tracks: [{ ...synthTrack("pad", "saw"), attack: 0.01, sustain: 1, release: 0.05, notes: [{ step: 0, len: 12, pitch: 69, vel: 0.3 }, ...bar(16), ...bar(32), ...bar(48)] }],
+    };
+    const a = analyse("music/x", renderSong(intro), { loop: true, source: { song: intro } });
+    expect(a.seam?.ok).toBe(true);
+    expect(a.warnings.some((w) => w.startsWith("it loops every"))).toBe(false); // (6 s: under 10 s, a sting, left alone)
+    const long: Song = { ...intro, length: 512, loop: { from: 16, to: 512 }, tracks: [{ ...intro.tracks[0]!, notes: Array.from({ length: 31 }, (_, i) => bar(16 + i * 16)).flat() }] };
+    const b = analyse("music/y", renderSong(long), { loop: true, source: { song: long } });
+    expect(b.warnings.some((w) => w.startsWith("it loops every"))).toBe(false); // (62 s: long enough)
+    const mid: Song = { ...long, length: 256, loop: { from: 16, to: 256 }, tracks: [{ ...intro.tracks[0]!, notes: Array.from({ length: 15 }, (_, i) => bar(16 + i * 16)).flat() }] };
+    const c = analyse("music/z", renderSong(mid), { loop: true, source: { song: mid } });
+    expect(c.warnings.join(" ")).toMatch(/it loops every 30 s: under about 45 s/);
+  });
+
   it("measures the level a sound is heard at as the mix table does", () => {
     const short = render(PURPOSES.hit!.params);
     expect(heardLevel(short)).toBeCloseTo(analyse("x", short).loudDb, 5);
