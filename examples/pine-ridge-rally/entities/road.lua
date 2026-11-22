@@ -17,6 +17,8 @@ function Road:draw()
     self.night = ok and c.night and true or false
   end
   opts.tint = self.night and NIGHT or nil
+  -- (a made-up course's road is a mesh made on the device, lib/generate.lua: its handle is `mesh`)
+  if self.mesh then nova.mesh.draw(self.mesh, opts) return end
   nova.model(self.model, self.x, self.y or 0, self.z, opts) -- (a road that joins another lies a hair under it: its `y`)
 end
 

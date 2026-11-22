@@ -266,6 +266,8 @@ end
 -- assumes is at the limit of the speed profile (all of its corner grip that the drivers use, `lateral` 0.86, and the brakes at 0.92);
 -- the hills count only when `id` is the course being raced (its hills are up). Reads the course's scene file, so it works from a menu.
 -- For par times: a fair target is this times a margin (the drivers of lib/race.lua at their best finish within a few per cent of it).
+-- (`id` may also be a course made by lib/generate.lua: its entry in the menus (`generated` settings) or the course itself. Its hills are
+-- known without being up, so they always count; the speeds are also given, for section times.)
 function racing.ideal_time(id, car)
   local c = car
   if type(car) == "string" then
@@ -275,6 +277,28 @@ function racing.ideal_time(id, car)
       if entry.id == car then break end
     end
     assert(c, "racing.ideal_time: no car or class " .. car)
+  end
+  if type(id) == "table" then
+    local generate = require("lib.generate")
+    local made = id.route and id or generate.course(id.generated or id)
+    local pts, surfaces = {}, {}
+    for i, w in ipairs(made.route.wps) do
+      pts[i] = { x = w.x, z = w.z, w = 6, road = w.road }
+      surfaces[i] = surface_of(w.road, made.props.surface)
+    end
+    local opts = racing.course_opts(made.props, surfaces, false)
+    opts.slope_of = function(L)
+      local slope, terrain = {}, made.route.terrain
+      for i = 1, L.n do
+        local hx, hz = generate.dsin(L.heading[i]), generate.dcos(L.heading[i])
+        slope[i] = generate.height(terrain, L.x[i] + hx, L.z[i] + hz) - generate.height(terrain, L.x[i] - hx, L.z[i] - hz)
+        slope[i] = slope[i] / 2
+      end
+      return slope
+    end
+    opts.standing = made.open
+    local line, sp = racing.build(pts, made.open, c, opts)
+    return sp.time, line, sp
   end
   local course = require("lib.course").of(id)
   local data = nova.scene_data(id)

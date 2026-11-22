@@ -16,6 +16,7 @@ local audio = require("lib.audio")
 local haptics = require("lib.haptics")
 local ui = require("lib.ui")
 local racing = require("lib.racing")
+local targets = require("lib.targets")
 
 local race = {}
 
@@ -532,6 +533,14 @@ function race.scene()
     local info = state.current_track()
     local class = state.current_car().class
     local driven = (pars[info.id] or {})[class]
+    if info.generated then
+      -- a made-up course: each section's ideal time for this car, at the pace the gold medal asks for (lib/targets.lua)
+      local ideal = targets.ideal(info, state.current_car())
+      local t = targets.of(info, state.current_car())
+      driven = {}
+      for k, sec in ipairs(ideal.sections) do driven[k] = sec * t.gold / t.ideal end
+      self.targets = t
+    end
     self.sections = {}
     local from = 0
     for k, g in ipairs(stage_lib.gates()) do
@@ -1320,6 +1329,15 @@ function race.scene()
       { "box", h = 1.5, draw = function(r) nova.ui.rect(r.x, r.y, r.w, r.h, C.divider) end } }
     if not self.stage and not self.trial then panel[#panel + 1] = fact("Position", ui.ordinal(p.place or 1) .. " of " .. #self.cars) end
     if self.stage then panel[#panel + 1] = fact("Score", tostring(self.score), C.gold) end
+    if info.generated then
+      -- a made-up course: the gold time to aim for, and on a Daily Race how long until the next one appears
+      local t = targets.of(info, state.current_car())
+      panel[#panel + 1] = fact("Gold / silver / bronze", ui.time(t.gold):gsub("%.%d%d$", "") .. " · " .. ui.time(t.silver):gsub("%.%d%d$", "") .. " · " .. ui.time(t.bronze):gsub("%.%d%d$", ""), C.gold)
+      if info.daily then
+        local daily = require("lib.daily")
+        panel[#panel + 1] = fact("Next Daily Race in", daily.clock_text(daily.until_next()))
+      end
+    end
     panel[#panel + 1] = fact("Weather", (look.weather and look.weather.kind == "snow") and "Snow" or (look.night and "Clear night" or "Clear"))
     panel[#panel + 1] = fact("Tyres", math.floor(p.tyres * 100 + 0.5) .. "%", p.tyres < 0.35 and C.gold or nil)
     panel[#panel + 1] = fact("Car damage", math.floor(p.damage * 100 + 0.5) .. "%", p.damage > 0.15 and C.gold or nil)
@@ -1365,11 +1383,40 @@ function race.scene()
     end
   end
 
+  -- A made-up course's medal (its gold, silver and bronze times for this car, lib/targets.lua), the codes played lately, and a Daily
+  -- Race's result for its day. Filled into state.result.generated.
+  function Race:generated_result(time)
+    local info = state.current_track()
+    local t = targets.of(info, state.current_car())
+    local medal = targets.medal(time, t)
+    local out = { medal = medal, targets = t, code = info.code, daily = info.daily }
+    state.add_recent(info.code)
+    if info.daily then out.best = require("lib.daily").record(info.day, time, medal) end
+    nova.log(string.format("results: %s %s, ideal %.1f, gold %.1f silver %.1f bronze %.1f: %s", info.code, ui.time(time), t.ideal, t.gold, t.silver, t.bronze, targets.NAMES[medal]))
+    return out
+  end
+
   function Race:to_results()
     if not self.trial then self:estimate_finishes() end
     local order = self:places()
     local info = state.current_track()
     local rows = {}
+    if self.stage and info.generated then
+      -- (a made-up stage: scored as any stage, but its progress is its medal, not the career's stars)
+      local total_time = self.player.finish_time
+      local stars = (self.score >= 4500 and 3) or (self.score >= 3500 and 2) or (self.score >= 2250 and 1) or 0
+      state.result = {
+        track = info.id, track_name = info.name, laps = 1, rows = {}, place = 1, time = total_time, trial = false,
+        rally = { sections = self.section_log, score = self.score, time = total_time, stars = stars, max = 1000 * #self.sections },
+      }
+      state.result.record_time = state.submit("rally", info.id, total_time)
+      state.result.generated = self:generated_result(total_time)
+      state.result.coins = state.reward(info, { stars = state.result.generated.medal })
+      state.add_coins(state.result.coins)
+      audio.stop_music(0.5)
+      nova.goto_scene("results")
+      return
+    end
     if self.stage then
       local total_time = self.player.finish_time
       local stars = (self.score >= 4500 and 3) or (self.score >= 3500 and 2) or (self.score >= 2250 and 1) or 0
@@ -1404,9 +1451,10 @@ function race.scene()
     if me.finish_time then state.result.record_time = state.submit("race" .. self.laps, info.id, me.finish_time) end
     if not self.trial and me.place == 1 and me.finish_time then state.add_win() end
     if self.best_lap then state.result.record_lap = state.submit("lap", info.id, self.best_lap) end
+    if info.generated and me.finish_time then state.result.generated = self:generated_result(me.finish_time) end
     -- the circuit's progress (a race against rivals) and the coins it pays
     if me.finish_time then
-      if not self.trial then state.result.opened = state.record(state.tracks, info.id, me.place) end
+      if not self.trial and not info.generated then state.result.opened = state.record(state.tracks, info.id, me.place) end
       state.result.coins = state.reward(info, self.trial and { trial = true, record = state.result.record_lap } or { place = me.place, laps = self.laps })
       state.add_coins(state.result.coins)
     end
