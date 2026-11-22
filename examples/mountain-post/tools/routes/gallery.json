@@ -1,7 +1,7 @@
 {
   "size": "1280x720",
   "start_scene": "valley",
-  "lua": "T = require('lib.testkit'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; require('lib.camera').reset(h) end",
+  "lua": "T = require('lib.testkit'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.camera').reset(h) end",
   "route": [
     { "wait": 20, "lua": "IN_VAN(4, -150, 0)" },
     { "lua": "T.drive('bridge_out')" },
@@ -11,7 +11,7 @@
     { "until": "nova.named('van').z > 14", "max": 600, "capture": "Kettle Creek Road's signpost" },
     { "until": "nova.named('van').z > 100", "max": 1200, "capture": "the picnic spot" },
     { "until": "T.arrived()", "max": 1800, "capture": "BRIDGE OUT" },
-    { "lua": "local s = nova.scene_now(); s.mode = 'foot'; local p = nova.named('postmaster'); p.hidden = false; p.x, p.z = 21.5, 219; p.face = 0.02; require('lib.camera').reset(0.02); local v = nova.named('van'); v:teleport(26, 205, 0.4)" },
+    { "lua": "local s = nova.scene_now(); s.mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; p.x, p.z = 21.5, 219; p.face = 0.02; require('lib.camera').reset(0.02); local v = nova.named('van'); v:teleport(26, 205, 0.4)" },
     { "wait": 90, "capture": "the view across the gorge" },
     { "lua": "IN_VAN(-40, -78, 1.75)" },
     { "lua": "T.drive('hazel')" },

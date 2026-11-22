@@ -1,7 +1,11 @@
 -- The valley (scenes/valley.scene.json, composed by tools/scene.mjs): Post Road with the post office and the BRIDGE OUT barrier,
--- Fern Lane up to No. 3, Kettle Creek Road over the creek to No. 7. On foot: A talks, hands over, takes a parcel out of the van's
--- back; B gets in beside the van. In the van: R2 goes, L2 brakes then reverses, the stick steers, B gets out when stopped, X is
--- the horn. Y is the paper map; Start pauses. Nothing on the screen points anywhere: the signposts and the mailboxes' numbers do.
+-- Fern Lane up to No. 3, Kettle Creek Road over the creek to No. 7. On foot: A talks and hands over; at the van's back (its doors
+-- swing open by themselves as the postmaster comes near) A loads the parcel carried, or, empty-handed, a small panel shows the
+-- parcels in the van one at a time (L1 and R1 go through them, A takes the one shown); B at the van's left doorway gets in. In the
+-- van: R2 goes, L2 brakes then reverses, the stick steers, B gets out when stopped, X is the horn. Y is the paper map; Start
+-- pauses. Nothing takes the stick away for a walk the player has to watch (the owner, after the second pictures: "The user should
+-- just be outside."): the porch door is a short fade, getting in and out is at once. Nothing on the screen points anywhere: the
+-- signposts and the mailboxes' numbers do.
 local state = require("lib.state")
 local world = require("lib.world")
 local camera = require("lib.camera")
@@ -13,9 +17,15 @@ local words = require("lib.words")
 
 local Valley = nova.scene {}
 
--- Where the postmaster stands to get in (by the driver's door, on the van's left: its +x side) and at the back doors.
-local DOOR = { 1.26, 0, 0.45 }  -- (the toy van: tools/van.mjs; its cab door is beside the big window)
-local BACK = { 0, 0, -2.15 }   -- (behind the flat back, clear of the doors as they swing out to the sides)
+-- Places by the van, in its own metres (+x is its left, +z its front; tools/van.mjs): outside the left doorway (the driver's
+-- side), and behind the back, clear of the doors as they swing out to the sides.
+Valley.DOOR = { 1.2, 0, 0.26 }
+Valley.BACK = { 0, 0, -1.95 }
+local DOOR, BACK = Valley.DOOR, Valley.BACK
+local BACK_OPEN, BACK_SHUT = 2.1, 2.6  -- the rear doors open as the postmaster comes this near the back, and shut again past the other
+local AT_BACK = 1.35                   -- near enough to load or take
+local AT_DOOR = 1.0                    -- near enough to the doorway to get in
+local FADE = 0.3                       -- the porch door's fade, out and in (seconds)
 
 function Valley:enter()
   -- (lib/world.lua was filled by the scene's own objects as they were made, before this runs: the roads' lines, the water, the bridge)
@@ -33,21 +43,25 @@ function Valley:enter()
   self.p = nova.named("postmaster")
   self.van = nova.named("van")
   self.p.indoors = false
+  self.p.seated = false
   self.t = 0
-  self.fade_in = 1
+  self.fade_in = state.came_out and 1 or 0
   self.mode = "foot"
-  self.seq = nil
   self.leaving = nil
+  self.pick_i = 1
   -- the van where it was left
   if state.van then self.van:teleport(state.van.x, state.van.z, state.van.heading) end
-  -- out of the office's door onto the porch
+  -- out of the office's door: standing on the porch a step out from the door, facing away from it, free to go at once; the camera
+  -- out in the yard looking at them and the door (as a village game shows a door: you walk out towards the camera), never inside
+  -- the building behind them
   local door = nova.named("office_door")
   if state.came_out then
     local fx, fz = math.sin(door.ry or 0), math.cos(door.ry or 0)
-    self.p.x, self.p.z, self.p.face = door.x + fx * 0.25, door.z + fz * 0.25, door.ry or 0
-    self.p.walk_to = { door.x + fx * 3.6, door.z + fz * 3.6 }
+    self.p.x, self.p.z, self.p.face = door.x + fx * 1.3, door.z + fz * 1.3, door.ry or 0
+    camera.reset((door.ry or 0) + math.pi)
+  else
+    camera.reset(self.p.face)
   end
-  camera.reset(self.p.face)
   ambience.start(nova.named("mast"))
   nova.music.play("fernhollow", { volume = 0.3, fade = 1.0 })
   nova.sound.play("door", { volume = state.came_out and 0.5 or 0, vary = 0.05 })
@@ -63,7 +77,7 @@ function Valley:enter()
       self.chimneys[#self.chimneys + 1] = { x = x, y = off[2], z = z, seed = #self.chimneys * 1.7 }
     end
   end
-  nova.log("valley: entered")
+  nova.log("valley: entered" .. (state.came_out and " from the porch" or ""))
 end
 
 function Valley:leave()
@@ -102,10 +116,15 @@ function Valley:resident_near()
   return nil
 end
 
--- What A and B would do now, on foot.
+-- How far the postmaster is from the van's back and from its left doorway.
+function Valley:to_back() local x, z = self:van_point(BACK); return dist(self.p, x, z) end
+function Valley:to_door() local x, z = self:van_point(DOOR); return dist(self.p, x, z) end
+
+-- What A and B would do now, on foot: A "talk", "give", "knock", "load" (the parcel carried into the open back) or "pick" (the
+-- one the panel shows out of it); B "get_in" at the left doorway. A third answer is the resident within reach.
 function Valley:actions()
   local p, v = self.p, self.van
-  if not p.control or self.seq then return nil, nil end
+  if not p.control or self.mode ~= "foot" then return nil, nil end
   local a, b
   local r = self:resident_near()
   if r then
@@ -113,10 +132,11 @@ function Valley:actions()
     elseif state.carrying == r.who then a = "give"
     else a = "knock" end
   end
-  local bx, bz = self:van_point(BACK)
-  if not a and state.in_van and not state.carrying and dist(p, bx, bz) < 1.6 then a = "unload" end
-  local dx, dz = self:van_point(DOOR)
-  if (dist(p, dx, dz) < 2.0 or dist(p, v.x, v.z) < 2.3) and v:stopped() then b = "get_in" end
+  if not a and v:stopped() and v.back_open > 0.5 and self:to_back() < AT_BACK then
+    if state.carrying and #state.van_load < state.VAN_HOLDS then a = "load"
+    elseif not state.carrying and #state.van_load > 0 then a = "pick" end
+  end
+  if v:stopped() and not state.carrying and self:to_door() < AT_DOOR then b = "get_in" end
   return a, b, r
 end
 
@@ -127,10 +147,6 @@ function Valley:say(r, lines, faces, on_done)
   r.talking = true
   self.p.control = false
   self.p:face_to(r.x, r.z)
-  -- (a comfortable step apart to talk: the postmaster steps back if they stand too close)
-  local dx, dz = self.p.x - r.x, self.p.z - r.z
-  local d = math.sqrt(dx * dx + dz * dz)
-  if d < 1.1 and d > 1e-3 then self.p.walk_to = { r.x + dx / d * 1.2, r.z + dz / d * 1.2 } end
   dialogue.start(r.who, words.people[r.who].name, lines, {
     -- (each line comes with its face: lib/words.lua `faces`)
     on_line = function(i) r:look(faces[i] or "neutral") end,
@@ -145,7 +161,7 @@ function Valley:say(r, lines, faces, on_done)
 end
 
 function Valley:act(a, r)
-  local p = self.p
+  local v = self.van
   if a == "give" then
     nova.log("handed " .. r.who .. " the parcel")
     state.carrying = nil
@@ -164,96 +180,132 @@ function Valley:act(a, r)
   elseif a == "knock" then
     nova.sound.play("knock", { volume = 0.6, at = { r.x, world.height(r.x, r.z) + 1, r.z }, range = 30 })
     self:say(r, { words.people[r.who].without }, { words.people[r.who].faces.without })
-  elseif a == "unload" then
-    -- out of the back: the doors open, the parcel comes into the arms, the doors shut
-    self.seq = { kind = "unload", t = 0 }
-    p.control = false
-    self.van.back_want = 1
-    nova.sound.play("van_back", { volume = 0.5, vary = 0.05 })
-    local bx, bz = self:van_point(BACK)
-    p:face_to(self.van.x, self.van.z)
+  elseif a == "load" then
+    -- into the hold, at once: the van dips a little on its springs
+    local which = state.carrying
+    state.van_load[#state.van_load + 1] = which
+    state.carrying = nil
+    nova.sound.play("parcel_down", { volume = 0.5, vary = 0.05 })
+    v:rock(0, -0.12)
+    nova.log("loaded " .. which)
+  elseif a == "pick" then
+    local i = math.max(1, math.min(#state.van_load, self.pick_i))
+    local which = table.remove(state.van_load, i)
+    state.carrying = which
+    self.pick_i = 1
+    nova.sound.play("parcel_up", { volume = 0.5, vary = 0.05 })
+    v:rock(0, 0.08)
+    nova.log("unloaded " .. which)
   end
 end
 
--- Getting in: with a parcel, round to the back first (the doors open, it goes in, they shut), then to the driver's door; the door
--- opens and shuts, the van rocks as the postmaster climbs in, and the view glides from behind them to behind the van.
-function Valley:start_boarding()
-  local p = self.p
+-- Getting in: into the seat at once (the van rocks as the postmaster climbs in; the view glides from behind them to behind the van).
+function Valley:get_in()
+  local p, v = self.p, self.van
+  p.seated = true
   p.control = false
-  if state.carrying then
-    local bx, bz = self:van_point(BACK)
-    self.seq = { kind = "load", t = 0, stage = "to_back" }
-    p.walk_to = { bx, bz }
-  else
-    local dx, dz = self:van_point(DOOR)
-    self.seq = { kind = "board", t = 0, stage = "to_door" }
-    p.walk_to = { dx, dz }
-  end
-  nova.log("getting in")
+  p:stop_walking()
+  v:rock(0.3, -0.18)
+  v.back_want = 0
+  camera.glide(0.7)
+  self.mode = "van"
+  v.driven = true
+  v.engine_on = true
+  nova.sound.play("step_wood", { volume = 0.4 })
+  nova.sound.play("engine_start", { volume = 0.5 })
+  nova.log("in the van")
 end
 
+-- Getting out: beside the left doorway at once (or the right one when the left is against something), facing the way the van faces,
+-- so the camera, which was behind the van, is behind them too, out beside the van with nothing in between.
 function Valley:get_out()
   local v, p = self.van, self.p
   v.driven = false
   v.ctl.go, v.ctl.brake, v.ctl.steer = 0, 0, 0
   v.engine_on = false
-  nova.sound.play("van_door", { volume = 0.55, vary = 0.05 })
   nova.sound.play("engine_off", { volume = 0.4 })
-  local dx, dz = self:van_point(DOOR)
-  -- (if the door is against something, out on the other side)
-  if world.blocked(dx, dz, 0.35) or nova.scenery.push(dx, dz, 0.35) then dx, dz = self:van_point({ -DOOR[1], 0, DOOR[3] }) end
-  p.x, p.z = self:van_point({ DOOR[1] * 0.55, 0, DOOR[3] })
-  if world.blocked(p.x, p.z, 0.3) then p.x, p.z = dx, dz end
-  p.face = v.heading + math.pi / 2
-  p.hidden = false
-  p.walk_to = { dx, dz }
-  p.control = false
+  nova.sound.play("step_wood", { volume = 0.4 })
+  local x, z = self:van_point(DOOR)
+  if world.blocked(x, z, 0.35) or nova.scenery.push(x, z, 0.35) then x, z = self:van_point({ -DOOR[1], 0, DOOR[3] }) end
+  p.seated = false
+  p.x, p.z = x, z
+  p.y = world.lift(x, z)
+  p.face = v.heading
+  p.speed = 0
+  p.control = true
   v:rock(-0.25, 0.15)
   self.mode = "foot"
-  self.seq = { kind = "alight", t = 0 }
-  camera.glide(0.8)
+  camera.state.yaw = v.heading
+  camera.state.boom = nil
+  camera.glide(0.6)
   nova.log("got out")
+end
+
+-- The rear doors swing open by themselves as the postmaster comes near the back on foot, and shut as they walk away.
+function Valley:back_doors()
+  local v = self.van
+  local near = self.mode == "foot" and v:stopped() and self:to_back() < (v.back_want > 0 and BACK_SHUT or BACK_OPEN)
+  if near and v.back_want == 0 then
+    v.back_want = 1
+    nova.sound.play("van_back", { volume = 0.5, vary = 0.05 })
+    nova.log("back doors open")
+  elseif not near and v.back_want > 0 then
+    v.back_want = 0
+    nova.sound.play("van_back_shut", { volume = 0.55, vary = 0.05 })
+    nova.log("back doors shut")
+  end
 end
 
 function Valley:update(dt)
   self.t = self.t + dt
-  self.fade_in = math.max(0, self.fade_in - dt * 1.5)
+  self.fade_in = math.max(0, self.fade_in - dt / FADE)
   local p, v = self.p, self.van
   if self.leaving then
     self.leaving = self.leaving + dt
-    if self.leaving > 0.55 then nova.goto_scene("office") end
+    if self.leaving > FADE then nova.goto_scene("office") end
     camera.foot(p, dt)
     return
   end
+  self:back_doors()
   -- what is open over the game first: a card, then a conversation
   if cards.active() then
     cards.update(dt)
     if self.mode == "van" then v.ctl.go, v.ctl.brake, v.ctl.steer = 0, 0.4, 0 end
     p.control = false
-    if not cards.active() and not self.seq and self.mode == "foot" and not dialogue.active() then p.control = true end
+    if not cards.active() and self.mode == "foot" and not dialogue.active() then p.control = true end
   elseif dialogue.active() then
     dialogue.update(dt)
-  elseif self.seq then
-    self:sequence(dt)
   elseif self.mode == "van" then
     if v.autopilot and not v.autopilot.done then v.autopilot:steer(v, dt)
     else v.ctl.go, v.ctl.brake, v.ctl.steer = nova.input.axis("go"), nova.input.axis("brake"), nova.input.axis("steer") end
-    if nova.input.pressed("horn") then nova.sound.play("horn", { volume = 0.7 }) end
+    if nova.input.pressed("horn") then
+      nova.sound.play("horn", { volume = 0.7 })
+      p:smile(1.2)
+    end
     if nova.input.pressed("van") and v:stopped() then self:get_out()
     elseif nova.input.pressed("map") then cards.open("map")
     elseif nova.input.pressed("pause") then cards.open("pause") end
   else
     p.control = true
     local a, b, r = self:actions()
+    if a == "pick" then
+      -- the panel at the open back: L1 and R1 go through the parcels in the van
+      local n = #state.van_load
+      self.pick_i = math.max(1, math.min(n, self.pick_i))
+      if n > 1 and nova.input.pressed("next") then self.pick_i = self.pick_i % n + 1; nova.sound.play("tick", { volume = 0.35 }) end
+      if n > 1 and nova.input.pressed("prev") then self.pick_i = (self.pick_i - 2) % n + 1; nova.sound.play("tick", { volume = 0.35 }) end
+    else
+      self.pick_i = 1
+    end
     if nova.input.pressed("act") and a then self:act(a, r)
-    elseif nova.input.pressed("van") and b == "get_in" then self:start_boarding()
+    elseif nova.input.pressed("van") and b == "get_in" then self:get_in()
     elseif nova.input.pressed("map") then cards.open("map")
     elseif nova.input.pressed("pause") then cards.open("pause") end
-    -- into the post office: up the porch steps and through its door
+    -- into the post office: up the porch steps and through its door (a short fade; inside they stand in the doorway, free at once)
     local door = nova.named("office_door")
-    -- (only once they have been out in the yard: coming out of the door they stand in it)
-    if door and dist(p, door.x, door.z) > 2.2 then self.door_armed = true end
-    if door and self.door_armed and dist(p, door.x, door.z) < 0.9 and not self.seq then
+    -- (only once they have stepped out of the doorway: coming out of it they stand a step away, already clear of it)
+    if door and dist(p, door.x, door.z) > 1.0 then self.door_armed = true end
+    if door and self.door_armed and dist(p, door.x, door.z) < 0.9 then
       self.leaving = 0
       p.control = false
       nova.sound.play("door", { volume = 0.5, vary = 0.05 })
@@ -262,8 +314,7 @@ function Valley:update(dt)
   end
   if self.mode == "van" then camera.van(v, dt)
   elseif self.talking_to and dialogue.active() then
-    -- (the postmaster faces whoever they talk with, once any step back is taken)
-    if not p.walk_to then p:face_to(self.talking_to.x, self.talking_to.z, dt) end
+    p:face_to(self.talking_to.x, self.talking_to.z, dt)
     camera.talk(p, self.talking_to, dt)
   else camera.foot(p, dt) end
   local e = camera.state.eye
@@ -272,78 +323,8 @@ function Valley:update(dt)
   self.hint = self:hints()
 end
 
--- The steps of getting in and out, loading and unloading, played over a second or two.
-function Valley:sequence(dt)
-  local s, p, v = self.seq, self.p, self.van
-  s.t = s.t + dt
-  if s.kind == "load" then
-    if s.stage == "to_back" then
-      p:face_to(v.x, v.z, dt)
-      if not p.walk_to or s.t > 3 then s.stage, s.t = "open", 0; v.back_want = 1; nova.sound.play("van_back", { volume = 0.5, vary = 0.05 }); p.walk_to = nil end
-    elseif s.stage == "open" then
-      p:face_to(v.x, v.z, dt)
-      if s.t > 0.45 then
-        state.in_van, state.carrying = state.carrying, nil
-        nova.sound.play("parcel_down", { volume = 0.5, vary = 0.05 })
-        nova.log("loaded " .. state.in_van)
-        v:rock(0, -0.12)
-        s.stage, s.t = "shut", 0
-      end
-    elseif s.stage == "shut" then
-      if s.t > 0.3 then
-        v.back_want = 0
-        nova.sound.play("van_back_shut", { volume = 0.55, vary = 0.05 })
-        local dx, dz = self:van_point(DOOR)
-        p.walk_to = { dx, dz }
-        self.seq = { kind = "board", t = 0, stage = "to_door" }
-      end
-    end
-  elseif s.kind == "board" then
-    if s.stage == "to_door" then
-      if not p.walk_to or s.t > 3 then
-        s.stage, s.t = "door", 0
-        p.walk_to = nil
-        nova.sound.play("van_door", { volume = 0.55, vary = 0.05 })
-      end
-    elseif s.stage == "door" then
-      -- a step up into the cab: the postmaster goes in, the van dips on its left springs
-      p:face_to(v.x, v.z, dt)
-      if s.t > 0.25 and not p.hidden then
-        p.hidden = true
-        v:rock(0.35, -0.2)
-        camera.glide(0.9)
-        self.mode = "van"
-        v.driven = true
-        v.engine_on = true
-        nova.sound.play("engine_start", { volume = 0.5 })
-        nova.log("in the van")
-      end
-      if s.t > 0.45 then self.seq = nil end
-    end
-  elseif s.kind == "alight" then
-    if not p.walk_to or s.t > 1 then
-      p.walk_to = nil
-      self.seq = nil
-      p.control = true
-    end
-  elseif s.kind == "unload" then
-    if s.t > 0.45 and state.in_van then
-      state.carrying, state.in_van = state.in_van, nil
-      nova.sound.play("parcel_up", { volume = 0.5, vary = 0.05 })
-      nova.log("unloaded " .. state.carrying)
-      v:rock(0, 0.08)
-    end
-    if s.t > 0.75 then
-      v.back_want = 0
-      nova.sound.play("van_back_shut", { volume = 0.55, vary = 0.05 })
-      cards.open("label", { which = state.carrying })
-      self.seq = nil
-    end
-  end
-end
-
 function Valley:hints()
-  if cards.active() or dialogue.active() or self.seq or self.leaving then return nil end
+  if cards.active() or dialogue.active() or self.leaving then return nil end
   local list = {}
   if self.mode == "van" then
     if self.van:stopped() then list[#list + 1] = { "B", words.hint.get_out } end
@@ -351,10 +332,19 @@ function Valley:hints()
     return list
   end
   local a, b = self:actions()
-  if a then list[#list + 1] = { "A", a == "give" and words.hint.give or a == "unload" and words.hint.take or a == "knock" and words.hint.knock or words.hint.talk } end
-  if b then list[#list + 1] = { "B", words.hint.get_in } end
+  if a == "pick" then return { { "Y", words.hint.map } } end -- (the panel has its own buttons)
+  if a then list[#list + 1] = { "A", a == "give" and words.hint.give or a == "load" and words.hint.load or a == "knock" and words.hint.knock or words.hint.talk } end
+  if b then list[#list + 1] = { "B", words.hint.get_in }
+  elseif state.carrying and self.van:stopped() and self:to_door() < AT_DOOR then list[#list + 1] = { nil, words.hint.load_at_back } end
   list[#list + 1] = { "Y", words.hint.map }
   return list
+end
+
+-- (what the panel at the van's back shows now, for the tests: nil when it is not open)
+function Valley:picker()
+  local a = self:actions()
+  if a ~= "pick" then return nil end
+  return state.van_load[math.max(1, math.min(#state.van_load, self.pick_i))]
 end
 
 local PUFF = { color = { 226, 226, 224, 70 } }
@@ -403,16 +393,16 @@ function Valley:draw_ui()
   local w, h = nova.view("exact")
   local p, v = self.p, self.van
   if not cards.active() then
-    if state.carrying then ui.parcel_card(state.carrying, "hands", w)
-    elseif state.in_van then ui.parcel_card(state.in_van, "van", w) end
+    ui.parcel_cards(state.carrying, state.van_load, w)
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
+    if not dialogue.active() and self:picker() then ui.picker(state.van_load, math.max(1, math.min(#state.van_load, self.pick_i)), w, h) end
   end
   dialogue.draw(w, h)
   cards.draw(w, h)
-  ui.fade(math.max(self.fade_in, self.leaving and self.leaving / 0.55 or 0), w, h)
+  ui.fade(math.max(self.fade_in, self.leaving and self.leaving / FADE or 0), w, h)
 end
 
 return Valley

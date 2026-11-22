@@ -112,6 +112,33 @@ def("stump", () => one([
   cyl([0, 0.665, 0], 0.37, 0.012, PAL.woodLight, { segments: 12 }),
 ], { colliders: [{ x: 0, z: 0, r: 0.45 }] }));
 
+// ---- forest masses: the wood where nobody goes (the valley's sides, beyond the creek, the far bank), as a toy diorama shows it ----------
+// (the owner, 2026-11-22: "Can we cut the trees a bit? Or do it in a different way?") Not trees one by one but a soft lumpy hill of
+// canopy: a row of big squashed puffs whose tops make a scalloped edge that reads as treetops, in the pine greens with a lighter
+// larch puff here and there, and a darker band of low wide puffs round its foot. Long along x; a capsule along its length blocks.
+// A few hundred triangles each; the scene places a few dozen of them, turned and scaled.
+const mass = (seed, L, D, H) => () => {
+  const R = rng(seed), c = [];
+  const n = Math.max(4, Math.round(L / (D * 0.6)));
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0.5 : i / (n - 1), x = (t - 0.5) * (L - D * 0.9);
+    const r = D * (0.46 + R() * 0.14), top = H * (0.62 + 0.38 * Math.sin(Math.PI * (0.15 + 0.7 * t)) * (0.8 + R() * 0.25));
+    const sq = Math.min(1.25, top / (r * 1.6));
+    const col = R() < 0.18 ? shade(PAL.larch, -0.12 - R() * 0.08) : shade(R() < 0.5 ? PAL.pine : PAL.pineDeep, (R() - 0.5) * 0.12);
+    c.push({ ...puff([x, top - r * sq, (R() - 0.5) * D * 0.3], r, col, sq, 7), smooth: true });
+  }
+  // the foot: a darker band of low, wide puffs, sunk a little into the ground so a slope never shows a gap
+  const m = Math.max(2, Math.round(L / (D * 1.3)));
+  for (let i = 0; i < m; i++) {
+    const t = m === 1 ? 0.5 : i / (m - 1), x = (t - 0.5) * (L - D * 0.8);
+    c.push({ ...puff([x, D * 0.08, 0], D * 0.58, shade(PAL.pineDeep, -0.28 - R() * 0.06), 0.42, 7), smooth: true });
+  }
+  return model([part("body", [0, 0, 0], c)], { capsules: [{ ax: -L / 2 + D * 0.4, az: 0, bx: L / 2 - D * 0.4, bz: 0, r: D * 0.42 }] });
+};
+def("forest_long", mass(21, 42, 13, 13));
+def("forest_tall", mass(22, 28, 15, 17));
+def("forest_round", mass(23, 20, 16, 14));
+
 // ---- run --------------------------------------------------------------------------------------------------------------------------------
 const want = process.argv.slice(2);
 for (const [name, fn] of Object.entries(made)) {

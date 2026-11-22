@@ -1,7 +1,7 @@
 {
   "size": "1280x720",
   "start_scene": "valley",
-  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); FOLLOW = nil; LOOK = function(lx, ly, lz, ty, fov) local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local g = nova.terrain_height(v.x, v.z); CAM.pinned = { v.x + s * lz + c * lx, g + ly, v.z + c * lz - s * lx, v.x, g + (ty or 0.9), v.z, fov or 40 } end; IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local sc = nova.scene_now(); sc.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').hidden = true; CAM.reset(h) end; PARK = function(x, z, h) local v = nova.named('van'); v.autopilot = nil; v.driven = false; v.engine_on = false; v:teleport(x, z, h); nova.scene_now().mode = 'foot'; nova.named('postmaster').hidden = false end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; FROM = function(name, ahead, side, up, look_up, fov) local d = nova.named(name); local ry = d.ry or 0; local fx, fz = math.sin(ry), math.cos(ry); AT(d.x + fx * ahead + fz * side, up, d.z + fz * ahead - fx * side, d.x, look_up, d.z, fov) end",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); FOLLOW = nil; LOOK = function(lx, ly, lz, ty, fov) local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local g = nova.terrain_height(v.x, v.z); CAM.pinned = { v.x + s * lz + c * lx, g + ly, v.z + c * lz - s * lx, v.x, g + (ty or 0.9), v.z, fov or 40 } end; IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local sc = nova.scene_now(); sc.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(h) end; PARK = function(x, z, h) local v = nova.named('van'); v.autopilot = nil; v.driven = false; v.engine_on = false; v:teleport(x, z, h); nova.scene_now().mode = 'foot'; nova.named('postmaster').seated = false end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; FROM = function(name, ahead, side, up, look_up, fov) local d = nova.named(name); local ry = d.ry or 0; local fx, fz = math.sin(ry), math.cos(ry); AT(d.x + fx * ahead + fz * side, up, d.z + fz * ahead - fx * side, d.x, look_up, d.z, fov) end",
   "each_frame": "if FOLLOW then FOLLOW() end",
   "route": [
     { "wait": 30, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 9.0, -175.5, -1.4" },
@@ -30,9 +30,9 @@
     { "wait": 30, "capture": "street view: No. 3, the mailbox, the van" },
     { "lua": "PARK(12.5, -80, 0.2); local p = nova.named('postmaster'); p.x, p.z, p.face = 14, -76, 2.6; local s = nova.named('sign_1'); AT(s.x - 12, 2.4, s.z - 14, s.x, 2.6, s.z, 55)" },
     { "wait": 30, "capture": "street view: the Fern Lane signpost, the van" },
-    { "lua": "PARK(13.5, -170.5, 0.3); require('lib.state').carrying = 'hazel'; local p = nova.named('postmaster'); local s = nova.scene_now(); p.x, p.z = s:van_point({ -1.6, 0, -2.6 }); s:start_boarding(); LOOK(-3.6, 1.7, -4.4, 0.8, 42)" },
-    { "until": "nova.scene_now().seq and nova.scene_now().seq.stage == 'open' and nova.named('van').back_open > 0.6", "max": 300 },
-    { "wait": 1, "capture": "loading a parcel at the back" }
+    { "lua": "PARK(13.5, -170.5, 0.3); require('lib.state').carrying = 'hazel'; local p = nova.named('postmaster'); local s = nova.scene_now(); p.x, p.z = s:van_point(s.BACK); p.face = nova.named('van').heading; LOOK(-3.6, 1.7, -4.4, 0.8, 42)" },
+    { "until": "nova.named('van').back_open > 0.9", "max": 300 },
+    { "wait": 1, "capture": "the rear doors open by themselves: Load package" }
   ],
   "out": "build/look_run"
 }

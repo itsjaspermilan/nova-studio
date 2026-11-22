@@ -2,7 +2,9 @@
 -- as the camera sees it, in two gaits by how far it is pushed: a gentle tilt is the waddling walk; a full push is a run with the
 -- arms held straight out to the sides like wings (the "run" clip; the walk and run clips are mixed by speed, so the arms ease up
 -- and down as it speeds up and slows). Carrying a parcel, the arms hold it at the chest (the "carry" clip laid over the arms) and
--- the full push is a brisk trot instead. The scene decides what A and B do; this file only moves, animates and is heard.
+-- the full push is a brisk trot instead. In the van they sit at the wheel (the "sit" clip), drawn in the cab and carried by the
+-- body as it leans, the hands on the wheel as it turns, the head turning a little into a bend. The scene decides what A and B do;
+-- this file only moves, animates and is heard.
 local world = require("lib.world")
 local state = require("lib.state")
 local camera = require("lib.camera")
@@ -29,7 +31,7 @@ function Postmaster:create()
   self.face = self.ry or 0
   self.speed = 0
   self.control = true          -- the stick moves it (false while it talks, reads, or gets into the van)
-  self.hidden = false          -- in the van
+  self.seated = false          -- at the wheel of the van (the scene sets it getting in and out)
   self.steps = 0
   self.carry_w = 0
   self.anim = nova.animator("postmaster", {
@@ -39,6 +41,7 @@ function Postmaster:create()
       -- (with a parcel: the walk, then the trot; the carry is laid over the arms of both)
       laden = { blend = "speed", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP_CARRY, "trot" } } },
       wave = { clip = "wave", loop = false, next = "move", fade = 0.15 },
+      sit = { clip = "sit", fade = 0.1 },
     },
     on_event = function(event) if event == "step" then self:step() end end,
   })
@@ -56,7 +59,7 @@ function Postmaster:smile(seconds) face.set(self.mood, "happy", seconds or 2.5);
 
 function Postmaster:step()
   self.steps = self.steps + 1
-  if self.hidden then return end
+  if self.seated then return end
   local s = self.indoors and "wood" or world.surface(self.x, self.z)
   local name = (s == "road" and "step_road") or ((s == "gravel") and "step_gravel") or ((s == "bridge" or s == "wood") and "step_wood") or "step_grass"
   if self.gait == "run" or self.gait == "trot" then
@@ -71,6 +74,9 @@ function Postmaster:step()
   end
 end
 
+-- (a walk a test or a picture set going is dropped: getting into the van)
+function Postmaster:stop_walking() self.walk_to, self.walk_path = nil, nil end
+
 -- Turn to face a point (for a resident, a shelf, the van's door).
 function Postmaster:face_to(x, z, dt)
   local want = math.atan(x - self.x, z - self.z)
@@ -79,8 +85,9 @@ function Postmaster:face_to(x, z, dt)
 end
 
 function Postmaster:update(dt)
+  if self.seated then return self:sit(dt) end
   local mx, my = 0, 0
-  if self.control and not self.hidden then mx, my = nova.input.axis("move_x"), nova.input.axis("move_y") end
+  if self.control then mx, my = nova.input.axis("move_x"), nova.input.axis("move_y") end
   local fx, fz = camera.forward()
   local rx, rz = -fz, fx -- (the camera's right: +x is the left of one facing +z)
   local dx, dz = rx * mx - fx * my, rz * mx - fz * my
@@ -109,11 +116,11 @@ function Postmaster:update(dt)
     self.face = self.face + turn * math.min(1, dt * 11)
     self.dir_x, self.dir_z = dx / math.max(len, 1e-6), dz / math.max(len, 1e-6)
   end
-  if self.speed > 0.01 and self.dir_x and not self.hidden then
+  if self.speed > 0.01 and self.dir_x then
     local nx, nz = world.move(self.x, self.z, self.dir_x * self.speed * dt, self.dir_z * self.speed * dt, RADIUS)
     self.x, self.z = nx, nz
   end
-  if not self.hidden then self:keep_clear() end
+  self:keep_clear()
   self.y = self.indoors and 0 or world.lift(self.x, self.z)
   self.carry_w = self.carry_w + ((state.carrying and 1 or 0) - self.carry_w) * math.min(1, dt * 8)
   local laden = state.carrying ~= nil
@@ -155,11 +162,57 @@ function Postmaster:hands()
 end
 
 local DUST = { color = { 196, 178, 150, 110 } }
+-- At the wheel: the place in the cab (the van's own metres, tools/van.mjs SEAT less the seated body's depth under its feet's
+-- level), kept with the van as it moves; the clip is the seated one.
+Postmaster.SEAT = { 0.3, 0.575, 0.26 }
+function Postmaster:sit(dt)
+  local v = nova.first("van")
+  if v then
+    local x, _, z = v:to_world(self.SEAT[1], 0, self.SEAT[3])
+    self.x, self.y, self.z = x, 0, z
+    self.face = v.heading
+  end
+  self.speed, self.gait = 0, "still"
+  self.anim:play("sit", { fade = 0.1 })
+  self.anim.speed = 1
+  self.anim:update(dt)
+  self.carry_w = 0
+  face.update(self.mood, dt)
+end
+
+local SEATED = { ry = 0, rx = 0, rz = 0, lift = "origin" }
+function Postmaster:draw_seated(v)
+  -- in the cab, carried by the body: the van's turn, then the body's pitch and roll, at the seat's place in the leaning body
+  local sx, sy, sz = v:to_world(self.SEAT[1], self.SEAT[2], self.SEAT[3])
+  -- (drawn lifted by the ground under its own place, like the van by the ground under its middle: take the difference off)
+  sy = sy + nova.terrain_height(v.x, v.z) - nova.terrain_height(sx, sz)
+  local parts = face.parts(self.mood)
+  -- the hands go round with the wheel (one up, one down), the head looks a little into the bend, the tail tucked away behind
+  local turn = -(v.steer or 0)
+  parts.arm_l = parts.arm_l or {}
+  parts.arm_r = parts.arm_r or {}
+  parts.head = parts.head or {}
+  parts.tail = parts.tail or {}
+  parts.arm_l.rx, parts.arm_r.rx = turn * 0.32, -turn * 0.32
+  parts.head.ry = turn * 0.32
+  parts.tail.visible = false
+  SEATED.ry, SEATED.rx, SEATED.rz, SEATED.parts = v.heading, v.pitch or 0, v.roll or 0, parts
+  self.anim:draw(sx, sy, sz, SEATED)
+end
+
 function Postmaster:draw()
-  if self.hidden or self.visible == false then return end
+  if self.visible == false then return end
+  if self.seated then
+    local v = nova.first("van")
+    if v then self:draw_seated(v) end
+    return
+  end
   self.carry_layer[1].weight = self.carry_w
   local o = self.draw_opts
-  o.ry, o.extra, o.parts = self.face, self.carry_w > 0.01 and self.carry_layer or nil, face.parts(self.mood)
+  local parts = face.parts(self.mood)
+  -- (the turns the seat gave the arms, the head and the tail are let go)
+  if parts.arm_l then parts.arm_l.rx, parts.arm_r.rx, parts.head.ry, parts.tail.visible = 0, 0, 0, true end
+  o.ry, o.extra, o.parts = self.face, self.carry_w > 0.01 and self.carry_layer or nil, parts
   self.anim:draw(self.x, self.y, self.z, o)
   for _, p in ipairs(self.dust) do
     local k = p.age / 0.5

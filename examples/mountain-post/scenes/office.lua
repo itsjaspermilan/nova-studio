@@ -1,6 +1,9 @@
 -- The post office's room (scenes/office.scene.json): dusty, half the pigeonholes empty, the Mayor's letter on the counter and the
 -- day's two parcels on the shelf by the window. A reads the letter, takes a parcel (one at a time; its label is held up to read)
--- or puts it back; the doorway leads out to the porch. Coming back in with both delivered, the slice ends on its quiet card.
+-- or puts it back; the doorway leads out to the porch (a short fade, and they stand outside, free at once). Coming back in with both
+-- delivered, the slice ends on its quiet card. The room is seen from one fixed view high over its cut-away front wall, like a
+-- diorama ("when in a building, we should just have a simple top down view like Animal Crossing"); the stick moves the postmaster
+-- as the screen shows the room.
 local state = require("lib.state")
 local world = require("lib.world")
 local camera = require("lib.camera")
@@ -11,6 +14,7 @@ local words = require("lib.words")
 local Office = nova.scene {}
 
 local LETTER_AT = { 1.0, -0.45 }
+local FADE = 0.3
 
 function Office:enter()
   world.clear()
@@ -25,16 +29,15 @@ function Office:enter()
   self.p = nova.named("postmaster")
   self.p.indoors = true
   self.t = 0
-  self.fade_in = 1
+  self.fade_in = state.came_out and 1 or 0
   self.leaving = nil
   camera.reset(math.pi)
   if state.came_out then
-    -- in through the door
+    -- in through the door: standing just inside it, facing into the room, free at once
     local d = nova.named("office_exit")
-    self.p.x, self.p.z, self.p.face = d.x, d.z - 0.6, math.pi
-    self.p.walk_to = { d.x - 0.2, d.z - 1.4 }
-    camera.reset(math.pi)
+    self.p.x, self.p.z, self.p.face = d.x, d.z - 0.75, math.pi
   end
+  camera.room(0)
   nova.music.play("fernhollow", { volume = 0.3, fade = 1.0 })
   nova.sound.play("door", { volume = state.came_out and 0.5 or 0, vary = 0.05 })
   self.ending_at = (state.all_delivered() and not state.ended) and 1.4 or nil
@@ -66,7 +69,7 @@ end
 
 function Office:update(dt)
   self.t = self.t + dt
-  self.fade_in = math.max(0, self.fade_in - dt * 2)
+  self.fade_in = math.max(0, self.fade_in - dt / FADE)
   local p = self.p
   if cards.active() then
     p.control = false
@@ -74,7 +77,7 @@ function Office:update(dt)
     if not cards.active() then p.control = true end
   elseif self.leaving then
     self.leaving = self.leaving + dt
-    if self.leaving > 0.55 then
+    if self.leaving > FADE then
       state.came_out = true
       nova.goto_scene("valley")
     end
@@ -123,7 +126,7 @@ function Office:update(dt)
       nova.log("office: out of the door")
     end
   end
-  camera.foot(p, dt, true)
+  camera.room(dt)
   self.hint = self:hints()
 end
 
@@ -157,10 +160,10 @@ end
 
 function Office:draw_ui()
   local w, h = nova.view("exact")
-  if state.carrying then ui.parcel_card(state.carrying, "hands", w) end
+  ui.parcel_cards(state.carrying, state.van_load, w)
   if not cards.active() then ui.hints(self.hint, w, h) end
   cards.draw(w, h)
-  ui.fade(math.max(self.fade_in, self.leaving and self.leaving / 0.55 or 0), w, h)
+  ui.fade(math.max(self.fade_in, self.leaving and self.leaving / FADE or 0), w, h)
 end
 
 return Office

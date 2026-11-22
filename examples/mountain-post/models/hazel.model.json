@@ -17962,6 +17962,20 @@
         { "part": ["hips","spine","head"], "prop": "rotation", "keys": [{ "t": 0, "value": [8, 6, 4], "ease": "inout" }, { "t": 0.4, "value": [10, -4, -4], "ease": "inout" }, { "t": 0.8, "value": [8, 6, 4] }] },
         { "part": ["hips","tail"], "prop": "rotation", "keys": [{ "t": 0, "value": [0, 10, 0], "ease": "inout" }, { "t": 0.4, "value": [0, -10, 0], "ease": "inout" }, { "t": 0.8, "value": [0, 10, 0] }] }
       ]
+    },
+    {
+      "name": "sit",
+      "duration": 2,
+      "loop": true,
+      "tracks": [
+        { "part": ["hips","leg_l"], "prop": "rotation", "keys": [{ "t": 0, "value": [-82, 0, 0] }, { "t": 2, "value": [-82, 0, 0] }] },
+        { "part": ["hips","spine","arm_l"], "prop": "rotation", "keys": [{ "t": 0, "value": [-64, 0, -5.6000000000000005], "ease": "inout" }, { "t": 1, "value": [-66, 0, -5.6000000000000005], "ease": "inout" }, { "t": 2, "value": [-64, 0, -5.6000000000000005] }] },
+        { "part": ["hips","leg_r"], "prop": "rotation", "keys": [{ "t": 0, "value": [-82, 0, 0] }, { "t": 2, "value": [-82, 0, 0] }] },
+        { "part": ["hips","spine","arm_r"], "prop": "rotation", "keys": [{ "t": 0, "value": [-64, 0, 5.6000000000000005], "ease": "inout" }, { "t": 1, "value": [-66, 0, 5.6000000000000005], "ease": "inout" }, { "t": 2, "value": [-64, 0, 5.6000000000000005] }] },
+        { "part": ["hips","spine"], "prop": "rotation", "keys": [{ "t": 0, "value": [-3, 0, 0], "ease": "inout" }, { "t": 1, "value": [-1.5, 0, 0], "ease": "inout" }, { "t": 2, "value": [-3, 0, 0] }] },
+        { "part": ["hips","spine","head"], "prop": "rotation", "keys": [{ "t": 0, "value": [2, 0, 0], "ease": "inout" }, { "t": 1, "value": [1, 0, 0], "ease": "inout" }, { "t": 2, "value": [2, 0, 0] }] },
+        { "part": ["hips","tail"], "prop": "rotation", "keys": [{ "t": 0, "value": [0, 4, 0], "ease": "inout" }, { "t": 1, "value": [0, -4, 0], "ease": "inout" }, { "t": 2, "value": [0, 4, 0] }] }
+      ]
     }
   ]
 }

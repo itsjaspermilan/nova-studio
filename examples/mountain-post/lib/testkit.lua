@@ -13,7 +13,7 @@ end
 function testkit.lead(name) nova.scene_now():lead_to(name) end
 function testkit.to_van(where)
   local s = nova.scene_now()
-  local x, z = s:van_point(where == "back" and { 0, 0, -2.15 } or { 1.26, 0, 0.45 })
+  local x, z = s:van_point(where == "back" and s.BACK or s.DOOR)
   local p = nova.named("postmaster")
   -- (round the van's nose or tail, whichever side the postmaster is on, then to the spot)
   local lx, lz = s:van_point({ 2.0, 0, -2.6 })
@@ -21,6 +21,9 @@ function testkit.to_van(where)
   p.walk_to = nil
   p.walk_pace = 1.8 -- (a run, or a trot with a parcel: the tests hurry)
 end
+-- In the valley: the postmaster straight into the van's seat or out beside it (a test's or a picture's shortcut; the game does the
+-- same on B at the doorway).
+function testkit.board() nova.scene_now():get_in() end
 function testkit.walking() local p = nova.named("postmaster"); return p.walk_to ~= nil or #(p.walk_path or {}) > 0 end
 function testkit.drive(place) nova.named("van").autopilot = require("lib.autopilot").to(place) end
 function testkit.arrived() local v = nova.named("van"); return v.autopilot ~= nil and v.autopilot.done end

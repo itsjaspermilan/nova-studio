@@ -28,9 +28,9 @@ img("fx/po_sign", [512, 104], [
   { text: "POST OFFICE", at: [256, 88], size: 52, font: "serif", align: "center", fill: "#efe2c2dd" },
 ]);
 // (the van's sides: chunky painted letters in the stripe's red and the postmaster's blue, thick enough to read from the chase camera)
-img("fx/van_side", [880, 270], [
-  { text: "FERNHOLLOW", at: [440, 128], size: 132, font: "rounded", align: "center", fill: PAL.red, stroke: { color: PAL.red, width: 9 } },
-  { text: "POST", at: [440, 250], size: 104, font: "rounded", align: "center", fill: BLUE, stroke: { color: BLUE, width: 7 } },
+img("fx/van_side", [880, 300], [
+  { text: "FERNHOLLOW", at: [440, 132], size: 128, font: "rounded", align: "center", fill: PAL.red, stroke: { color: PAL.red, width: 12 } },
+  { text: "POST", at: [440, 282], size: 124, font: "rounded", align: "center", fill: BLUE, stroke: { color: BLUE, width: 12 } },
 ]);
 img("fx/puff", [64, 64], [{ circle: [32, 32, 22], fill: { radial: [32, 32, 30], stops: [[0, "#ffffffee"], [0.6, "#ffffff88"], [1, "#ffffff00"]] }, blur: 3 }]);
 img("fx/mote", [16, 16], [{ circle: [8, 8, 5], fill: { radial: [8, 8, 7], stops: [[0, "#fff8e0ff"], [1, "#fff8e000"]] } }]);
