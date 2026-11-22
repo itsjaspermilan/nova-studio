@@ -99,8 +99,14 @@ export function gableEnd(x0, x1, y0, y1, zf, color, thick = 0.12) {
 export function part(name, origin, cubes, children = [], rotation = [0, 0, 0]) {
   return { name, origin: P(origin), rotation, cubes, children };
 }
+/// A model document. `extra` may carry what it blocks, given here in metres (colliders, capsules, boxes; a box's turn in degrees):
+/// the document keeps them in model units, like its points.
 export function model(parts, extra = {}) {
-  return { version: 1, scale: 1 / U, parts, ...extra };
+  const out = { ...extra };
+  if (extra.colliders) out.colliders = extra.colliders.map((c) => ({ x: u(c.x), z: u(c.z), r: u(c.r) }));
+  if (extra.capsules) out.capsules = extra.capsules.map((c) => ({ ax: u(c.ax), az: u(c.az), bx: u(c.bx), bz: u(c.bz), r: u(c.r) }));
+  if (extra.boxes) out.boxes = extra.boxes.map((c) => ({ x: u(c.x), z: u(c.z), hw: u(c.hw), hl: u(c.hl), turn: c.turn ?? 0 }));
+  return { version: 1, scale: 1 / U, parts, ...out };
 }
 /// A model of one part, its shapes given relative to the model's origin.
 export const one = (cubes, extra = {}) => model([part("body", [0, 0, 0], cubes)], extra);

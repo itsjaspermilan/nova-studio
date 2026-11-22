@@ -8,16 +8,16 @@
       "rotation": [0, 0, 0],
       "cubes": [
         { "shape": "cylinder", "from": [-2.08, 0, -2.08], "size": [4.16, 115.2, 4.16], "segments": 6, "color": "#6b4a35" },
-        { "shape": "cone", "from": [-31.2, 25.6, -31.2], "size": [62.4, 25.6, 62.4], "segments": 7, "color": "#96b856" },
-        { "shape": "cone", "from": [-26.933, 38.827, -26.933], "size": [53.867, 25.6, 53.867], "segments": 7, "color": "#a4c467" },
-        { "shape": "cone", "from": [-22.667, 52.053, -22.667], "size": [45.333, 25.6, 45.333], "segments": 7, "color": "#a8c76e" },
-        { "shape": "cone", "from": [-18.4, 65.28, -18.4], "size": [36.8, 25.6, 36.8], "segments": 7, "color": "#abc973" },
-        { "shape": "cone", "from": [-14.133, 78.507, -14.133], "size": [28.267, 25.6, 28.267], "segments": 7, "color": "#a6c66b" },
-        { "shape": "cone", "from": [-9.867, 91.733, -9.867], "size": [19.733, 25.6, 19.733], "segments": 7, "color": "#a5c569" },
-        { "shape": "cone", "from": [-4.8, 114.56, -4.8], "size": [9.6, 19.2, 9.6], "segments": 6, "color": "#b0cc6a" }
+        { "shape": "cone", "from": [-31.2, 25.6, -31.2], "size": [62.4, 25.6, 62.4], "segments": 7, "color": "#8bad5b" },
+        { "shape": "cone", "from": [-26.933, 38.827, -26.933], "size": [53.867, 25.6, 53.867], "segments": 7, "color": "#96b868" },
+        { "shape": "cone", "from": [-22.667, 52.053, -22.667], "size": [45.333, 25.6, 45.333], "segments": 7, "color": "#9abb6e" },
+        { "shape": "cone", "from": [-18.4, 65.28, -18.4], "size": [36.8, 25.6, 36.8], "segments": 7, "color": "#9dbc72" },
+        { "shape": "cone", "from": [-14.133, 78.507, -14.133], "size": [28.267, 25.6, 28.267], "segments": 7, "color": "#99ba6c" },
+        { "shape": "cone", "from": [-9.867, 91.733, -9.867], "size": [19.733, 25.6, 19.733], "segments": 7, "color": "#98b96b" },
+        { "shape": "cone", "from": [-4.8, 114.56, -4.8], "size": [9.6, 19.2, 9.6], "segments": 6, "color": "#a2c06c" }
       ],
       "children": []
     }
   ],
-  "colliders": [{ "x": 0, "z": 0, "r": 0.3 }]
+  "colliders": [{ "x": 0, "z": 0, "r": 4.8 }]
 }

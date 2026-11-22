@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "volume": 0.8,
+  "seed": 1,
+  "width": 0.4,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0,
+      "decay": 0.01,
+      "volume": 0.35,
+      "filter": "highpass",
+      "cutoff": 3800
+    },
+    {
+      "wave": "noise",
+      "attack": 0.01,
+      "decay": 0.1,
+      "volume": 0.6,
+      "filter": "bandpass",
+      "cutoff": 3800,
+      "cutoffEnd": 2200,
+      "q": 0.9
+    },
+    {
+      "wave": "crackle",
+      "freq": 400,
+      "hold": 0.04,
+      "decay": 0.08,
+      "volume": 0.3,
+      "filter": "highpass",
+      "cutoff": 3000
+    }
+  ]
+}

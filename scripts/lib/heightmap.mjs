@@ -296,7 +296,16 @@ export function heightmapFromNetwork(spec) {
     const j0 = Math.max(0, Math.floor((Math.min(az, bz) - reach - z0) / cell)), j1 = Math.min(rows - 1, Math.ceil((Math.max(az, bz) + reach - z0) / cell));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * width + i, x0 + i * cell, z0 + j * cell);
   };
-  const hold = (k, w, level) => { if (w > weight[k]) { weight[k] = w; target[k] = level; } };
+  // (where two features meet, a lane and a yard, their levels are blended by their weights squared, so the ground runs smoothly from
+  // one to the other instead of stepping where the firmer one takes over)
+  const wsum = new Float32Array(width * rows);
+  const hold = (k, w, level) => {
+    if (w <= 0) return;
+    const q = w * w;
+    target[k] = (target[k] * wsum[k] + level * q) / (wsum[k] + q);
+    wsum[k] += q;
+    if (w > weight[k]) weight[k] = w;
+  };
   // (the distance from a sample to a segment, and how far along it)
   const along = (px, pz, a, b) => {
     const dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1;
@@ -318,9 +327,17 @@ export function heightmapFromNetwork(spec) {
     const [px0, pz0] = Array.isArray(p.at) ? p.at : [];
     if (!Number.isFinite(px0) || !Number.isFinite(pz0)) throw new Error(`pads[${n}].at is [x, z]`);
     const radius = p.radius ?? 8, blend = p.blend ?? 14;
-    const fi = Math.min(width - 1, Math.max(0, Math.round((px0 - x0) / cell))), fj = Math.min(rows - 1, Math.max(0, Math.round((pz0 - z0) / cell)));
-    const k0 = fj * width + fi;
-    const level = p.height ?? heights[k0] + (target[k0] - heights[k0]) * weight[k0];
+    // (a yard beside a road is level with the road there; one out on its own keeps the ground's height)
+    let level = p.height;
+    if (level === undefined) {
+      let best = Infinity;
+      for (const r of roads) r.line.forEach((q, i) => { const d = Math.hypot(q.x - px0, q.z - pz0); if (d < best) { best = d; level = r.elev[i]; } });
+      if (best > radius + 25) {
+        const fi = Math.min(width - 1, Math.max(0, Math.round((px0 - x0) / cell))), fj = Math.min(rows - 1, Math.max(0, Math.round((pz0 - z0) / cell)));
+        const k0 = fj * width + fi;
+        level = heights[k0] + (target[k0] - heights[k0]) * weight[k0];
+      }
+    }
     padLevels.push(level);
     near(px0, pz0, px0, pz0, radius + blend, (k, x, z) => hold(k, 1 - smoothstep(radius, radius + blend, Math.hypot(x - px0, z - pz0)), level));
   }

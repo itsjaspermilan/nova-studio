@@ -16,5 +16,5 @@
       "children": []
     }
   ],
-  "colliders": [{ "x": 0, "z": 0, "r": 0.5 }]
+  "colliders": [{ "x": 0, "z": 0, "r": 8 }]
 }

@@ -81,10 +81,12 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       }
       const lines = made.map(({ name, prop, wrote }) => {
         const m = prop.model;
+        // (the model keeps its shapes in model units; said here in metres)
+        const k = (v: number) => Math.round((v * (m.scale ?? 1 / 16)) * 1000) / 1000;
         const blocks = [
-          ...(m.colliders ?? []).map((c: Args) => `circle r ${c.r}${c.x || c.z ? ` at ${c.x}, ${c.z}` : ""}`),
-          ...(m.boxes ?? []).map((b: Args) => `box ${b.hw * 2} x ${b.hl * 2}${b.x || b.z ? ` at ${b.x}, ${b.z}` : ""}`),
-          ...(m.capsules ?? []).map((c: Args) => `capsule r ${c.r} from ${c.ax}, ${c.az} to ${c.bx}, ${c.bz}`),
+          ...(m.colliders ?? []).map((c: Args) => `circle r ${k(c.r)}${c.x || c.z ? ` at ${k(c.x)}, ${k(c.z)}` : ""}`),
+          ...(m.boxes ?? []).map((b: Args) => `box ${k(b.hw * 2)} x ${k(b.hl * 2)}${b.x || b.z ? ` at ${k(b.x)}, ${k(b.z)}` : ""}`),
+          ...(m.capsules ?? []).map((c: Args) => `capsule r ${k(c.r)} from ${k(c.ax)}, ${k(c.az)} to ${k(c.bx)}, ${k(c.bz)}`),
         ];
         const e = prop.entity;
         return `  ${name} (${prop.kind}): models/${name}.glb${wrote}; ${prop.size.w} x ${prop.size.h} x ${prop.size.d} m (x, y, z). ${prop.says}. Collider${blocks.length === 1 ? "" : "s"}: ${blocks.join("; ") || "none"}. Entity: ${e.spins ? `a live one tagged "${name}" and "pickup" that turns and bobs` : `nova.entity { model = "${name}", static = true${e.solid ? ", solid = true" : ""}${e.sway ? `, sway = ${e.sway}` : ""}, on_ground = true }`}${prop.light ? `. Light: nova.point_light(x + ${prop.light.x}, y + ${prop.light.y}, z + ${prop.light.z}, { radius = ${prop.light.radius}, color = { ${prop.light.color.join(", ")} } }) in the scene's draw, for each one placed (turned by its ry: the lamp is ${prop.light.z} in front of the post)` : ""}`;

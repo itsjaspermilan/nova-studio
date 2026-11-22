@@ -4,7 +4,7 @@
 
 import { rngOf } from "./paint";
 import { paletteOf } from "./palettes";
-import { between, blend, choice, colours, Mesh3, modelDoc, part, pick, tone, type Args, type Rand, type V3 } from "./kit3d";
+import { between, blend, choice, colours, Mesh3, modelDoc, part, pick, tone, U, type Args, type Rand, type V3 } from "./kit3d";
 
 export const PROP_KINDS = [
   "tree", "pine", "dead_tree", "bush", "rock", "grass", "flowers", "mushroom", "log", "fence", "crate", "barrel", "lantern", "sign", "well",
@@ -571,10 +571,13 @@ export function makeProp(a: Args): Prop {
     hi[1] -= lo[1];
     lo[1] = 0;
   }
+  // (the shapes are worked out in metres; a model document keeps them in model units, which the export scales by the model's
+  // `scale` like its points: before 2026-11-22 they were written in metres and so came out 16 times too small in the game)
+  const mu = (v: number) => Math.round(v * U * 1000) / 1000;
   const model = modelDoc([part(kind, [0, 0, 0], meshes)], {
-    ...(b.colliders?.length ? { colliders: b.colliders } : {}),
-    ...(b.capsules?.length ? { capsules: b.capsules } : {}),
-    ...(b.boxes?.length ? { boxes: b.boxes } : {}),
+    ...(b.colliders?.length ? { colliders: b.colliders.map((c) => ({ x: mu(c.x), z: mu(c.z), r: mu(c.r) })) } : {}),
+    ...(b.capsules?.length ? { capsules: b.capsules.map((c: Args) => ({ ax: mu(c.ax), az: mu(c.az), bx: mu(c.bx), bz: mu(c.bz), r: mu(c.r) })) } : {}),
+    ...(b.boxes?.length ? { boxes: b.boxes.map((c: Args) => ({ x: mu(c.x), z: mu(c.z), hw: mu(c.hw), hl: mu(c.hl), turn: c.turn })) } : {}),
   });
   return { kind, model, entity: b.entity, light: b.light, says: b.says, size: { w: r2(hi[0] - lo[0]), h: r2(hi[1] - lo[1]), d: r2(hi[2] - lo[2]) } };
 }

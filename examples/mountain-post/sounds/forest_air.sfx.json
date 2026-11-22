@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "volume": 0.9,
+  "seed": 1,
+  "width": 0.8,
+  "loop": 1,
+  "layers": [
+    {
+      "wave": "pink",
+      "attack": 1.2,
+      "hold": 2.6,
+      "decay": 0.2,
+      "volume": 0.6,
+      "filter": "lowpass",
+      "cutoff": 900,
+      "cutoffEnd": 1500
+    },
+    {
+      "wave": "noise",
+      "attack": 1.6,
+      "hold": 2.2,
+      "decay": 0.2,
+      "volume": 0.18,
+      "filter": "bandpass",
+      "cutoff": 2600,
+      "cutoffEnd": 1900,
+      "q": 0.6
+    },
+    {
+      "wave": "pink",
+      "attack": 0.4,
+      "hold": 3,
+      "decay": 0.2,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 420
+    }
+  ]
+}

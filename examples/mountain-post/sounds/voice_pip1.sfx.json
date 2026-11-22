@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "volume": 1.1,
+  "seed": 1,
+  "reverb": 0.05,
+  "width": 0.35,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0,
+      "decay": 0.01,
+      "volume": 0.4,
+      "filter": "highpass",
+      "cutoff": 4200
+    },
+    {
+      "wave": "triangle",
+      "freq": 330,
+      "attack": 0.008,
+      "hold": 0.025,
+      "decay": 0.05,
+      "volume": 0.55,
+      "pitch": -3,
+      "pitchTime": 0.03,
+      "filter": "bandpass",
+      "cutoff": 1050,
+      "cutoffEnd": 1330,
+      "q": 2
+    },
+    {
+      "wave": "saw",
+      "freq": 330,
+      "attack": 0.008,
+      "hold": 0.025,
+      "decay": 0.05,
+      "volume": 0.35,
+      "pitch": -3,
+      "pitchTime": 0.03,
+      "filter": "bandpass",
+      "cutoff": 1552.5,
+      "cutoffEnd": 1265,
+      "q": 3
+    },
+    {
+      "wave": "pink",
+      "attack": 0.008,
+      "hold": 0.02,
+      "decay": 0.05,
+      "volume": 0.32,
+      "filter": "bandpass",
+      "cutoff": 1150,
+      "q": 1.2
+    }
+  ]
+}

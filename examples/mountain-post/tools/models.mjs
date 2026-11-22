@@ -387,16 +387,16 @@ const larch = (seed, h) => () => {
   const tiers = 6;
   for (let i = 0; i < tiers; i++) {
     const y = h * (0.3 + (i / tiers) * 0.62), r = (1 - i / tiers) * h * 0.2 + 0.35;
-    c.push(cone([0, y, 0], r, h * 0.2, shade("#9cbf5a", (R() - 0.5) * 0.15 + i * 0.03), { segments: 7 }));
+    c.push(cone([0, y, 0], r, h * 0.2, shade("#8fb35e", (R() - 0.5) * 0.12 + i * 0.025), { segments: 7 }));
   }
-  c.push(cone([0, h * 0.97, 0], 0.3, h * 0.15, "#b0cc6a", { segments: 6 }));
+  c.push(cone([0, h * 0.97, 0], 0.3, h * 0.15, "#a2c06c", { segments: 6 }));
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.3 }] });
 };
 def("larch", larch(2, 13));
 def("larch_small", larch(6, 8));
 // the far version of a tree: one cone and a stub (scenery's lod past 90 m)
 def("pine_far", () => one([cyl([0, 1.2, 0], 0.25, 2.4, "#5b3f2c", { segments: 4 }), cone([0, 6.5, 0], 2.2, 9.5, "#3f6f45", { segments: 5 })]));
-def("larch_far", () => one([cyl([0, 1.5, 0], 0.15, 3, "#6b4a35", { segments: 4 }), cone([0, 7.5, 0], 2.4, 10, "#9cbf5a", { segments: 5 })]));
+def("larch_far", () => one([cyl([0, 1.5, 0], 0.15, 3, "#6b4a35", { segments: 4 }), cone([0, 7.5, 0], 2.4, 10, "#8fb35e", { segments: 5 })]));
 
 // ---- run -------------------------------------------------------------------------------------------------------------------------------
 const want = process.argv.slice(2);

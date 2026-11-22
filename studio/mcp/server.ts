@@ -240,7 +240,7 @@ tool(
     "`events` are named moments (a foot landing): the game calls on_clip_event(name, clip) on an entity playing the clip (self:play_clip), or the animator's on_event, when the clip passes one, so sounds keep time with the motion. " +
     SHAPES_HELP +
     FEET_HELP +
-    'What the model blocks on the ground goes in the model too, as circles, capsules and boxes in world units: "colliders": [{ "x": 0, "z": 0, "r": 0.4 }] (a tree blocks with its trunk, not its crown), "capsules": [{ "ax", "az", "bx", "bz", "r" }], "boxes": [{ "x", "z", "hw", "hl", "turn" }]; nova.scenery and nova.model_shapes read them. ' +
+    'What the model blocks on the ground goes in the model too, as circles, capsules and boxes in MODEL units like its points (16 to the metre at scale 0.0625; the export scales them to metres): "colliders": [{ "x": 0, "z": 0, "r": 6.4 }] (a trunk 0.4 m across; a tree blocks with its trunk, not its crown), "capsules": [{ "ax", "az", "bx", "bz", "r" }], "boxes": [{ "x", "z", "hw", "hl", "turn" }] (turn in degrees); nova.scenery and nova.model_shapes read them in metres. ' +
     "Check a clip with model_preview { clip, strip: 8 }. See docs/project-format.md.",
   {
     name: { type: "string" },
@@ -402,7 +402,7 @@ tool(
     const bytes = encodeWav(sound);
     put(root, `sounds/${name}.sfx.json`, toJson(p));
     put(root, `sounds/${name}.wav`, bytes);
-    const report = describe(analyse(`sounds/${name}.wav`, sound, { source: { sfx: p } }));
+    const report = describe(analyse(`sounds/${name}.wav`, sound, { source: { sfx: p }, loop: !!p.loop }));
     return `${matched}sounds/${name}.wav: ${(sound.channels[0]!.length / sound.rate).toFixed(2)} s\n${report}`;
   },
 );
@@ -523,7 +523,7 @@ tool(
     const unknown = Object.keys(given).filter((k) => !wanted.some((w) => w.name === k));
     if (unknown.length) throw new Error(`volumes names "${unknown.join('", "')}", which ${unknown.length > 1 ? "are" : "is"} not among the sounds asked for (${wanted.map((w) => w.name).join(", ")})`);
     const loaded = wanted.map((w) => ({ ...w, ...loadSound(root, w.name) }));
-    const list = loaded.map((s) => analyse(s.name, s.sound, { loop: a.loop ?? (s.music && !s.run), run: s.run, source: sourceOf(s.file, s.run) }));
+    const list = loaded.map((s) => { const source = sourceOf(s.file, s.run); return analyse(s.name, s.sound, { loop: a.loop ?? ((s.music || !!source.sfx?.loop) && !s.run), run: s.run, source }); });
     const text = [...list.map(describe), ...(list.length > 1 ? [mixTable(list, loaded.map((s) => s.volume), loaded.map((s) => s.music))] : [])].join("\n\n");
     if (a.picture === false) return text;
     return { text, images: [keepPicture("sound", stack(list.slice(0, 4).map((s) => spectrogram(s))))] };

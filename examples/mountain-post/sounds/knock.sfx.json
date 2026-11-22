@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "volume": 0.95,
+  "seed": 1,
+  "reverb": 0.15,
+  "room": 0.3,
+  "width": 0.2,
+  "layers": [
+    {
+      "wave": "noise",
+      "hold": 0.002,
+      "decay": 0.02,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 2400,
+      "q": 1.5
+    },
+    {
+      "wave": "triangle",
+      "freq": 190,
+      "hold": 0.004,
+      "decay": 0.1,
+      "volume": 0.55,
+      "pitch": 7,
+      "pitchTime": 0.012
+    },
+    {
+      "wave": "noise",
+      "start": 0.19,
+      "hold": 0.002,
+      "decay": 0.02,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 2400,
+      "q": 1.5
+    },
+    {
+      "wave": "triangle",
+      "freq": 190,
+      "start": 0.19,
+      "hold": 0.004,
+      "decay": 0.1,
+      "volume": 0.55,
+      "pitch": 7,
+      "pitchTime": 0.012
+    },
+    {
+      "wave": "noise",
+      "start": 0.34,
+      "hold": 0.002,
+      "decay": 0.02,
+      "volume": 0.35,
+      "filter": "bandpass",
+      "cutoff": 2400,
+      "q": 1.5
+    },
+    {
+      "wave": "triangle",
+      "freq": 190,
+      "start": 0.34,
+      "hold": 0.004,
+      "decay": 0.1,
+      "volume": 0.55,
+      "pitch": 7,
+      "pitchTime": 0.012
+    }
+  ]
+}

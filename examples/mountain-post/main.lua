@@ -1,14 +1,13 @@
--- A tiny third-person starter: a walking, running, jumping hero, a camera that follows and keeps clear of things, a
--- small garden of ruins, four gems to find, footsteps that keep time with the feet, one song.
--- Read entities/hero.lua first, then scenes/garden.lua; docs/agent-guide.md ("The shortest path to a checked 3D game")
--- says how each file was made and checked. Everything but the Lua came from these tool calls:
+-- Fernhollow Post: the vertical slice of the mountain post office game (docs/games/mountain-post.md, "Slice spec").
+-- You are the new postmaster. Two parcels and a letter wait on the office's shelf; the van waits outside; find the two addresses
+-- by the signs and the paper map, hand the parcels over, talk, and come back.
 --
---   character3d_make { "name": "hero", "hair": "short", "hair_color": "brown", "outfit": "tunic", "outfit_color": "teal", "pack": "backpack" }
---   prop3d_make      { "kinds": ["tree", "pine", "rock", "bush", "flowers", "grass", "arch", "pillar", "broken_wall", "crate", "lantern", "gem"] }
---   ground3d_make    { "name": "ground", "map": ["............", ".....pp.....", "....sppss...", ...], "legend": { ".": "grass", "p": "path", "s": "paved" } }
---   scene_write      { "name": "garden", "scene": { "version": 1, "camera": {...}, "objects": [ { "kind": "arch", "x": -1, "y": 0, "z": -8 }, ... ] } }
---   sfx_write        { "name": "step", "purpose": "step_grass" }   (and "pickup", "jump")
---   song_make        { "name": "garden", "mood": "calm village" }
---
--- prop3d_make and ground3d_make also wrote the one-line entity files (entities/tree.lua, arch.lua, ground.lua ...).
-nova.start("garden")
+--   scenes/title.lua   the title card
+--   scenes/office.lua  the post office's room (scenes/office.scene.json): the letter, the shelf, the door out
+--   scenes/valley.lua  the valley (scenes/valley.scene.json): the roads, the two houses, the van, getting in and out, the talks
+--   entities/          the van (springs from Pine Ridge Rally's car), the postmaster, Hazel and Pip, the props
+--   lib/               the words (exactly the spec's), the state, the world's lines, the cameras, the cards, the text box, the HUD
+--   tools/             the recipes every model, picture, sound and the scene files are made from (not part of the game)
+nova.collision { plane = "xz", cell = 4 }
+require("lib.state").reset()
+nova.start("title")
