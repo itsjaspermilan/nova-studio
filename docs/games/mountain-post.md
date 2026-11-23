@@ -178,16 +178,25 @@ the right**, **B at the bottom**, **X at the top**, **Y on the left** (Android r
 `pad:east`, X `pad:west`, Y `pad:north`, read off the device 2026-11-12; nova.json binds by those names, and the prompts draw the
 same letter).
 - **X** (top) interacts on foot: talk, take from the shelf, read the letter, put a parcel back, hand over, and "Load package" at the
-  van's open back; it goes on in a conversation and closes the label, the letter and the end card. In the van X sounds the horn.
+  van's open back; it goes on in a conversation and closes the label, the letter and the end card. ~~In the van X sounds the
+  horn.~~ (replaced 2026-11-23, the sixth play) In the van X moves the lever one gear towards P.
 - **Y** (left) gets into the van at its left doorway, and out of it when it has stopped.
 - **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
+  In the van (the sixth play) A moves the lever one gear towards L.
+- **The van's lever** (the sixth play: an automatic with PRNDL): A steps toward L (down the column), X toward P (up); the column
+  reads P R N D L top to bottom, shown bottom left beside the minimap with the handbrake lamp (lib/gear_hud.lua). It is in P each
+  time someone gets in, and left in P on getting out. Among P, R, N and D it moves only with L2 held and the van all but stopped
+  (under 0.5 m/s); otherwise a soft click and "Hold the brake to shift" (or "Stop to shift"). D and L change freely at any speed.
+  P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a slope too;
+  D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a gentle clunk.
+- **L3** (the left stick's click) sounds the horn while driving (it was X).
 - **B** (bottom), held: on foot, run (the stick alone only walks); driving, the handbrake (the rear wheels lock, the van slows firmly,
   in a bend at speed the tail steps out a little; standing, it holds the van still on a slope; the brake lamps light).
 - **Select** (the minus button) opens and closes the paper map. **Start** pauses (resume, quit). **L1** / **R1** go round the
-  parcel card, or the van's panel at its open back. **R2** goes, **L2** brakes then reverses, the left stick moves or steers, the
-  right stick looks.
+  parcel card, or the van's panel at its open back. **R2** goes (forwards in D and L, backwards in R), **L2** brakes
+  (~~brakes then reverses~~: only brakes since the sixth play), the left stick moves or steers, the right stick looks.
 - Keyboard (tests and the desktop): X is Space (or the X key), Y is F, A is Enter, B is Shift, Select is M (or Tab), Start is
-  Escape (or P), L1 / R1 are Z / C, the stick and the pedals are the arrows or WASD, Q / E look.
+  Escape (or P), L1 / R1 are Z / C, the stick and the pedals are the arrows or WASD, Q / E look, H the horn.
 
 **Sound.** The van's engine (soft, small, a little rattly), tyres on gravel and tarmac, the horn, doors; forest air, birds, the
 creek near the bridge, Pip's radio faintly near his cabin, sawing near Hazel's; footsteps; a babble voice for each of Hazel
@@ -717,3 +726,5 @@ top to bottom), "down" toward L; the horn, displaced from X, moves to the left s
   (`sprites/ui/minimap_rim.png`, made by `tools/art.mjs minimap`: the paper edge and the wood, nothing inside) is drawn over them, so
   they run under the frame.
 - Pictures (made by the agent, not committed): `examples/mountain-post/build/gallery/final/`. Not checked on the Retroid.
+Decided by the coordinator where the notes left room, and then by the owner: A steps toward L (down the column), X toward P (up);
+the column reads P R N D L top to bottom. The horn, displaced from X, moves to the left stick click (L3) while driving.

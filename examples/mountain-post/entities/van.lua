@@ -3,7 +3,12 @@
 -- are taken from Pine Ridge Rally's car (examples/pine-ridge-rally/entities/car.lua, 2026-11-21: `wheel_layout`, `ride_of`,
 -- `Car:suspension`, `Car:wheel_offset`), copied here and cut down to one vehicle; the driving is new and gentle: a leisurely start,
 -- a top speed of about 38 km/h (the starting van: upgrades raise Van.TUNE), brakes that take a moment, heavy steering that forgives,
--- no damage, no fuel, no gears to think about.
+-- no damage, no fuel. It is an automatic with a PRNDL lever (the owner's sixth play: "Let's make the truck function like a real
+-- automatic with PRNDL gear selection"): it starts in P each time someone gets in; A steps the lever one gear towards L, X one
+-- towards P (a column P R N D L, top to bottom: lib/gear_hud.lua shows it); among P, R, N and D it moves only with the brake (L2)
+-- held and the van all but stopped (refused with a soft click and "Hold the brake to shift"); between D and L freely. P holds
+-- the wheels; R backs up on R2; N rolls free (down a slope too); D drives; L pulls harder, brakes on the engine and tops out lower
+-- (for the steep lanes). L2 is only the brake. In R a soft beeper sounds. Van:shift, Van:park.
 -- The scene sets `ctl` from the pad while the postmaster is in it; empty, it stands with its handbrake on. The postmaster sits in
 -- its open cab while driving (entities/postmaster.lua draws them there); the parcels it holds ride in the hold behind, seen through
 -- the back windows and when the rear doors swing open.
@@ -73,8 +78,17 @@ Van.TUNE = {
   hb_corner = 1.5,      -- and how much more sideways pull it takes before it runs wide
   hb_slip = math.rad(7), -- the slide (between the way it points and the way it goes) past which the tail stops stepping further out
 }
+-- The lever's gears (the owner's sixth play). L: more pull, engine braking, a lower top speed (about 58% of D's), a higher note.
+Van.TUNE.low_power = 1.4  -- times D's pull, in L
+Van.TUNE.low_top = 0.52   -- times D's `top`, in L (it tops out near 6 m/s on the flat, about 58 % of D's 10.3)
+Van.TUNE.low_brake = 1.3  -- m/s^2 more engine braking in L with the pedal up (and more past its top: a shift down at speed slows it)
+Van.TUNE.roll = 0.22      -- m/s^2 of rolling alone in N (no engine braking: it coasts, and rolls down a slope)
+Van.TUNE.park = 8         -- m/s^2 the parking pawl stops it with, in P (it is only put in P all but stopped)
+Van.ORDER = { "P", "R", "N", "D", "L" }
+-- Shifting among P, R, N and D: the brake held at least this much, and slower than `speed` m/s; refused, the hint shows `hint` s.
+Van.SHIFT = { brake = 0.15, speed = 0.5, hint = 1.8, beep = 1.2 }
 local FEEL = Van.TUNE
-local GEARS = { 4, 7.5, 11 }           -- the speed at which each gear runs out (for the engine's note only; the slower van's range)
+local GEARS = { 4, 7.5, 11 }           -- the speed at which each of the gearbox's own ratios runs out in D (for the engine's note only)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
 -- The van (tools/van.mjs) is 2.97 m long over its bumpers (z -1.48 to 1.49) and 1.34 wide; its axles at z 0.72 and -0.79.
 Van.BODY = { offs = { 0.83, 0, -0.83 }, r = 0.66 }
@@ -133,7 +147,10 @@ function Van:create()
   self.handbrake = false
   self.driven = false
   self.spin = 0
-  self.gear = 1
+  self.ratio = 1          -- the gearbox's own ratio in D (1 to #GEARS): it changes by itself, for the engine's note
+  self.gear = "P"         -- the lever: "P", "R", "N", "D" or "L"
+  self.hint, self.hint_t = nil, 0 -- a refused shift: why ("brake", "stop") and how long the gear display still says so
+  self.beep_t = 0
   self.rev = 0.12
   self.surface = "road"
   local layout = wheel_layout("van")
@@ -173,6 +190,38 @@ function Van:rock(roll, heave)
 end
 
 function Van:stopped() return math.abs(self.speed) < 0.6 end
+
+-- The lever one gear along Van.ORDER (P R N D L): `dir` 1 towards L (A), -1 towards P (X). Between D and L it always moves; among P,
+-- R, N and D only with the brake pedal held (Van.SHIFT.brake) and the van all but stopped (under Van.SHIFT.speed): otherwise it stays,
+-- with a soft click, and the gear display says why for a moment (`hint`: "brake" or "stop"). Says whether it moved.
+function Van:shift(dir)
+  local i = 1
+  for k, g in ipairs(Van.ORDER) do if g == self.gear then i = k end end
+  local to = Van.ORDER[i + dir]
+  if not to then return false end
+  local free = (self.gear == "D" or self.gear == "L") and (to == "D" or to == "L")
+  if not free then
+    local held = (self.ctl.brake or 0) >= Van.SHIFT.brake
+    if not held or math.abs(self.speed) >= Van.SHIFT.speed then
+      self.hint, self.hint_t = held and "stop" or "brake", Van.SHIFT.hint
+      nova.sound.play("gear_refuse", { volume = 0.55 })
+      nova.log("shift refused: " .. self.gear .. " to " .. to .. (held and ", rolling" or ", no brake"))
+      return false
+    end
+  end
+  self.gear = to
+  self.hint_t = 0
+  nova.sound.play("gear_shift", { volume = 0.5, vary = 0.04 })
+  if to == "R" then self.beep_t = 0.35 end
+  nova.log("gear " .. to)
+  return true
+end
+
+-- Into P at once (getting in, and getting out of a van that has stopped), with no sound of its own.
+function Van:park()
+  self.gear = "P"
+  self.hint_t = 0
+end
 
 -- How much of the crawl's extra lock is on at a speed: 1 up to `crawl`, easing (smoothstep) to 0 at `cruise`.
 function Van.crawl_mix(v)
@@ -232,30 +281,44 @@ function Van:drive(dt)
   sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   vf = self.velx * sinh + self.velz * cosh
   vl = self.velx * cosh - self.velz * sinh
-  -- pulling away, braking, reversing (L2 brakes, then reverses once stopped)
-  if go > 0 then
-    local share = math.max(0, vf) / FEEL.top
-    vf = vf + FEEL.power * go * math.max(0, 1 - share * share) * dt
+  -- pulling away (R2) by the lever: forwards in D and L (L pulls harder and runs out sooner), backwards in R; in P and N the pedal
+  -- only revs the engine
+  local gear = self.gear
+  local low = gear == "L"
+  local low_top = FEEL.top * FEEL.low_top
+  if go > 0 and (gear == "D" or low) then
+    local share = math.max(0, vf) / (low and low_top or FEEL.top)
+    vf = vf + FEEL.power * (low and FEEL.low_power or 1) * go * math.max(0, 1 - share * share) * dt
+  elseif go > 0 and gear == "R" then
+    local share = math.max(0, -vf) / FEEL.reverse
+    vf = vf - FEEL.power * 0.7 * go * math.max(0, 1 - share * share) * dt
   end
-  -- (the lamps: the tail lamps glow bright while it brakes, the reverse lamps light while it backs up)
-  self.braking, self.reversing = false, false
+  -- (the lamps: the tail lamps glow bright while it brakes, the reverse lamps are lit in R)
+  self.braking, self.reversing = false, live and gear == "R"
+  -- L2 is only the brake (it used to back the van up once stopped): it slows it whichever way it rolls, never further
   if brake > 0 then
-    if vf > 0.3 then vf = math.max(0, vf - FEEL.brake * brake * dt); self.braking = brake > 0.05
-    elseif go <= 0 then vf = math.max(-FEEL.reverse, vf - FEEL.power * 0.7 * brake * dt); self.reversing = brake > 0.05 end
+    vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.brake * brake * dt)
+    self.braking = brake > 0.05
   end
-  if live and vf < -0.15 then self.reversing = true end
   -- the handbrake: the rear wheels locked drag it down firmly, whatever the pedals do; the brake lamps light with it
   if hb then
     vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.handbrake * dt)
-    self.braking, self.reversing = true, false
+    self.braking = true
   end
-  -- rolling, engine braking, the air, the hills
+  -- P: the parking pawl holds the wheels
+  if live and gear == "P" then vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.park * dt) end
+  -- rolling, engine braking (none in N; more in L, and more again past L's top), the air, the hills
   local sign = vf >= 0 and 1 or -1
-  local coast = (go > 0 and 0.15 or FEEL.coast) + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
+  local coast = (go > 0 and 0.15 or FEEL.coast)
+  if live and gear == "N" then coast = FEEL.roll
+  elseif live and low and go <= 0 then coast = coast + FEEL.low_brake end
+  if live and low and vf > low_top then coast = coast + (vf - low_top) * 1.5 end
+  coast = coast + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
   vf = vf - sign * math.min(math.abs(vf), (coast + FEEL.drag * vf * vf) * dt)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   if not world.on_bridge(self.x, self.z) then vf = vf - (gx * sinh + gz * cosh) * FEEL.hill * dt end
-  if (not live or hb) and math.abs(vf) < 0.4 then vf = 0 end -- (the handbrake: an empty van, or one held on it, does not creep down a slope)
+  -- (an empty van, one held on the handbrake, on the brake pedal or in P, does not creep down a slope)
+  if (not live or hb or gear == "P" or brake > 0.3) and math.abs(vf) < 0.4 then vf = 0 end
   -- the slip sideways dies away quickly: the van holds its line (less quickly with the rear wheels locked: the tail slides a little)
   vl = vl * math.exp(-FEEL.grip * (1 - (1 - FEEL.hb_grip) * slide) * dt)
   self.speed = vf
@@ -289,13 +352,26 @@ function Van:drive(dt)
   end
   self.knock = math.max(0, self.knock - dt)
   self.surface = world.surface(self.x, self.z)
-  -- the gear (for the engine's note): changes up and down by itself
-  local g = GEARS[self.gear]
-  if vf > g * 0.96 and self.gear < #GEARS then self.gear = self.gear + 1; if self.engine_on then self.engine:shift("up") end
-  elseif self.gear > 1 and vf < GEARS[self.gear - 1] * 0.62 then self.gear = self.gear - 1; if self.engine_on then self.engine:shift("down") end end
-  local lo = self.gear > 1 and GEARS[self.gear - 1] * 0.55 or 0
-  local share = math.max(0, math.abs(vf) - lo) / (GEARS[self.gear] - lo)
-  local rev_want = 0.12 + 0.75 * math.min(1, share) + go * 0.1
+  -- the engine's note: in D the gearbox's own ratio changes up and down by itself; L, R hold one low ratio (L's note is higher at a
+  -- speed than D's); in P and N the pedal revs it free
+  local rev_want
+  if gear == "D" or not live then
+    local g = GEARS[self.ratio]
+    if vf > g * 0.96 and self.ratio < #GEARS then self.ratio = self.ratio + 1; if self.engine_on then self.engine:shift("up") end
+    elseif self.ratio > 1 and vf < GEARS[self.ratio - 1] * 0.62 then self.ratio = self.ratio - 1; if self.engine_on then self.engine:shift("down") end end
+    local lo = self.ratio > 1 and GEARS[self.ratio - 1] * 0.55 or 0
+    local share = math.max(0, math.abs(vf) - lo) / (GEARS[self.ratio] - lo)
+    rev_want = 0.12 + 0.75 * math.min(1, share) + go * 0.1
+  elseif low then
+    self.ratio = 1
+    rev_want = 0.14 + 0.8 * math.min(1.05, math.abs(vf) / (low_top * 0.9)) + go * 0.08
+  elseif gear == "R" then
+    self.ratio = 1
+    rev_want = 0.12 + 0.6 * math.min(1, math.abs(vf) / FEEL.reverse) + go * 0.1
+  else
+    self.ratio = 1
+    rev_want = 0.12 + 0.5 * go
+  end
   self.rev = self.rev + (rev_want - self.rev) * math.min(1, dt * 6)
   self:suspension(dt, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)
   self.last_vf = vf
@@ -308,6 +384,16 @@ end
 
 function Van:sound(dt, go)
   if not self.engine_on then self.engine:silence(); return end
+  -- in R, the reversing beeper: a soft, low, rounded double boop every Van.SHIFT.beep seconds, quiet (heard from the cab, well under
+  -- the horn); it stops the moment the lever leaves R
+  if self.driven and self.gear == "R" then
+    self.beep_t = self.beep_t - dt
+    if self.beep_t <= 0 then
+      nova.sound.play("reverse_beep", { volume = 0.22 })
+      nova.log("reverse beep")
+      self.beep_t = Van.SHIFT.beep
+    end
+  end
   local e = require("engines.van")
   self.engine:update(dt, { rpm = e.idle + (e.max - e.idle) * self.rev, throttle = go, speed = math.abs(self.speed),
     surface = self.surface == "road" and "road" or self.surface == "grass" and "rough" or "gravel", lift = self.lift })
@@ -411,6 +497,7 @@ function Van:to_world(lx, ly, lz)
 end
 
 function Van:update(dt)
+  self.hint_t = math.max(0, (self.hint_t or 0) - dt)
   if not self.susp.ready or self.driven or math.abs(self.speed) > 0.01 or self.back_open > 0.01 or self.back_want > 0 or math.abs(self.susp.vr) > 1e-3 or math.abs(self.susp.vy) > 1e-3 then
     self:drive(dt)
   end
@@ -459,9 +546,9 @@ function Van:draw()
     SIDE.w, SIDE.h = 0.95, 0.324
     nova.billboard("van_side", x, y, z, 0.95, SIDE)
   end
-  -- the parcels in the hold, on its floor, the first loaded furthest in
+  -- the parcels in the hold, on its floor (0.68 m: tools/van.mjs HOLD_FLOOR), the first loaded furthest in
   for i, which in ipairs(state.van_load) do
-    self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.67, i == 1 and -0.5 or -0.95, i * 0.4)
+    self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.68, i == 1 and -0.5 or -0.95, i * 0.4)
   end
 end
 

@@ -128,6 +128,26 @@ sfx("van_back_shut", { volume: 0.95, width: 0.3, reverb: 0.1, drive: 0.2, layers
   K(205, 0.65, 0.28), { wave: "sine", freq: 80, hold: 0.01, decay: 0.2, volume: 0.1 },
   { wave: "pink", filter: "bandpass", cutoff: 850, q: 0.9, hold: 0.02, decay: 0.22, volume: 0.4 },
 ] });
+// the lever (the owner's sixth play: PRNDL): a gentle clunk per gear, a soft click when a shift is refused, and in R the reversing
+// beeper: a quiet, rounded, low-ish double boop (sines with a little triangle, a low-pass well under the harsh highs, soft attacks:
+// no clicks), played every 1.2 s at a fraction of the horn's level (entities/van.lua)
+sfx("gear_shift", { volume: 0.8, width: 0.2, reverb: 0.06, room: 0.3, layers: [
+  { wave: "noise", filter: "bandpass", cutoff: 2400, q: 1.5, hold: 0.002, decay: 0.012, volume: 0.25 },
+  { wave: "noise", filter: "bandpass", cutoff: 1300, q: 1.2, attack: 0.004, hold: 0.004, decay: 0.05, volume: 0.22 },
+  K(190, 0.6, 0.15), K(330, 0.25, 0.07),
+  { wave: "triangle", freq: 380, start: 0.045, attack: 0.003, hold: 0.003, decay: 0.06, filter: "lowpass", cutoff: 1400, volume: 0.25 },
+  { wave: "pink", filter: "bandpass", cutoff: 650, q: 0.9, attack: 0.004, hold: 0.02, decay: 0.1, volume: 0.3 },
+] });
+sfx("gear_refuse", { volume: 0.6, width: 0.15, reverb: 0.05, layers: [
+  { wave: "noise", filter: "bandpass", cutoff: 2200, q: 1.5, hold: 0.002, decay: 0.01, volume: 0.18 },
+  { wave: "triangle", freq: 520, attack: 0.003, hold: 0.003, decay: 0.045, filter: "lowpass", cutoff: 1500, volume: 0.45 },
+  K(210, 0.35, 0.06), { wave: "triangle", freq: 470, start: 0.07, attack: 0.003, hold: 0.003, decay: 0.05, filter: "lowpass", cutoff: 1400, volume: 0.3 },
+] });
+sfx("reverse_beep", { volume: 0.7, width: 0.25, reverb: 0.1, room: 0.35, layers: [0, 0.24].flatMap((t) => [
+  { wave: "sine", freq: 620, pitch: 1.5, pitchTime: 0.03, start: t, attack: 0.025, hold: 0.09, decay: 0.09, volume: 0.55 },
+  { wave: "triangle", freq: 620, start: t, attack: 0.025, hold: 0.09, decay: 0.09, filter: "lowpass", cutoff: 1300, cutoffEnd: 700, volume: 0.25 },
+  { wave: "sine", freq: 310, start: t, attack: 0.03, hold: 0.08, decay: 0.08, volume: 0.15 },
+]) });
 sfx("engine_start", { volume: 0.8, drive: 0.2, width: 0.2, layers: [
   // the starter's whirr, then the engine catching
   { wave: "saw", freq: 160, attack: 0.02, hold: 0.42, decay: 0.05, vibrato: 2, vibratoSpeed: 14, filter: "lowpass", cutoff: 1400, volume: 0.35 },
