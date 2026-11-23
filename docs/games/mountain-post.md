@@ -866,3 +866,6 @@ have a small conveyor belt 'window' to show that there is a potential 'backroom'
 In front of the package counter, we should keep the existing counter that's already there. We can put a little desk mat,
 stamp, some envelopes, and an old computer where the user can perform upgrades. We don't have to make the PC interactable just
 yet."
+
+The owner, 2026-11-23: "We need to add creep for D R and L." (idle creep like a real automatic: off the brake in D, R or L the
+van eases forward or back at walking pace; none in P or N.)
