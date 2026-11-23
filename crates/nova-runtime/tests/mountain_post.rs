@@ -8168,3 +8168,218 @@ fn the_dial_reads_to_100_and_the_van_is_held_at_40_in_d() {
         "L at {share:.2} of D ({out})"
     );
 }
+
+// ---- one spacing scale for the whole UI (the owner, sixth play: "some padding is too tight, and some is too large") -------------------
+
+/// The scale is five named steps (4, 8, 12, 16, 24 units of the 540-line screen, times ui.S), the paddings and gaps are made of them,
+/// and the UI's files use their names, not raw numbers added to a position.
+#[test]
+fn the_ui_has_one_spacing_scale_and_its_files_use_it() {
+    let g = game();
+    let ui = "require('lib.ui')";
+    let s = num(&g, &format!("{ui}.S"));
+    for (name, n) in [
+        ("xs", 4.0),
+        ("s", 8.0),
+        ("m", 12.0),
+        ("l", 16.0),
+        ("xl", 24.0),
+    ] {
+        let v = num(&g, &format!("{ui}.SP.{name}"));
+        assert!((v - n * s).abs() < 1e-9, "SP.{name} is {n} x S: {v}");
+    }
+    for (expr, want) in [
+        ("PAD.x", "m"),
+        ("PAD.y", "s"),
+        ("PAD_SMALL.x", "s"),
+        ("PAD_SMALL.y", "xs"),
+        ("PAD_LONG.x", "xl"),
+        ("PAD_LONG.y", "m"),
+        ("GAP", "s"),
+        ("EDGE", "xl"),
+        ("RADIUS", "m"),
+    ] {
+        assert_eq!(
+            num(&g, &format!("{ui}.{expr}")),
+            num(&g, &format!("{ui}.SP.{want}")),
+            "{expr} is SP.{want}"
+        );
+    }
+    // the scale is monotonic, and every padding is on it
+    let steps: Vec<f64> = ["xs", "s", "m", "l", "xl"]
+        .iter()
+        .map(|n| num(&g, &format!("{ui}.SP.{n}")))
+        .collect();
+    assert!(steps.windows(2).all(|w| w[0] < w[1]));
+    // no file adds a raw s(n) to a position: paddings and gaps are SP.* (an element's own size may be s(n))
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for file in [
+        "lib/ui.lua",
+        "lib/cards.lua",
+        "lib/gear_hud.lua",
+        "lib/dialogue.lua",
+    ] {
+        let text = std::fs::read_to_string(root.join(format!("{GAME}/{file}"))).unwrap();
+        for (i, line) in text.lines().enumerate() {
+            let code = line.split("--").next().unwrap_or("");
+            for op in ["+ s(", "- s("] {
+                let mut rest = code;
+                while let Some(at) = rest.find(op) {
+                    let after = &rest[at + op.len()..];
+                    assert!(
+                        !after.starts_with(|c: char| c.is_ascii_digit()),
+                        "{file}:{}: a raw number added to a position, use ui.SP: {}",
+                        i + 1,
+                        line.trim()
+                    );
+                    rest = after;
+                }
+            }
+        }
+    }
+}
+
+/// No text is nearer than the scale's `s` to the wood of a panel's frame, and short text never has more than `xl` of padding between
+/// the frame and its widest line: measured on the drawn words of the corner card, the van's panel, the pickup tip, the "Stop to shift"
+/// slip and a prompt chip.
+#[test]
+fn text_keeps_the_scales_distance_from_every_panels_frame() {
+    let mut g = game();
+    // the measure: for a panel box (x, y, w, h, with the frame's inset), the words drawn inside it
+    let check = |r: &Report, g: &Game, box_expr: &str, frame: &str, words: &str, what: &str| {
+        let bx = num(g, &format!("{box_expr}.x"));
+        let by = num(g, &format!("{box_expr}.y"));
+        let bw = num(g, &format!("{box_expr}.w"));
+        let bh = num(g, &format!("{box_expr}.h"));
+        let inset_x = num(g, &format!("require('lib.ui').inset({frame}).x"));
+        let inset_top = num(g, &format!("require('lib.ui').inset({frame}).top"));
+        let inset_bottom = num(g, &format!("require('lib.ui').inset({frame}).bottom"));
+        let sp_s = num(g, "require('lib.ui').SP.s");
+        let sp_xs = num(g, "require('lib.ui').SP.xs");
+        let sp_xl = num(g, "require('lib.ui').SP.xl");
+        let hits: Vec<Value> = r
+            .drawn("ui_text", Some(words))
+            .into_iter()
+            .filter(|t| {
+                let (x, y) = (t["x"].as_f64().unwrap(), t["y"].as_f64().unwrap());
+                x >= bx && x <= bx + bw && y >= by && y <= by + bh
+            })
+            .collect();
+        assert!(
+            !hits.is_empty(),
+            "{what}: {words:?} is drawn inside its panel ({bx:.0}, {by:.0}, {bw:.0} x {bh:.0})"
+        );
+        let t = &hits[0];
+        let (x, y) = (t["x"].as_f64().unwrap(), t["y"].as_f64().unwrap());
+        let tw = t["w"].as_f64().unwrap_or(0.0);
+        assert!(
+            x - bx >= inset_x + sp_s - 0.5,
+            "{what}: {words:?} is {:.1} from the left edge, needs the frame {inset_x:.1} + s {sp_s:.1}",
+            x - bx
+        );
+        assert!(
+            x - bx <= inset_x + sp_xl + 60.0, // (xl, and the room for an icon before the words)
+            "{what}: {words:?} is {:.1} from the left edge, over frame + xl + an icon",
+            x - bx
+        );
+        assert!(
+            y - by >= inset_top + sp_xs - 0.5,
+            "{what}: {words:?} is {:.1} below the top edge",
+            y - by
+        );
+        if tw > 0.0 {
+            assert!(
+                bx + bw - (x + tw) >= inset_x + sp_xs - 0.5,
+                "{what}: {words:?} is {:.1} from the right edge",
+                bx + bw - (x + tw)
+            );
+        }
+        assert!(
+            by + bh - y >= inset_bottom + sp_xs - 0.5,
+            "{what}: {words:?} is too near the bottom edge"
+        );
+    };
+    // the corner card and the van's panel (carrying nothing, two in the van, at the open back)
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').van_panel_box",
+        "require('lib.ui').FRAME.small",
+        "Hazel Brock",
+        "van panel name",
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').van_panel_box",
+        "require('lib.ui').FRAME.small",
+        "Take",
+        "van panel Take",
+    );
+    // the card is dimmed while the panel is up; measure it on foot away from the van
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.van_load = { 'pip' }; S.carrying = 'hazel'; local p = nova.named('postmaster'); p.x, p.z = 150, 36" }, { "wait": 30 } ] }"#,
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').card_box",
+        "require('lib.ui').FRAME.big",
+        "Hazel Brock",
+        "parcel card name",
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').card_box",
+        "require('lib.ui').FRAME.big",
+        "carrying",
+        "parcel card line",
+    );
+    // a prompt chip (bottom right)
+    let hits = r.drawn("ui_text", Some("Map"));
+    assert!(!hits.is_empty());
+    // the slip beside the instrument
+    let r = play(
+        &mut g,
+        r#"{ "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); GH = require('lib.gear_hud')",
+        "steps": [ { "wait": 30, "lua": "nova.named('van').hint = 'stop'; nova.named('van').hint_t = 3" }, { "wait": 8 } ] }"#,
+    );
+    check(
+        &r,
+        &g,
+        "GH.slip_box",
+        "require('lib.ui').FRAME.small",
+        "Stop to shift",
+        "the slip",
+    );
+    // the pickup tip, in the post office
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = -3.0, -1.44, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil" }, { "wait": 40 } ] }"#,
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').tip_box",
+        "require('lib.ui').FRAME.small",
+        "Hazel Brock",
+        "pickup tip name",
+    );
+    check(
+        &r,
+        &g,
+        "require('lib.ui').tip_box",
+        "require('lib.ui').FRAME.small",
+        "Take",
+        "pickup tip word",
+    );
+}
