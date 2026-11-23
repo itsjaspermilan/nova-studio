@@ -316,6 +316,36 @@ about 2 dB louder than the old ones at the same RMS (they are brighter: K-weight
 Nobody has listened to it: a test (`studio/mcp/makers/engine.test.ts`) keeps the numbers above from sliding back, which is not the same as
 the sound being good.
 
+## The piano's twang (Fernhollow, 2026-11-22)
+
+The owner, of Mountain Post's felt-piano piece on the handheld: "The piano sounds kinda twangy and annoying still." The piece was already
+dull (little above 2.5 kHz), so the cause was looked for in the `piano` voice itself, on single notes (C2 to C6, `vel` 0.35 and 0.65,
+`brightness` 0.34, rendered by `renderSong` and measured partial by partial with a windowed DFT). Before → after:
+
+| what | before | after | a soft felt piano |
+| --- | --- | --- | --- |
+| beating of the two strings (a partial's level against its own smooth fall, 0.2 to 2.9 s) | equal strings, a random detune per partial: dips of 42 to 46 dB (C4's 3rd, C5's 1st and 2nd, C6's 1st and 2nd: the fundamental of a held C5 or C6 vanishes a second or two in) | the second string at 0.3 of the first, one detune for the pair (0.25 to 0.6 cents): 0.4 to 1.5 dB in C2 to C4, 5 to 7 dB in C5 and C6 | slow, shallow beats under 1 Hz |
+| C6's centroid from 0.3 to 1 s | rises 1.2 → 2.8 kHz (the fundamental cancels) | falls 1.06 → 1.05 kHz | falls (it mellows) |
+| partials 2 and 3 under the first, soft C4 | -3.9, -7.0 dB (a sawtooth's 1/k) | -6.6, -11.3 dB; the 10th -42 dB | 6 to 12 dB a partial |
+| above 2.5 kHz, soft C4 / C5 (0.5 s) | -31.7 / -23.9 dB | -45.5 / -34.9 dB | nearly absent |
+| the hammer's comb (partials 9 to 14 against 8) in C2 and C3 | a second hump 8 to 13 dB over the 8th, ringing 4 to 10 s (600 Hz to 1.8 kHz: nasal) | the comb shallow (0.7 to 1): partials keep falling | no hump |
+| high partials' fall, soft C4 (T60) | irregular, 2.6 to 9 s for 2 to 4 kHz | 3.5 s at 2.4 kHz down to 1.8 s at 4.2 kHz; the fundamental 14.6 s | the higher, the faster |
+| attack (10 to 90 %) | 4 to 28 ms | 4.5 to 21 ms (a sin² rise of 5 to 18 ms, longer soft and in the bass) plus a 300 Hz felt thump (+11 dB below 400 Hz in the first 23 ms) | 5 to 15 ms, rounded |
+| damper, C4 key-up (level at 50 / 200 / 400 ms) | -1.8 / -7.1 / -23.6 dB: a straight fade that holds, then drops in its last 130 ms | -6.5 / -22 / -51 dB, the high partials first, a faint thump | a quick, gentle fall |
+| inharmonicity (8th partial, C4 / C5) | +6 / +10.5 cents | the same | a few cents to tens: not the cause |
+| energy off the partials | -33 to -37 dB | the same | |
+
+So the twang was the deep, independent beating of every partial (each one swelling and vanishing on its own clock, which reads as a
+"wah" and a thin, nasal sustain), helped by the sawtooth-like spectrum, the comb's hump in the bass that rang on, and the damper's late
+drop. The voice (`pianoVoice` in studio/src/lib/song.ts) now has a steep felt low-pass above a corner that a harder note and `brightness`
+raise, a gentle `1/k^tilt`, a quieter second string with one detune, decay rates that grow with the partial's frequency, and its own
+damper over the track's `release` (renderSong holds the envelope at its level after the key is let go and lets the voice fall). Every
+other instrument renders byte for byte as before (checked on every wave with plain, rich and room settings, every preset and both
+alternative Fernhollow voices). A test ("a felt piano, not a twang", song-tools.test.ts) keeps the soft spectrum, the shallow beating, the
+mellowing, the rounded start and the damper's fall. The piece itself (whole song, old voice → new): centroid 638 → 494 Hz; 1 to 2.5 kHz
+-8.7 → -12.4 dB and 2.5 to 5 kHz -19.2 → -29.5 dB of the whole. **Nobody has listened to it**: the numbers say it is softer and steadier,
+not that it pleases.
+
 ## Not done, and why
 
 - **No listening test.** Measurements are not a listening test; the owner should play the game and say.

@@ -260,6 +260,63 @@ describe("the instruments: FM, plucked string, organ and the presets", () => {
     for (let c = -10; c <= 30; c += 1) { const f = 7 * f0 * 2 ** (c / 1200); const p = power(f); if (p > best) { best = p; at = c; } }
     expect(at).toBeGreaterThan(1); // the 7th partial is a few cents sharp
   });
+  it("a felt piano, not a twang: a soft note is mostly its fundamental, rings without deep beats, mellows, and the damper fades it", async () => {
+    const { renderSong } = await import("./song");
+    const rate = 44100;
+    // a note held `hold` seconds (bpm 120, 8 steps a second) on a felt-voiced piano, as the game's music sets it
+    const one = (pitch: number, vel: number, hold: number) => {
+      const steps = Math.round(hold * 8);
+      const s = song([{ step: 0, len: steps, pitch, vel }], steps + 8);
+      s.bpm = 120;
+      s.tracks[0] = { ...s.tracks[0]!, wave: "piano", brightness: 0.3, attack: 0.002, decay: 0.05, sustain: 1, release: 0.45 } as typeof s.tracks[0];
+      return renderSong(s, rate).channels[0]!;
+    };
+    // the level (dB) of one frequency over a Hann window of `len` samples from `at` seconds
+    const level = (x: Float32Array, f: number, at: number, len = 4096) => {
+      let re = 0, im = 0;
+      const s = Math.round(at * rate);
+      for (let i = 0; i < len; i++) {
+        const w = (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (len - 1))) * (x[s + i] ?? 0);
+        re += w * Math.cos((2 * Math.PI * f * i) / rate);
+        im += w * Math.sin((2 * Math.PI * f * i) / rate);
+      }
+      return 10 * Math.log10(re * re + im * im + 1e-30);
+    };
+    const freq = (m: number) => 440 * 2 ** ((m - 69) / 12);
+    const c4 = one(60, 0.35, 3);
+    // a soft middle C: the second partial well under the first, the third further, next to nothing above 2.5 kHz
+    const k = (n: number) => level(c4, n * freq(60) * Math.sqrt(1 + 1e-4 * n * n), 0.02);
+    expect(k(1) - k(2)).toBeGreaterThan(4);
+    expect(k(1) - k(3)).toBeGreaterThan(8);
+    expect(k(1) - k(10)).toBeGreaterThan(30);
+    // the two strings beat slowly and shallowly: a held C5's fundamental falls smoothly, never dipping into a hole (it used to
+    // vanish by 30 dB and more a second or two in)
+    const c5 = one(72, 0.5, 3);
+    const curve = Array.from({ length: 22 }, (_, i) => level(c5, freq(72), 0.2 + i * 0.12, 2048));
+    const n = curve.length, mx = (n - 1) / 2, my = curve.reduce((a, b) => a + b, 0) / n;
+    const slope = curve.reduce((a, y, i) => a + (i - mx) * (y - my), 0) / curve.reduce((a, _, i) => a + (i - mx) ** 2, 0);
+    for (const [i, y] of curve.entries()) expect(Math.abs(y - (my + slope * (i - mx)))).toBeLessThan(4);
+    // the upper partials fall faster than the fundamental: a held note mellows, it does not keep its edge
+    const c3 = one(48, 0.5, 3);
+    const drop = (n: number) => level(c3, n * freq(48) * Math.sqrt(1 + 2.5e-5 * n * n), 0.1) - level(c3, n * freq(48) * Math.sqrt(1 + 2.5e-5 * n * n), 1.6);
+    expect(drop(10)).toBeGreaterThan(drop(1) + 10);
+    // a rounded start: from a tenth to nine tenths of the first peak takes a few milliseconds, not a click's fraction of one
+    const env: number[] = [];
+    for (let i = 0; i < rate * 0.06; i += 22) env.push(Math.max(...Array.from(c4.subarray(i, i + 22), Math.abs)));
+    const top = Math.max(...env);
+    const rise = (env.findIndex((v) => v >= 0.9 * top) - env.findIndex((v) => v >= 0.1 * top)) * 0.5;
+    expect(rise).toBeGreaterThan(3);
+    expect(rise).toBeLessThan(20);
+    // the damper: once the key is let go the note falls away at once and smoothly (not a straight fade that holds, then drops),
+    // and it is silent by the end of the release
+    const short = one(60, 0.5, 0.5);
+    const at = Math.round(0.5 * rate);
+    const db = (t: number) => 10 * Math.log10(short.slice(at + Math.round(t * rate), at + Math.round(t * rate) + 882).reduce((s, v) => s + v * v, 0) / 882 + 1e-30);
+    const before = db(-0.03);
+    expect(before - db(0.05)).toBeGreaterThan(4);
+    expect(before - db(0.2)).toBeGreaterThan(15);
+    expect(Math.max(...Array.from(short.subarray(at + Math.round(0.449 * rate), at + Math.round(0.46 * rate)), Math.abs))).toBeLessThan(1e-3);
+  });
   it("the settings are saved and checked, and a preset sets what it names", async () => {
     const { INSTRUMENT_PRESETS } = await import("./song");
     const s = song([], 8);

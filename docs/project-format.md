@@ -1420,12 +1420,15 @@ optional fields, and a song can have a room; a song with none of them renders ex
 and vibrato do not apply): `fm` (`fmRatio`, `fmIndex`: electric pianos, bells), `pluck` (a Karplus-Strong string: `damping`,
 `brightness`), `organ` (`brightness`), `piano`, `wavetable` (`wtPos`), `formula` and `sample`. **`piano`** is struck strings made
 from their partials: each a little sharp of the harmonic series (a stiff string, more in the treble), falling in two stages (the
-prompt sound, then the long aftersound) and faster the higher it is; a felt hammer that rounds off the top and leaves every eighth
-partial weak; two strings a note a fraction of a cent apart that beat slowly; a soft knock and a short rise at the start. Low notes
-ring for seconds, high ones briefly, and a harder note (`vel`) is louder and brighter. `brightness` 0 is a felt-muted upright (the
-"felt piano" of quiet game and film music), 1 an open grand (default 0.35). Give it `sustain: 1` and a short `attack`: the track's
-release is the damper falling when the key is let go, so a note's `len` is how long the key is held (`"release": 0.4` for a
-gentle damper). It takes no `bend`. The presets "Felt piano" and "Piano" set it up.
+prompt sound, then the long aftersound), the higher the faster, so a held note mellows; a felt hammer that is a steep low-pass
+above a corner (so a soft note is mostly its fundamental, with next to nothing above a few kHz) and leaves the eighth partial a
+little weak; two strings a note, the second quieter and a fraction of a cent off, that beat slowly and shallowly (a few dB, not
+the partial vanishing); a rounded rise of several milliseconds (longer soft and in the bass) and a dull thump of the felt at the
+start. Low notes ring for seconds, high ones briefly, and a harder note (`vel`) is louder and brighter. `brightness` 0 is a
+felt-muted upright (the "felt piano" of quiet game and film music), 1 an open grand (default 0.35). Give it `sustain: 1` and a
+short `attack`: the track's `release` is the damper, which stops the strings when the key is let go, the high partials first,
+with a faint thump of its own (its attack, decay and sustain still shape the held part), so a note's `len` is how long the key
+is held (`"release": 0.4` to `0.7` for a gentle damper). It takes no `bend`. The presets "Felt piano" and "Piano" set it up.
 
 `duck` (0 to 1) listens to every heard drum track's kicks (pitch 36), including those near the end, which dip the start (the song loops).
 A song's `master` can carry an effect chain like a track's (`"fx": [{ "type": "compressor", "params": { ... } }]`), a loudness target
