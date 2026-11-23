@@ -20,11 +20,14 @@ all = { level = "warn", priority = -1 }
 
 # Debug builds (cargo test, cargo build) carry line tables, so backtraces still show file and line, but no per-variable debug info, and none at all
 # for dependencies: the full info made target/debug 34 GB. Set debug = true here when stepping through code in a debugger.
+# Tests play whole games for thousands of frames: the engine lightly optimised and its dependencies fully (built once) halve the test runs.
 [profile.dev]
 debug = "line-tables-only"
+opt-level = 1
 
 [profile.dev.package."*"]
 debug = false
+opt-level = 3
 
 [profile.release]
 lto = "thin"
