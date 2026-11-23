@@ -8,7 +8,7 @@
 // The shape, as the reference has it (the numbers are the curves below):
 // - from the side, front to back: a dark bumper sticking out; a blunt upright nose 0.74 high (45% of the height); a short bonnet (0.46,
 //   16% of the length) rising gently to the base of a big flat windscreen that leans back 12.5 degrees and reaches nearly to the roof;
-//   one flat roof all the way back with a thin overhanging lip; an upright back leaning in 6 cm towards the roof; under it the underside
+//   one flat roof all the way back, its edges softly rounded (no lip: the owner's sixth play); an upright back leaning in 6 cm towards the roof; under it the underside
 //   sweeping UP at 32 degrees from just behind the rear wheel to the dark rear bumper (the step).
 // - the cab: on the left (the driver's side) an open doorway shaped as the reference's door, no door (the owner, second notes: "We can
 //   also make the truck have no doors"): its front edge leaning with the windscreen pillar, its foot low with a dark step inside, and
@@ -49,7 +49,8 @@ import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
 const U = 16, u = (v) => Math.round(v * U * 1000) / 1000;
-const CREAM = PAL.cream, LOWER = shade(PAL.cream, -0.13), RED = PAL.red, INK = PAL.ink, TYRE = PAL.tyre;
+// (the lower body a warm caramel sand under the red band: it was the cream a shade darker, and the two tones barely read apart)
+const CREAM = PAL.cream, LOWER = "#d8ad78", RED = PAL.red, INK = PAL.ink, TYRE = PAL.tyre;
 const DARK = shade(PAL.ink, 0.08);       // the bumpers: chunky, dark
 const STEEL = "#57524d";                  // plain dark steel wheels
 const FRAME = shade(PAL.ink, 0.18);       // the rubber round the windscreen and the windows
@@ -62,14 +63,14 @@ export const LAMPS = {
 };
 
 // ---- the numbers (metres; z along the van, + forward; y up from the ground; x across, + is the van's own left) -------------------
-export const L = 2.95, W = 1.34, H = 1.63;        // over the bumpers, over the body, over the roof's lip
+export const L = 2.95, W = 1.34, H = 1.62;        // over the bumpers, over the body, over the roof
 export const HW = W / 2;
 export const R = 0.27;                            // wheel radius (0.54 across)
 export const AXF = 0.72, AXR = -0.79;             // front and rear axle: under the front of the doorway; at 77% of the length (was -0.59, 70%)
 export const TR = 0.55;                           // a wheel's middle from the centre line
 export const ZF = 1.40, ZB = -1.42;               // the nose; the foot of the back (its top leans 6 cm in)
 export const Z1 = 1.49, Z0 = -1.48;               // the bumpers' faces (the van's ends)
-const SILL = 0.24, ROOF = 1.6;                    // the underside; the roof (its lip a little higher)
+const SILL = 0.24, ROOF = 1.62;                   // the underside; the roof (no lip: its edges are the body's own soft round)
 const NOSE_TOP = 0.78;                            // the nose's top (0.74 seen, once its edge is rounded)
 const WS = { top: [0.78, ROOF], base: [0.94, 0.88] }; // the windscreen's top and base (z, y): 0.16 back over 0.72 up, 12.5 degrees
 const ARCH = 0.34;                                // the wells' radius (round the wheel, with room to bob on its spring)
@@ -131,7 +132,7 @@ export const PLAN = (z) => HW - 0.02 * Math.max(0, Math.min(1, (z - 0.94) / (NOS
 // SECTION: the ring of points round the van at one place, from the half-width, the bottom and the top there: upright sides that lean
 // in 3.5 cm towards the roof (from 1.1 m up), the roof's edges round (12 cm), the bottom's edges smaller (6 cm). `inset` shrinks it
 // all round (the ends' rounding). Points go round from the bottom's middle by the van's left (+x) and back by its right.
-const SECTION = { lean: 0.035, from: 1.1, rTop: 0.12, rBottom: 0.06 };
+const SECTION = { lean: 0.035, from: 1.1, rTop: 0.16, rBottom: 0.06 };
 function section(hw, yb, yt, inset = 0) {
   hw -= inset; yb += inset; yt -= inset;
   const rt = Math.max(0.005, Math.min(SECTION.rTop, (yt - yb) * 0.3) - inset * 0.5), rb = Math.max(0.005, SECTION.rBottom - inset * 0.5);
@@ -248,6 +249,8 @@ export function doorOutline(g = 0) {
 }
 const SW = SIDE_WINDOW;
 const WIN = { x: HW - 0.11, y0: 1.0, y1: 1.5 };   // the windscreen's opening (front view)
+// the opening behind the rear doors into the hold (its sill the hold's floor: ARCH_Y + ARCH + 0.05, just over the rear wells' linings)
+const BACK_OPEN = { x: 0.465, y0: ARCH_Y + ARCH + 0.05, y1: 1.45 }; // (a little inside the doors' edges all round: no daylight past them)
 export const cuts = [
   // two tones: sand below the band, cream above; the red band
   { view: "side", points: poly([[-1.6, 0], [1.6, 0], ...BAND.lo.slice().reverse()]), color: LOWER },
@@ -270,14 +273,14 @@ export const cuts = [
   { view: "front", points: rr(-WIN.x, WIN.y0, WIN.x, WIN.y1, 0.08), remove: true, depth: u(0.05), wall: FRAME, near: u(0.7) },
   // the grille between the headlamps, and the opening behind the rear doors into the hold
   { view: "front", points: rr(-0.2, 0.38, 0.2, 0.56, 0.03), color: INK, depth: u(0.02), wall: INK, near: u(1.3), far: u(1.5) },
-  { view: "back", points: rr(-0.5, 0.56, 0.5, 1.49, 0.06), remove: true, depth: u(0.05), wall: INSIDE },
+  // (its sill level with the hold's floor, which runs out under it to the back's face: nothing to see down into)
+  { view: "back", points: rr(-BACK_OPEN.x, BACK_OPEN.y0, BACK_OPEN.x, BACK_OPEN.y1, 0.05), remove: true, depth: u(0.05), wall: INSIDE },
 ];
 const body = [mesh(SKIN.verts, SKIN.faces, CREAM, { keep: true, smooth: true, modifiers: [{ type: "cutout", cuts }] })];
 // (the skin's faces are wound by hand, outwards: `keep`; smooth shading across the whole skin)
 
-// the roof's thin lip, overhanging all round: one flat rounded slab on the roof, as the reference's roof cap
-const capZ0 = backZ(ROOF) - 0.015, capZ1 = WS.top[0] + 0.02;
-body.push(bevelled([0, ROOF + 0.01, (capZ0 + capZ1) / 2], [W - 0.17, 0.04, capZ1 - capZ0], shade(CREAM, -0.04), { bevel: 0.018, segments: 2 }));
+// (no roof cap: the thin slab that sat on the roof as the reference's lip read as "a weird rectangular piece atop the van" and, from
+// behind, as a shelf (the owner's sixth play); the roof's edges are the skin's own, rounded wider: SECTION.rTop)
 
 // the grille's three bars
 for (const y of [0.42, 0.47, 0.52]) body.push(bevelled([0, y, ZF + 0.005], [0.36, 0.022, 0.02], shade(PAL.ink, 0.3), { bevel: 0.008 }));
@@ -297,12 +300,51 @@ const liner = (az) => {
     sheet([[-xi, a0, z0], [-xi, y1, z0], [-xi, y1, z1], [-xi, a1, z1]], [5, (a0 + y1) / 2, az], INK),
   ];
 };
-body.push(...liner(AXF), ...liner(AXR));
+// The front wells, round: the doorway rises round the front well `gap` clear of its lip, and through that gap the square liner's
+// corners showed from outside, their backs never drawn, so the dark inside of the well stood as a black wall in the doorway. Here
+// the well is a round housing as the arch is: dark inside (seen from the wheel's side), a lining colour outside (seen from the cab and
+// through the doorway), its round inside the doorway's edge.
+const roundLiner = (az) => {
+  const Rl = ARCH + 0.02, x = HW - 0.05, xi = TR - 0.13, t = 0.012;
+  const a0 = Math.max(SILL, at(SIDE.bottom, az - Rl)) - 0.04, a1 = Math.max(SILL, at(SIDE.bottom, az + Rl)) - 0.04;
+  const prof = (r) => {
+    const p = [[az - r, a0], [az - r, ARCH_Y]];
+    for (let i = 1; i < 12; i++) { const a = Math.PI * (1 - i / 12); p.push([az + Math.cos(a) * r, ARCH_Y + Math.sin(a) * r]); }
+    p.push([az + r, ARCH_Y], [az + r, a1]);
+    return p;
+  };
+  const out = [], pin = prof(Rl), pout = prof(Rl + t);
+  const shell = (p, xa, xb, col, inward) => {
+    const verts = [], faces = [];
+    for (const [z, y] of p) verts.push([xa, y, z], [xb, y, z]);
+    for (let i = 0; i < p.length - 1; i++) faces.push([2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2]);
+    if (!inward) return [mesh(verts, faces, col, { inside: [0, ARCH_Y, az] })];
+    // (the dark inside: each strip turned to look at the axle)
+    return faces.map((f, i) => {
+      const [z, y] = [(p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2];
+      const dz = z - az, dy = y - ARCH_Y, l = Math.hypot(dz, dy) || 1;
+      return mesh(verts, [f], col, { inside: [0, y + (dy / l) * 5, z + (dz / l) * 5] });
+    });
+  };
+  const wall = (xw, col, look) => mesh(pin.map(([z, y]) => [xw, y, z]), [[...pin.keys()]], col, { inside: [look, ARCH_Y, az] });
+  const LINE = shade(INSIDE, -0.12);
+  for (const s of [1, -1]) {
+    out.push(...shell(pin, s * xi, s * x, INK, true), ...shell(pout, s * (xi - t), s * x, LINE, false));
+    out.push(wall(s * xi, INK, -s * 5), wall(s * (xi - t), LINE, s * 5));
+  }
+  return out;
+};
+body.push(...roundLiner(AXF), ...liner(AXR));
 
 // the cab inside: a floor, a ceiling, the dash under the windscreen, the wall to the hold behind the seat (with a window), the seat
 const IX = HW - 0.06, FL = 0.5;
 const STEP = { x0: IX - 0.2, y: 0.4 };  // the step well inside the doorway: from here to the side, its tread this high
-body.push(bevelled([(-IX + STEP.x0) / 2, FL - 0.03, (CAB_WALL + 0.9) / 2], [IX + STEP.x0, 0.06, 0.9 - CAB_WALL], FLOOR, { bevel: 0.02 }));
+// (the floor: behind the front wells from side to side, and on between them; never through a well's housing)
+{
+  const zw = AXF - ARCH - 0.04, xw = TR - 0.13 - 0.015;
+  body.push(bevelled([(-IX + STEP.x0) / 2, FL - 0.03, (CAB_WALL + zw) / 2], [IX + STEP.x0, 0.06, zw - CAB_WALL], FLOOR, { bevel: 0.02 }));
+  body.push(bevelled([(-xw + Math.min(xw, STEP.x0)) / 2, FL - 0.03, (zw - 0.02 + 0.9) / 2], [xw + Math.min(xw, STEP.x0), 0.06, 0.9 - zw + 0.02], FLOOR, { bevel: 0.02 }));
+}
 body.push(bevelled([0, ROOF - 0.1, (CAB_WALL + WS.top[0]) / 2], [2 * IX, 0.04, WS.top[0] - CAB_WALL], INSIDE, { bevel: 0.015 }));
 // (its foot over the front wells' linings, so it never shows in a wheel arch)
 body.push(bevelled([0, 0.83, 0.8], [2 * IX, 0.26, 0.2], DASH, { bevel: 0.06, segments: 2 }));
@@ -320,11 +362,15 @@ inner(1, doorFront(D.y1) - 0.04, 0.92, FL, ROOF - 0.08);
 inner(1, bz, D.z0 + 0.04, STEP.y, ROOF - 0.08);
 inner(1, D.z0, doorFront(D.y1), D.y1 - 0.05, ROOF - 0.08);
 for (const [z0, z1, y0, y1] of [[bz, SW.z0 + 0.03, FL, ROOF - 0.08], [SW.z1 - 0.03, 0.92, FL, ROOF - 0.08], [SW.z0, SW.z1, FL, SW.y0 + 0.03], [SW.z0, SW.z1, SW.y1 - 0.03, ROOF - 0.08]]) inner(-1, z0, z1, y0, y1);
-// the step: a dark well just inside the doorway's foot, lower than the cab floor, behind the front wheel's well; a ribbed tread
+// the step: a well just inside the doorway's foot, lower than the cab floor, behind the front wheel's well, with a clear step plate
+// on it: a light ribbed steel tread whose nosing runs out over the doorway's sill to the body's side (it was a dark tread 4 cm over the
+// sill, which hardly read as a step)
 {
-  const z0 = D.z0 + 0.01, z1 = AXF - ARCH - 0.02, x0 = STEP.x0, x1 = IX;
+  const z0 = D.z0 + 0.01, z1 = AXF - ARCH - 0.05, x0 = STEP.x0, x1 = IX;
   body.push(bevelled([(x0 + x1) / 2, STEP.y - 0.03, (z0 + z1) / 2], [x1 - x0, 0.06, z1 - z0], DARK, { bevel: 0.012 }));
-  for (const k of [0.25, 0.5, 0.75]) body.push(bevelled([(x0 + x1) / 2, STEP.y + 0.006, z0 + (z1 - z0) * k], [x1 - x0 - 0.04, 0.014, 0.018], shade(PAL.ink, 0.28), { bevel: 0.005 }));
+  const PLATE = "#b9b4aa", xo = HW + 0.012;
+  body.push(bevelled([(x0 + 0.02 + xo) / 2, STEP.y + 0.008, (z0 + z1) / 2], [xo - x0 - 0.02, 0.022, z1 - z0 - 0.01], PLATE, { bevel: 0.007, segments: 2 }));
+  for (const k of [0.2, 0.4, 0.6, 0.8]) body.push(bevelled([(x0 + 0.04 + xo - 0.02) / 2, STEP.y + 0.021, z0 + (z1 - z0) * k], [xo - x0 - 0.08, 0.008, 0.014], shade(PLATE, -0.18), { bevel: 0.003 }));
   // its inner wall up to the floor, and its back
   body.push(sheet([[x0, STEP.y - 0.06, z0], [x0, FL, z0], [x0, FL, z1], [x0, STEP.y - 0.06, z1]], [x0 + 5, FL, (z0 + z1) / 2], shade(DARK, 0.15)));
   body.push(sheet([[x0, STEP.y - 0.06, z0], [x1, STEP.y - 0.06, z0], [x1, FL, z0], [x0, FL, z0]], [(x0 + x1) / 2, FL, z0 + 5], shade(DARK, 0.15)));
@@ -335,12 +381,31 @@ body.push(bevelled([SEAT.x, SEAT.y - 0.04, SEAT.z], [0.42, 0.08, 0.36], SEAT_C, 
 body.push(bevelled([SEAT.x, SEAT.y + 0.15, 0.05], [0.42, 0.34, 0.08], SEAT_C, { bevel: 0.035, segments: 2, rot: [-8, 0, 0] }));
 // the column from the dash to the wheel
 body.push(tube([[STEER.x, 0.74, 0.74], [STEER.x, STEER.y - 0.01, STEER.z + 0.02]], 0.025, INK));
-// the hold: lined with light boards (seen through the back windows and when the doors open); its floor over the rear wells
-const Hd = { x: HW - 0.05, y0: ARCH_Y + ARCH + 0.03, y1: ROOF - 0.07, z1: bz - bt / 2, zb: ZB + BACK_LEAN + 0.02, zt: ZB + 0.02 + 0.0 };
+// the hold: lined with light boards (seen through the back windows and when the doors open). Its floor is one solid board (the owner's
+// sixth play: "Truck bed doesn't cover the full area. I can see the grass through it": it was a sheet seen from above only, 5 cm short
+// of each side and of the back, so the skin's inside, which is never drawn, let the grass show through the gaps): a closed slab from
+// wall to wall (into the skin), from the cab's wall to the back's lip, its top level with the opening's sill, over the rear wells'
+// linings. The back is lined too, round the opening (it was open at the corners behind the side boards).
+export const HOLD_FLOOR = BACK_OPEN.y0;   // the floor's top (0.68): its underside just over the rear wells' linings (0.65)
+const Hd = { x: HW - 0.05, y0: HOLD_FLOOR, y1: ROOF - 0.1, z1: bz - bt / 2, zb: backZ(HOLD_FLOOR) + 0.05 };
+export const HOLD_BOX = Hd;
 const mid = [0, (Hd.y0 + Hd.y1) / 2, (Hd.zb + Hd.z1) / 2];
-body.push(sheet([[-Hd.x, Hd.y0, Hd.zb], [Hd.x, Hd.y0, Hd.zb], [Hd.x, Hd.y0, Hd.z1], [-Hd.x, Hd.y0, Hd.z1]], [0, Hd.y0 - 5, mid[2]], shade(HOLD, -0.15)));
+{
+  const fw = HW - 0.012, t = 0.026, zf = Hd.z1 + 0.01;
+  // the board, side to side under the side linings and into the skin
+  body.push(bevelled([0, Hd.y0 - t / 2, (Hd.zb + zf) / 2], [2 * fw, t, zf - Hd.zb], shade(HOLD, -0.15), { bevel: 0.004 }));
+  // and its tongue under the opening, out to the back's face (the lip's walls stand on it)
+  const zo = backZ(Hd.y0) - 0.004;
+  body.push(bevelled([0, Hd.y0 - t / 2, (zo + Hd.zb + 0.02) / 2], [2 * BACK_OPEN.x + 0.04, t, Hd.zb + 0.02 - zo], shade(HOLD, -0.2), { bevel: 0.004 }));
+}
 body.push(sheet([[-Hd.x, Hd.y1, Hd.zb], [Hd.x, Hd.y1, Hd.zb], [Hd.x, Hd.y1, Hd.z1], [-Hd.x, Hd.y1, Hd.z1]], [0, Hd.y1 + 5, mid[2]], shade(HOLD, 0.1)));
 for (const s of [1, -1]) body.push(sheet([[s * Hd.x, Hd.y0, Hd.zb], [s * Hd.x, Hd.y1, Hd.zb], [s * Hd.x, Hd.y1, Hd.z1], [s * Hd.x, Hd.y0, Hd.z1]], [s * (Hd.x + 5), mid[1], mid[2]], HOLD));
+// the back's lining round the opening (seen from inside: the boards beside it and over it)
+{
+  const z = Hd.zb, ox = BACK_OPEN.x - 0.01, oy = BACK_OPEN.y1 - 0.01;
+  for (const s of [1, -1]) body.push(sheet([[s * ox, Hd.y0, z], [s * Hd.x, Hd.y0, z], [s * Hd.x, Hd.y1, z], [s * ox, Hd.y1, z]], [0, mid[1], z - 5], shade(HOLD, -0.05)));
+  body.push(sheet([[-ox, oy, z], [ox, oy, z], [ox, Hd.y1, z], [-ox, Hd.y1, z]], [0, mid[1], z - 5], shade(HOLD, -0.05)));
+}
 
 // the windscreen's pane: lightly tinted, just inside the opening, leaning with it
 {
@@ -424,6 +489,10 @@ const doorCuts = [
   // the window's frame pressed in a little, then the window itself, right through
   { view: "back", points: rr(-DWIN.w / 2 - 0.04, DWIN.y0 - 0.04, DWIN.w / 2 + 0.04, DWIN.y1 + 0.04, 0.08), color: FRAME, depth: u(0.01) },
   { view: "back", points: rr(-DWIN.w / 2, DWIN.y0, DWIN.w / 2, DWIN.y1, 0.055), remove: true, depth: u(DT + 0.04), wall: FRAME },
+  // ... and through the door's inside face too (the owner's sixth play: "Truck rear windows are only one way windows": the cut took
+  // away only the outside face, so from inside the hold the door's inner face was a blank board, and from outside, through the hole,
+  // that board was seen from behind, which is never drawn: a window from outside, a wall from inside)
+  { view: "front", points: rr(-DWIN.w / 2, DWIN.y0, DWIN.w / 2, DWIN.y1, 0.055), remove: true },
 ];
 const extrude = (outline, hw) => {
   const verts = [], faces = [], n = outline.length;
@@ -461,11 +530,11 @@ export const van = model([
 export function measures() {
   const ys = SKIN.verts.map((v) => v[1]);
   return {
-    length: Z1 - Z0, width: W, height: Math.max(ROOF + 0.03, ...ys), wheel: 2 * R,
-    ratio: [1, W / (Z1 - Z0), (ROOF + 0.03) / (Z1 - Z0)].map((v) => Math.round(v * 100) / 100),
+    length: Z1 - Z0, width: W, height: Math.max(ROOF, ...ys), wheel: 2 * R,
+    ratio: [1, W / (Z1 - Z0), (ROOF) / (Z1 - Z0)].map((v) => Math.round(v * 100) / 100),
     nose: NOSE_TOP - END.nose * 0.4, bonnet: (NOSE0 + END.nose - WS.base[0]) / (Z1 - Z0),
     windscreen_lean_deg: (Math.atan2(WS.base[0] - WS.top[0], WS.top[1] - WS.base[1]) * 180) / Math.PI,
-    rear_wheel_at: (Z1 - AXR) / (Z1 - Z0), wheel_to_height: (2 * R) / (ROOF + 0.03),
+    rear_wheel_at: (Z1 - AXR) / (Z1 - Z0), wheel_to_height: (2 * R) / (ROOF),
     sweep_deg: SWEEP.deg, wheelbase: AXF - AXR, rear_overhang: AXR - Z0, doorway: (doorFront(1.0) - DOORWAY.z0) / (Z1 - Z0),
   };
 }

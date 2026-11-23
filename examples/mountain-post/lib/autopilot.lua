@@ -61,11 +61,35 @@ function autopilot.path(van, place)
   return pts
 end
 
+-- The lever, as a player moves it (entities/van.lua Van:shift): the brake held, stopped, one gear at a time, a few frames apart.
+-- Says whether the van is in `gear` (until it is, the pedals hold it on the brake). D and L change on the move.
+local SHIFT_GAP = 0.15
+function autopilot.gear(ap, van, gear, dt)
+  if van.gear == gear then return true end
+  local order = {}
+  for i, g in ipairs(van.ORDER) do order[g] = i end
+  local free = (van.gear == "D" or van.gear == "L") and (gear == "D" or gear == "L")
+  if not free then van.ctl.go, van.ctl.brake = 0, 1 end
+  ap.shift_t = (ap.shift_t or 0) + (dt or 1 / 60)
+  if ap.shift_t >= SHIFT_GAP and (free or math.abs(van.speed) < 0.3) then
+    ap.shift_t = 0
+    van:shift(order[gear] > order[van.gear] and 1 or -1)
+  end
+  return van.gear == gear
+end
+
 function autopilot.to(place, opts)
   opts = opts or {}
   local ap = { place = place, done = false, i = 1, speed = opts.speed or 12 }
   function ap:steer(van, dt)
     if not self.pts then self.pts = autopilot.path(van, self.place) end
+    -- arrived: stopped on the brake, the lever into P, then done
+    if self.parking then
+      van.ctl.go, van.ctl.steer = 0, 0
+      van.ctl.brake = 1
+      if autopilot.gear(self, van, "P", dt) then van.ctl.brake = 0; self.done = true end
+      return
+    end
     local pts = self.pts
     -- the point a few metres ahead on the path
     while self.i < #pts and (pts[self.i][1] - van.x) ^ 2 + (pts[self.i][2] - van.z) ^ 2 < 7 * 7 do self.i = self.i + 1 end
@@ -116,14 +140,17 @@ function autopilot.to(place, opts)
       local lock = (self.phase == "back" and s or -s) * van.lock_share(van.speed)
       local swinging = math.abs(van.steer - lock) > 0.2 and math.abs(van.speed) < 0.5
       if swinging then self.phase_t = math.min(self.phase_t, 0.3) end
+      -- (each leg in its own gear: R backing, D going forward; R2 drives either way, L2 only brakes)
       if self.phase == "back" then
         van.ctl.steer = s
         if van.speed > 0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 1, 0
+        elseif not autopilot.gear(self, van, "R", dt) then self.phase_t = math.min(self.phase_t, 0.3)
         elseif swinging then van.ctl.go, van.ctl.brake = 0, 0
-        else van.ctl.go, van.ctl.brake = 0, van.speed < -2 and 0 or 1 end
+        else van.ctl.go, van.ctl.brake = van.speed < -2 and 0 or 1, 0 end
       else
         van.ctl.steer = -s
-        if van.speed < -0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 1, 0, 0
+        if van.speed < -0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 1, 0
+        elseif not autopilot.gear(self, van, "D", dt) then self.phase_t = math.min(self.phase_t, 0.3)
         elseif swinging then van.ctl.go, van.ctl.brake = 0, 0
         else van.ctl.go, van.ctl.brake = van.speed > 2 and 0 or 0.8, 0 end
       end
@@ -134,12 +161,17 @@ function autopilot.to(place, opts)
     end
     self.turning = false
     van.ctl.steer = math.max(-1, math.min(1, -diff * 2.2))
+    -- (forward in D: from P or R, stopped on the brake first)
+    if van.gear ~= "D" and van.gear ~= "L" then
+      if van.speed < -0.3 then van.ctl.go, van.ctl.brake = 0, 1; return end
+      if not autopilot.gear(self, van, "D", dt) then return end
+    end
     if van.speed < target - 0.3 then van.ctl.go, van.ctl.brake = math.min(1, (target - van.speed) * 0.6 + 0.2), 0
     elseif van.speed > target + 0.5 then van.ctl.go, van.ctl.brake = 0, math.min(1, (van.speed - target) * 0.4)
     else van.ctl.go, van.ctl.brake = 0.15, 0 end
     if target == 0 and van:stopped() then
-      van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 0, 0
-      self.done = true
+      van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 1, 0
+      self.parking = true
     end
   end
   return ap

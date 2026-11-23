@@ -34,6 +34,7 @@
     "van": ["pad:north", "key:KeyF"],
     "run": ["pad:east", "key:ShiftLeft", "key:ShiftRight"],
     "handbrake": ["pad:east", "key:ShiftLeft", "key:ShiftRight"],
+    "horn": ["pad:thumb_l", "key:KeyH"],
     "map": ["pad:select", "key:KeyM", "key:Tab"],
     "pause": ["pad:start", "key:Escape", "key:KeyP"],
     "prev": ["pad:l1", "key:KeyZ"],

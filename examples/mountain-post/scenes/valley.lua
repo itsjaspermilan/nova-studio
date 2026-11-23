@@ -4,7 +4,8 @@
 -- hold for handbrake while driving."). On foot: X talks and hands over; at the van's back (its doors swing open by themselves as the
 -- postmaster comes near) X loads the parcel carried, or, empty-handed, a small panel shows the parcels in the van one at a time (L1
 -- and R1 go through them, A takes the one shown: the panel is a menu); Y at the van's left doorway gets in; B held runs. In the van:
--- R2 goes, L2 brakes then reverses, the stick steers, B held is the handbrake, Y gets out when stopped, X is the horn. Select is
+-- R2 goes, L2 brakes (only), the stick steers, B held is the handbrake, A and X move the PRNDL lever (A towards L, X towards P;
+-- entities/van.lua, lib/gear_hud.lua), L3 is the horn, Y gets out when stopped. Select is
 -- the paper map; Start pauses. Nothing takes the stick away for a walk the player has to watch (the owner, after the second pictures: "The user should
 -- just be outside."): the porch door is a short fade, getting in and out is at once. Nothing on the screen points anywhere: the
 -- signposts and the mailboxes' numbers do.
@@ -18,6 +19,7 @@ local ui = require("lib.ui")
 local words = require("lib.words")
 local parcels = require("lib.parcels")
 local music = require("lib.music")
+local gear_hud = require("lib.gear_hud")
 
 local Valley = nova.scene {}
 
@@ -252,6 +254,7 @@ function Valley:get_in()
   self.mode = "van"
   v.driven = true
   v.engine_on = true
+  v:park() -- (in P each time)
   nova.sound.play("step_wood", { volume = 0.4 })
   nova.sound.play("engine_start", { volume = 0.5 })
   nova.log("in the van")
@@ -264,6 +267,7 @@ function Valley:get_out()
   v.driven = false
   v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, 0, 0, 0
   v.engine_on = false
+  v:park() -- (left in P: it is only got out of stopped)
   nova.sound.play("engine_off", { volume = 0.4 })
   nova.sound.play("step_wood", { volume = 0.4 })
   local x, z = self:van_point(DOOR)
@@ -321,8 +325,10 @@ function Valley:update(dt)
     v.ctl.handbrake = nova.input.down("handbrake") and 1 or 0
     if v.autopilot and not v.autopilot.done then v.autopilot:steer(v, dt)
     else v.ctl.go, v.ctl.brake, v.ctl.steer = nova.input.axis("go"), nova.input.axis("brake"), nova.input.axis("steer") end
-    -- (X, which nothing else uses in the van: the horn)
-    if nova.input.pressed("interact") then
+    -- the lever (the owner's sixth play): A one gear towards L, X one towards P
+    if nova.input.pressed("confirm") then v:shift(1) elseif nova.input.pressed("interact") then v:shift(-1) end
+    -- (L3, the left stick's click: the horn; X was, before the lever)
+    if nova.input.pressed("horn") then
       nova.sound.play("horn", { volume = 0.7 })
       p:smile(1.2)
       nova.log("horn")
@@ -461,6 +467,7 @@ function Valley:draw_ui()
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h, math.atan(camera.forward())) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
+    if self.mode == "van" and not dialogue.active() then gear_hud.draw(v, w, h) end
     if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then ui.picker(self.pk.list, math.max(1, math.min(#self.pk.list, self.pk.i)), w, h, self.picker_a) end
   end
   dialogue.draw(w, h)
