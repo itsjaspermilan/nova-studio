@@ -85,10 +85,15 @@ end
 
 -- Whether a person's body at the ground point (x, z), `base` metres up, is hidden from the eye: at least two of three points on them
 -- (the feet's end, the middle, the head) have scenery in front. One thin trunk across them hides nobody.
-function occluders.hides(ex, ey, ez, x, base, z, heights)
+-- Scenery within `skip` metres of the eye does not count: that is faded out whole, near the camera (see camera.lua), so it hides nobody.
+function occluders.hides(ex, ey, ez, x, base, z, heights, skip)
   local hit = 0
   for _, h in ipairs(heights) do
-    if occluders.blocked(ex, ey, ez, x, base + h, z) then hit = hit + 1 end
+    local y = base + h
+    local dx, dy, dz = x - ex, y - ey, z - ez
+    local l = math.sqrt(dx * dx + dy * dy + dz * dz)
+    local u = (skip and l > skip) and skip / l or 0
+    if occluders.blocked(ex + dx * u, ey + dy * u, ez + dz * u, x, y, z) then hit = hit + 1 end
   end
   return hit >= 2, hit
 end
@@ -96,6 +101,26 @@ end
 -- Whether the eye itself is inside scenery (a camera in a tree's crown or the post office's porch roof).
 function occluders.inside(ex, ey, ez)
   return occluders.blocked(ex, ey, ez, ex, ey, ez + 1e-3)
+end
+
+-- Whether a tree's crown or trunk is at the point.
+local function in_tree(x, y, z)
+  local cell = grid[math.floor(x / CELL) * 100003 + math.floor(z / CELL)]
+  for _, p in ipairs(cell or {}) do
+    if p.k.round and inside(p, x, y, z) then return true end
+  end
+  return false
+end
+
+-- Whether the eye is inside a tree or has one within `r` metres (probed at six points round it): the camera comes in from a crown, but
+-- not from a building (that fades out near the eye instead).
+function occluders.tree_near(ex, ey, ez, r)
+  if not ready then build() end
+  if in_tree(ex, ey, ez) then return true end
+  for _, o in ipairs({ { r, 0, 0 }, { -r, 0, 0 }, { 0, r, 0 }, { 0, -r, 0 }, { 0, 0, r }, { 0, 0, -r } }) do
+    if in_tree(ex + o[1], ey + o[2], ez + o[3]) then return true end
+  end
+  return false
 end
 
 return occluders

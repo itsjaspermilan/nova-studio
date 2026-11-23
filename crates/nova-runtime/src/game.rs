@@ -2151,10 +2151,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let above = number_option(&some, "above")?.unwrap_or(0.3);
             let amount = number_option(&some, "amount")?.unwrap_or(1.0);
             let near = number_option(&some, "near")?.unwrap_or(0.0);
+            let near_from = number_option(&some, "near_from")?.unwrap_or(-1.0);
+            let near_amount = number_option(&some, "near_amount")?.unwrap_or(-1.0);
             if !(radius.is_finite() && radius > 0.0)
                 || !(margin.is_finite() && margin >= 0.0)
                 || !(near.is_finite() && near >= 0.0)
                 || !above.is_finite()
+                || !near_from.is_finite()
+                || !(near_amount.is_finite() && near_amount <= 1.0)
                 || !(0.0..=1.0).contains(&amount)
             {
                 return Err(lua_err(usage));
@@ -2166,6 +2170,8 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 amount: amount as f32,
                 above: above as f32,
                 near: near as f32,
+                near_from: near_from as f32,
+                near_amount: near_amount as f32,
             });
             Ok(())
         })?,

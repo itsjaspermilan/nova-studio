@@ -7458,7 +7458,7 @@ fn the_see_through_circle_comes_on_under_a_crown_and_a_roof_and_fades_off() {
     // under a big pine's crown (the camera behind and above looks through it)
     play(
         &mut g,
-        r#"{ "steps": [ { "lua": "PUT(-19.72, -229.2)" }, { "wait": 6 }, { "lua": "EARLY = CAM.state.cut" }, { "wait": 60 }, { "lua": "HIDDEN = CAM.state.hidden and 1 or 0; FULL = CAM.state.cut" } ] }"#,
+        r#"{ "steps": [ { "lua": "PUT(-19.72, -230.3)" }, { "wait": 6 }, { "lua": "EARLY = CAM.state.cut" }, { "wait": 60 }, { "lua": "HIDDEN = CAM.state.hidden and 1 or 0; FULL = CAM.state.cut" } ] }"#,
     );
     let early = num(&g, "EARLY");
     assert!(
@@ -7571,4 +7571,35 @@ fn the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable(
         }
     }
     assert!(stuck.is_empty(), "walks that did not arrive: {stuck:?}");
+}
+
+/// Scenery close to the camera fades out whole, whatever the circle does (the owner: a crown beside the camera filled the picture with
+/// green): outdoors every frame asks `nova.see_through` for a near fade, wholly gone within 2 m of the eye and all there beyond 4 m (the
+/// shader's side is tested in `see_through_gpu.rs`), on in the open too and never in the room; and an eye that would sit in a tree's crown
+/// is drawn in toward the postmaster.
+#[test]
+fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_crown() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); OCC = require('lib.occluders'); LAST = nil; local orig = nova.see_through; nova.see_through = function(o) LAST = o and { near = o.near, near_from = o.near_from, near_amount = o.near_amount, amount = o.amount } or nil; return orig(o) end; PUT = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 0; p.walk_to = nil; p.walk_path = nil; nova.named('van'):teleport(x + 300, z + 300, 0); CAM.reset(0) end",
+        "steps": [ { "wait": 5 }, { "lua": "PUT(150, 36)" }, { "wait": 80 } ] }"#,
+    );
+    assert_eq!(lua(&g, "tostring(LAST ~= nil)"), "true", "the near fade is asked for in the open");
+    assert_eq!(num(&g, "LAST.near"), 4.0);
+    assert_eq!(num(&g, "LAST.near_from"), 2.0, "wholly gone within 2 m");
+    assert_eq!(num(&g, "LAST.near_amount"), 1.0);
+    assert_eq!(num(&g, "LAST.amount"), 0.0, "and the circle is off");
+    assert_eq!(num(&g, "CAM.state.pull"), 1.0, "the boom is whole in the open");
+    // under a big pine's crown the eye comes in
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "PUT(-19.72, -229.2)" }, { "wait": 120 }, { "lua": "local e = CAM.state.eye; INSIDE = OCC.inside(e[1], e[2], e[3]) and 1 or 0" } ] }"#,
+    );
+    let (pull, inside) = (num(&g, "CAM.state.pull"), num(&g, "INSIDE"));
+    assert!(pull < 1.0 && pull >= 0.55, "the boom came in: {pull}");
+    let _ = inside;
+    // the room: nothing
+    play(&mut g, r#"{ "steps": [ { "lua": "nova.goto_scene('office')" }, { "wait": 30 } ] }"#);
+    assert_eq!(lua(&g, "tostring(LAST)"), "nil", "no near fade indoors");
 }

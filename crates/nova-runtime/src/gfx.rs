@@ -328,6 +328,10 @@ pub struct SeeThrough {
     pub amount: f32,
     pub above: f32,
     pub near: f32,
+    /// Everything within this many metres of the eye is wholly gone (it fades in from here out to `near`); negative: 0.8 of `near`.
+    pub near_from: f32,
+    /// How much of what is within `near` is dropped (0 to 1), apart from the hole's `amount`; negative: the same as `amount`.
+    pub near_amount: f32,
 }
 
 /// The wind that bends foliage (models drawn with a `sway`): the way it blows (a unit vector on the ground), how hard (0 is
@@ -809,6 +813,8 @@ struct Globals {
     see_through: [f32; 4],
     /// x: how far short of the point the hole stops; y: how much is dropped (0: off); z: the height above a model's base under which nothing is cut.
     see_through_opts: [f32; 4],
+    /// x: within this many metres of the eye everything (above the base height) is wholly gone; y: how much of the near fade is on.
+    see_through_near: [f32; 4],
 }
 
 /// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
@@ -3770,6 +3776,11 @@ impl Gfx {
             see_through_opts: lit.see_through.map_or([0.0; 4], |c| {
                 [c.margin, c.amount.clamp(0.0, 1.0), c.above, c.near]
             }),
+            see_through_near: lit.see_through.map_or([0.0; 4], |c| {
+                let from = if c.near_from < 0.0 { c.near * 0.8 } else { c.near_from.min(c.near) };
+                let amount = if c.near_amount < 0.0 { c.amount } else { c.near_amount };
+                [from, amount.clamp(0.0, 1.0), 0.0, 0.0]
+            }),
         };
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
@@ -3822,6 +3833,7 @@ impl Gfx {
                 ground: [0.0; 4],
                 see_through: [0.0; 4],
                 see_through_opts: [0.0; 4],
+                see_through_near: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

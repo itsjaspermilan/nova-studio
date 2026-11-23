@@ -45,6 +45,10 @@ camera.VAN = { dist = 9.6, pitch = math.rad(16), view = math.rad(7), low = math.
 -- Coming out of it, the low camera straight behind the postmaster is in the building, and its porch roof would fill the lower half of
 -- the picture. They step out to the foot of the porch (4 m: scenes/valley.lua), and within `r` metres of such a door everything within
 -- `near` metres of the camera is cut away too (the porch roof, the posts), easing back to the usual 2.5 m as they walk out.
+-- Scenery close to the eye fades out whole, whatever else is happening (the owner, after the see-through circle: a big crown next to
+-- the camera filled the picture with green): wholly gone within half of NEAR_FADE metres of the eye, all there beyond it, the fade by
+-- a screen-door, never the van or people (nova.see_through's near, near_from and near_amount).
+camera.NEAR_FADE = 4.0
 camera.PORCH = { r = 9, near = 6.0 }
 camera.NEAR = {}
 camera.VIEW_TILT = 0.85    -- the share of the boom's tilt (the stick, a lift over the van) the view takes
@@ -115,10 +119,11 @@ end
 
 -- The boom from the point it hangs on: the eye, and the point looked at (down at `view`, tilted with the boom by VIEW_TILT of
 -- its own tilt: the stick's tilt and a lift over the van tilt the view less, so the postmaster stays in the frame's lower middle).
-local function boom(C, yaw, pitch, f)
+local function boom(C, yaw, pitch, f, k)
   local s, c = math.sin(yaw), math.cos(yaw)
   local ax, ay, az = f[1] + s * C.ahead, f[2] + C.look, f[3] + c * C.ahead
-  local h, d = math.sin(pitch) * C.dist, math.cos(pitch) * C.dist
+  k = k or 1 -- (the boom drawn in to this share of its length: an eye that would sit in a tree's crown comes in toward them)
+  local h, d = math.sin(pitch) * C.dist * k, math.cos(pitch) * C.dist * k
   local ex, ey, ez = ax - s * d, ay + h, az - c * d
   local v = C.view + (pitch - C.pitch) * camera.VIEW_TILT
   local l = C.dist
@@ -171,6 +176,22 @@ local function place(dt, C, x, base, z, look_at, van)
   end
   cam.view_yaw = yaw
   local ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f)
+  -- (an eye inside a crown: the boom comes in toward the postmaster, as far as the first length that is clear and never closer than
+  -- PULL.min of it, held PULL.hold seconds after the crown is clear so it does not flicker, and eased both ways)
+  local P = camera.PULL
+  local want = 1
+  if occluders.tree_near(ex, ey, ez, P.clear) then
+    want = P.min
+    for _, k in ipairs(P.steps) do
+      local qx, qy, qz = boom(C, yaw, pitch, f, k)
+      if not occluders.tree_near(qx, qy, qz, P.clear) then want = k; break end
+    end
+  end
+  if not cam.ready or not cam.pull then cam.pull, cam.pull_hold = want, 0 end
+  if want < 1 then cam.pull_hold = P.hold else cam.pull_hold = (cam.pull_hold or 0) - dt end
+  if want < cam.pull then cam.pull = math.max(want, cam.pull - dt * P.in_speed)
+  elseif cam.pull_hold <= 0 then cam.pull = math.min(want, cam.pull + dt * P.out_speed) end
+  if cam.pull < 1 then ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f, cam.pull) end
   local need = math.max(0, world.height(ex, ez) + 1.2 - ey)
   -- (an eye that would be inside the van's body is lifted just over it: the one thing the van moves the camera for)
   if van and inside_van(van, ex, ey, ez, 0.3) then need = math.max(need, world.height(van.x, van.z) + VAN_BOX.h + 0.4 - ey) end
@@ -203,10 +224,10 @@ function camera.foot(p, dt)
   end
   local base = world.height(p.x, p.z) + (p.y or 0) - world.lift(p.x, p.z)
   -- (what is near the eye is cut away too: more by the doors in camera.NEAR)
-  local near = 2.5
+  local near = camera.NEAR_FADE
   for _, n in ipairs(camera.NEAR) do
     local d = math.sqrt((p.x - n[1]) ^ 2 + (p.z - n[2]) ^ 2)
-    near = math.max(near, 2.5 + (n.near - 2.5) * smooth(n.r, n.r * 0.5, d))
+    near = math.max(near, camera.NEAR_FADE + (n.near - camera.NEAR_FADE) * smooth(n.r, n.r * 0.5, d))
   end
   place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 0.85, margin = 0.6, near = near, base = base, heights = FOOT_HEIGHTS }, nova.first("van"))
 end
@@ -266,20 +287,22 @@ function camera.set(ex, ey, ez, tx, ty, tz, fov, dt)
 end
 
 -- Puts the view on the screen (from draw): the glide between two views, eased; the hole round what the view follows.
-local SEE = { at = { 0, 0, 0 }, radius = 0.85, margin = 0.6, above = 0.35, near = 2.5, amount = 1 }
+local SEE = { at = { 0, 0, 0 }, radius = 0.85, margin = 0.6, above = 0.35, near = 4, amount = 1, near_from = 2, near_amount = 1 }
 -- The see-through cut (the owner, 2026-11-23: "the circle cutout comes on too aggressively. It should only be present when the camera is
 -- really blocked by some item"): lines from the eye to three points on the postmaster (or the van) are walked through the scenery that
 -- can hide someone (lib/occluders.lua: tree crowns, forest, roofs, the porch; never grass, ferns, bushes, people or the van). Only when
 -- two of three are hidden, or the eye itself is inside a crown or a roof, is a small hole (about the postmaster's size on the screen)
 -- cut, and only through what lies between: it fades in over CUT.up seconds, and, once the line is clear, holds for CUT.hold seconds
 -- (a trunk's edge crossing the line does not flicker it) before fading out over CUT.down.
+camera.PULL = { clear = 3.0, min = 0.55, steps = { 0.9, 0.8, 0.7, 0.62 }, hold = 0.5, in_speed = 0.8, out_speed = 0.4 }
 camera.CUT = { up = 0.2, down = 0.3, hold = 0.25 }
 cam.cut, cam.cut_hold, cam.hidden = 0, 99, false
 local function cut_amount(dt, s)
   local hidden = false
   if s then
     local e = cam.eye
-    hidden = occluders.hides(e[1], e[2], e[3], s[1], s.base, s[3], s.heights) or occluders.inside(e[1], e[2], e[3])
+    -- (what is within the near fade of the eye hides nobody: it is gone whole)
+    hidden = occluders.hides(e[1], e[2], e[3], s[1], s.base, s[3], s.heights, s.near or 4)
   end
   cam.hidden = hidden
   local K = camera.CUT
@@ -309,9 +332,10 @@ function camera.apply(dt)
   nova.camera(ex, ey, ez, tx, ty, tz, fov)
   local s = cam.see
   local cut = cut_amount(dt or 0, s)
-  if s and cut > 0.01 then
+  if s then
     SEE.at[1], SEE.at[2], SEE.at[3] = s[1], s[2], s[3]
-    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or 2.5, t * cut
+    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or camera.NEAR_FADE, t * cut
+    SEE.near_from, SEE.near_amount = SEE.near * 0.5, t
     nova.see_through(SEE)
   else
     nova.see_through()

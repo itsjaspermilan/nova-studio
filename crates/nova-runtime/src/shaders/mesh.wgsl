@@ -27,6 +27,7 @@ struct Globals {
     ground: vec4<f32>,                  // rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky gave one
     see_through: vec4<f32>,             // `nova.see_through`: xyz the point kept in view, w the radius of the hole at that point (metres)
     see_through_opts: vec4<f32>,        // x: how far short of the point the hole stops (metres), y: how much is dropped (0: off), z: the height above its own base under which nothing is cut, w: within this many metres of the eye everything (above z) goes
+    see_through_near: vec4<f32>,        // x: within this many metres of the eye everything (above z) is wholly gone (it fades in out to opts.w), y: how much of that near fade is on (it is independent of opts.y, the hole's)
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var heightmap: texture_2d<f32>;  // the heightmap (R32Float, metres); 1 x 1 when there is none
@@ -560,7 +561,8 @@ fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
 fn see_through_cut(world: vec3<f32>, above_base: f32, pixel: vec2<f32>, slot: f32) -> bool {
     let o = globals.see_through_opts;
     // (a draw that asked never to be cut, `see_through = false`, carries a negative dirt slot: see `ModelInstance::kept_whole`)
-    if (o.y <= 0.0 || above_base < o.z || slot < 0.0) {
+    let nf = globals.see_through_near;
+    if ((o.y <= 0.0 && nf.y <= 0.0) || above_base < o.z || slot < 0.0) {
         return false;
     }
     let axis = globals.see_through.xyz - globals.eye.xyz;
@@ -574,10 +576,10 @@ fn see_through_cut(world: vec3<f32>, above_base: f32, pixel: vec2<f32>, slot: f3
     // crown sees out of it, and a roof right under a high camera is no wall across the picture)
     var drop = 0.0;
     if (o.w > 0.0) {
-        drop = o.y * (1.0 - smoothstep(o.w * 0.8, o.w, length(rel)));
+        drop = nf.y * (1.0 - smoothstep(min(nf.x, o.w * 0.999), o.w, length(rel)));
     }
     let along = dot(rel, d);
-    if (along > 0.0 && along <= len - o.x) {
+    if (o.y > 0.0 && along > 0.0 && along <= len - o.x) {
         let r = globals.see_through.w * along / len;
         let off = length(rel - d * along);
         drop = max(drop, o.y * (1.0 - smoothstep(r * 0.7, r, off)));
