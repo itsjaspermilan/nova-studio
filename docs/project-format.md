@@ -131,6 +131,26 @@ Pine Ridge Rally lays each course's road as one ribbon mesh along the curve (mad
 track editor, `docs/track-editor.md`, with the cross-section and colours of
 the Kenney Racing Kit's straight road) instead of slabs, so that a bend has no wedges and nothing overlaps.
 
+**A network of roads** (a town's or a valley's: a main road with lanes off it) is one model made by `road_make` with `roads`
+(`scripts/lib/roadnet.mjs`; added 2026-11-23, opt-in: a single route's ribbon, Pine Ridge Rally's, is made exactly as before). Where roads
+meet the builder makes one junction surface instead of laying ribbons over each other: the through road (the one a lane ends on; at a
+crossing tarmac over gravel, then the wider) keeps its centre line unbroken and is cut back to its carriageway on the joining side; the
+joining road is trimmed to its mouth; each corner is a fillet carrying the edge line and verge round (radius by surface: 6 m on tarmac,
+4.5 m on gravel); and one patch fills what is left, every vertex shared with the pieces round it, triangulated finely enough (no edge
+over 2 m inside) for the hills to lift it. A Y at any angle works (a shallow one has a long gore and a small nose), as do crossroads,
+roads of different widths, two roads end to end (joined into one, a width change tapering over 15 m), a road into a pad (a yard or a
+turning circle of its own surface) and a gap where a bridge's deck carries the road (both ends square with a dark threshold strip).
+Free ends get a rounded cap (`ends`: "round", "square", "flat"). Where two surfaces meet, `transition` "feather" (the default) runs the
+junction's surface 3 m into the lane (its apron, without a centre line; markings end with the tarmac) and then meets the other surface
+along a ragged broken edge with dust over the last metre and a half; "apron" makes that edge straight; "hard" cuts at the mouth.
+`checkSurface` in the same file is the proof the tests use: every inner edge shared by exactly two triangles, no point covered twice, no
+point inside the outline left open, one height at each place. The renderer lifts the road by the hills, so make the ground under the
+network with terrain_write's `roads` (a lane is exactly the main road's level on its level ground, the first road's level wins where
+two overlap, so a junction is one level with no step) and keep a game's own ground mesh a little under the road (its squares are flat
+between their corners and would otherwise rise through it where the ground bends; `examples/mountain-post/entities/valley_ground.lua`).
+`examples/mountain-post/tools/terrain.mjs` makes Fernhollow's network and writes its junctions' areas for the game
+(`lib/road_junctions.lua`: the surface under a wheel, where groundcover may grow).
+
 ### Designed ground (a heightmap)
 
 `nova.terrain{ heightmap = "terrain/hills.png", x = -500, z = -500, size = 1000, height = 40 }` lifts the ground by a picture instead of (or

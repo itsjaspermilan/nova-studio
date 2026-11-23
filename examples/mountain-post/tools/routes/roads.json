@@ -1,0 +1,152 @@
+{
+ "size": "1280x720",
+ "start_scene": "valley",
+ "lua": "CAM = require('lib.camera')",
+ "route": [
+  {
+   "wait": 30,
+   "lua": "nova.named('van'):teleport(300, 300, 0)"
+  },
+  {
+   "lua": "local h = nova.terrain_height(9, -66); CAM.pinned = { 9, h + 46.7, -66 - 0.5, 9, h, -66, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "fern_lane_junction from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(7.639522237252446, -85.9536738536308); local t = nova.terrain_height(9, -66); CAM.pinned = { 7.639522237252446, h + 3.4, -85.9536738536308, 9.27209555254951, t + 0.6, -62.009265229273836, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "fern_lane_junction driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(27.65136196548179, -73.21988205115424); local t = nova.terrain_height(9, -66); CAM.pinned = { 27.65136196548179, h + 3.4, -73.21988205115424, 5.269727606903642, t + 0.6, -64.55602358976915, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "fern_lane_junction driving side"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-10, 24); CAM.pinned = { -10, h + 46.7, 24 - 0.5, -10, h, 24, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "kettle_creek_junction from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-4.505577442052439, 4.769521047183538); local t = nova.terrain_height(-10, 24); CAM.pinned = { -4.505577442052439, h + 3.4, 4.769521047183538, -11.098884511589512, t + 0.6, 27.846095790563293, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "kettle_creek_junction driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-29.965487463499915, 25.174440439029407); local t = nova.terrain_height(-10, 24); CAM.pinned = { -29.965487463499915, h + 3.4, 25.174440439029407, -6.006902507300017, t + 0.6, 23.76511191219412, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "kettle_creek_junction driving side"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-96, 53); CAM.pinned = { -96, h + 41.2, 53 - 0.5, -96, h, 53, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_west from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-78.78146943571369, 42.82541375746718); local t = nova.terrain_height(-96, 53); CAM.pinned = { -78.78146943571369, h + 3.4, 42.82541375746718, -99.44370611285726, t + 0.6, 55.03491724850657, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_west driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-114, 57.5); CAM.pinned = { -114, h + 41.2, 57.5 - 0.5, -114, h, 57.5, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_east from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-133.0099065035129, 63.71477712614845); local t = nova.terrain_height(-114, 57.5); CAM.pinned = { -133.0099065035129, h + 3.4, 63.71477712614845, -110.19801869929742, t + 0.6, 56.25704457477031, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_east driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(20, 226); CAM.pinned = { 20, h + 41.2, 226 - 0.5, 20, h, 226, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_out_end from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(20, 206); local t = nova.terrain_height(20, 226); CAM.pinned = { 20, h + 3.4, 206, 20, t + 0.6, 230, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_out_end driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(5, -200); CAM.pinned = { 5, h + 82.4, -200 - 0.5, 5, h, -200, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "post_office from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(0.6097560975609753, -180.4878048780488); local t = nova.terrain_height(5, -200); CAM.pinned = { 0.6097560975609753, h + 3.4, -180.4878048780488, 5.878048780487805, t + 0.6, -203.90243902439025, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "post_office driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-8, -240); CAM.pinned = { -8, h + 41.2, -240 - 0.5, -8, h, -240, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "post_road_start from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-5.729068176785361, -220.12934654687191); local t = nova.terrain_height(-8, -240); CAM.pinned = { -5.729068176785361, h + 3.4, -220.12934654687191, -8.454186364642927, t + 0.6, -243.97413069062563, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "post_road_start driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(148, 40); CAM.pinned = { 148, h + 54.9, 40 - 0.5, 148, h, 40, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "hazel_end from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(137.2624901561368, 23.12677024535785); local t = nova.terrain_height(148, 40); CAM.pinned = { 137.2624901561368, h + 3.4, 23.12677024535785, 150.14750196877264, t + 0.6, 43.37464595092843, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "hazel_end driving main"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-176, 102); CAM.pinned = { -176, h + 54.9, 102 - 0.5, -176, h, 102, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "pip_end from above"
+  },
+  {
+   "lua": "local h = nova.terrain_height(-163.7211877297016, 86.21295565247347); local t = nova.terrain_height(-176, 102); CAM.pinned = { -163.7211877297016, h + 3.4, 86.21295565247347, -178.45576245405968, t + 0.6, 105.1574088695053, 52 }"
+  },
+  {
+   "wait": 3,
+   "capture": "pip_end driving main"
+  }
+ ],
+ "out": "build/gallery/roads_after"
+}

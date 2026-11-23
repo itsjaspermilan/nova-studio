@@ -62,6 +62,7 @@ function Groundcover:update()
       if ok then
         local r, d = world.nearest("road", x, z)
         if r and d < r.width / 2 + 1.4 then ok = false end
+        if ok and world.junction_surface(x, z) then ok = false end -- (nor on a junction's corners)
         local w, dw = world.nearest("water", x, z)
         if ok and w and dw < w.width / 2 + 0.6 then ok = false end
         if ok and world.blocked(x, z, 0.2) then ok = false end

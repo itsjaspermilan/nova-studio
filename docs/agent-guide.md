@@ -264,7 +264,9 @@ car first and look at it: `car_make { "name": "car", "type": "hot_hatch", "paint
 places, the wheel radius (the wheels' spin is distance / radius) and a picture from three sides; another `type` or `seed`, or `length`,
 `height`, `wheel` and `ride_height` in metres, give another car, clamped where the body stops fitting. Then the course:
 `road_make { "name": "ring", "control": [...], "textured": true }` lays the road through [x, z] points (keep bends wider than about 15 m)
-and makes the road pictures; `land_make { "name": "land", "ground": "grass" }` the ground under it; `prop3d_make` with detailed kinds the
+and makes the road pictures (several roads that meet, a town's or a valley's, go in ONE call with `roads`: it joins them at proper
+junctions with filleted corners and a ragged edge where tarmac meets gravel, and its answer says each junction and that nothing overlaps;
+look at every junction from above and from the driver's seat); `land_make { "name": "land", "ground": "grass" }` the ground under it; `prop3d_make` with detailed kinds the
 trackside (`conifer`, `boulder`, `tyre_stack`, `cone`, `grandstand`, `arch` with `style: "detailed"`, `spectator`). Write the
 scene with `scene_write`: the land and road entities at 0, 0, 0, the car on the start line (its `ry` along the road), a `checkpoint`
 marker at each control point with its `order` (the level stays in the scene file; Lua makes the road's middle line from the markers), the

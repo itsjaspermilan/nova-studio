@@ -41,6 +41,12 @@ export const ROADS = [
 
 // Where each road crosses the creek: the bridge (the road is cut there; the bridge's deck carries it).
 export const BRIDGE = { a: [96, 53], b: [114, 57.5], deck: 3.4 + 0, width: 4.4 };
+// Where the bridge's deck (22 m long, models.mjs, centred between a and b) ends: the road stops there with a threshold strip, and the
+// bridge stands its deck level with the road at both.
+export const DECK_ENDS = (() => {
+  const d = [BRIDGE.b[0] - BRIDGE.a[0], BRIDGE.b[1] - BRIDGE.a[1]], l = Math.hypot(...d), over = (22 - l) / 2, u = [d[0] / l, d[1] / l];
+  return { a: [BRIDGE.a[0] - u[0] * over, BRIDGE.a[1] - u[1] * over], b: [BRIDGE.b[0] + u[0] * over, BRIDGE.b[1] + u[1] * over] };
+})();
 
 // Kettle Creek, from the hills in the south-east down to the gorge; its bed in metres along it.
 export const CREEK = {

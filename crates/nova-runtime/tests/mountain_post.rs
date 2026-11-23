@@ -3947,3 +3947,310 @@ fn no_tree_stands_between_an_approaching_van_and_a_signpost() {
     }
     assert!(lines > 100, "sight lines checked: {lines}");
 }
+
+// ---- the owner's polish note on the roads (2026-11-23): no gaps and no overlaps where roads meet, a logical change of surface ----
+
+/// The valley's roads as the engine reads them: models/road_valley.glb's triangles (x, y, z, and u), from road_make's network
+/// builder (scripts/lib/roadnet.mjs).
+fn valley_road_triangles() -> Vec<[[f32; 4]; 3]> {
+    let bytes = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-post/models/road_valley.glb"),
+    )
+    .expect("the valley's roads: models/road_valley.glb (tools/terrain.mjs)");
+    let mesh = nova_runtime::model::import_glb(&bytes).expect("the roads' glb");
+    let v = |i: u32| {
+        let m = &mesh.vertices[i as usize];
+        [m.position[0], m.position[1], m.position[2], m.uv[0]]
+    };
+    mesh.indices
+        .chunks(3)
+        .map(|t| [v(t[0]), v(t[1]), v(t[2])])
+        .collect()
+}
+
+/// "We need to adjust the road builder so that there are no gaps between connected roads and no overlaps in connected roads."
+/// Fernhollow's whole network is one surface: every edge is the outline (one triangle) or shared by exactly two triangles with the
+/// same end points, the outline closes into two loops (the bridge cuts Kettle Creek Road in two), one height at each place, and
+/// sampled every quarter metre no point is covered twice and none inside the outline is left open.
+#[test]
+fn valley_roads_are_one_surface_with_no_gap_and_no_overlap() {
+    use std::collections::HashMap;
+    let tris = valley_road_triangles();
+    assert!(tris.len() > 5000, "{} triangles", tris.len());
+    type Key = (u32, u32);
+    let key = |p: &[f32; 4]| (p[0].to_bits(), p[2].to_bits());
+    let mut heights: HashMap<Key, f32> = HashMap::new();
+    let mut edges: HashMap<(Key, Key), u32> = HashMap::new();
+    let mut area = 0.0f64;
+    for t in &tris {
+        for p in t {
+            let h = *heights.entry(key(p)).or_insert(p[1]);
+            assert!(
+                (h - p[1]).abs() < 1e-5,
+                "two heights at {}, {}: {h} and {}",
+                p[0],
+                p[2],
+                p[1]
+            );
+        }
+        let (a, b, c) = (t[0], t[1], t[2]);
+        area +=
+            (((b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0])) as f64).abs() / 2.0;
+        for e in 0..3 {
+            let (p, q) = (key(&t[e]), key(&t[(e + 1) % 3]));
+            *edges
+                .entry(if p < q { (p, q) } else { (q, p) })
+                .or_default() += 1;
+        }
+    }
+    let outline: Vec<_> = edges
+        .iter()
+        .filter(|(_, n)| **n == 1)
+        .map(|(e, _)| *e)
+        .collect();
+    assert!(
+        edges.values().all(|n| *n <= 2),
+        "an edge used by three triangles or more"
+    );
+    // the outline: every vertex on it has an even number of outline edges (a crack or a T-junction leaves an odd one), in two loops
+    let mut degree: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut adj: HashMap<(u32, u32), Vec<(u32, u32)>> = HashMap::new();
+    for (p, q) in &outline {
+        *degree.entry(*p).or_default() += 1;
+        *degree.entry(*q).or_default() += 1;
+        adj.entry(*p).or_default().push(*q);
+        adj.entry(*q).or_default().push(*p);
+    }
+    let odd = degree.values().filter(|n| **n % 2 == 1).count();
+    assert_eq!(
+        odd, 0,
+        "outline vertices that do not close (cracks or T-junctions)"
+    );
+    let mut seen = std::collections::HashSet::new();
+    let mut loops = 0;
+    for start in adj.keys() {
+        if seen.contains(start) {
+            continue;
+        }
+        loops += 1;
+        let mut stack = vec![*start];
+        while let Some(p) = stack.pop() {
+            if seen.insert(p) {
+                stack.extend(adj[&p].iter().copied());
+            }
+        }
+    }
+    assert_eq!(
+        loops, 2,
+        "the outline's loops: the network either side of the bridge"
+    );
+    // coverage, sampled every quarter metre (points on an edge left out)
+    let step = 0.25f32;
+    let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for t in &tris {
+        for p in t {
+            x0 = x0.min(p[0]);
+            x1 = x1.max(p[0]);
+            z0 = z0.min(p[2]);
+            z1 = z1.max(p[2]);
+        }
+    }
+    let (ox, oz) = (x0 + step * 0.3731, z0 + step * 0.6119);
+    let (nx, nz) = (
+        ((x1 - ox) / step) as usize + 2,
+        ((z1 - oz) / step) as usize + 2,
+    );
+    let mut count = vec![0u8; nx * nz];
+    let mut on_edge = vec![false; nx * nz];
+    for t in &tris {
+        let (a, b, c) = (t[0], t[1], t[2]);
+        let d = (b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0]);
+        if d.abs() < 1e-9 {
+            continue;
+        }
+        let i0 = ((a[0].min(b[0]).min(c[0]) - ox) / step).floor().max(0.0) as usize;
+        let i1 = (((a[0].max(b[0]).max(c[0]) - ox) / step).ceil() as usize).min(nx - 1);
+        let j0 = ((a[2].min(b[2]).min(c[2]) - oz) / step).floor().max(0.0) as usize;
+        let j1 = (((a[2].max(b[2]).max(c[2]) - oz) / step).ceil() as usize).min(nz - 1);
+        for j in j0..=j1 {
+            for i in i0..=i1 {
+                let (px, pz) = (ox + i as f32 * step, oz + j as f32 * step);
+                let w0 = ((b[0] - px) * (c[2] - pz) - (b[2] - pz) * (c[0] - px)) / d;
+                let w1 = ((c[0] - px) * (a[2] - pz) - (c[2] - pz) * (a[0] - px)) / d;
+                let m = w0.min(w1).min(1.0 - w0 - w1);
+                if m > 1e-5 {
+                    count[j * nx + i] += 1;
+                } else if m > -1e-5 {
+                    on_edge[j * nx + i] = true;
+                }
+            }
+        }
+    }
+    let (mut holes, mut overlaps, mut covered) = (0, 0, 0);
+    for j in 0..nz {
+        let pz = oz + j as f32 * step;
+        let mut xs: Vec<f32> = outline
+            .iter()
+            .filter_map(|(p, q)| {
+                let (ax, az) = (f32::from_bits(p.0), f32::from_bits(p.1));
+                let (bx, bz) = (f32::from_bits(q.0), f32::from_bits(q.1));
+                ((az > pz) != (bz > pz)).then(|| ax + (pz - az) / (bz - az) * (bx - ax))
+            })
+            .collect();
+        xs.sort_by(f32::total_cmp);
+        for i in 0..nx {
+            let k = j * nx + i;
+            if on_edge[k] {
+                continue;
+            }
+            let px = ox + i as f32 * step;
+            let inside = xs.iter().filter(|x| **x > px).count() % 2 == 1;
+            match count[k] {
+                0 if inside => holes += 1,
+                1 => covered += 1,
+                n if n >= 2 => overlaps += 1,
+                _ => {}
+            }
+        }
+    }
+    assert_eq!(overlaps, 0, "points covered twice (overlap)");
+    assert_eq!(
+        holes, 0,
+        "points inside the roads' outline not covered (a gap)"
+    );
+    let sampled = covered as f64 * (step * step) as f64;
+    assert!(
+        (sampled - area).abs() / area < 0.01,
+        "area of the union {sampled:.0} m2 against the triangles' {area:.0} m2"
+    );
+}
+
+/// "If the road surface changes, there should be a logical transition between the two surfaces." Where a gravel lane leaves the
+/// tarmac road, tarmac (the asphalt column of the road sheet) meets gravel (its gravel column) only in a band at the end of the
+/// junction's apron, at each of the two junctions: nowhere else do the two surfaces touch. And the game hears it so: tarmac on
+/// the junction, gravel past the apron.
+#[test]
+fn valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron() {
+    use std::collections::HashMap;
+    let tris = valley_road_triangles();
+    // (the sheet's columns, 192 of 1024 texels each: asphalt first, gravel third; the paint strips from 960. A triangle's column
+    // is where the middle of its corners' u falls: a corner on the outer edge sits on the column's border)
+    let kind = |t: &[[f32; 4]; 3]| {
+        let u = (t[0][3] + t[1][3] + t[2][3]) / 3.0;
+        let c = (u * 1024.0 / 192.0).floor() as i32;
+        (c < 5).then_some(c)
+    };
+    type Key = (u32, u32);
+    let mut edges: HashMap<(Key, Key), Vec<Option<i32>>> = HashMap::new();
+    for t in &tris {
+        for e in 0..3 {
+            let p = (t[e][0].to_bits(), t[e][2].to_bits());
+            let q = (t[(e + 1) % 3][0].to_bits(), t[(e + 1) % 3][2].to_bits());
+            edges
+                .entry(if p < q { (p, q) } else { (q, p) })
+                .or_default()
+                .push(kind(t));
+        }
+    }
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "#require('lib.road_junctions')"), "2");
+    let junctions: Vec<(f32, f32, f32, String)> = (1..=2)
+        .map(|i| {
+            let j = format!("require('lib.road_junctions')[{i}]");
+            (
+                num(&g, &format!("{j}.at[1]")) as f32,
+                num(&g, &format!("{j}.at[2]")) as f32,
+                num(&g, &format!("{j}.paved")) as f32,
+                lua(&g, &format!("{j}.road")),
+            )
+        })
+        .collect();
+    let mut meets = vec![0; junctions.len()];
+    for ((p, _), kinds) in &edges {
+        if kinds.len() == 2 && kinds[0].is_some() && kinds[1].is_some() && kinds[0] != kinds[1] {
+            let (x, z) = (f32::from_bits(p.0), f32::from_bits(p.1));
+            let at = junctions
+                .iter()
+                .position(|(jx, jz, paved, _)| {
+                    let d = ((x - jx).powi(2) + (z - jz).powi(2)).sqrt();
+                    d < paved + 3.0 && d > paved - 4.0
+                })
+                .unwrap_or_else(|| {
+                    panic!("tarmac meets gravel at {x:.1}, {z:.1}, away from any junction's apron")
+                });
+            meets[at] += 1;
+        }
+    }
+    for (k, (_, _, paved, road)) in junctions.iter().enumerate() {
+        assert!(
+            meets[k] > 10,
+            "{road}: the tarmac apron ({paved:.1} m) ends in a ragged band ({} edges)",
+            meets[k]
+        );
+    }
+    for (x, z, paved, road) in &junctions {
+        assert_eq!(
+            lua(&g, &format!("require('lib.world').surface({x}, {z})")),
+            "road",
+            "the junction with {road}"
+        );
+        let far = format!(
+            "(function() local W = require('lib.world'); for _, r in ipairs(W.roads) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 6) ^ 2 then return W.surface(p[1], p[2]) end end end end end)()"
+        );
+        assert_eq!(lua(&g, &far), "gravel", "{road} past its apron");
+    }
+}
+
+/// The ground under each junction is one level where the roads meet (within 4.5 m of the node it varies by less than 15 cm), and
+/// the van drives from Post Road through the Fern Lane junction to Hazel's and on through Kettle Creek Road's to Pip's with its body
+/// shaken no more within 25 m of a junction than anywhere else on the roads (its vertical acceleration).
+#[test]
+fn valley_roads_junctions_are_level_and_the_van_drives_through_them_smoothly() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    for i in 1..=2 {
+        let j = format!("require('lib.road_junctions')[{i}]");
+        let (x, z) = (
+            num(&g, &format!("{j}.at[1]")),
+            num(&g, &format!("{j}.at[2]")),
+        );
+        let spread = num(
+            &g,
+            &format!(
+                "(function() local h0, worst = nova.terrain_height({x}, {z}), 0 for a = 0, 6.2, 0.4 do for _, r in ipairs({{ 1.5, 3, 4.5 }}) do worst = math.max(worst, math.abs(nova.terrain_height({x} + math.cos(a) * r, {z} + math.sin(a) * r) - h0)) end end return worst end)()"
+            ),
+        );
+        assert!(
+            spread < 0.15,
+            "junction {i}: the ground within 4.5 m of the node varies by {spread:.3} m"
+        );
+    }
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [
+            { "wait": 5, "lua": "T = require('lib.testkit'); J = require('lib.road_junctions'); NEAR, FAR, PV = 0, 0, nil; local v = nova.named('van'); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; v:teleport(4, -110, 0); T.drive('hazel')" },
+            { "until": "T.arrived()", "max": 4000 },
+            { "lua": "T.drive('pip')" },
+            { "until": "T.arrived()", "max": 6000 } ],
+          "each_frame": "local v = nova.named('van'); local sp = v.susp; if sp and sp.vy then if PV then local a = math.abs(sp.vy - PV) * 60; local near = false; for _, j in ipairs(J) do if (v.x - j.at[1]) ^ 2 + (v.z - j.at[2]) ^ 2 < 625 then near = true end end; if near then NEAR = math.max(NEAR, a) elseif math.abs(v.speed) > 4 then FAR = math.max(FAR, a) end end; PV = sp.vy end" }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(T.arrived())"),
+        "true",
+        "the van reached Pip's"
+    );
+    let (near, far) = (num(&g, "NEAR"), num(&g, "FAR"));
+    assert!(near > 0.0 && far > 0.0, "measured: {near} {far}");
+    assert!(
+        near < 2.5 && near <= far * 1.2,
+        "the body's vertical acceleration through the junctions {near:.2} m/s2, elsewhere {far:.2}"
+    );
+}

@@ -13,6 +13,8 @@ import { makeSurfaces, SURFACES } from "./surface.mjs";
 import { GROUNDS, landGlb } from "./land.mjs";
 // @ts-ignore (shared with the studio's track editor)
 import { roadGlb } from "../../../scripts/lib/trackgen.mjs";
+// @ts-ignore (plain JavaScript: a network of roads joined at proper junctions)
+import { buildNetwork, checkSurface, networkGlb, surfaceOf } from "../../../scripts/lib/roadnet.mjs";
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };
@@ -101,7 +103,9 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
     "road_make",
     "Make a racing route's road as one ribbon mesh, `models/road_<name>.glb` (the same road the studio's track editor and track_write write: a crowned surface with painted edges, verges, a skirt down to the ground), WITHOUT touching its scene: from the saved track (`track`: its name, tracks/<name>.track.json; `tracks`: several, or \"all\") or from `control` points given here (a closed circuit, or `open`: true for a stage; [x, z] in metres) with `name`. " +
       `\`road\`: ${ROAD_KINDS.join(", ")} (the colours); \`zones\`: [{ from, to, road?, width? }] stretches with their own surface or width (metres along the route). \`textured\`: true lays texture coordinates and names textures/road.png and road_grain.png (made with surface_make when the project has none): the worn racing line, cracks, ruts and ragged edges of the road sheet; with a saved track it also sets "textured" in the track file, as the track editor does. ` +
-      "Draw it with nova.model(\"road_<name>\", 0, 0, 0). Use track_write for the whole course (scene, gates, scenery); use this after changing a track by hand or to give a game's own route a road. It returns the road from above.",
+      "Draw it with nova.model(\"road_<name>\", 0, 0, 0). Use track_write for the whole course (scene, gates, scenery); use this after changing a track by hand or to give a game's own route a road. It returns the road from above. " +
+      "**A network of roads** (a town's or a valley's: a main road and lanes off it): `roads` [{ id, control ([x, z], two or more), road (kind), width (metres edge to edge with the verges, 12), zones }] with a `name` makes ONE model, `models/road_<name>.glb` (always textured), joined at proper junctions: where a road ends on another (a T, or a Y at any angle) or two cross, the through road (the one a road ends on; at a crossing tarmac over gravel, then the wider, then the first given) carries on with its centre line unbroken, the other is trimmed to its mouth, each corner is a fillet carrying the edge line and verge round (`kerb`: radius in metres by the junction's surface, { road_asphalt: 6, road_gravel: 4.5, others 4 }), and one patch fills the junction, every vertex shared with the pieces round it: no gap, nothing laid over anything. Two roads whose ends meet in line become one road. " +
+      "Where surfaces differ (a gravel lane off tarmac, a zone of another kind, a road into a pad of another kind) `transition` says how: \"feather\" (default: the junction's surface runs an `apron` of 3 m into the lane, then meets the other along a ragged broken edge with dust over the last `feather` 1.6 m), \"apron\" (the same, a clean straight edge), \"hard\" (a straight cut at the mouth); markings end with the tarmac; a width change tapers over 15 m. `ends`: \"round\" (default), \"square\" or \"flat\" for a road's free ends. `pads`: [{ at: [x, z], radius (6) or size: [w, l] with ry, road (road_gravel), width (7.2: the verge's scale) }]: a yard, a parking bay, a turning circle a road can end in. `gaps`: [{ road, from: [x, z], to: [x, z] }]: the road stops square at each end with a dark threshold strip (where a bridge's deck carries it). The answer lists every junction (its kind, angle, surfaces, transition), every surface change, and the checks: no hole, no overlap, every inner edge shared. Make the ground under it with terrain_write's `roads` (the same control points).",
     {
       track: { type: "string", description: "A saved track's name (tracks/<name>.track.json)." },
       tracks: { type: ["array", "string"], items: { type: "string" }, description: 'Several saved tracks, or "all".' },
@@ -112,11 +116,41 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
       zones: { type: "array", items: { type: "object" } },
       textured: { type: "boolean" },
       preview: { type: "boolean", description: "false: no picture." },
+      roads: { type: "array", items: { type: "object" }, description: "A network: [{ id, control, road, width, zones }], made into one model `road_<name>` with proper junctions." },
+      pads: { type: "array", items: { type: "object" }, description: "With roads: [{ at, radius | size, ry, road, width }] surfaces a road can end in." },
+      gaps: { type: "array", items: { type: "object" }, description: "With roads: [{ road, from, to }] where a road stops (a bridge)." },
+      transition: { type: "string", description: 'With roads: where surfaces differ, "feather" (default), "apron" or "hard".' },
+      apron: { type: "number", description: "With roads: metres the junction's surface runs into a lane of another kind (3)." },
+      feather: { type: "number", description: "With roads: metres of the ragged band between two surfaces (1.6)." },
+      ends: { type: "string", description: 'With roads: a free end "round" (default), "square" or "flat".' },
+      kerb: { type: "object", description: "With roads: a junction's corner radius by its surface, { road_asphalt: 6, road_gravel: 4.5 }." },
     },
     [],
     (a) => {
       const root = h.root(a);
-      const jobs: { name: string; control: number[][]; road: string; open: boolean; zones: Args[]; textured: boolean }[] = [];
+      if (a.roads !== undefined) {
+        if (a.control !== undefined || a.track !== undefined || a.tracks !== undefined) throw new Error("give `roads` (a network) or `control`/`track`, not both");
+        if (!a.name) throw new Error("a network needs a `name` (models/road_<name>.glb)");
+        const name = h.safeName(a.name, "Road");
+        const net = buildNetwork({ roads: a.roads, pads: a.pads, gaps: a.gaps, transition: a.transition, apron: a.apron, feather: a.feather, ends: a.ends, kerb: a.kerb });
+        const check = checkSurface(surfaceOf(net.mesh), { step: 0.25 });
+        const madeSurfaces = need(a, ["road", "road_grain"]);
+        const glb = networkGlb(net.mesh);
+        h.put(root, roadOf(name), glb);
+        const r1 = (v: number) => Math.round(v * 10) / 10;
+        const lines = [
+          `${roadOf(name)}: ${net.routes.length} roads, ${net.mesh.tris.length} triangles, ${Math.round(glb.length / 1024)} KB`,
+          ...net.report,
+          ...net.junctions.map((j: Args) => j.kind === "gap" ? `gap in ${j.road} from ${j.from} to ${j.to} m along it (square ends, threshold strips)` : `${j.kind} at ${j.at.map(r1).join(", ")}: ${j.road} joins ${j.through}${j.angle !== undefined ? ` at ${j.angle} degrees` : ""}, ${j.surface}${j.joining !== j.surface ? ` meeting ${j.joining} (${j.transition})` : ""}, mouth ${r1(j.mouth)} m${j.corners ? `, corners ${j.corners.join(" and ")} m` : ""}`),
+          ...net.transitions.map((t: Args) => `surface change on ${t.road} at ${t.at} m: ${t.from} to ${t.to} (${t.style === "feather" ? "a ragged edge" : "a straight edge"})`),
+          `checked: ${check.holes} holes, ${check.overlaps} overlaps (sampled every 0.25 m), ${check.loops} outline loop${check.loops === 1 ? "" : "s"}${check.problems.length ? `; PROBLEMS: ${check.problems.slice(0, 3).join("; ")}` : ", every inner edge shared by two triangles"}`,
+          ...(madeSurfaces.length ? [`made ${madeSurfaces.map((s: string) => `textures/${s}.png`).join(", ")} with surface_make (the project had none)`] : []),
+          `in Lua: nova.model("road_${name}", 0, 0, 0)`,
+        ];
+        const shown = a.preview === false ? "" : h.call("model_preview", { project: a.project, name: `road_${name}`, yaw: 25, pitch: 70 });
+        return { text: [...lines, text(shown).split("\n").slice(-1)[0] ?? ""].join("\n"), images: images(shown) };
+      }
+      const jobs:{ name: string; control: number[][]; road: string; open: boolean; zones: Args[]; textured: boolean }[] = [];
       if (a.control !== undefined) {
         if (a.track !== undefined || a.tracks !== undefined) throw new Error("give `control` (with `name`) or saved `track`/`tracks`, not both");
         if (!Array.isArray(a.control) || a.control.length < 4 || a.control.some((p: unknown) => !Array.isArray(p) || p.length !== 2)) throw new Error("control needs at least four [x, z] points");

@@ -1,0 +1,18 @@
+{
+  "size": "960x540",
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); S = require('lib.state'); W = require('lib.world'); J = require('lib.road_junctions'); RIDE = { near = {}, far = { a = 0, g = 0 } }; local v = nova.named('van'); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; PV = nil; PH = nil; PH2 = nil; NOTE = function(name, a, g) local r = RIDE.near[name] or { a = 0, g = 0, frames = 0 }; RIDE.near[name] = r; r.a = math.max(r.a, a); if g > r.g then r.g = g; local v = nova.named('van'); r.at = string.format('%.1f,%.1f at %.1f m/s', v.x, v.z, v.speed) end; r.frames = r.frames + 1 end",
+  "each_frame": "local v = nova.named('van'); local sp = v.susp; local dt = 1 / 60; if sp and sp.vy then if PV then local a = math.abs(sp.vy - PV) / dt; local h = nova.terrain_height(v.x, v.z); local g = 0; if PH and PH2 then g = math.abs(h - 2 * PH + PH2) / (dt * dt) end; local where = nil; for _, j in ipairs(J) do if (v.x - j.at[1]) ^ 2 + (v.z - j.at[2]) ^ 2 < 25 ^ 2 then where = j.road end end; if W.on_bridge(v.x, v.z, 4) then where = 'bridge' end; if where then NOTE(where, a, g) elseif math.abs(v.speed) > 4 then RIDE.far.a = math.max(RIDE.far.a, a); RIDE.far.g = math.max(RIDE.far.g, g) end; PH2 = PH; PH = h end; PV = sp.vy end",
+  "route": [
+    { "wait": 10, "lua": "T.drive('hazel')" },
+    { "until": "T.arrived()", "max": 5000, "capture": "at Hazel's" },
+    { "lua": "T.drive('pip')" },
+    { "until": "T.arrived()", "max": 6000, "capture": "at Pip's" },
+    { "lua": "T.drive('post_office')" },
+    { "until": "T.arrived()", "max": 6000, "capture": "back at the post office" }
+  ],
+  "print": [
+    "(function() local t = {} for k, r in pairs(RIDE.near) do t[#t + 1] = string.format('%s: body %.2f m/s2, ground %.2f m/s2 (worst at %s) over %d frames', k, r.a, r.g, r.at or '-', r.frames) end table.sort(t) return table.concat(t, '; ') .. string.format('; elsewhere on the roads above 4 m/s: body %.2f, ground %.2f', RIDE.far.a, RIDE.far.g) end)()"
+  ],
+  "state": "none"
+}

@@ -32,7 +32,11 @@ function ValleyGround:build()
   local nx = #xs
   for j, z in ipairs(zs) do
     for i, x in ipairs(xs) do
-      pos[#pos + 1] = x; pos[#pos + 1] = 0; pos[#pos + 1] = z
+      -- (under a road or a junction the ground sits a little lower: its 4 m squares are flat between their corners while the road
+      -- follows the hills every metre or two, so where the ground bends a corner beside the road would otherwise rise through it)
+      local rr, rd = world.nearest("road", x, z)
+      local under = (rr and rd < rr.width * 0.75 + 0.6) or world.junction_surface(x, z) ~= nil
+      pos[#pos + 1] = x; pos[#pos + 1] = under and -0.15 or 0; pos[#pos + 1] = z
       -- a slow pattern: groves of darker wood floor, sunny meadows
       local n = nova.noise2(x * 0.018, z * 0.018, 3, 3, 0.5)
       local m = nova.noise2(x * 0.06 + 40, z * 0.06, 7, 2, 0.5)
