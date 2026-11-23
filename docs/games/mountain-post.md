@@ -896,3 +896,27 @@ The owner, 2026-11-23: "I also think the circle cutout comes on too aggressively
 really blocked by some item. Think about other games." And: "For the speedo and gears, can we merge them in a nice UI way. Not
 just two separate shapes."
 The owner, on the cluster: "We don't need the button chips there either." (no X/A glyphs on the instrument.)
+
+### After the sixth play's cast: "I like the yellow outfit. Make the hat much bigger though. Fix the weakpoints" (2026-11-23)
+
+- **The hat**: a big slouchy bucket hat in the chibi way: the crown follows the head a couple of centimetres off it from just over the
+  brows to a soft dome on top, a broad thick brim (2.4 cm, a rounded edge) drooping gently all round, the whole hat tipped back so
+  the brim's front clears the eyes, a bigger enamel envelope pin. Each ear comes up through an oval hole with a rolled rim, cut as
+  wide as the ear swung 0.32 rad any way; the fox's ear springs now swing at most 0.25 (tested: no ear edge crosses the hat at any
+  such swing). `hat_size` makes it roomier. Seated, hat and ears are under the cab's lining (the seat 2.5 cm lower, into the cushion).
+- **Painted edges**: the model's picture keeps each painted block 8 texels into a 16-texel cell (the game's smaller copies average
+  up to 16 texels at a time) and pads every edge with its own paint's colour; the engine's smaller copies no longer turn wholly
+  see-through texels black. Measured in the game's own frames at eight metres, the collar, patch, placket and the restored pockets
+  meet the cardigan with no light rim (the "pale rims" of the last report were a misreading of single-pixel golden edges in
+  enlarged pictures; the padding and gutters are kept because they stop a real dark fringe at smaller sizes).
+- **The porch steps**: the body's height is the floor averaged over 40 cm along the way it goes, and on and near steps the hips
+  glide (at most 0.65 m/s), the straight legs flexing a little more for a moment (0.72 to 1.32 of their length), so it climbs rather
+  than hops: the hips' largest move in a frame on the steps is 2.6 cm going up and 1.7 going down (7.8 cm before; the walk's own bob
+  on the flat is 1.6), the walk is 20% slower on them, and a foot going up onto a step lifts higher.
+- **Feet on hillsides**: each standing foot lies along the slope under it (tipped and rolled, up to 0.35 rad), its lowest point on
+  the ground; on the steepest open hillside no point of a sole goes more than a centimetre into the ground, walking across or up.
+- **The shoulders**: rounder, broader shoulders on the torso and a slightly bigger shoulder ball, so the arm's ball sinks 4 cm into the
+  body and the crease where they meet is shallow.
+- examples/starter-3d's hero is made again with the current maker (trousers, not a skirt).
+- **Weak points left**: the hat's ear holes are faceted at close range (the crown's faces are cut whole; the rolled rim hides most
+  of it). The stair glide is only on the postmaster (the residents have no steps on their paths). Nothing is tried on the Retroid.

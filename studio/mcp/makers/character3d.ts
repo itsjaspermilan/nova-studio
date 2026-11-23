@@ -574,7 +574,7 @@ export function makeCharacter3d(a: Args): Character3d {
   // than the ear and the swing its spring gives it, with a rolled rim round it; the pin on the front. `hat_size` scales it.
   function bigBucket(): void {
     const RX = headR[0], RY = headR[1], RZ = headR[2], ne = 2.6;
-    const k = hatSize, off = 0.022 * k, top = 0.05 * k;
+    const k = hatSize, off = 0.02 * k, top = 0.032 * k;
     const m = new Mesh3(hatC, { bend: false });
     const lo = tone(hatC, -0.3), band = tone(hatC, -0.6);
     // the crown: the head's own outline, off it by `off`, from 0.5 of the way up (just above the brows) to the top, the top raised
@@ -647,8 +647,16 @@ export function makeCharacter3d(a: Args): Character3d {
           const dd = (h.across(v[0], v[1]) - u) ** 2 + (v[2] - z) ** 2;
           if (dd < best) { best = dd; y = v[1]; }
         }
-        loop.push([u + h.e.at[0] + h.e.k * h.e.lean * (y - h.e.at[1]), y + 0.003, z]);
+        loop.push([u, y + 0.003, z]);
       }
+      // (the heights smoothed round the loop, so the roll lies evenly rather than stepping from one face of the crown to the next)
+      for (let pass = 0; pass < 4; pass++) {
+        const ys = loop.map((p) => p[1]);
+        const n = loop.length - 1;
+        for (let i = 0; i < n; i++) loop[i]![1] = (ys[(i - 1 + n) % n]! + 2 * ys[i]! + ys[(i + 1) % n]!) / 4;
+        loop[n]![1] = loop[0]![1];
+      }
+      for (const p of loop) p[0] = p[0] + h.e.at[0] + h.e.k * h.e.lean * (p[1] - h.e.at[1]);
       hatM.tube(loop, 0.011 * k, 10, band, { smooth: true });
     }
     // the pin: a bigger enamel envelope (or a disc) on the front of the crown, over the band

@@ -285,7 +285,7 @@ end
 local DUST = { color = { 196, 178, 150, 110 } }
 -- At the wheel: the place in the cab (the van's own metres, tools/van.mjs SEAT less the seated body's depth under its feet's
 -- level), kept with the van as it moves; the clip is the seated one.
-Postmaster.SEAT = { 0.28, 0.425, 0.22 }
+Postmaster.SEAT = { 0.28, 0.4, 0.22 } -- (2.5 cm into the soft seat, so the big hat clears the cab's lining)
 function Postmaster:sit(dt)
   local v = nova.first("van")
   if v then

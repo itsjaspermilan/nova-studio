@@ -834,7 +834,7 @@ stands on them, a porch or a bridge. On a steep hillside that lift shears a tall
 porch(x, z) - nova.terrain_height(e.x, e.z) end` (the third argument is the walker; Fernhollow Post's cast does this). On a stair
 (a jump in the ground, not a slope) each foot lands wholly on one tread, a foot in the air keeps its whole sole over the ground
 under it, and a straight leg too short to lift its foot onto the step above swings it forward (or, going down, on the way it is)
-until it can; a standing foot the leg cannot reach any more is swung back clear of the riser in front of it. The legs are found by name (`leg_l`/`foot_l`, `leg_r`/`foot_r`; `legs = { { hip, foot,
+until it can; a standing foot the leg cannot reach any more is swung back clear of the riser in front of it. `glide` (m/s, off when left out; set it on a stair) makes the hips rise and fall no faster than that, the legs flexing up to 0.72 and 1.32 times their length for a moment instead, so a short-legged walker climbs a stair without hopping a tread at a time. On a slope each standing foot is tipped and rolled with the ground under it (up to 0.35 rad; never across a step), its lowest point on the ground; `feet()` gives its `pitch` (with the tilt) and `roll`. The legs are found by name (`leg_l`/`foot_l`, `leg_r`/`foot_r`; `legs = { { hip, foot,
 phase } }` names others), the sole is the lower half of an ellipse (`sole = { forward, half, round }`: character3d_make's by
 default).
 

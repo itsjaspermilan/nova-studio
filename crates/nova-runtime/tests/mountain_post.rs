@@ -7534,6 +7534,25 @@ fn the_postmasters_bucket_hat_is_big_and_the_ears_come_through_it() {
         );
     }
     assert_eq!(springs, 2, "both ears hang on springs");
+    // at the wheel the hat and the ears' tips are in the cab, under its lining (1.48 m: tools/van.mjs)
+    let ear_top = ["ear_l", "ear_r"]
+        .iter()
+        .map(|e| m[*e].points.iter().map(|p| p[1]).fold(f64::MIN, f64::max) + m[*e].origin[1])
+        .fold(f64::MIN, f64::max);
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let head_y = num(
+        &g,
+        "(function() local P = nova.named('postmaster'); local sit = nova.model_pose('postmaster', { clip = 'sit', time = 0 }); return P.SEAT[2] + sit.head.y end)()",
+    );
+    let top = head_y + hat_top.max(ear_top);
+    assert!(
+        (1.2..1.48).contains(&top),
+        "seated, the hat's crown and the ears reach {top:.3} m: in the cab, under the lining"
+    );
 }
 
 /// The painted clothes and faces keep clean edges at every distance: every block of paint in the model's picture is set 8 texels
