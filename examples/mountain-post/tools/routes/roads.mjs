@@ -10,8 +10,8 @@ const out = process.argv[2] ?? "build/gallery/roads";
 const VIEWS = [
   ["fern_lane_junction", 9, -66, 34, [6, -110], [40, -78]],
   ["kettle_creek_junction", -10, 24, 34, [2, -18], [-44, 26]],
-  ["bridge_west", -96, 53, 30, [-74, 40], null],
-  ["bridge_east", -114, 57.5, 30, [-140, 66], null],
+  ["bridge_west", -94.7, 51.5, 30, [-72, 38], null],
+  ["bridge_east", -115.3, 59, 30, [-140, 66], null],
   ["bridge_out_end", 20, 226, 30, [20, 190], null],
   ["post_office", 5, -200, 60, [-4, -160], null],
   ["post_road_start", -8, -240, 30, [-4, -205], null],

@@ -139,7 +139,7 @@ joining road is trimmed to its mouth; each corner is a fillet carrying the edge 
 4.5 m on gravel); and one patch fills what is left, every vertex shared with the pieces round it, triangulated finely enough (no edge
 over 2 m inside) for the hills to lift it. A Y at any angle works (a shallow one has a long gore and a small nose), as do crossroads,
 roads of different widths, two roads end to end (joined into one, a width change tapering over 15 m), a road into a pad (a yard or a
-turning circle of its own surface) and a gap where a bridge's deck carries the road (both ends square with a dark threshold strip).
+turning circle of its own surface) and a gap where a bridge's deck carries the road (both ends square with a dark threshold strip across the carriageway and its lit shoulder, the width a deck of the road's width covers; the road's middle line should run straight along the deck's axis for the last 10 m either side and its ground reach the deck's level there).
 Free ends get a rounded cap (`ends`: "round", "square", "flat"). Where two surfaces meet, `transition` "feather" (the default) runs the
 junction's surface 3 m into the lane (its apron, without a centre line; markings end with the tarmac) and then meets the other surface
 along a ragged broken edge with dust over the last metre and a half; "apron" makes that edge straight; "hard" cuts at the mouth.

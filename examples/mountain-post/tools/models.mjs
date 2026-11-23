@@ -511,23 +511,32 @@ def("stone_wall", () => {
   return one(c, { boxes: [{ x: 0, z: 0, hw: 2.0, hl: 0.3, turn: 0 }] });
 });
 def("bridge", () => {
-  // the wooden bridge over Kettle Creek: 22 m long (along z), 4.6 wide, on two trestles; its deck at y = 0 at both ends. Rails and posts as the
-  // fence's (HOUSE.post, HOUSE.rail), the stone piers capped like a plinth
-  const L = 22, Wd = 4.6, c = [];
-  for (let z = -L / 2 + 0.2; z < L / 2; z += 0.42) c.push(box([0, -0.08, z], [Wd, 0.14, 0.38], shade(C.woodLight, ((z * 13) % 3) / 20 - 0.05)));
+  // the wooden bridge over Kettle Creek: 22 m long (along z) and 5.6 wide, the width of the road's carriageway and lit shoulder
+  // (layout.mjs BRIDGE.width: the road ends square on the deck's end line, scripts/lib/roadnet.mjs gaps), on two trestles; its deck top
+  // 2 cm above y = 0, as the road's is above the ground, at both ends. A sturdy post at each corner on the bank stands 0.3 m past the
+  // deck's end, on a stone footing, and the rails run from end post to end post (rails and posts as the fence's: HOUSE.post, HOUSE.rail).
+  const L = 22, Wd = 5.6, c = [], RX = Wd / 2 + 0.1, PE = L / 2 + 0.3, N = 53, pitch = L / N;
+  for (let i = 0; i < N; i++) c.push(box([0, -0.05, -L / 2 + pitch * (i + 0.5)], [Wd, 0.14, pitch - 0.03], shade(C.woodLight, ((i * 13) % 3) / 20 - 0.05)));
   for (const s of [1, -1]) {
-    c.push(box([s * 1.6, -0.26, 0], [0.3, 0.22, L], C.plankDark));
-    c.push(box([s * (Wd / 2 + 0.05), 0.95, 0], [HOUSE.rail + 0.02, HOUSE.rail + 0.02, L], C.wood));
-    c.push(box([s * (Wd / 2 + 0.05), 0.5, 0], [HOUSE.rail, HOUSE.rail, L], C.wood));
-    for (let z = -L / 2; z <= L / 2 + 0.01; z += 2.2) c.push(box([s * (Wd / 2 + 0.05), 0.55, z], [HOUSE.post, 1.1, HOUSE.post], C.log));
+    c.push(box([s * 1.9, -0.26, 0], [0.3, 0.22, L], C.plankDark));
+    c.push(box([s * RX, 0.95, 0], [HOUSE.rail + 0.02, HOUSE.rail + 0.02, 2 * PE], C.wood));
+    c.push(box([s * RX, 0.5, 0], [HOUSE.rail, HOUSE.rail, 2 * PE], C.wood));
+    for (let z = -L / 2 + 2.2; z < L / 2 - 1; z += 2.2) c.push(box([s * RX, 0.55, z], [HOUSE.post, 1.1, HOUSE.post], C.log));
+    for (const e of [1, -1]) {
+      // the end post: taller and stouter than the rest, capped, on a stone footing in the bank
+      c.push(box([s * RX, 0.7, e * PE], [0.26, 1.7, 0.26], C.log), box([s * RX, 1.58, e * PE], [0.36, 0.1, 0.36], C.logDark));
+      c.push(box([s * RX, 0.0, e * PE], [0.5, 0.4, 0.5], C.stoneDark), box([s * RX, 0.12, e * PE], [0.38, 0.12, 0.38], C.stone));
+    }
   }
+  // the deck's ends rest on a stone sill under the threshold, across the whole width
+  for (const e of [1, -1]) c.push(box([0, -0.34, e * (L / 2 - 0.3)], [Wd + 0.3, 0.5, 0.6], C.stoneDark));
   for (const z of [-3.6, 3.6]) {
-    for (const s of [1, -1]) c.push(box([s * 1.6, -2.4, z], [0.3, 4.3, 0.3], C.plankDark));
-    c.push(box([0, -1.4, z], [3.4, 0.2, 0.24], C.plankDark));
-    c.push(box([0, -2.6, z], [3.6, 0.2, 0.24], C.plankDark, { rot: [0, 0, 24] }));
-    c.push(box([0, -4.5, z], [3.6, 0.5, 0.6], C.stone));
+    for (const s of [1, -1]) c.push(box([s * 1.9, -2.4, z], [0.3, 4.3, 0.3], C.plankDark));
+    c.push(box([0, -1.4, z], [4.1, 0.2, 0.24], C.plankDark));
+    c.push(box([0, -2.6, z], [4.3, 0.2, 0.24], C.plankDark, { rot: [0, 0, 24] }));
+    c.push(box([0, -4.5, z], [4.3, 0.5, 0.6], C.stone));
   }
-  return one(c, { capsules: [{ ax: Wd / 2 + 0.1, az: -L / 2, bx: Wd / 2 + 0.1, bz: L / 2, r: 0.12 }, { ax: -Wd / 2 - 0.1, az: -L / 2, bx: -Wd / 2 - 0.1, bz: L / 2, r: 0.12 }] });
+  return one(c, { capsules: [{ ax: RX + 0.1, az: -PE, bx: RX + 0.1, bz: PE, r: 0.12 }, { ax: -RX - 0.1, az: -PE, bx: -RX - 0.1, bz: PE, r: 0.12 }] });
 });
 def("barrier", () => {
   // a road barrier across Post Road's end (one white rail with red bands wrapped round it, on two capped posts) and a hand-painted board on
