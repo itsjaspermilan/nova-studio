@@ -384,3 +384,18 @@ These replace the matching lines above where they differ (the UI theme, the musi
   prompt is Talk (or Hand over with their parcel), only close to them and facing them; Knock only at a front door with the resident
   indoors (nobody is, in the slice). A resident comes a couple of steps from their work towards their gate, turns to the postmaster
   and stays there: they no longer walk after them.
+
+## The owner's third play on the Retroid (2026-11-22)
+
+"We're getting close!" To change, in the owner's words:
+
+- **Van menu:** "The game shouldn't pause when dealing with the van storage, just have the menu fade up and the user can select
+  what they need. Also we can make the UI elements a little smaller. Also can we pick a different font for everything? Seems too
+  generic Word document."
+- **Camera:** "I don't like that the van dithers away to make way for the player." "I think we can tilt the camera down a bit
+  while walking out and driving" (asked: lower and more behind, more level, with the road and horizon ahead; not more top-down).
+- **Steering:** "The 'turn back to straight' when the player eases off the left stick while driving is too slow." "We can also
+  increase the turn radius for the van."
+- **Van shape:** "We gotta reassess the van. It looks kinda borked now and too wide. We can slim it down and use those reference
+  images." The rule from here: keep the reference mail truck's own proportions (about 1 : 0.45 : 0.55 long, wide, high) and
+  scale the whole thing, rather than shrinking one side at a time.
