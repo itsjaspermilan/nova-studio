@@ -656,3 +656,35 @@ straight legs swung so that the foot on the ground was the one coming forward.
 - **Not done or not checked:** nothing is tried on the Retroid yet. On the porch's 15 cm steps a straight 20 cm leg cannot stand on
   two steps at once: the hips jump less than before but a toe can poke into the next riser for a frame. The probe's "slide" is the
   model's own drawing; the per-vertex hill lift (the renderer) shears the body a little on a steep slope.
+
+## The owner's sixth play on the Retroid (2026-11-23)
+
+"You can fix the rough spots. Go for it." Their notes, in their words:
+
+1. "Truck Storage UI: The popup currently blocks the player. Let's have the UI appear a little smaller (we can leave the text
+   size but remove some of the bulk in the UI) but make it appear floating above the truck doors. So it'll technically move
+   with the camera to remain above the doors. The maximum capacity for the truck storage should be 4 parcels for now. We'll
+   work on upgrades later. If nothing is in the truck, we can have that show in the floating popup."
+2. "Truck rear windows are only one way windows for some reason."
+3. "Truck bed doesn't cover the full area. I can see the grass through it."
+4. "We don't need to have the circle cut through other characters or the truck if the player is hidden behind them."
+5. "Can we add a subtle texture to the grass? I liked how BoTW did it. Shouldn't be too expensive right? Same feedback for
+   the trees, they just look like blobs now."
+6. "Let's fix the building generator to keep a consistent look. I want it to be a little more rounded."
+7. "Let's remove the messenger bag that the main character has. Also by default let's have the character wear pants not a
+   skirt. Can we also attach the arms and legs to the characters. They still look like separate pieces."
+8. "The character's outfit looks like a police officer with the blue outfit and the badge. Let's rethink this a bit but I
+   think we're close!"
+9. "Let's make the character facial features (eyes and mouth) a little bit bigger. Almost anime style but not that huge."
+10. "There's a weird rectangular piece atop the van. I don't think we need it?"
+11. "Let's tweak the truck controls to be more engaging. We should show the drive selection in the bottom left. Default is
+    Park. We can make the truck function like a real automatic with PRNDL gear selection. A will go 'up' a gear. X will go
+    'down' a gear. Park, Reverse, Neutral, Drive, Lower (for those tougher hills). Brake (LT) just operates as brake. The
+    vehicle should be in brake when switching between P, R, N, D. The vehicle can move between D and L freely. We also need
+    to add a non-annoying reverse sound when the van is in R. There should also be a handbrake indicator near the drive
+    symbol in the UI."
+12. "Pressing start should actually pause the game."
+13. "Pressing Select for the map should actually pause the game."
+
+Decided by the coordinator where the notes left room: "up" a gear moves toward P (P R N D L, as a real column shifter reads
+top to bottom), "down" toward L; the horn, displaced from X, moves to the left stick click (L3) while driving.
