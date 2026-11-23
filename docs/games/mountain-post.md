@@ -872,3 +872,6 @@ van eases forward or back at walking pace; none in P or N.)
 
 The owner, 2026-11-23: "We can remove the brake requirement honestly." (shifting needs no brake; only shifting into P or R while
 moving faster than about 1 m/s is refused.)
+
+The owner, 2026-11-23: "I do want to keep the PRNDL UI on screen." The gear display stays whenever driving; removing the button
+chips later (feedback for later, item 1) must not remove it.
