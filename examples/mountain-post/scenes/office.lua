@@ -16,15 +16,15 @@ local music = require("lib.music")
 
 local Office = nova.scene {}
 
-local LETTER_AT = { 1.0, -0.45 }
+local LETTER_AT = { 0.75, -0.45 }
 local FADE = 0.3
 local REACH = 1.1 -- how far from a tile's middle X still reaches it (the postmaster stands in the aisle between the counters)
 
 -- The picture frame on the back wall (tools/office-layout.mjs FRAME) and the conveyor window's belt (WINDOW, the belt in models.mjs):
 -- the numerals are pictures lying on the frame's plate, the belt's slats are drawn moving.
 local FRAME = { x = 0, y = 1.8, z = -2.6 + 0.065 }
-local BELT = { x = 3.0, y = 0.868, z0 = -2.6 - 1.5, z1 = -2.6 + 0.55, pitch = 0.14, speed = 0.05 }
-local COMPUTER = { x = -1.3, y = 0.8, z = -0.75 } -- (the old computer on the front counter: its screen glows, nothing more yet)
+local BELT = { x = 3.0, y = 0.868, z0 = -2.6 - 4.0, z1 = -2.6 + 0.55, pitch = 0.14, speed = 0.05 }
+local COMPUTER = { x = -1.15, y = 0.8, z = -0.75 } -- (the old computer on the front counter: its screen glows, nothing more yet)
 
 function Office:enter()
   world.clear()
@@ -235,6 +235,8 @@ function Office:draw()
   camera.apply(self.paused and 0 or 1 / 60)
   nova.point_light(-2.6, 1.8, 0, { radius = 6, color = { 255, 214, 160 } })
   nova.point_light(0.9, 1.8, 2.0, { radius = 4, color = { 255, 226, 180 } })
+  -- the backroom's lamp (the standing lamp by the hatch, tools/models.mjs): a warm light behind the wall, over the belt and the rack
+  nova.point_light(BELT.x + 0.7, 1.2, -2.6 - 1.5, { radius = 2.6, color = { 255, 196, 120 } })
   -- the old computer's faint green glow, and the words on its screen
   nova.point_light(COMPUTER.x, COMPUTER.y + 0.45, COMPUTER.z + 0.5, { radius = 1.4, color = { 70, 150, 90 } })
   nova.billboard("crt_screen", COMPUTER.x, COMPUTER.y + 0.35, COMPUTER.z + 0.19, 0.44, SCREEN)

@@ -2745,41 +2745,15 @@ fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
 }
 
 /// "I don't like that the van dithers away to make way for the player." The van (and the driver in it, and the parcels in its hold)
-/// is drawn with see_through = false: never cut away. Standing just beyond the van from the camera, the camera lifts (or swings)
-/// until the postmaster's middle and head both show past it, and eases back down once the van is out of the way.
+/// is drawn with see_through = false: never cut away. (The camera does not move for it either: see the next test.)
 #[test]
-fn the_van_is_never_cut_away_and_the_camera_goes_round_it() {
+fn the_van_is_never_cut_away() {
     let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); SEEN = function() local c, p, v = CAM.state, nova.named('postmaster'), nova.named('van'); local g = require('lib.world').height(p.x, p.z); local e = c.eye; return not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.4, p.z) and not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.85, p.z) end",
-        "steps": [ { "wait": 3, "lua": "local v = nova.named('van'); v:teleport(4.5, -132, 0); local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -129.0, 0; CAM.reset(0)" },
-        { "wait": 60 },
-        { "lua": "SEEN_THEN = SEEN(); LIFT = CAM.state.dodge_p; SWING = CAM.state.dodge_y" },
-        { "lua": "local p = nova.named('postmaster'); p.x, p.z = 4.5, -110" },
-        { "wait": 180 },
-        { "lua": "LIFT_AWAY = CAM.state.dodge_p" } ] }"#,
-    );
+    play(&mut g, r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#);
     assert_eq!(
         lua(&g, "tostring(nova.named('van').draw_opts.see_through)"),
         "false",
         "the van is never cut away"
-    );
-    assert_eq!(
-        lua(&g, "SEEN_THEN"),
-        "true",
-        "the postmaster shows past the van"
-    );
-    let (lift, swing) = (num(&g, "LIFT"), num(&g, "SWING"));
-    assert!(
-        lift > 0.05 || swing.abs() > 0.05,
-        "the camera moved round the van: lift {lift}, swing {swing}"
-    );
-    assert!(lift < 0.7, "only as far as it must: {lift} rad");
-    assert!(
-        num(&g, "LIFT_AWAY") < 0.03,
-        "and back once the van is out of the way: {}",
-        num(&g, "LIFT_AWAY")
     );
 }
 
@@ -5356,31 +5330,6 @@ fn the_see_through_circle_never_cuts_people_or_the_van() {
     );
 }
 
-/// Where a resident would hide the postmaster, the camera moves (as it does for the van) rather than cutting the resident away:
-/// a resident standing between the eye and the postmaster makes the dodge lift or swing, and nothing is left between them.
-#[test]
-fn a_resident_between_the_camera_and_the_postmaster_moves_the_camera() {
-    let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world'); S = require('lib.state')",
-        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 150, 36, 0; p.walk_to = nil; p.walk_path = nil; CAM.reset(0); nova.named('van'):teleport(300, 300, 0)" },
-        { "wait": 60 } ] }"#,
-    );
-    // put Hazel on the line from the eye to the postmaster, 3 m from the postmaster
-    play(
-        &mut g,
-        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local h = nova.named('hazel'); h.x, h.z = p.x + dx / l * 3, p.z + dz / l * 3; h.mode = 'work'; h.work_at = { h.x, h.z }; h.home = { h.x, h.z }; BEFORE = CAM.state.dodge_p + math.abs(CAM.state.dodge_y)" },
-        { "wait": 90, "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local h = nova.named('hazel'); HID = CAM.person_between(h, e[1], e[2], e[3], p.x, W.height(p.x, p.z) + 0.85, p.z) and 1 or 0" } ] }"#,
-    );
-    let moved = num(&g, "CAM.state.dodge_p + math.abs(CAM.state.dodge_y)");
-    assert!(
-        moved > 0.05,
-        "the camera moved for the resident: {moved:.3} rad (was {})",
-        lua(&g, "BEFORE")
-    );
-}
-
 /// "Pressing start should actually pause the game." Start opens the pause menu and the world stands still: the engine's clock, the
 /// van, the residents, the postmaster (the stick is not read), the scene's own timers; the music goes on, ducked. Closing it carries
 /// on from the same moment.
@@ -7191,4 +7140,30 @@ fn the_picture_frame_shows_the_parcels_still_to_deliver_through_the_whole_slice(
             "the frame showed {n} for a while: {seen}"
         );
     }
+}
+
+/// "We don't need the camera dodge when the player is behind the van or other characters." The van or a resident stands on the
+/// line from the camera to the postmaster, and the camera does not move: the eye is where it was, nothing is lifted or swung.
+#[test]
+fn the_camera_does_not_move_for_the_van_or_a_resident_between() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world')",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 150, 36, 0; p.walk_to = nil; p.walk_path = nil; CAM.reset(0); nova.named('van'):teleport(300, 300, 0)" },
+        { "wait": 80, "lua": "local e = CAM.state.eye; E0 = { e[1], e[2], e[3] }; LIFT0 = CAM.state.lift" },
+        { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local h = nova.named('hazel'); h.x, h.z = p.x + dx / l * 3, p.z + dz / l * 3; h.mode = 'work'; h.work_at = { h.x, h.z }; h.home = { h.x, h.z }; local v = nova.named('van'); v:teleport(p.x + dx / l * 4.5, p.z + dz / l * 4.5, 0)" },
+        { "wait": 90, "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local v = nova.named('van'); local g = W.height(p.x, p.z); VAN_IN = CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.85, p.z) and 1 or 0; EYE_MOVED = math.abs(e[1] - E0[1]) + math.abs(e[2] - E0[2]) + math.abs(e[3] - E0[3]); LIFT_MOVED = math.abs(CAM.state.lift - LIFT0)" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(CAM.state.dodge_p)"),
+        "nil",
+        "no dodge state any more"
+    );
+    assert!(
+        num(&g, "EYE_MOVED") < 0.02,
+        "the eye stayed where it was: moved {} m",
+        num(&g, "EYE_MOVED")
+    );
+    assert!(num(&g, "LIFT_MOVED") < 0.02, "nothing was lifted");
 }
