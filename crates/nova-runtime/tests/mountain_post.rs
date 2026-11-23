@@ -7669,7 +7669,7 @@ fn the_postmasters_bucket_hat_is_big_and_the_ears_come_through_it() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|c| c["color"] == "#b5503f")
+        .find(|c| c["color"] == "#e2463a")
         .expect("the hat");
     let pts: Vec<[f64; 3]> = hat["verts"]
         .as_array()

@@ -4,16 +4,19 @@
 // run, trot, carry (laid over the arms while a parcel is held), talk (a gesture with each phrase) and work (busy hands: Hazel's saw,
 // Pip's knobs).
 import { tool } from "./lib.mjs";
+import { CAST } from "./palette.mjs";
 
-// the postmaster: a fox in a mustard knitted cardigan over a cream shirt, brown trousers, a rust bucket hat with an envelope pin, an
-// envelope patch on the chest (the owner's sixth notes: no messenger bag; the navy uniform, peaked cap and badge read as police; of
-// three outfits pictured in the valley this one reads best as the village postie: mustard stands out against the grass, the road and
-// the fox's own orange, where moss green sank into the grass and rust into the fur; docs/games/mountain-post.md)
-tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: "#e2b04a", trim_color: "#86583c", shoe_color: "#5a3e2c", hat: "bucket", hat_color: "#b5503f", hat_pin: "envelope", emblem: "envelope" });
-// Hazel Brock: a bear, retired carpenter: a rust work shirt, old green trousers, a canvas apron with a pencil in its pocket
-tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_scale: 1.75, outfit: "shirt", outfit_color: "#b0623a", trim_color: "#4a5a3a", accessory: "apron" });
-// Pip Tansy: a young rabbit with a radio station: a mustard vest with a bolt on it, blue trousers, red headphones
-tool("character3d_make", { name: "pip", species: "rabbit", build: "chibi", head_scale: 1.75, outfit: "vest", outfit_color: "#e0a92a", trim_color: "#4a6a8a", accessory: "headphones", emblem: "bolt" });
+// the postmaster: a fox in a marigold knitted cardigan over a cream shirt, denim trousers, a tomato-red bucket hat with an envelope pin,
+// a teal neckerchief, an envelope patch on the chest (the owner's sixth notes: no messenger bag, nothing like a police uniform; then
+// "the colour scheme for the player seems a little drab": of three brighter outfits pictured in the valley, by the blue van and close,
+// this one reads best: the marigold pops off the grass and the grey road and is not the fox's own orange, the denim legs read against
+// the road and the fur, the tomato hat matches the van's red band, and the teal neckerchief is one bright accent; a teal hat sank into
+// the grass at the game's distance and teal trousers did too; docs/games/mountain-post.md)
+tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: CAST.marigold, trim_color: CAST.denim, shoe_color: CAST.boot, hat: "bucket", hat_color: CAST.tomato, hat_pin: "envelope", emblem: "envelope", accessory: "scarf", accent_color: CAST.tealBright });
+// Hazel Brock: a bear, retired carpenter: a warm rust work shirt, olive trousers, a canvas apron with a pencil in its pocket
+tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_scale: 1.75, outfit: "shirt", outfit_color: CAST.hazelShirt, trim_color: CAST.hazelTrousers, accessory: "apron" });
+// Pip Tansy: a young rabbit with a radio station: a sunny vest with a bolt on it, bright blue trousers, red headphones
+tool("character3d_make", { name: "pip", species: "rabbit", build: "chibi", head_scale: 1.75, outfit: "vest", outfit_color: CAST.pipVest, trim_color: CAST.pipTrousers, accessory: "headphones", emblem: "bolt" });
 tool("model_preview", { names: ["postmaster", "hazel", "pip"], fit: "each", yaw: 35, pitch: 12, width: 400, height: 520, image_out: "build/look/cast.png" });
 tool("model_preview", { names: ["postmaster", "hazel", "pip"], fit: "each", yaw: 200, pitch: 12, width: 400, height: 520, image_out: "build/look/cast-back.png" });
 
