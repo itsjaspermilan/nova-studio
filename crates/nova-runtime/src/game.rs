@@ -1710,9 +1710,14 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     }
                     _ => None,
                 };
-                let dirtied = |i: ModelInstance| match dirt {
-                    Some((amount, color, on_top)) => i.dirty(amount, color, on_top),
-                    None => i,
+                // `see_through = false`: never cut away by `nova.see_through` (a vehicle the camera works round instead)
+                let kept_whole = !opts.as_ref().map_or(Ok(true), |o| o.get::<Option<bool>>("see_through").map(|b| b.unwrap_or(true)))?;
+                let dirtied = |i: ModelInstance| {
+                    let i = match dirt {
+                        Some((amount, color, on_top)) => i.dirty(amount, color, on_top),
+                        None => i,
+                    };
+                    if kept_whole { i.kept_whole() } else { i }
                 };
                 if let Some((far_mesh, animated::LodDissolve { far: Some(far), .. })) = lod {
                         let instance = dirtied(ModelInstance { matrix: matrix.to_cols_array_2d(), tint });

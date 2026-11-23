@@ -17,7 +17,23 @@ function testkit.to_van(where)
   local p = nova.named("postmaster")
   -- (round the van's nose or tail, whichever side the postmaster is on, then to the spot)
   local lx, lz = s:van_point({ 2.0, 0, -2.6 })
-  p.walk_path = { { lx, lz }, { x, z } }
+  -- (on the van's right: round its tail first, never through it)
+  local v = s.van
+  local side = (p.x - v.x) * math.cos(v.heading) - (p.z - v.z) * math.sin(v.heading)
+  local first = {}
+  if side < 0 then
+    local rx, rz = s:van_point({ -2.0, 0, -2.6 })
+    local bx, bz = s:van_point({ 0, 0, -2.9 })
+    first = { { rx, rz }, { bx, bz } }
+  end
+  -- (to the door: out beside it first, then straight in, so a mailbox or a gate post by the van is walked round)
+  if where ~= "back" then
+    local ox, oz = s:van_point({ 2.3, 0, s.DOOR[3] })
+    p.walk_path = { { lx, lz }, { ox, oz }, { x, z } }
+  else
+    p.walk_path = { { lx, lz }, { x, z } }
+  end
+  for i = #first, 1, -1 do table.insert(p.walk_path, 1, first[i]) end
   p.walk_to = nil
   p.walk_pace = 2.8 -- (a run, or a trot with a parcel: the tests hurry)
 end

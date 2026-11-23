@@ -76,6 +76,13 @@ function autopilot.to(place, opts)
     local last = pts[#pts]
     local left = math.sqrt((last[1] - van.x) ^ 2 + (last[2] - van.z) ^ 2)
     local target = math.min(self.speed, 3 + left * 0.45) * (1 - math.min(0.6, math.abs(diff)))
+    -- (slowing before a sharp bend or a turn-in ahead, as a driver does: the van sweeps round, it does not pivot)
+    local j = math.min(#pts, self.i + 3)
+    if j > self.i and dx * dx + dz * dz < 14 * 14 then
+      local on = math.atan(pts[j][1] - t[1], pts[j][2] - t[2])
+      local bend = math.abs((on - want + math.pi) % (2 * math.pi) - math.pi)
+      target = math.min(target, 2.5 + 9 * math.max(0, 1 - bend / 1.3))
+    end
     if self.i >= #pts and left < 5 then target = 0 end
     -- facing away: a three-point turn, as a driver does on a lane: back with the wheel one way, forward with it the other, again,
     -- each leg until it has gone a little way or meets something, until the van faces along the road
@@ -103,14 +110,23 @@ function autopilot.to(place, opts)
       end
       self.phase_t = self.phase_t + (dt or 1 / 60)
       local s = self.way
+      -- (each leg, standing, the wheel goes over to full lock first, as a driver does: the van's steering is slow and heavy, and a
+      -- leg driven while it swings over turns the van hardly at all)
+      local lock = self.phase == "back" and s or -s
+      local swinging = math.abs(van.steer - lock) > 0.2 and math.abs(van.speed) < 0.5
+      if swinging then self.phase_t = math.min(self.phase_t, 0.3) end
       if self.phase == "back" then
         van.ctl.steer = s
-        if van.speed > 0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 1, 0 else van.ctl.go, van.ctl.brake = 0, van.speed < -2 and 0 or 0.6 end
+        if van.speed > 0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 0, 1, 0
+        elseif swinging then van.ctl.go, van.ctl.brake = 0, 0
+        else van.ctl.go, van.ctl.brake = 0, van.speed < -2 and 0 or 1 end
       else
         van.ctl.steer = -s
-        if van.speed < -0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 1, 0, 0 else van.ctl.go, van.ctl.brake = van.speed > 2 and 0 or 0.5, 0 end
+        if van.speed < -0.3 then van.ctl.go, van.ctl.brake, van.ctl.steer = 1, 0, 0
+        elseif swinging then van.ctl.go, van.ctl.brake = 0, 0
+        else van.ctl.go, van.ctl.brake = van.speed > 2 and 0 or 0.8, 0 end
       end
-      if self.phase_t > 2.4 or (self.phase_t > 0.7 and math.abs(van.speed) < 0.15) then
+      if self.phase_t > 3.2 or (self.phase_t > 0.7 and math.abs(van.speed) < 0.15) then
         self.phase, self.phase_t = self.phase == "back" and "fwd" or "back", 0
       end
       return

@@ -9,10 +9,14 @@
 --   swing it round (the drift dies away as the way of travel comes to face it), and turning on the spot leaves it nearly still (the
 --   way of travel is the postmaster's smoothed velocity, which a turn on the spot hardly moves). Reversing the van turns it round
 --   only after REVERSE seconds of reversing. The tilt eases back to the default with the drift.
--- - On foot the default is high and steep like a village diorama game (the owner's Animal Crossing picture): 42 degrees down, from
---   far back with a narrow lens, the postmaster small and a little below the middle. Driving it is lower and wider so the road ahead
---   shows. Nothing pushes the camera in: what stands between it and the postmaster or the van (tree crowns, a roof, the porch, the van's
---   body) is cut away round them (nova.see_through); only the ground lifts it, smoothly.
+-- - Low and behind (the owner, third play: "I think we can tilt the camera down a bit while walking out and driving", and asked, lower
+--   and more behind, more level, with the road and the horizon ahead; not more top-down): on foot 26 degrees down from 8 m with a 38
+--   degree lens, the postmaster about a fifth of the screen high in its lower middle, the sky and the far hills along the top; driving
+--   15 degrees down, the van in the lower third and the road and the horizon ahead. What stands between the camera and the postmaster
+--   or the van (tree crowns, a roof, the porch) is cut away round them (nova.see_through); only the ground lifts it, smoothly.
+-- - The van is never cut away (the owner: "I don't like that the van dithers away to make way for the player": it is drawn with
+--   see_through = false). When the postmaster on foot would be hidden behind it, the camera moves instead: it eases up, or round to the
+--   side, just as far as it must for them to show over or past the van, and eases back once the van is no longer in the way (DODGE).
 -- Whenever the stick becomes the postmaster's outdoors (the valley's start, out of the post office's door, out of the van, after a
 -- conversation) the camera is put straight behind the way they face, at the default; getting in and out of the van glides between the
 -- two views. Indoors: one fixed view from high over the cut-away front wall (unchanged). Going from one view to another the view glides
@@ -24,13 +28,25 @@ local camera = {}
 local cam = { yaw = 0, eye = { 0, 0, 0 }, at = { 0, 0, 0 }, fov = 40, blend = 1, from = nil, ready = false }
 camera.state = cam
 
--- On foot: the boom's length and tilt, its limits, the lens; what it looks at (metres above the ground, and ahead along the view so
--- the postmaster sits a little below the middle); the drift (`rate` rad/s at most at `full` m/s, `accel` rad/s^2 for easing its speed)
-camera.FOOT = { dist = 14.5, pitch = math.rad(42), low = math.rad(20), high = math.rad(68), fov = 26, look = 0.45, ahead = 0.9,
+-- On foot: the boom (its length, and how high it rises from the point it hangs on: `pitch`, between `low` and `high` with the right
+-- stick), the point it hangs on (`look` metres above the ground, `ahead` along the view), the lens, and how steeply the camera looks
+-- down (`view`, less than the boom's rise: the postmaster sits in the lower middle and the horizon shows along the top); the drift
+-- (`rate` rad/s at most at `full` m/s, `accel` rad/s^2 for easing its speed)
+camera.FOOT = { dist = 8.0, pitch = math.rad(26), view = math.rad(15), low = math.rad(6), high = math.rad(52), fov = 42, look = 0.6, ahead = 0,
   rate = 0.55, full = 2.3, gain = 1.1, accel = 0.6, still = 0.5 }
--- The van: further and lower, a wider lens, looking ahead down the road; a quicker drift that grows with speed
-camera.VAN = { dist = 11.5, pitch = math.rad(21), low = math.rad(6), high = math.rad(60), fov = 40, look = 0.9, ahead = 2.5,
+-- The van: further and lower, a wider lens, looking out down the road; a quicker drift that grows with speed
+camera.VAN = { dist = 9.6, pitch = math.rad(16), view = math.rad(7), low = math.rad(3), high = math.rad(45), fov = 44, look = 1.0, ahead = 0.4,
   rate = 0.5, per = 0.12, top_rate = 1.7, gain = 2.6, accel = 3.0, still = 0.6 }
+-- Round the van on foot: how far the camera may lift (radians of tilt) or swing (radians of turn) to keep the postmaster in view over
+-- or past the van, the steps it tries, and how quickly it eases there and back (1/s)
+camera.DODGE = { up = math.rad(38), side = math.rad(50), step = math.rad(2), ease = 3.0, back = 1.6 }
+-- Doors whose building stands behind the camera (the scene lists them in camera.NEAR as { x, z, r = , near = }): the post office's.
+-- Coming out of it, the low camera straight behind the postmaster is in the building, and its porch roof would fill the lower half of
+-- the picture. They step out to the foot of the porch (4 m: scenes/valley.lua), and within `r` metres of such a door everything within
+-- `near` metres of the camera is cut away too (the porch roof, the posts), easing back to the usual 2.5 m as they walk out.
+camera.PORCH = { r = 9, near = 6.0 }
+camera.NEAR = {}
+camera.VIEW_TILT = 0.85    -- the share of the boom's tilt (the stick, a lift over the van) the view takes
 camera.DELAY = 1.2         -- seconds after the right stick is let go before the drift begins (it then eases in over EASE more)
 camera.EASE = 0.9
 camera.ORBIT = 2.3         -- rad/s the stick turns it at a full push
@@ -46,7 +62,7 @@ local function smooth(e0, e1, x) local t = math.max(0, math.min(1, (x - e0) / (e
 function camera.reset(yaw)
   cam.yaw, cam.ready, cam.blend, cam.from = yaw or 0, false, 1, nil
   cam.pitch_off, cam.rate, cam.idle, cam.lift, cam.vx, cam.vz, cam.rev, cam.follow = 0, 0, 0, nil, 0, 0, 0, nil
-  cam.px, cam.pz, cam.orbit, cam.tilt = nil, nil, 0, 0
+  cam.px, cam.pz, cam.orbit, cam.tilt, cam.dodge_p, cam.dodge_y, cam.view_yaw = nil, nil, 0, 0, 0, 0, nil
 end
 camera.behind = camera.reset
 
@@ -96,10 +112,73 @@ local function drift(dt, C, travel, speed, limit)
   cam.limit = limit
 end
 
--- The boom from a point it looks at: eye and look point, the ground lifting the eye smoothly where a hill comes between.
-local function place(dt, C, x, base, z, look_at)
+-- The boom from the point it hangs on: the eye, and the point looked at (down at `view`, tilted with the boom by VIEW_TILT of
+-- its own tilt: the stick's tilt and a lift over the van tilt the view less, so the postmaster stays in the frame's lower middle).
+local function boom(C, yaw, pitch, f)
+  local s, c = math.sin(yaw), math.cos(yaw)
+  local ax, ay, az = f[1] + s * C.ahead, f[2] + C.look, f[3] + c * C.ahead
+  local h, d = math.sin(pitch) * C.dist, math.cos(pitch) * C.dist
+  local ex, ey, ez = ax - s * d, ay + h, az - c * d
+  local v = C.view + (pitch - C.pitch) * camera.VIEW_TILT
+  local l = C.dist
+  return ex, ey, ez, ex + s * math.cos(v) * l, ey - math.sin(v) * l, ez + c * math.cos(v) * l
+end
+
+-- Whether the van's body (a box round it: tools/van.mjs) is between the eye and a point.
+local VAN_BOX = { hw = 0.72, z0 = -1.53, z1 = 1.54, h = 1.68 }
+local function van_between(v, ex, ey, ez, px, py, pz)
+  local sh, ch = math.sin(v.heading), math.cos(v.heading)
+  local g = world.height(v.x, v.z)
+  local function loc(x, y, z) local dx, dz = x - v.x, z - v.z; return dx * ch - dz * sh, y - g, dx * sh + dz * ch end
+  local ax, ay, az = loc(ex, ey, ez)
+  local bx, by, bz = loc(px, py, pz)
+  local t0, t1 = 0, 1
+  for _, k in ipairs({ { ax, bx, -VAN_BOX.hw, VAN_BOX.hw }, { ay, by, -1, VAN_BOX.h }, { az, bz, VAN_BOX.z0, VAN_BOX.z1 } }) do
+    local a, b, lo, hi = k[1], k[2], k[3], k[4]
+    local d = b - a
+    if math.abs(d) < 1e-9 then
+      if a < lo or a > hi then return false end
+    else
+      local u0, u1 = (lo - a) / d, (hi - a) / d
+      if u0 > u1 then u0, u1 = u1, u0 end
+      t0, t1 = math.max(t0, u0), math.min(t1, u1)
+      if t0 > t1 then return false end
+    end
+  end
+  return true
+end
+camera.van_between = van_between
+
+-- How far the camera must lift or swing for the postmaster (their middle and their head) to show over or past the van: the smallest
+-- change of the two it tries, as a lift and a swing (0, 0 when the van is not in the way).
+local function dodge_for(C, f, p, base, v)
+  if not v or (v.x - p.x) ^ 2 + (v.z - p.z) ^ 2 > (C.dist + 3) ^ 2 then return 0, 0 end
+  local D = camera.DODGE
+  local pitch0 = C.pitch + (cam.pitch_off or 0)
+  local function clear(yaw, pitch)
+    local ex, ey, ez = boom(C, yaw, pitch, f)
+    ey = ey + (cam.lift or 0)
+    return not van_between(v, ex, ey, ez, p.x, base + 0.4, p.z) and not van_between(v, ex, ey, ez, p.x, base + 0.85, p.z)
+  end
+  if clear(cam.yaw, pitch0) then return 0, 0 end
+  -- (the smallest move: up a step, or round a step either way, the swing counted a little dearer than the lift)
+  local up, side = math.min(D.up, math.max(0, C.high - pitch0)), D.side
+  for k = 1, 40 do
+    local a = k * D.step
+    if a <= up and clear(cam.yaw, pitch0 + a) then return a, 0 end
+    local b = a * 1.25
+    if b <= side then
+      if clear(cam.yaw + b, pitch0) then return 0, b end
+      if clear(cam.yaw - b, pitch0) then return 0, -b end
+    end
+    if a > up and b > side then break end
+  end
+  return up, 0
+end
+
+local function place(dt, C, x, base, z, look_at, dodge_from)
   local pitch = C.pitch + (cam.pitch_off or 0)
-  local s, c = math.sin(cam.yaw), math.cos(cam.yaw)
+  local yaw = cam.yaw
   -- (the point followed eases after the body a touch, so a bump in the path is not a bump in the picture)
   local f = cam.follow
   if not f or not cam.ready then f = { x, base, z }; cam.follow = f
@@ -107,9 +186,21 @@ local function place(dt, C, x, base, z, look_at)
     local k = math.min(1, dt * 12)
     f[1], f[2], f[3] = f[1] + (x - f[1]) * k, f[2] + (base - f[2]) * math.min(1, dt * 6), f[3] + (z - f[3]) * k
   end
-  local tx, ty, tz = f[1] + s * C.ahead, f[2] + C.look, f[3] + c * C.ahead
-  local h, d = math.sin(pitch) * C.dist, math.cos(pitch) * C.dist
-  local ex, ey, ez = tx - s * d, ty + h, tz - c * d
+  -- (round the van: the lift and swing it needs, eased there, and eased back once the van is out of the way)
+  if dodge_from then
+    local wp, wy = dodge_for(C, f, dodge_from.p, dodge_from.base, dodge_from.v)
+    if not cam.ready then cam.dodge_p, cam.dodge_y = wp, wy end
+    local D = camera.DODGE
+    local kp = math.min(1, dt * (wp > (cam.dodge_p or 0) and D.ease or D.back))
+    local ky = math.min(1, dt * (math.abs(wy) > math.abs(cam.dodge_y or 0) and D.ease or D.back))
+    cam.dodge_p = (cam.dodge_p or 0) + (wp - (cam.dodge_p or 0)) * kp
+    cam.dodge_y = (cam.dodge_y or 0) + (wy - (cam.dodge_y or 0)) * ky
+  else
+    cam.dodge_p, cam.dodge_y = 0, 0
+  end
+  pitch, yaw = pitch + cam.dodge_p, yaw + cam.dodge_y
+  cam.view_yaw = yaw
+  local ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f)
   local need = math.max(0, world.height(ex, ez) + 1.2 - ey)
   if not cam.lift or not cam.ready then cam.lift = need
   else cam.lift = cam.lift + (need - cam.lift) * math.min(1, dt * (need > cam.lift and 5 or 1.5)) end
@@ -136,7 +227,13 @@ function camera.foot(p, dt)
     drift(dt, C, speed > 0.05 and math.atan(cam.vx, cam.vz) or cam.yaw, speed, limit)
   end
   local base = world.height(p.x, p.z) + (p.y or 0) - world.lift(p.x, p.z)
-  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 3.0, margin = 0.9, near = 3.5 })
+  -- (what is near the eye is cut away too: more by the doors in camera.NEAR)
+  local near = 2.5
+  for _, n in ipairs(camera.NEAR) do
+    local d = math.sqrt((p.x - n[1]) ^ 2 + (p.z - n[2]) ^ 2)
+    near = math.max(near, 2.5 + (n.near - 2.5) * smooth(n.r, n.r * 0.5, d))
+  end
+  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 2.0, margin = 0.9, near = near }, { p = p, base = base, v = nova.first("van") })
 end
 
 -- Behind the van: the same rule, quicker.
@@ -153,13 +250,14 @@ function camera.van(v, dt)
   end
   cam.px, cam.pz, cam.vx, cam.vz = nil, nil, 0, 0
   local base = world.height(v.x, v.z)
-  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 2.6, margin = 2.4, near = 5 })
+  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 2.2, margin = 2.4, near = 5 })
 end
 
 -- The office: the fixed view (the room is level, its floor at 0).
 function camera.room(dt)
   local R = camera.ROOM
   cam.yaw = math.atan(R.at[1] - R.eye[1], R.at[3] - R.eye[3])
+  cam.view_yaw = cam.yaw
   camera.set(R.eye[1], R.eye[2], R.eye[3], R.at[1], R.at[2], R.at[3], R.fov, dt)
   cam.see = nil
 end
@@ -224,6 +322,7 @@ function camera.apply(dt)
 end
 
 -- "Forward" and "right" on the ground as this camera sees it (for the stick).
-function camera.forward() return math.sin(cam.yaw), math.cos(cam.yaw) end
+-- (the yaw the picture is seen from, swung round the van included)
+function camera.forward() local y = cam.view_yaw or cam.yaw; return math.sin(y), math.cos(y) end
 
 return camera

@@ -20,8 +20,8 @@ local Valley = nova.scene {}
 
 -- Places by the van, in its own metres (+x is its left, +z its front; tools/van.mjs): outside the left doorway (the driver's
 -- side), and behind the back, clear of the doors as they swing out to the sides.
-Valley.DOOR = { 1.2, 0, 0.26 }
-Valley.BACK = { 0, 0, -1.95 }
+Valley.DOOR = { 1.12, 0, 0.5 }   -- beside the left doorway (tools/van.mjs DOORWAY), the van's own metres
+Valley.BACK = { 0, 0, -2.05 }   -- behind the rear doors
 local DOOR, BACK = Valley.DOOR, Valley.BACK
 local BACK_OPEN, BACK_SHUT = 2.1, 2.6  -- the rear doors open as the postmaster comes this near the back, and shut again past the other
 -- near enough to load or take: once the doors are open (BACK_OPEN), all but at once (with 1.35 m the doors swung open as the
@@ -55,13 +55,15 @@ function Valley:enter()
   self.pick_i = 1
   -- the van where it was left
   if state.van then self.van:teleport(state.van.x, state.van.z, state.van.heading) end
-  -- out of the office's door: standing on the porch a step out from the door, facing away from it, free to go at once; the camera
+  -- out of the office's door: standing at the foot of the porch, facing away from the door, free to go at once; the camera
   -- straight behind them at the default (the owner: "We can have the camera start behind the player while on foot and exiting a
-  -- building"), high over the porch, whose roof and wall are cut away round them (lib/camera.lua): nothing to turn
+  -- building"); they stand at the foot of the porch, 4 m out, the porch roof and posts cut away round the low camera (lib/camera.lua)
   local door = nova.named("office_door")
+  -- (by the post office's door more is cut away round the camera, which stands in the building behind them: lib/camera.lua NEAR)
+  camera.NEAR = { { door.x, door.z, r = camera.PORCH.r, near = camera.PORCH.near } }
   if state.came_out then
     local fx, fz = math.sin(door.ry or 0), math.cos(door.ry or 0)
-    self.p.x, self.p.z, self.p.face = door.x + fx * 1.3, door.z + fz * 1.3, door.ry or 0
+    self.p.x, self.p.z, self.p.face = door.x + fx * 4.0, door.z + fz * 4.0, door.ry or 0
     camera.reset(door.ry or 0)
   else
     camera.reset(self.p.face)

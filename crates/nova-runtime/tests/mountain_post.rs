@@ -899,7 +899,7 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
         r#"{ "start_scene": "valley", "steps": [
             { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, -78, 1.75); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.testkit').drive('hazel')" },
             { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.2 and math.abs(nova.named('van').speed) > 5", "max": 2500 },
-            { "lua": "nova.named('van').back_want = 1" },
+            { "lua": "nova.scene_now().back_doors = function() end; nova.named('van').back_want = 1" },
             { "until": "nova.named('van').back_open > 0.8 and math.abs(nova.named('van').roll) > 0.015", "max": 1500 } ] }"#,
     );
     // (the body's lean must be real for the check to mean anything; the slower starting van leans less)
@@ -910,7 +910,7 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
             &g,
             "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[#p + 1] = n end table.sort(p) return table.concat(p, ' ') end)()"
         ),
-        "body door_l door_l_leaf door_r door_r_leaf steering wheel_fl wheel_fr wheel_rl wheel_rr"
+        "body door_l door_l_leaf door_r door_r_leaf lamp_brake lamp_head lamp_indicator_back lamp_indicator_front lamp_reverse lamp_reverse_off lamp_tail steering wheel_fl wheel_fr wheel_rl wheel_rr"
     );
     // each hinge as posed with the van's own parts table, against the body's turn (its roll about z, then its pitch about x, then
     // its lift) applied to the hinge at rest
@@ -1104,7 +1104,8 @@ fn going_through_the_post_office_door_is_a_short_fade_and_no_forced_walk() {
         &g,
         "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.sqrt((p.x - d.x)^2 + (p.z - d.z)^2) end)()",
     );
-    assert!((1.0..1.6).contains(&d), "a step out from the door: {d}");
+    // (at the foot of the porch since the third play's lower camera: lib/camera.lua PORCH)
+    assert!((3.6..4.4).contains(&d), "out at the foot of the porch: {d}");
     let away = num(
         &g,
         "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.abs((p.face - (d.ry or 0) + math.pi) % (2 * math.pi) - math.pi) end)()",
@@ -1912,8 +1913,8 @@ fn the_starting_van_is_slow_to_pull_away_and_tops_out_near_ten_and_a_half() {
     }
 }
 
-/// "The turning is too aggressive and doesn't feel like there's actual weight to it." A flick of the stick moves the wheels no
-/// faster than Van.TUNE.steer_speed a second; at speed the stick gives less lock; the body's turning follows the wheels over a
+/// "The turning is too aggressive and doesn't feel like there's actual weight to it." A flick of the stick turns the wheels in no
+/// faster than Van.TUNE.steer_speed a second (coming back is quicker since the third play: a test at the end); at speed the stick gives less lock; the body's turning follows the wheels over a
 /// moment (no jump in the yaw rate); a bend taken fast runs wide (the sideways pull stays near Van.TUNE.corner) rather than darting.
 #[test]
 fn the_vans_steering_is_rate_limited_less_at_speed_and_the_body_takes_a_moment() {
@@ -1929,7 +1930,7 @@ fn the_vans_steering_is_rate_limited_less_at_speed_and_the_body_takes_a_moment()
            w.steer = math.max(w.steer, math.abs(v.steer - s0)); w.yaw = math.max(w.yaw, math.abs((v.yaw_rate or 0) - y0)); w.side = math.max(w.side, math.abs((v.yaw_rate or 0) * v.speed)) end; return w end; \
          hold(1, 0, 1800); local fast = v.speed; local a = hold(1, -1, 240); local lock_fast = math.abs(v.steer); local b = hold(1, 1, 120); \
          v:teleport(4.5, -150, 0); v.driven = true; hold(0.25, 0, 60); local c = hold(0.25, -1, 240); local lock_slow = math.abs(v.steer); \
-         return string.format('%.3f %.5f %.5f %.3f %.3f %.3f %.3f %.3f', fast, math.max(a.steer, b.steer, c.steer), math.max(a.yaw, b.yaw, c.yaw), lock_fast, lock_slow, a.side, T.steer_speed, T.corner) end)()",
+         return string.format('%.3f %.5f %.5f %.3f %.3f %.3f %.3f %.3f', fast, math.max(a.steer, c.steer), math.max(a.yaw, c.yaw), lock_fast, lock_slow, a.side, T.steer_speed, T.corner) end)()",
     );
     let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
     let (fast, steer_step, yaw_step, lock_fast, lock_slow, side, steer_speed, corner) =
@@ -1992,8 +1993,8 @@ fn the_van_is_squat_and_each_rear_door_is_one_solid_panel() {
             .count();
         assert_eq!(panels, 1, "door_{side}: one panel with its window cut in");
         assert!(
-            cubes.len() <= 2,
-            "door_{side}'s leaf is the panel and a handle: {} shapes",
+            cubes.len() <= 3,
+            "door_{side}'s leaf is the panel, its pane and a handle: {} shapes",
             cubes.len()
         );
     }
@@ -2008,14 +2009,14 @@ fn the_van_is_squat_and_each_rear_door_is_one_solid_panel() {
     );
     assert!(high < 1.75, "the van's parts all sit under 1.75 m: {high}");
     // the seated driver's head and cap: the top of the figure standing is as far over its head's joint as it is seated, and that is
-    // under the cab's lining (the roof 1.7 m, its lining 1.57)
+    // under the cab's lining (the roof 1.6 m, its lining 1.48: tools/van.mjs since the third play)
     let top = num(
         &g,
         "(function() local P = nova.named('postmaster'); local sit = nova.model_pose('postmaster', { clip = 'sit', time = 0 }); local rest = nova.model_pose('postmaster'); \
          return P.SEAT[2] + sit.head.y + (1.04 - rest.head.y) end)()",
     );
     assert!(
-        (1.3..1.57).contains(&top),
+        (1.2..1.48).contains(&top),
         "the driver's cap ({top} m) is in the cab, under the lining"
     );
 }
@@ -2237,7 +2238,7 @@ fn at_the_van_the_vans_prompts_win_over_a_resident_near() {
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('postmaster').x, nova.named('postmaster').z = 150, 36" },
         { "wait": 120 },
-        { "lua": "local h, v, s = nova.named('hazel'), nova.named('van'), nova.scene_now(); v:teleport(h.meet[1], h.meet[2] + 3.4, 0); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.BACK); p.face = math.pi; require('lib.state').carrying = 'pip'" },
+        { "lua": "local h, v, s = nova.named('hazel'), nova.named('van'), nova.scene_now(); v:teleport(h.meet[1], h.meet[2] + 3.7, 0); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.BACK); p.face = math.pi; require('lib.state').carrying = 'pip'" },
         { "wait": 60 } ] }"#,
     );
     let actions = "(function() local a, b, r = nova.scene_now():actions(); return tostring(a) .. ' ' .. tostring(b) .. ' ' .. (r and r.who or '-') end)()";
@@ -2479,4 +2480,256 @@ fn every_line_of_the_dialogue_and_the_letter_fits_its_box_in_the_rounded_face() 
         end)()"#,
     );
     assert_eq!(out, "ok");
+}
+
+// ---- the owner's third play (2026-11-22) ----------------------------------------------------------------------------------------
+
+/// "We gotta reassess the van. It looks kinda borked now and too wide. We can slim it down and use those reference images." The van
+/// keeps the reference mail truck's own proportions, scaled as a whole (tools/van.mjs): 2.9 to 3.0 m long over its bumpers, 1.30
+/// to 1.38 wide over its body (the mirrors stick out), 1.60 to 1.68 high, length : width : height about 1 : 0.45 : 0.55, wheels
+/// 0.52 to 0.56 across; its lamps are parts of their own, the lit brake and reverse lamps hidden at rest.
+#[test]
+fn the_van_keeps_the_mail_trucks_proportions_and_has_lamps() {
+    let bytes = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-post/models/van.glb"),
+    )
+    .unwrap();
+    let mesh = nova_runtime::model::import_glb(&bytes).expect("the van's glb");
+    let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+    let (mut wlo, mut whi) = (f32::MAX, f32::MIN);
+    for v in &mesh.vertices {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v.position[k]);
+            hi[k] = hi[k].max(v.position[k]);
+        }
+        // (the body's width, under the mirrors)
+        if (0.3..1.05).contains(&v.position[1]) {
+            wlo = wlo.min(v.position[0]);
+            whi = whi.max(v.position[0]);
+        }
+    }
+    let (length, width, height) = (hi[2] - lo[2], whi - wlo, hi[1] - lo[1].max(0.0));
+    let sizes = format!("{length:.3} x {width:.3} x {height:.3}");
+    assert!((2.9..=3.0).contains(&length), "length {sizes}");
+    assert!((1.30..=1.38).contains(&width), "width {sizes}");
+    assert!((1.60..=1.68).contains(&height), "height {sizes}");
+    let (w, h) = (width / length, height / length);
+    assert!(
+        (0.43..=0.47).contains(&w) && (0.53..=0.57).contains(&h),
+        "1 : {w:.3} : {h:.3} ({sizes})"
+    );
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let wheel = 2.0 * num(&g, "nova.model_pose('van').wheel_fl.y");
+    assert!((0.52..=0.56).contains(&wheel), "wheels {wheel} m across");
+    let parts = lua(
+        &g,
+        "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[n] = true end; return tostring(p.lamp_head and p.lamp_tail and p.lamp_brake and p.lamp_reverse and p.lamp_reverse_off and p.lamp_indicator_front and p.lamp_indicator_back) end)()",
+    );
+    assert_eq!(parts, "true", "the lamps are parts of their own");
+    // (the lit brake and reverse lamps are hidden in the model until the game shows them)
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/mountain-post/models/van.model.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let body = &model["parts"][0];
+    for name in ["lamp_brake", "lamp_reverse"] {
+        let part = body["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == name)
+            .expect(name);
+        assert_eq!(
+            part["hidden"],
+            Value::Bool(true),
+            "{name} is hidden at rest"
+        );
+    }
+}
+
+/// The lamps work: the tail lamps glow bright while braking (L2 while going forward), the reverse lamps light while backing up, and
+/// the headlamps are lit softly (Van.LIGHTS.head); neither the brake nor the reverse lamps show while just driving or parked.
+#[test]
+fn braking_lights_the_tail_lamps_and_reversing_the_reverse_lamps() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "LIT = function() local v = nova.named('van'); local pt = v.parts_table; return tostring(pt.lamp_head.visible) .. ' ' .. tostring(pt.lamp_brake.visible) .. ' ' .. tostring(pt.lamp_reverse.visible) .. ' ' .. tostring(pt.lamp_reverse_off.visible) end",
+        "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "wait": 5, "lua": "PARKED = LIT()" },
+        { "hold": ["go"], "frames": 120, "lua": "" },
+        { "hold": ["go"], "frames": 1, "lua": "DRIVING = LIT()" },
+        { "hold": ["brake"], "frames": 6 },
+        { "hold": ["brake"], "frames": 1, "lua": "BRAKING = LIT(); BRAKE_SPEED = nova.named('van').speed" },
+        { "hold": ["brake"], "until": "nova.named('van').speed < -0.8", "max": 400 },
+        { "hold": ["brake"], "frames": 1, "lua": "REVERSING = LIT()" } ] }"#,
+    );
+    // (each value is the frame's draw: head, brake, reverse lit, reverse unlit)
+    assert_eq!(
+        lua(&g, "PARKED"),
+        "true false false true",
+        "parked: headlamps only"
+    );
+    assert_eq!(lua(&g, "DRIVING"), "true false false true", "driving on");
+    assert!(
+        num(&g, "BRAKE_SPEED") > 0.5,
+        "still rolling forward while braking"
+    );
+    assert_eq!(
+        lua(&g, "BRAKING"),
+        "true true false true",
+        "braking: the tail lamps bright"
+    );
+    assert_eq!(
+        lua(&g, "REVERSING"),
+        "true false true false",
+        "reversing: the reverse lamps lit"
+    );
+}
+
+/// "The 'turn back to straight' when the player eases off the left stick while driving is too slow." "We can also increase the
+/// turn radius for the van." Let go at 6 m/s after a full-lock turn, the van runs straight again (wheels and body) within 0.35 s,
+/// quicker than the same wheels take to turn in; the kerb-to-kerb circle at a crawl is 9 to 10.5 m (it was 9.2), and wider at speed.
+#[test]
+fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); local dt = 1 / 60; \
+         local function step(spd, steer) v.ctl.go = v.speed < spd and 1 or 0; v.ctl.brake = v.speed > spd + 0.3 and 0.3 or 0; v.ctl.steer = steer; v:drive(dt); v.x, v.z = 4.5, -150 end; \
+         v:teleport(4.5, -150, 0); v.driven = true; for i = 1, 900 do step(6, 0) end; \
+         local t_in = 0; for i = 1, 180 do step(6, 1); if t_in == 0 and math.abs(v.steer) > 0.9 * 0.688 then t_in = i * dt end end; \
+         local speed, t_back = v.speed, nil; for i = 1, 180 do step(6, 0); if not t_back and math.abs(v.yaw_rate) < 0.03 and math.abs(v.steer) < 0.02 then t_back = i * dt end end; \
+         local function circle(spd) v:teleport(4.5, -150, 0); v.driven = true; local xs, zs, turned, last = {}, {}, 0, v.heading; \
+           for i = 1, 6000 do v.ctl.go = v.speed < spd and 0.6 or 0; v.ctl.brake = v.speed > spd + 0.2 and 0.3 or 0; v.ctl.steer = 1; v:drive(dt); \
+             if i > 240 then turned = turned + math.abs(v.heading - last); local x, _, z = v:to_world(0.64, 0, 0.72); xs[#xs + 1], zs[#zs + 1] = x, z; if turned > 2 * math.pi + 0.2 then break end end; last = v.heading end; \
+           local a, b = math.huge, -math.huge; for _, q in ipairs(xs) do a, b = math.min(a, q), math.max(b, q) end; return b - a end; \
+         return string.format('%.3f %.3f %.3f %.3f %.3f', speed, t_in, t_back or 9, circle(1.5), circle(4)) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (speed, t_in, t_back, slow, quicker) = (v[0], v[1], v[2], v[3], v[4]);
+    assert!((5.7..6.4).contains(&speed), "at 6 m/s: {out}");
+    assert!(
+        t_back <= 0.35,
+        "straight again {t_back} s after letting go ({out})"
+    );
+    assert!(
+        t_back < t_in,
+        "back to straight ({t_back} s) quicker than turning in ({t_in} s)"
+    );
+    assert!(
+        (9.0..=10.5).contains(&slow),
+        "kerb-to-kerb circle at a crawl: {slow} m"
+    );
+    assert!(
+        quicker > slow + 0.5,
+        "wider at 4 m/s: {quicker} m against {slow} m"
+    );
+}
+
+/// "I don't like that the van dithers away to make way for the player." The van (and the driver in it, and the parcels in its hold)
+/// is drawn with see_through = false: never cut away. Standing just beyond the van from the camera, the camera lifts (or swings)
+/// until the postmaster's middle and head both show past it, and eases back down once the van is out of the way.
+#[test]
+fn the_van_is_never_cut_away_and_the_camera_goes_round_it() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); SEEN = function() local c, p, v = CAM.state, nova.named('postmaster'), nova.named('van'); local g = require('lib.world').height(p.x, p.z); local e = c.eye; return not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.4, p.z) and not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.85, p.z) end",
+        "steps": [ { "wait": 3, "lua": "local v = nova.named('van'); v:teleport(4.5, -132, 0); local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -129.0, 0; CAM.reset(0)" },
+        { "wait": 60 },
+        { "lua": "SEEN_THEN = SEEN(); LIFT = CAM.state.dodge_p; SWING = CAM.state.dodge_y" },
+        { "lua": "local p = nova.named('postmaster'); p.x, p.z = 4.5, -110" },
+        { "wait": 180 },
+        { "lua": "LIFT_AWAY = CAM.state.dodge_p" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(nova.named('van').draw_opts.see_through)"),
+        "false",
+        "the van is never cut away"
+    );
+    assert_eq!(
+        lua(&g, "SEEN_THEN"),
+        "true",
+        "the postmaster shows past the van"
+    );
+    let (lift, swing) = (num(&g, "LIFT"), num(&g, "SWING"));
+    assert!(
+        lift > 0.05 || swing.abs() > 0.05,
+        "the camera moved round the van: lift {lift}, swing {swing}"
+    );
+    assert!(lift < 0.7, "only as far as it must: {lift} rad");
+    assert!(
+        num(&g, "LIFT_AWAY") < 0.03,
+        "and back once the van is out of the way: {}",
+        num(&g, "LIFT_AWAY")
+    );
+}
+
+/// "I think we can tilt the camera down a bit while walking out and driving" (asked: lower and more behind, more level, the road and
+/// the horizon ahead). On foot the boom rises 24 to 28 degrees from 8 to 9 m with a lens about 40 degrees, the view looking down
+/// less (the horizon in the top of the picture); driving it rises 14 to 18 degrees. Each still tilts with the right stick round
+/// the new default.
+#[test]
+fn the_cameras_are_lower_and_more_behind() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, math.pi; require('lib.camera').reset(math.pi)" }, { "wait": 30 } ] }"#,
+    );
+    let foot = lua(
+        &g,
+        "(function() local F, V = require('lib.camera').FOOT, require('lib.camera').VAN; return string.format('%.2f %.2f %.2f %.2f %.2f %.2f %.2f %.2f', math.deg(F.pitch), F.dist, F.fov, math.deg(F.view), math.deg(V.pitch), math.deg(F.low), math.deg(F.high), math.deg(V.view)) end)()",
+    );
+    let v: Vec<f64> = foot.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!(
+        (24.0..=28.0).contains(&v[0]),
+        "on foot {} degrees down ({foot})",
+        v[0]
+    );
+    assert!(
+        (8.0..=9.0).contains(&v[1]) && (38.0..=44.0).contains(&v[2]),
+        "8 to 9 m, a lens about 40 ({foot})"
+    );
+    assert!(
+        v[3] < 21.0 * 0.95,
+        "the view looks down less than half the lens, so the horizon shows ({foot})"
+    );
+    assert!(
+        (14.0..=18.0).contains(&v[4]),
+        "driving {} degrees down ({foot})",
+        v[4]
+    );
+    assert!(
+        v[5] < v[0] && v[6] > v[0],
+        "the stick tilts both ways round the default ({foot})"
+    );
+    // the eye stands that far behind and above the postmaster, looking out past them
+    let eye = lua(
+        &g,
+        "(function() local c, p = require('lib.camera').state, nova.named('postmaster'); local g = require('lib.world').height(p.x, p.z); local dx, dz = c.eye[1] - p.x, c.eye[3] - p.z; return string.format('%.2f %.2f %.2f', math.sqrt(dx * dx + dz * dz), c.eye[2] - g, math.deg(math.atan(c.eye[2] - c.at[2], math.sqrt((c.at[1] - c.eye[1])^2 + (c.at[3] - c.eye[3])^2)))) end)()",
+    );
+    let e: Vec<f64> = eye.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!(
+        (6.5..8.5).contains(&e[0]) && (3.5..5.0).contains(&e[1]),
+        "behind and above: {eye}"
+    );
+    assert!(
+        (13.0..18.0).contains(&e[2]),
+        "looking down {} degrees",
+        e[2]
+    );
 }

@@ -115,4 +115,20 @@ describe("ModelEditor", () => {
     expect(saved().capsules).toBeUndefined();
     expect(saved().boxes).toBeUndefined();
   });
+
+  it("hides a part in the game until a script shows it, with the part's checkbox, and shows it again", () => {
+    open(skinned());
+    click([...host.querySelectorAll("button.node")].find((b) => !b.classList.contains("cube") && b.textContent?.includes("arm")));
+    const label = [...host.querySelectorAll("label.check")].find((l) => l.textContent?.includes("Hidden in the game until a script shows it"));
+    expect(label).toBeTruthy();
+    // (the title tells the script's call, braces and all)
+    expect(label!.getAttribute("title")).toContain("parts = { name = { visible = true } }");
+    const box = label!.querySelector("input") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    const arm = () => JSON.parse(studio.tabs[0]!.text).parts[0].children[0];
+    click(box);
+    expect(arm().hidden).toBe(true);
+    click(label!.querySelector("input"));
+    expect(arm().hidden).toBeUndefined();
+  });
 });

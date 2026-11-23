@@ -194,3 +194,170 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
         "amount 0.5 drops about half: {share}"
     );
 }
+
+/// One frame of `draws` from 20 m along -z, looking at (0, 1.5, 0), with `see` (as the test above).
+fn frame(
+    gfx: &mut Gfx,
+    draws: &[ModelDraw],
+    see: Option<SeeThrough>,
+    (w, h): (u32, u32),
+) -> Vec<u8> {
+    let input = FrameInput {
+        clear: [0.0, 0.0, 0.0, 1.0],
+        camera: Camera {
+            eye: glam::Vec3::new(0.0, 1.5, 20.0),
+            target: glam::Vec3::new(0.0, 1.5, 0.0),
+            fov_y_degrees: 20.0,
+        },
+        sprites_back: &[],
+        models: draws,
+        joints: &[],
+        mesh_ops: &[],
+        shaded_models: &[],
+        shaded_sprites: &[],
+        post: None,
+        texture_ops: &[],
+        time: 0.0,
+        ui_models: &[],
+        lighting: Lighting {
+            see_through: see,
+            ..Default::default()
+        },
+        sprites_front: &[],
+        text: &[],
+        world_height: 0,
+    };
+    gfx.capture((w, h), &input)
+}
+
+fn gpu() -> Option<Gfx> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+    match Gfx::new(&instance, None) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            None
+        }
+    }
+}
+
+/// `see_through = false` (`ModelInstance::kept_whole`): the same wall in the same hole is not cut; its dirt slot keeps its meaning.
+#[test]
+fn a_draw_kept_whole_is_never_cut() {
+    let Some(mut gfx) = gpu() else { return };
+    let wall = gfx.upload_mesh(&board(-4.0, 4.0, 0.0, 3.0));
+    let back = gfx.upload_mesh(&board(-6.0, 6.0, 0.0, 3.0));
+    let see = Some(SeeThrough {
+        at: [0.0, 1.5, 0.0],
+        radius: 1.6,
+        margin: 1.0,
+        amount: 1.0,
+        above: 0.3,
+        near: 0.0,
+    });
+    let (w, h) = (400u32, 300u32);
+    let middle = |p: &[u8]| {
+        let i = (((h / 2) * w + w / 2) * 4) as usize;
+        (p[i], p[i + 1])
+    };
+    for (kept, want) in [(false, "the board"), (true, "the wall")] {
+        let wall_at = at(0.0, 0.0, 5.0, [1.0, 0.0, 0.0, 1.0]);
+        let draws = [
+            ModelDraw {
+                casts: false,
+                mesh: wall,
+                instance: if kept { wall_at.kept_whole() } else { wall_at },
+            },
+            ModelDraw {
+                casts: false,
+                mesh: back,
+                instance: at(0.0, 0.0, 0.0, [0.0, 1.0, 0.0, 1.0]),
+            },
+        ];
+        let (r, g) = middle(&frame(&mut gfx, &draws, see, (w, h)));
+        let shows = if r > 100 && g < 60 {
+            "the wall"
+        } else if g > 100 && r < 60 {
+            "the board"
+        } else {
+            "?"
+        };
+        assert_eq!(shows, want, "kept whole: {kept}");
+    }
+    let dirty = at(0.0, 0.0, 0.0, [1.0; 4]).dirty(0.5, [0.0; 3], false);
+    let kept = dirty.kept_whole();
+    assert!(kept.is_kept_whole() && !dirty.is_kept_whole());
+    assert_eq!(kept.matrix[3][3], -dirty.matrix[3][3]);
+}
+
+/// One see-through pane in a mesh no longer makes the whole mesh see-through: its solid triangles are drawn solid (writing depth, so
+/// a part of the same mesh behind them stays hidden whatever order the triangles come in), and only the pane is blended.
+#[test]
+fn a_pane_of_glass_leaves_the_rest_of_its_mesh_solid() {
+    let Some(mut gfx) = gpu() else { return };
+    let quad = |x0: f32, x1: f32, y0: f32, y1: f32, z: f32, color: [u8; 4], base: u32| {
+        let v = |x: f32, y: f32| MeshVertex {
+            position: [x, y, z],
+            normal: [0.0, 0.0, 1.0],
+            color,
+            uv: [0.0, 0.0],
+            emissive: 1.0,
+        };
+        (
+            vec![v(x0, y0), v(x1, y0), v(x1, y1), v(x0, y1)],
+            vec![base, base + 1, base + 2, base, base + 2, base + 3],
+        )
+    };
+    // a red panel in front, a blue one 1 m behind it listed AFTER it (so without depth it would paint over the red), and a pane of
+    // half-clear white glass off to the side, all one mesh
+    let (mut vertices, mut indices) = (Vec::new(), Vec::new());
+    for (x0, x1, z, color) in [
+        (-1.0, 1.0, 0.0, [255, 0, 0, 255]),
+        (-1.5, 1.5, -1.0, [0, 0, 255, 255]),
+        (2.0, 3.0, 0.0, [255, 255, 255, 100]),
+    ] {
+        let (v, i) = quad(x0, x1, 0.5, 2.5, z, color, vertices.len() as u32);
+        vertices.extend(v);
+        indices.extend(i);
+    }
+    let mesh = gfx.upload_mesh(&MeshData {
+        vertices,
+        indices,
+        ..Default::default()
+    });
+    let back = gfx.upload_mesh(&board(-6.0, 6.0, 0.0, 3.0));
+    let draws = [
+        ModelDraw {
+            casts: false,
+            mesh,
+            instance: at(0.0, 0.0, 2.0, [1.0; 4]),
+        },
+        ModelDraw {
+            casts: false,
+            mesh: back,
+            instance: at(0.0, 0.0, -2.0, [0.0, 1.0, 0.0, 1.0]),
+        },
+    ];
+    let (w, h) = (400u32, 300u32);
+    let p = frame(&mut gfx, &draws, None, (w, h));
+    let px = |x: f32| {
+        // (the panels are 18 m from the eye)
+        let span = 2.0 * 18.0 * (10.0f32).to_radians().tan();
+        let i = (((h / 2) * w + (w as f32 / 2.0 + x / span * h as f32) as u32) * 4) as usize;
+        [p[i], p[i + 1], p[i + 2]]
+    };
+    let red = px(0.0);
+    assert!(
+        red[0] > 100 && red[1] < 60 && red[2] < 60,
+        "the solid front panel is drawn over the one behind it: {red:?}"
+    );
+    // the pane: the green board behind shows through, lightened by the white
+    let pane = px(2.5);
+    assert!(
+        pane[1] > 100 && pane[0] > 40 && pane[0] < 230,
+        "the pane is blended over what is behind it: {pane:?}"
+    );
+}
