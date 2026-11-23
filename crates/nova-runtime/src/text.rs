@@ -93,8 +93,21 @@ impl TextEngine {
             full_warning_given: false,
         };
         engine.paint_white();
-        for (name, bytes) in BUILTIN {
-            engine.add_font(name, bytes)?;
+        // (parsed once per process when the test harness shares decoded files: crate::load_cache)
+        let fonts = crate::load_cache::builtin_fonts(|| {
+            BUILTIN
+                .iter()
+                .map(|(_, bytes)| {
+                    Font::from_bytes(*bytes, FontSettings::default())
+                        .map_err(|e| format!("not a usable font: {e}"))
+                })
+                .collect()
+        })?;
+        for ((name, _), font) in BUILTIN.iter().zip(fonts) {
+            engine.fonts.push(font);
+            engine
+                .names
+                .insert(name.to_string(), engine.fonts.len() - 1);
         }
         Ok(engine)
     }

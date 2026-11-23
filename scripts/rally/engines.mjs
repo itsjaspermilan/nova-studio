@@ -21,10 +21,14 @@ export const ENGINES = {
   car_pickup: { layout: "v6", fuel: "petrol", aspiration: "twin" }, // 3.4 twin-turbo V6
 };
 
-const args = process.argv.slice(2), at = args.indexOf("--project"), want = args.filter((a, i) => !a.startsWith("-") && (at < 0 || i !== at + 1));
-await withServer(async (nova) => {
-  for (const [name, recipe] of Object.entries(ENGINES)) {
-    if (want.length && !want.includes(name)) continue;
-    console.log((await nova.call("engine_make", { name, ...recipe, report: false, profile: false })).split("\n")[0]);
-  }
-});
+// (only when run: the studio's tests import ENGINES, and an import wrote all twelve engines' loops into the game again, half a
+// minute, while other tests were reading them)
+if (process.argv[1]?.endsWith("engines.mjs")) {
+  const args = process.argv.slice(2), at = args.indexOf("--project"), want = args.filter((a, i) => !a.startsWith("-") && (at < 0 || i !== at + 1));
+  await withServer(async (nova) => {
+    for (const [name, recipe] of Object.entries(ENGINES)) {
+      if (want.length && !want.includes(name)) continue;
+      console.log((await nova.call("engine_make", { name, ...recipe, report: false, profile: false })).split("\n")[0]);
+    }
+  });
+}

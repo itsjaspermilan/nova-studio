@@ -26,7 +26,11 @@ use crate::playtest::{Plan, Playtest};
 use crate::vfs::{DirVfs, MemVfs, Vfs};
 
 /// The game in a folder (relative paths are from the repository root, where `examples/` is), loaded and given to a [`NullUploader`] (no GPU).
+///
+/// Its pictures, models, sounds and atlas are decoded once per test process and shared by every later load of the same
+/// files ([`share_decoded_files`]); each game still has its own Lua state and its own copies of everything it changes.
 pub fn load_dir(folder: impl AsRef<Path>) -> Result<Game, String> {
+    share_decoded_files();
     let folder = folder.as_ref();
     let folder = if folder.is_absolute() {
         folder.to_path_buf()
@@ -38,7 +42,25 @@ pub fn load_dir(folder: impl AsRef<Path>) -> Result<Game, String> {
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder)?);
     let mut game = Game::load(vfs)?;
     game.upload(&mut NullUploader::default());
+    // nothing here hears the sound: music queues its commands and logs as ever, without decoder threads (a test that takes
+    // the sound commands and wants the streams in them calls `set_music_decoding(true)`)
+    game.set_music_decoding(fresh_loads());
     Ok(game)
+}
+
+/// From now on, every game this test process loads from a folder (`load_dir`, or `Game::load` of a `DirVfs` in a test file
+/// with a loader of its own) decodes each picture, model and sound file once and shares it with the later loads of the same
+/// file: see `crate::load_cache`. A file changed on disk is decoded again. `load_dir` calls it; a test file that loads games
+/// itself calls it first.
+///
+/// `NOVA_TEST_FRESH_LOADS=1` in the environment turns this off, and `load_dir`'s music decoding back on: every load is then
+/// exactly as the game's own (for comparing, or to rule the sharing out when a test acts strangely).
+pub fn share_decoded_files() {
+    crate::load_cache::share(!fresh_loads());
+}
+
+fn fresh_loads() -> bool {
+    std::env::var_os("NOVA_TEST_FRESH_LOADS").is_some_and(|v| v != "0" && !v.is_empty())
 }
 
 /// A game made of these files (path, contents), loaded and given to a [`NullUploader`] (no GPU).

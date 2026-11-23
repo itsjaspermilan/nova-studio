@@ -35,8 +35,46 @@ starting `worktree:`, what they took from it. They never write into it.
   line says why and what to run (`scripts/env.sh cargo build --release -p nova-runtime --bin nova`: about 4 minutes
   from nothing in a fresh worktree, a minute after an engine edit). So once you change the runtime, build your own.
   `NOVA_BIN` (and `NOVA_OGG_BIN`) still choose. The rule is `scripts/lib/worktree.sh`; the vitest tests that run the
-  game use the same one (`studio/mcp/binaries.ts`).
-- `cargo test` and `cargo build` always build in the worktree's own `target/` (a first debug build takes minutes).
+  game use the same one (`studio/mcp/binaries.ts`), asked once per test file, and run a private copy-on-write snapshot of
+  it, so a `cargo build --release` meanwhile (yours, or a merger's in the main checkout) cannot swap it half way.
+- `cargo test` and `cargo build` always build in the worktree's own `target/`. The first `scripts/env.sh cargo ...` in a
+  worktree with no `target/debug` (or `target/release`) yet first clones the main checkout's built dependencies into it
+  (copy-on-write, two seconds, said in one line; `NOVA_NO_SEED=1` skips it), so only Nova's own crates compile: the
+  runtime's tests build in about 30 s instead of 80. Worktrees never share one `target/`: each has its own cargo lock, so
+  agents do not wait for each other, but two cargo commands in the same worktree do ("Blocking waiting for file lock").
+
+## Running tests
+
+Several agents run tests at once on one 10-core machine, so the suites are made to share it: run the smallest set that
+covers your change while you work, the quick set before you hand back, and leave the whole set to the merger.
+
+| what | command | about (busy machine) |
+| --- | --- | --- |
+| one Rust test, or a test file's tests | `scripts/test.sh one <name>` (`one mountain_post`: the file, its long tests too) | build + 2 to 25 s |
+| every Rust test but the long ones (before handing back) | `scripts/test.sh` | 40 s |
+| every Rust test (the merger) | `scripts/test.sh all` | 40 s |
+| the studio's tests | `cd studio && ../scripts/env.sh npx vitest run` | 35 s; 70 s when the studio's code changed |
+| one studio file | `cd studio && ../scripts/env.sh npx vitest run mcp/makers/makers3d.test.ts` | seconds |
+
+- `scripts/test.sh` builds every test of the workspace once and runs the test binaries side by side, the slowest first,
+  each into its own log (`target/nova-test-logs/`); it prints one line per file and, at the end, the failures in full.
+  Plain `cargo test` still works and runs everything but the long tests, one file after another (about 75 s for
+  `-p nova-runtime`).
+- A long test is marked `#[ignore = "long: ..."]` in `crates/*/tests/`: the two whole-slice playthroughs of Fernhollow
+  Post (17 s each). Mark one only when it takes over 10 s alone; `all` and `one` run them, each in its own process.
+  `cargo test -- --include-ignored` is not the same: it also runs the measurements and the device test.
+- A game test loads its game through `nova_runtime::testing::load_dir` (or calls `testing::share_decoded_files()` first,
+  as `rally.rs` does): the game's pictures, models and sounds are decoded once per test file and shared by every test in
+  it (each still gets its own game), and music is not decoded, since no test hears it (`set_music_decoding(true)` for one
+  that takes the sound commands). `NOVA_TEST_FRESH_LOADS=1` loads every game from scratch, as the game itself does.
+- The studio's slowest tests (the makers drawing every figure, every song, every engine; every example model exported)
+  remember that they passed, by the hash of everything they read (`studio/mcp/test-cache.ts`, `examples.test.ts`): they
+  are skipped, with the reason in the report, until the studio's code, the packages, the programs they run or the
+  files they compare against change. `NOVA_TEST_NO_CACHE=1` runs everything (the merger does). The record is in
+  `target/test-cache/`.
+- A test's time limit is there to catch a hang, not to time it: vitest's limit is 60 s. A failure only when the machine is
+  busy is a bug to find (a shared file, a binary rebuilt underneath, a script with side effects imported by a test),
+  not a limit to raise.
 
 ## Which tool for what
 

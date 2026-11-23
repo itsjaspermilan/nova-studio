@@ -39,7 +39,7 @@ import { expandPaint } from "./makers/terrain-paint";
 import { FEATURE_KINDS } from "./makers/wear-paint";
 import { PURPOSE_NAMES, purposeParams } from "./makers/sound";
 import { registerMakers } from "./makers";
-import { releaseBinary } from "./binaries";
+import { releaseBinary, stableBinary } from "./binaries";
 import { IMAGE_HELP, makeImage } from "./image";
 import { MAP_COLOURS, MAP_HELP, MAP_ICONS, makeTownMap } from "./makers/townmap";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
@@ -50,8 +50,11 @@ import { analyse as analyseTrack, buildTrack, newTrack, parseTrack, roadOf, scen
 // ---- where things are ----------------------------------------------------------------------------------------------
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = process.env.NOVA_REPO ?? resolve(here, here.endsWith("mcp") ? "../.." : "..");
-const novaBin = releaseBinary(repo, "nova");
-const oggBin = releaseBinary(repo, "nova-ogg");
+// (under the tests, a snapshot that a rebuild meanwhile cannot change: binaries.ts)
+const novaBin = stableBinary(releaseBinary(repo, "nova"));
+const oggBin = stableBinary(releaseBinary(repo, "nova-ogg"));
+/// The programs the tools run (a test that remembers its results names them among what it read: test-cache.ts).
+export const programs = { nova: novaBin, ogg: oggBin };
 
 type Args = Record<string, any>;
 type Result = string | { text: string; images?: string[] };

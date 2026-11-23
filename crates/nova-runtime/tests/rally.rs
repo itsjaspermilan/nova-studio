@@ -68,6 +68,8 @@ fn load() -> Game {
 
 /// `load`, with more entries in the save (an ordinary test's save; ignored for a new player's).
 fn load_with(extra: serde_json::Map<String, serde_json::Value>) -> Game {
+    // (the models, pictures and sounds are decoded once for the whole file, not once a test)
+    nova_runtime::testing::share_decoded_files();
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/pine-ridge-rally");
     let vfs: Rc<dyn Vfs> = Rc::new(DirVfs::new(&folder).expect("the example folder exists"));
     let mut g = if FRESH.with(|f| f.get()) {

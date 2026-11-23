@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { releaseBinary } from "./binaries";
+import { releaseBinary, stableBinary } from "./binaries";
 
 const helper = resolve(dirname(fileURLToPath(import.meta.url)), "../../scripts/lib/worktree.sh");
 let top = "";
@@ -63,6 +63,8 @@ describe("a fresh git worktree", () => {
     const r = pick();
     expect(r.out).toBe("");
     expect(r.err).toMatch(/not using the main checkout's nova: this worktree's engine sources differ .* cargo build --release -p nova-runtime --bin nova\s+\(about 4 minutes/);
+    // one run asks once: a test and the server it calls agree on the binary, however the main checkout changes meanwhile
+    expect(releaseBinary(tree, "nova", helper)).toBe(join(main, "target/release/nova"));
     git(tree, "checkout", "--", ".");
     put(join(tree, "crates/nova-runtime/src/new.rs"), "\n");
     expect(pick().err).toMatch(/new engine source files/);
@@ -93,6 +95,34 @@ describe("a fresh git worktree", () => {
       delete process.env.NOVA_BIN;
     }
     rmSync(join(tree, "target"), { recursive: true });
+  });
+
+  it("keeps a test run on its own copy of the binary while it is rebuilt", () => {
+    const bin = join(top, "built/nova");
+    const build = (says: string, at: number) => {
+      rmSync(bin, { force: true }); // (cargo puts a new file in its place)
+      put(bin, `#!/bin/sh\necho ${says}\n`);
+      chmodSync(bin, 0o755);
+      utimesSync(bin, new Date(at), new Date(at));
+    };
+    build("one", Date.now() - 1000);
+    const snap = stableBinary(bin);
+    expect(snap).not.toBe(bin);
+    expect(stableBinary(bin)).toBe(snap);
+    expect(execFileSync(snap, { encoding: "utf8" })).toBe("one\n");
+    build("two", Date.now());
+    expect(execFileSync(snap, { encoding: "utf8" })).toBe("one\n");
+    const next = stableBinary(bin);
+    expect(next).not.toBe(snap);
+    expect(execFileSync(next, { encoding: "utf8" })).toBe("two\n");
+    // outside the tests the path itself, so the studio's server takes up a new build at once
+    const vitest = process.env.VITEST;
+    delete process.env.VITEST;
+    try {
+      expect(stableBinary(bin)).toBe(bin);
+    } finally {
+      process.env.VITEST = vitest;
+    }
   });
 
   it("clones node_modules into the worktree without touching the main checkout, and git ignores the clone", () => {

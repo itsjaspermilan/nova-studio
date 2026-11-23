@@ -59,7 +59,11 @@ scripts/build-apk.sh [--project folder]           # Gradle-free debug APK -> bui
 scripts/build-linux-arm64.sh [--release] [--project folder]  # arm64 Linux (Armada/Zaviya handhelds) -> build/linux-arm64/; docs/play-on-linux-handheld.md
 scripts/build-apk.sh --fast [--project folder]  # same, engine built without link-time optimisation: an engine edit takes seconds, not a minute (measure on the device without --fast)
 scripts/tidy.sh [--apply] [--release]            # list or clear build caches (target/debug, incremental, old APKs); old builds are also cleared before each APK and studio-app build
-scripts/env.sh cargo test
+scripts/test.sh one <name>                        # while working: the Rust tests named like <name>, or one test file's (one mountain_post), long ones too
+scripts/test.sh                                   # before handing back: every Rust test but the long ones, side by side (about 40 s)
+scripts/test.sh all                               # the merger: every Rust test, the long ones too (#[ignore = "long: ..."])
+(cd studio && ../scripts/env.sh npx vitest run)   # the studio's tests (35 s; 70 s after a change to the studio's code; NOVA_TEST_NO_CACHE=1 for the merger)
+scripts/env.sh cargo test                         # also fine: the same as quick, one file after another (about 75 s for -p nova-runtime)
 scripts/env.sh cargo clippy --all-targets
 scripts/env.sh cargo fmt --check
 scripts/env.sh cargo ndk -t arm64-v8a --platform 26 build --release   # Android library
@@ -70,7 +74,8 @@ Always go through `scripts/env.sh`. It sets Rust (Homebrew rustup, keg-only),
 `ANDROID_HOME`, `ANDROID_NDK_HOME` (NDK 29.0.14206865), `JAVA_HOME` and `PATH` for
 that command only. Use `/opt/homebrew/bin/cmake`, not the asdf shim (it has no
 version set here). Run the smallest test that covers a change; documentation-only
-changes need no builds.
+changes need no builds. What to run when, and what makes the suites fast and safe to run
+side by side: `docs/agent-guide.md`, "Running tests".
 
 The emulator profile `retroid-sim` (Android 13, arm64, 1920x1080) is for build,
 install, lifecycle and input checks only. It says nothing about frame rate,

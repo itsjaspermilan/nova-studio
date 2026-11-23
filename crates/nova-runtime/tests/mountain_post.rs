@@ -286,11 +286,13 @@ fn the_stick_alone_walks_b_runs_and_a_parcel_makes_it_a_trot() {
 }
 
 #[test]
+#[ignore = "long: about 17 s each; scripts/test.sh all (or one mountain_post) runs them"]
 fn the_whole_slice_plays_start_to_finish_hazel_first() {
     plays_the_whole_slice(false);
 }
 
 #[test]
+#[ignore = "long: about 17 s each; scripts/test.sh all (or one mountain_post) runs them"]
 fn the_whole_slice_plays_start_to_finish_pip_first() {
     plays_the_whole_slice(true);
 }
