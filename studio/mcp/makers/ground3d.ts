@@ -119,7 +119,8 @@ export function makeGround(a: Args): Ground {
     return tone(base.water, -0.6 + jit * 0.2);
   };
 
-  const land = new Mesh3(base.grass);
+  // (`painted: true`: the game paints it as ground, soft patches of warmer and cooler colour and brush strokes near the camera)
+  const land = new Mesh3(base.grass, a.painted === true ? { paint: "ground" } : {});
   // The points: a grid, each pushed a little off its place (not those on the map's edge), so that the edges between
   // kinds of ground, which run along the grid, wander like something laid by hand.
   const idx: number[][] = [];

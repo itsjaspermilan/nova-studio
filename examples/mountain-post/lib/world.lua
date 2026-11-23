@@ -16,6 +16,14 @@ world.clear()
 local CELL = 20
 -- (metres a water surface runs on past its width into the banks; the ground's squares are lowered that far round it)
 world.WATER_EDGE = 1.0
+-- The finer ground of a water's banks (entities/water.lua lays it, valley_ground leaves its 4 m squares out under it): `zone`, how far
+-- from the middle line the bank's slope and its foot reach (the terrain recipe's channel rises 1 in 1.3 from the creek's edge), and
+-- `reach`, how far the finer ground runs out each side. Every 4 m square with a corner inside the zone is left out, so the finer ground
+-- must cover such a square whole: the zone plus a square's diagonal (5.7 m) and a little more.
+function world.bank_of(w)
+  local zone = w.width / 2 + (w.width > 10 and 4 or 5)
+  return zone, zone + 6
+end
 local function key(cx, cz) return cx * 100003 + cz end
 
 -- A road's line: points { x, z } every few metres, its name and surface.
@@ -124,6 +132,39 @@ function world.junction_surface(x, z)
     end
   end
   return nil
+end
+
+-- Under a road's ribbon or a junction's tarmac (with a margin): the ground there is drawn a little lower, so the road lies on it.
+function world.under_road(x, z)
+  local rr, rd = world.nearest("road", x, z)
+  return (rr and rd < rr.width * 0.75 + 0.6) or world.junction_surface(x, z) ~= nil
+end
+
+-- The ground's colour at x, z (r, g, b, 0 to 255) before the renderer paints it (entities/valley_ground.lua's squares and the banks
+-- of entities/water.lua, which must meet without a seam): a few flat warm greens by a slow pattern (meadow, a darker wood floor, a
+-- sunny patch), worn earth along the roads' verges, a damp greener grey by the water, hollows a little darker and cooler and rises a
+-- little lighter, and a little variation from point to point (by the grid's `i`, `j`) so the flat colours are not a stencil.
+local MEADOW, WOOD, SUN, EARTH, DAMP = { 128, 168, 82 }, { 92, 134, 70 }, { 152, 182, 90 }, { 150, 136, 98 }, { 112, 120, 84 }
+function world.ground_color(x, z, i, j)
+  local n = nova.noise2(x * 0.018, z * 0.018, 3, 3, 0.5)
+  local m = nova.noise2(x * 0.06 + 40, z * 0.06, 7, 2, 0.5)
+  local t = math.max(0, math.min(1, (n + 0.15) * 2.5))
+  local r = MEADOW[1] + (WOOD[1] - MEADOW[1]) * t
+  local g = MEADOW[2] + (WOOD[2] - MEADOW[2]) * t
+  local b = MEADOW[3] + (WOOD[3] - MEADOW[3]) * t
+  if m > 0.35 then local k = math.min(1, (m - 0.35) * 2.5) * 0.6; r, g, b = r + (SUN[1] - r) * k, g + (SUN[2] - g) * k, b + (SUN[3] - b) * k end
+  local _, dr = world.nearest("road", x, z)
+  if dr and dr < 7 then local k = (1 - math.max(0, dr - 3) / 4) * 0.55; r, g, b = r + (EARTH[1] - r) * k, g + (EARTH[2] - g) * k, b + (EARTH[3] - b) * k end
+  local _, dw = world.nearest("water", x, z)
+  if dw and dw < 9 then local k = (1 - math.max(0, dw - 2) / 7) * 0.7; r, g, b = r + (DAMP[1] - r) * k, g + (DAMP[2] - g) * k, b + (DAMP[3] - b) * k end
+  -- (the ground here against the ground 8 m round it)
+  local h0 = nova.terrain_height(x, z)
+  local around = (nova.terrain_height(x + 8, z) + nova.terrain_height(x - 8, z) + nova.terrain_height(x, z + 8) + nova.terrain_height(x, z - 8)) * 0.25
+  local hollow = math.max(-1, math.min(1, (h0 - around) / 0.6))
+  local k = hollow < 0 and 0.13 or 0.06
+  r, g, b = r * (1 + hollow * k), g * (1 + hollow * k * 0.8), b * (1 + hollow * k * 0.4)
+  local v = (nova.hash(i, j, 0, 3) - 0.5) * 8
+  return r + v, g + v, b + v * 0.5
 end
 
 -- The surface under a wheel or a foot: "road" (tarmac), "gravel", "bridge" or "grass".

@@ -14,7 +14,8 @@ import type { Cube } from "../../src/lib/model-doc";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
-import { makeProp, PROP_KINDS, propEntity } from "./prop3d";
+import { makeProp, PAINTED_KINDS, PROP_KINDS, propEntity } from "./prop3d";
+import { exportGlb } from "../../src/lib/glb";
 
 const built = existsSync(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), "nova"));
 
@@ -85,6 +86,37 @@ describe("prop3d_make", () => {
     expect(pine.colliders[0].r * pine.scale).toBeCloseTo(0.3, 5);
     const fence = makeProp({ kind: "fence" }).model;
     expect(fence.boxes[0].hw * fence.scale).toBeCloseTo(1.05, 5);
+  });
+
+  it("makes painted trees and bushes on request: clumped crowns and ragged tiers marked as foliage, the low style left as it was", () => {
+    for (const kind of PAINTED_KINDS) {
+      const low = makeProp({ kind, seed: 2 }), painted = makeProp({ kind, seed: 2, style: "painted" });
+      // (the low style is untouched: no shape of it is painted, and a style that has no painted kind changes nothing)
+      expect(walkCubes(parsed(low.model)).some((c) => c.paint), kind).toBe(false);
+      expect(JSON.stringify(makeProp({ kind: "rock", seed: 2, style: "painted" }).model)).toBe(JSON.stringify(makeProp({ kind: "rock", seed: 2 }).model));
+      const cubes = walkCubes(parsed(painted.model));
+      const leafy = cubes.filter((c) => c.paint === "foliage");
+      expect(leafy.length, `${kind}: a painted crown`).toBeGreaterThan(0);
+      // leafy faces are shaded smooth (the renderer gives them their texture) and the whole is round, not a few flat facets
+      expect(leafy.every((c) => (c.polys ?? []).every((f) => f.smooth)), kind).toBe(true);
+      const faces = cubes.reduce((n, c) => n + (c.polys?.length ?? 0), 0);
+      expect(faces, `${kind}: more faces than the low style, within a budget`).toBeGreaterThan(walkCubes(parsed(low.model)).reduce((n, c) => n + (c.polys?.length ?? 0), 0));
+      expect(faces, kind).toBeLessThan(1400);
+      // the same size and what it blocks
+      expect(painted.model.colliders, kind).toEqual(low.model.colliders);
+      expect(Math.abs(painted.size.h - low.size.h), kind).toBeLessThan(low.size.h * 0.25);
+      expect(JSON.stringify(makeProp({ kind, seed: 2, style: "painted" }).model), kind).toBe(JSON.stringify(painted.model));
+    }
+    // a pine's tiers are ragged: the rim's points are not all as far out from the trunk
+    const pine = walkCubes(parsed(makeProp({ kind: "pine", style: "painted" }).model)).find((c) => c.paint)!;
+    const out = pine.verts!.map((v) => Math.hypot(v[0], v[2])).filter((r) => r > 8);
+    expect(Math.max(...out) / Math.min(...out)).toBeGreaterThan(1.1);
+    // the painted surface reaches the .glb as the material's extras.nova.paint
+    const glb = exportGlb(parsed(makeProp({ kind: "tree", style: "painted" }).model));
+    const len = new DataView(glb.buffer, glb.byteOffset).getUint32(12, true);
+    const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + len)));
+    expect(json.materials.some((m: any) => m.extras?.nova?.paint === "foliage")).toBe(true);
+    expect(() => use("prop3d_make", { kind: "tree", style: "felt" })).toThrow(/"low" \(when left out\), "detailed" or "painted"/);
   });
 
   it("takes every palette, and the palette changes the colours", () => {
@@ -500,6 +532,11 @@ describe("ground3d_make", () => {
     for (const y of near(-3, -1)) expect(Math.abs(y)).toBeLessThan(0.01);
     expect(Math.min(...near(5, 1))).toBeLessThan(-0.25);
     expect(Math.max(...land.map((p) => Math.abs(p[1]!)))).toBeLessThan(0.8);
+    // painted as ground only when asked (the land, not the water); the shape is the same either way
+    expect(doc.parts[0]!.cubes.some((c) => c.paint)).toBe(false);
+    const painted = parsed(makeGround({ map, legend: { ".": "grass", p: "path", s: "paved", w: "water" }, painted: true }).model);
+    expect(painted.parts[0]!.cubes.map((c) => c.paint ?? null)).toEqual(["ground", null]);
+    expect(JSON.stringify(painted.parts[0]!.cubes[0]!.verts)).toBe(JSON.stringify(doc.parts[0]!.cubes[0]!.verts));
     // flat when asked, and without the skirt the mesh ends at the map
     const flat = makeGround({ map: ["....", "...."], hills: 0, skirt: 0 });
     for (const p of points(flat.model)) {

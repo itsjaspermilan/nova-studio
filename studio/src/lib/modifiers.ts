@@ -883,6 +883,7 @@ export function evaluate(c: Cube, stage: Stage = "view"): Cube {
   if (c.roughness !== undefined) out.roughness = c.roughness;
   if (c.coat !== undefined) out.coat = c.coat;
   if (c.glass !== undefined) out.glass = c.glass;
+  if (c.paint !== undefined) out.paint = c.paint;
   const kept = [...(soup.creases ?? [])].filter(([, w]) => Number.isFinite(w) && w > 0);
   if (kept.length) out.creases = kept.map(([k, w]) => { const [a, b] = k.split(",").map(Number) as [number, number]; return [a, b, Math.min(1, w / CREASE_LEVELS)] as [number, number, number]; });
   fitBounds(out);
