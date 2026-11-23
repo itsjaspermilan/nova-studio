@@ -8503,3 +8503,84 @@ fn every_piece_of_the_post_office_sits_on_the_grid_and_the_walks_stay_clear() {
         lua(&g, "BAD2")
     );
 }
+
+/// "There's a weird bug where you can see the side windows extending past the van when you're looking at the 'back' of the window."
+/// (It was the cab's side linings: they ran straight forward to z 0.92 and so, near the roof, stood out in front of the leaning
+/// windscreen.) Every pane of glass in the body and every lining of the cab and the hold lies inside the body's skin (within 4 mm),
+/// so nothing pokes out of the van from any side.
+#[test]
+fn the_vans_glass_and_linings_stay_inside_its_skin() {
+    let model = van_model();
+    let mut shapes = Vec::new();
+    van_shapes(&model["parts"][0], &mut shapes);
+    let body: Vec<&Value> = shapes
+        .iter()
+        .filter(|(n, _)| n == "body")
+        .map(|(_, c)| *c)
+        .collect();
+    let skin = body[0];
+    let sv = mesh_points(skin);
+    let mut tris: Vec<[[f64; 3]; 3]> = Vec::new();
+    for poly in skin["polys"].as_array().unwrap() {
+        let v: Vec<usize> = poly["v"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i.as_u64().unwrap() as usize)
+            .collect();
+        for k in 1..v.len() - 1 {
+            tris.push([sv[v[0]], sv[v[k]], sv[v[k + 1]]]);
+        }
+    }
+    // inside the skin: a ray straight up from the point crosses it an odd number of times
+    let inside = |p: [f64; 3]| {
+        let (px, pz) = (p[0] + 1.3e-5, p[2] + 0.7e-5);
+        let mut n = 0;
+        for t in &tris {
+            let (a, b, c) = (t[0], t[1], t[2]);
+            let d = (b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2]);
+            if d.abs() < 1e-12 {
+                continue;
+            }
+            let u = ((px - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (pz - a[2])) / d;
+            let w = ((b[0] - a[0]) * (pz - a[2]) - (px - a[0]) * (b[2] - a[2])) / d;
+            if u < 0.0 || w < 0.0 || u + w > 1.0 {
+                continue;
+            }
+            let y = a[1] + u * (b[1] - a[1]) + w * (c[1] - a[1]);
+            if y > p[1] {
+                n += 1;
+            }
+        }
+        n % 2 == 1
+    };
+    let near_inside = |p: [f64; 3]| {
+        let s = if p[0].abs() > 0.01 {
+            1.0 - 0.004 / p[0].abs()
+        } else {
+            1.0
+        };
+        inside(p) || inside([p[0] * s, p[1] - 0.004, p[2]])
+    };
+    let mut checked = 0;
+    for c in &body[1..] {
+        let colour = c["color"].as_str().unwrap_or("");
+        let glass = colour.len() == 9;
+        let lining = colour == "#beb39c";
+        if !(glass || lining) {
+            continue;
+        }
+        for p in mesh_points(c) {
+            assert!(
+                near_inside(p),
+                "a {} vertex at {p:?} pokes out of the van's skin",
+                if glass { "glass" } else { "lining" }
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked > 40,
+        "the panes and the linings were checked: {checked} points"
+    );
+}

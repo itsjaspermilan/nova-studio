@@ -347,7 +347,11 @@ const STEP = { x0: IX - 0.2, y: 0.4 };  // the step well inside the doorway: fro
   body.push(bevelled([(-IX + STEP.x0) / 2, FL - 0.03, (CAB_WALL + zw) / 2], [IX + STEP.x0, 0.06, zw - CAB_WALL], FLOOR, { bevel: 0.02 }));
   body.push(bevelled([(-xw + Math.min(xw, STEP.x0)) / 2, FL - 0.03, (zw - 0.02 + 0.9) / 2], [xw + Math.min(xw, STEP.x0), 0.06, 0.9 - zw + 0.02], FLOOR, { bevel: 0.02 }));
 }
-body.push(bevelled([0, ROOF - 0.1, (CAB_WALL + WS.top[0]) / 2], [2 * IX, 0.04, WS.top[0] - CAB_WALL], INSIDE, { bevel: 0.015 }));
+// (the cab's ceiling, its front edge 6 cm behind the windscreen at its height: past the pillars' rounding, inside the skin)
+{
+  const cz = zOfWindscreen(ROOF - 0.1) - 0.06;
+  body.push(bevelled([0, ROOF - 0.1, (CAB_WALL + cz) / 2], [2 * IX, 0.04, cz - CAB_WALL], INSIDE, { bevel: 0.015 }));
+}
 // (its foot over the front wells' linings, so it never shows in a wheel arch)
 body.push(bevelled([0, 0.83, 0.8], [2 * IX, 0.26, 0.2], DASH, { bevel: 0.06, segments: 2 }));
 body.push(bevelled([0, 0.95, 0.76], [2 * IX - 0.1, 0.1, 0.14], shade(DASH, 0.15), { bevel: 0.045, segments: 2 })); // the dash's rounded top
@@ -356,9 +360,14 @@ body.push(bevelled([0, (FL + BW.y0) / 2, bz], [2 * IX, BW.y0 - FL, bt], INSIDE, 
 body.push(bevelled([0, (BW.y1 + ROOF - 0.08) / 2, bz], [2 * IX, ROOF - 0.08 - BW.y1, bt], INSIDE, { bevel: 0.02 }));
 for (const s of [1, -1]) body.push(bevelled([s * (BW.x + IX) / 2, (BW.y0 + BW.y1) / 2, bz], [IX - BW.x, BW.y1 - BW.y0, bt], INSIDE, { bevel: 0.02 }));
 // (the cab's sides seen from inside: on the left round the doorway, before, behind and over it; on the right round the window)
+// (each stops short of the windscreen: its front edge leans with the glass, 9 cm behind it, past the pillar's rounding. They used to
+// run straight to z 0.92, so near the roof they stood out in front of the leaning windscreen, outside the body: the owner's "side
+// windows extending past the van when you're looking at the back of the window")
+const CAB_FRONT = (y) => Math.min(0.92, zOfWindscreen(Math.max(y, WS.base[1])) - 0.09);
 const inner = (s, z0, z1, y0, y1) => {
   const x = s * (IX - 0.005);
-  body.push(sheet([[x, y0, z0], [x, y1, z0], [x, y1, z1], [x, y0, z1]], [s * (IX + 5), (y0 + y1) / 2, (z0 + z1) / 2], INSIDE));
+  const f0 = Math.min(z1, CAB_FRONT(y0)), f1 = Math.min(z1, CAB_FRONT(y1));
+  body.push(sheet([[x, y0, z0], [x, y1, z0], [x, y1, f1], [x, y0, f0]], [s * (IX + 5), (y0 + y1) / 2, (z0 + z1) / 2], INSIDE));
 };
 inner(1, doorFront(D.y1) - 0.04, 0.92, FL, ROOF - 0.08);
 inner(1, bz, D.z0 + 0.04, STEP.y, ROOF - 0.08);
