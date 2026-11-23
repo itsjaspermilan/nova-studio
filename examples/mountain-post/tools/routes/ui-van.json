@@ -1,0 +1,157 @@
+{
+ "start_scene": "valley",
+ "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil; AT = function(x, z, face_off) local s = nova.scene_now(); local v = nova.named('van'); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ x, 0, z }); p.face = v.heading + face_off; require('lib.camera').reset(p.face) end",
+ "route": [
+  {
+   "wait": 30,
+   "lua": "AT(-3.6, -2.5, math.pi / 2)"
+  },
+  {
+   "wait": 20
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-00"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-01"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-02"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-03"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-04"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-05"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-06"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-07"
+  },
+  {
+   "press": "next"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-08"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-09"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-10"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-11"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-12"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-13"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-14"
+  },
+  {
+   "hold": [
+    "move_y=-0.8"
+   ],
+   "frames": 20,
+   "capture": "strip-15"
+  },
+  {
+   "lua": "S.van_load = { 'hazel' }; AT(-0.2, -2.4, math.pi / 2)"
+  },
+  {
+   "wait": 30,
+   "capture": "van-panel-1-parcel"
+  },
+  {
+   "lua": "S.van_load = { 'hazel', 'pip' }; AT(-0.2, -2.4, math.pi / 2)"
+  },
+  {
+   "wait": 30,
+   "capture": "van-panel-2-parcels"
+  },
+  {
+   "press": "next"
+  },
+  {
+   "wait": 5,
+   "capture": "van-panel-2-second"
+  },
+  {
+   "lua": "S.van_load = { 'hazel', 'pip' }; S.carrying = nil; local v = nova.named('van'); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; v:teleport(4, -150, 0); require('lib.camera').reset(0)"
+  },
+  {
+   "wait": 60,
+   "capture": "driving-prompts"
+  }
+ ],
+ "out": "build/gallery_van"
+}

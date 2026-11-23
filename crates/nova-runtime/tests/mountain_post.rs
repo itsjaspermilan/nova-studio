@@ -2326,3 +2326,157 @@ fn residents_meet_the_postmaster_at_their_gate_and_do_not_follow() {
     );
     assert!(off < 0.3, "she faces the postmaster: {off} rad off");
 }
+
+/// "The game shouldn't pause when dealing with the van storage, just have the menu fade up." The panel at the van's open back is
+/// a light overlay: it fades up (about 0.2 s) when the postmaster comes to the back with empty hands and parcels inside, and away
+/// when they walk off; the stick, the clock and the world carry on the whole time.
+#[test]
+fn the_van_panel_is_a_light_overlay_the_postmaster_keeps_walking_through() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local v = nova.named('van'); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 0, 0, -2.2 }); p.face = v.heading + math.pi; require('lib.camera').reset(p.face)" },
+        { "wait": 3 } ] }"#,
+    );
+    // just come to the back: the panel is on its way up, and has not been waited for
+    let a0 = num(&g, "nova.scene_now().picker_a");
+    assert!(
+        a0 > 0.0 && a0 < 0.4,
+        "the panel starts to fade up at once: {a0}"
+    );
+    play(&mut g, r#"{ "steps": [ { "wait": 15 } ] }"#);
+    assert!(num(&g, "nova.scene_now().picker_a") > 0.99, "up in ~0.2 s");
+    assert_eq!(lua(&g, "(nova.scene_now():picker())"), "hazel");
+    let p0 = (
+        num(&g, "nova.named('postmaster').x"),
+        num(&g, "nova.named('postmaster').z"),
+    );
+    // walking on with the stick, with the panel shown: nothing locks, the postmaster moves, the clock and time scale are untouched
+    let r = play(
+        &mut g,
+        r#"{ "always": "nova.named('postmaster').control and nova.time_scale() == 1", "steps": [
+        { "lua": "SEEN = 0; T0 = nova.time()" },
+        { "hold": ["move_y=-0.8"], "frames": 20, "lua": "if nova.scene_now().picker_a > 0.5 then SEEN = SEEN + 1 end" },
+        { "lua": "X1 = { nova.named('postmaster').x, nova.named('postmaster').z }; A1 = nova.scene_now().picker_a; T1 = nova.time()" },
+        { "hold": ["move_y=-0.8"], "frames": 12 } ] }"#,
+    );
+    assert!(
+        r.warnings().iter().all(|w| !w.contains("always")),
+        "{:?}",
+        r.warnings()
+    );
+    let p1 = (num(&g, "X1[1]"), num(&g, "X1[2]"));
+    assert!(
+        ((p1.0 - p0.0).powi(2) + (p1.1 - p0.1).powi(2)).sqrt() > 0.15,
+        "the postmaster walked while the panel was up: {p0:?} to {p1:?}"
+    );
+    assert!(
+        num(&g, "A1") > 0.5,
+        "still shown a moment later: {}",
+        num(&g, "A1")
+    );
+    assert!(num(&g, "SEEN") >= 1.0);
+    assert!(
+        (num(&g, "T1") - num(&g, "T0") - 20.0 / 60.0).abs() < 0.03,
+        "the clock ran on while the panel was up"
+    );
+    assert_eq!(lua(&g, "nova.time_scale()"), "1");
+    // walking off: the panel fades away with the zone, and the doors shut
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-0.8"], "frames": 150 }, { "wait": 20 } ] }"#,
+    );
+    assert!(
+        lua(&g, "tostring(nova.scene_now():picker())") == "nil",
+        "out of the zone"
+    );
+    assert_eq!(num(&g, "nova.scene_now().picker_a"), 0.0);
+    assert_eq!(lua(&g, "nova.time_scale()"), "1");
+}
+
+/// "Pick a different font for everything": the game's words are one face, the rounded one, in two weights. The serif (Lora) is
+/// not used by any file of the game, in its Lua or in its tool recipes; only the Mayor's signature stays in the script face.
+#[test]
+fn no_game_file_uses_the_serif_and_the_script_face_is_only_the_mayors_signature() {
+    let root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post");
+    let mut hits = Vec::new();
+    let mut script = Vec::new();
+    fn walk(dir: &std::path::Path, hits: &mut Vec<String>, script: &mut Vec<String>) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            let name = p.file_name().unwrap().to_string_lossy().to_string();
+            if p.is_dir() {
+                if name != "build" && name != "models" && name != "terrain" {
+                    walk(&p, hits, script);
+                }
+                continue;
+            }
+            if !matches!(
+                p.extension().and_then(|x| x.to_str()),
+                Some("lua" | "mjs" | "json")
+            ) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            for (i, line) in text.lines().enumerate() {
+                let l = line.to_lowercase();
+                if l.contains("serif") && !l.contains("sans-serif")
+                    || l.contains("lora") && l.contains("font")
+                {
+                    hits.push(format!("{}:{}", p.display(), i + 1));
+                }
+                if l.contains("\"script\"") || l.contains("font: \"script") {
+                    script.push(format!("{}:{}", name, i + 1));
+                }
+            }
+        }
+    }
+    walk(&root, &mut hits, &mut script);
+    assert!(hits.is_empty(), "the serif face is still used: {hits:?}");
+    assert_eq!(
+        script.len(),
+        1,
+        "only the signature is in the script: {script:?}"
+    );
+    assert!(script[0].starts_with("cards.lua"), "{script:?}");
+}
+
+/// The wording in the new face and the smaller sizes: every dialogue line fits its box (the lines wrapped inside the box's width,
+/// all of them in the box's height), the letter fits its page, and the smallest text is not under the handheld minimum.
+#[test]
+fn every_line_of_the_dialogue_and_the_letter_fits_its_box_in_the_rounded_face() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local words, dialogue, cards, ui = require('lib.words'), require('lib.dialogue'), require('lib.cards'), require('lib.ui')
+          local bad = {}
+          local L = dialogue.layout(1280)
+          local maxh = L.h - L.pad_top - 14
+          for who, p in pairs(words.people) do
+            local all = {}
+            for _, k in ipairs({ 'given', 'after', 'without' }) do
+              local v = p[k]
+              if type(v) == 'string' then all[#all + 1] = v else for _, s in ipairs(v) do all[#all + 1] = s end end
+            end
+            for _, line in ipairs(all) do
+              local _, h = nova.ui.text_size(line, { font = 'rounded', size = L.size, width = L.text_w, line_spacing = L.spacing, bold = 0.55 })
+              if h > maxh then bad[#bad + 1] = who .. ' ' .. math.floor(h) .. ' > ' .. math.floor(maxh) .. ': ' .. line:sub(1, 30) end
+            end
+          end
+          local C = cards.letter_layout(1280)
+          if C.h > 560 or C.h1 <= 0 then bad[#bad + 1] = 'letter ' .. math.floor(C.h) end
+          if ui.F.body * 4 / 3 < 20 or ui.F.small * 4 / 3 < 17 or ui.F.hint * 4 / 3 < 17 then bad[#bad + 1] = 'sizes' end
+          return #bad == 0 and 'ok' or table.concat(bad, ' | ')
+        end)()"#,
+    );
+    assert_eq!(out, "ok");
+}

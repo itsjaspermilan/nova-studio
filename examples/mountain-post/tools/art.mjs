@@ -24,8 +24,8 @@ img("fx/bridge_out", [512, 186], [
   { line: [[40, 104], [470, 98]], width: 5, fill: RED, opacity: 0.6, cap: "round" },
 ]);
 img("fx/po_sign", [512, 104], [
-  { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "serif", align: "center", fill: "#e9dcbccc" },
-  { text: "POST OFFICE", at: [256, 88], size: 52, font: "serif", align: "center", fill: "#efe2c2dd" },
+  { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "rounded", align: "center", fill: "#e9dcbccc" },
+  { text: "POST OFFICE", at: [256, 88], size: 52, font: "rounded", align: "center", fill: "#efe2c2dd" },
 ]);
 // (the van's sides: chunky painted letters in the stripe's red and the postmaster's blue, thick enough to read from the chase camera)
 img("fx/van_side", [880, 300], [
@@ -52,13 +52,13 @@ shapes.push({ rect: [18, 18, MW - 36, MH - 36], radius: 6, fill: null, stroke: {
 const gorge = lineOf(GORGE.points, 10);
 shapes.push({ line: gorge, width: 26, fill: "#a9c6c8", cap: "round" });
 shapes.push({ line: gorge, width: 3, fill: "#6a8e98", cap: "round" });
-shapes.push({ text: "the lake side", at: [MW / 2 + 140, 72], size: 26, font: "serif", align: "center", fill: "#5f7f86" });
+shapes.push({ text: "the lake side", at: [MW / 2 + 140, 72], size: 30, font: "rounded", align: "center", fill: "#5f7f86" });
 // the creek
 const creek = lineOf(CREEK.points, 8);
 shapes.push({ line: creek, width: 9, fill: "#a9c6c8", cap: "round" });
 shapes.push({ line: creek, width: 2.5, fill: "#5f8a96", cap: "round" });
 const cl = creek[Math.floor(creek.length * 0.3)];
-shapes.push({ text: "Kettle Creek", at: [cl[0] + 26, cl[1]], size: 24, font: "serif", fill: "#4f7a86" });
+shapes.push({ text: "Kettle Creek", at: [cl[0] + 26, cl[1]], size: 28, font: "rounded", fill: "#4f7a86" });
 // little trees, by a fixed scatter away from the roads
 let s = 7;
 const rnd = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
@@ -78,21 +78,21 @@ ROADS.forEach((r, i) => {
 // the barrier at Post Road's end, the bridge out
 const end = P(ROADS[0].control.at(-1));
 shapes.push({ line: [[end[0] - 16, end[1] + 2], [end[0] + 16, end[1] + 2]], width: 6, fill: RED, cap: "round" });
-shapes.push({ text: "bridge out", at: [end[0] + 24, end[1] + 10], size: 22, font: "serif", fill: RED });
+shapes.push({ text: "bridge out", at: [end[0] + 24, end[1] + 10], size: 27, font: "rounded", fill: RED });
 // the road names, beside each road
-const label = (text, at, rot = 0, size = 30) => shapes.push({ text, at, size, font: "serif", fill: INK, align: "center", ...(rot ? {} : {}) });
+const label = (text, at, rot = 0, size = 30) => shapes.push({ text, at, size, font: "rounded", fill: INK, align: "center", ...(rot ? {} : {}) });
 label("Post Road", [P([-20, 60])[0] - 92, P([-20, 60])[1]]);
-label("Fern Lane", [P([-80, -50])[0] - 10, P([-80, -50])[1] - 40]);
+label("Fern Lane", [P([-80, -50])[0] - 38, P([-80, -50])[1] - 44]);
 label("Kettle Creek Road", [P([110, 40])[0] + 30, P([110, 40])[1] + 48]);
 // the post office: a little house and its name
 const po = P(PLACES.post_office.building);
 shapes.push({ rect: [po[0] - 18, po[1] - 10, 36, 24], fill: "#c9673f", stroke: { color: INK, width: 3 } });
 shapes.push({ polygon: [[po[0] - 24, po[1] - 9], [po[0], po[1] - 28], [po[0] + 24, po[1] - 9]], fill: "#4f6458", stroke: { color: INK, width: 3 } });
-shapes.push({ text: "Post Office", at: [po[0] - 34, po[1] + 8], size: 28, font: "serif", fill: INK, align: "right" });
+shapes.push({ text: "Post Office", at: [po[0] - 34, po[1] + 8], size: 28, font: "rounded", fill: INK, align: "right" });
 // the compass and the title
 shapes.push({ polygon: [[MW - 86, 150], [MW - 74, 112], [MW - 62, 150], [MW - 74, 142]], fill: INK });
-shapes.push({ text: "N", at: [MW - 74, 100], size: 26, font: "serif", fill: INK, align: "center" });
-shapes.push({ text: "Fernhollow", at: [96, 108], size: 64, font: "script", fill: "#5a3e2a" });
+shapes.push({ text: "N", at: [MW - 74, 100], size: 26, font: "rounded", fill: INK, align: "center" });
+shapes.push({ text: "Fernhollow", at: [96, 108], size: 64, font: "rounded", fill: "#5a3e2a", stroke: { color: "#5a3e2a", width: 2 } });
 img("ui/map", [MW, MH], shapes);
 
 // ---- the minimap's disc and the "you" mark, the button glyphs, the title ---------------------------------------------------------------
@@ -123,8 +123,8 @@ img("ui/you", [48, 48], [{ polygon: [[24, 4], [40, 42], [24, 33], [8, 42]], roun
   img("ui/title_bg", [W, H], sh);
 }
 img("ui/logo", [1100, 320], [
-  { text: "Fernhollow Post", at: [550, 196], size: 116, font: "script", align: "center", fill: "#fbf3df", shadow: { offset: [0, 5], blur: 12, color: "#1e2a3acc" } },
-  { text: "a mountain post office", at: [550, 270], size: 36, font: "serif", align: "center", fill: "#fbf3df", shadow: { offset: [0, 2], blur: 6, color: "#1e2a3acc" } },
+  { text: "Fernhollow Post", at: [550, 196], size: 116, font: "rounded", align: "center", fill: "#fbf3df", stroke: { color: "#fbf3df", width: 5 }, shadow: { offset: [0, 5], blur: 12, color: "#1e2a3acc" } },
+  { text: "a mountain post office", at: [550, 270], size: 38, font: "rounded", align: "center", fill: "#fbf3df", stroke: { color: "#fbf3df", width: 1.5 }, shadow: { offset: [0, 2], blur: 6, color: "#1e2a3acc" } },
 ]);
 img("ui/parcel_icon", [96, 80], [
   { rect: [8, 14, 80, 58], radius: 6, fill: "#c99b67", stroke: { color: "#6b4a2c", width: 3 } },
