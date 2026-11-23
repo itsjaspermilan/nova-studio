@@ -184,11 +184,20 @@ same letter).
 - **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
   In the van (the sixth play) A moves the lever one gear towards L.
 - **The van's lever** (the sixth play: an automatic with PRNDL): A steps toward L (down the column), X toward P (up); the column
-  reads P R N D L top to bottom, shown bottom left beside the minimap with the handbrake lamp (lib/gear_hud.lua). It is in P each
-  time someone gets in, and left in P on getting out. Among P, R, N and D it moves only with L2 held and the van all but stopped
-  (under 0.5 m/s); otherwise a soft click and "Hold the brake to shift" (or "Stop to shift"). D and L change freely at any speed.
-  P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a slope too;
-  D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a gentle clunk.
+  reads P R N D L top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
+  with an analog speedometer") it is shown in the bottom right with an analog speedometer (0 to 40 km/h, the minimap's frame, a
+  soft red needle, eased; backing up it shows the speed it backs at) and the handbrake lamp in the dial's foot; the prompts stand
+  above that cluster while driving (lib/gear_hud.lua). It is in P each time someone gets in, and left in P on getting out.
+  ~~Among P, R, N and D it moves only with L2 held and the van all but stopped (under 0.5 m/s); otherwise a soft click and "Hold
+  the brake to shift".~~ (replaced: "We can remove the brake requirement honestly") It moves at once with no pedal; the one guard:
+  never into P while moving faster than 1 m/s, nor into R while going forwards faster than that (a soft click and "Stop to
+  shift"). P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a
+  slope too; D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a
+  gentle clunk. **Creep** ("We need to add creep for D R and L"): in D, L and R with the pedals up the van creeps at idle, built
+  up over about a second and a half: about 1.25 to 1.35 m/s on Post Road in D, 1.1 in L, 1.0 backwards in R, a little slower on
+  the grass; D slows on a climb (and rolls back on a very steep one), L creeps up moderate hills. Any touch of L2 or the handbrake
+  takes it away and holds a stopped van still; P and N never creep. A creeping van is moving: Y gets out once it is stopped on
+  the brake or in P (Van.TUNE.creep, creep_pull, creep_band, creep_build, creep_brake).
 - **L3** (the left stick's click) sounds the horn while driving (it was X).
 - **B** (bottom), held: on foot, run (the stick alone only walks); driving, the handbrake (the rear wheels lock, the van slows firmly,
   in a bend at speed the tail steps out a little; standing, it holds the van still on a slope; the brake lamps light).
