@@ -1,62 +1,50 @@
--- The van's cluster (the owner's sixth play: "show the drive selection ... There should also be a handbrake indicator near the drive
--- symbol"; then "We should move the PRNDL to the right along with an analog speedometer"), drawn by the valley whenever the van is
--- driven, never on foot nor during a conversation. Bottom right, one compact group:
---   - an analog speedometer: the minimap's own painted disc (cream face, wooden rim: the two bottom corners match), ticks every
---     5 km/h and numbers every 10 from 0 to 40 (the starting van tops out near 37), a soft red needle on a small hub, eased so it
---     never jitters. It shows the speed whichever way the van goes (backing up at 3.4 km/h, the needle stands at 3.4);
---   - in the dial's open foot, the handbrake lamp: a circled "(P)" on a key, lit red while B holds the handbrake;
---   - left of the dial, a small paper panel with the lever's column P R N D L (top to bottom), the gear it is in on the kit's raised
---     red key, X at the top end (X moves the lever up, towards P) and A at the bottom end (A moves it down, towards L).
--- A refused shift (into P or R on the move) says why for a moment on a slip over the panel ("Stop to shift"). The prompt chips sit
--- above the cluster while driving (hud.hints_floor). Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures;
--- nothing here draws a rectangle of its own.
+-- The van's instrument (the owner's sixth play: "show the drive selection ... a handbrake indicator near the drive symbol"; "move the
+-- PRNDL to the right along with an analog speedometer"; "For the speedo and gears, can we merge them in a nice UI way. Not just two
+-- separate shapes."; "We don't need the button chips there either."), drawn by the valley whenever the van is driven, never on foot
+-- nor during a conversation. ONE round instrument in the bottom right, on the minimap's own painted disc (cream face, wooden rim:
+-- the two bottom corners match), with the gear indicator inside the speedometer as a real car's cluster has it:
+--   - the speed scale round the top: 0 to 40 km/h (the starting van tops out near 37), bold dark ticks every 5, numbers every 10,
+--     swept from just below the left to just below the right; a soft red needle on a small hub, eased so it never jitters. At a
+--     standstill it rests on a small peg below the 0 (clear of the 0 and of the gears), and leaves it for the 0 mark as the van
+--     moves. Backing up it shows the speed it backs at;
+--   - the gears in the dial's foot, one row P R N D L, the one the lever is in on the kit's raised red key;
+--   - the handbrake's warning light, a small circled "(P)" over the hub, lit red while B holds the handbrake; "km/h" under it.
+-- No button glyphs (the owner: the prompts say what the buttons do; the lever is A towards L, X towards P). A refused shift (into P
+-- or R on the move) says why for a moment on a slip beside the dial ("Stop to shift"). The prompt chips sit above the instrument while
+-- driving (hud.hints_floor). Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures.
+-- (Three layouts were tried in pictures: an arc of gears round the foot, this row, and a strip set into the rim's left side; the
+-- row read best at a glance: the letters stay level and evenly spaced, and it is one round shape. build/gallery/option-*.png.)
 local ui = require("lib.ui")
 
 local hud = {}
 
 local s, C, F = ui.s, ui.C, ui.F
-local KIT = "ui/kit/"
 local ORDER = { "P", "R", "N", "D", "L" }
 hud.HINTS = { stop = "Stop to shift" }
--- The dial: its face's radius (the minimap's frame is 8 wider), its range, and its sweep (radians from straight up, clockwise
--- positive: 0 km/h down at the lower left, the top of the range down at the lower right).
-hud.DIAL = { r = 60, top = 40, from = -math.rad(135), to = math.rad(135), ease = 0.18 }
+-- The dial: its face's radius (the rim is 8 wider), its range, its sweep (radians from straight up, clockwise positive: 0 km/h a
+-- little below the left, the top of the range a little below the right), the needle's resting peg (further round, below the 0),
+-- the row of gears (how far below the hub, and the letters' spacing).
+hud.DIAL = { r = 74, top = 40, from = -math.rad(105), to = math.rad(105), rest = -math.rad(126), ease = 0.18, row = 0.58, gap = 17 }
 local D = hud.DIAL
 
--- Where it all sits on a screen `w` x `h` (screen units, 540 high): the dial's middle and radius, the panel's box, each gear's row
--- middle, the handbrake lamp (for the tests and the prompts).
+-- Where it sits on a screen `w` x `h` (screen units, 540 high): the dial's middle and radius, each gear's letter, the lamp.
 function hud.layout(w, h)
   local rim = D.r + 8
   local cx, cy = w - 20 - rim, h - 20 - rim
-  local row = s(21)
-  local pad = s(9)
-  local ph = row * #ORDER + pad * 2
-  local pw = s(78)
-  local x, y = cx - rim - s(8) - pw, h - 20 - ph
-  local L = { cx = cx, cy = cy, r = D.r, rim = rim, x = x, y = y, w = pw, h = ph, row = row, pad = pad, rows = {} }
-  for i = 1, #ORDER do L.rows[ORDER[i]] = y + pad + row * (i - 0.5) end
-  L.col = x + pad + s(15)                     -- the letters' middle
-  L.btn = L.col + s(32)                       -- the X and A buttons' middle
-  L.hb = { cx, cy + D.r * 0.62 }              -- the handbrake lamp, in the dial's open foot
-  L.top = math.min(cy - rim, y)               -- the cluster's top edge
+  local L = { cx = cx, cy = cy, r = D.r, rim = rim, x = cx - rim, y = cy - rim, w = rim * 2, h = rim * 2, letters = {} }
+  for i, g in ipairs(ORDER) do L.letters[g] = { cx + (i - 3) * s(D.gap), cy + D.r * D.row } end
+  L.lamp = { cx, cy - D.r * 0.34 }
+  L.peg = { cx + math.sin(D.rest) * (D.r - 9), cy - math.cos(D.rest) * (D.r - 9) }
+  L.top = cy - rim
   return L
 end
 
--- The prompt chips' floor while driving: ui.hints given this as the screen's height puts them just above the cluster.
+-- The prompt chips' floor while driving: ui.hints given this as the screen's height puts them just above the instrument.
 function hud.hints_floor(w, h)
-  local L = hud.layout(w, h)
-  return L.top + s(22) - s(8)
+  return hud.layout(w, h).top + s(22) - s(8)
 end
 
-local CHEV = { w = 0, h = 0, rotation = 0, color = nil }
-local function chevron(x, y, up, a)
-  CHEV.w, CHEV.h = s(11), s(11)
-  CHEV.rotation = up and -math.pi / 2 or math.pi / 2
-  CHEV.color = { 112, 102, 96, math.floor(255 * a) }
-  nova.ui.sprite(KIT .. "chev_r", x, y, CHEV)
-end
-
--- A straight stroke on the dial (a tick, the needle): the minimap's soft road bar, from radius r0 to r1 at angle `a`.
+-- A straight stroke on the dial (a tick, the needle): the minimap's soft bar, from radius r0 to r1 at angle `a`.
 local BAR = { w = 0, h = 0, rotation = 0, color = nil }
 local function stroke(L, a, r0, r1, width, colour)
   local sx, sy = math.sin(a), -math.cos(a)
@@ -66,69 +54,73 @@ local function stroke(L, a, r0, r1, width, colour)
   nova.ui.sprite("ui/minimap_road", L.cx + sx * (r0 + r1) / 2, L.cy + sy * (r0 + r1) / 2, BAR)
 end
 local function angle_of(kmh) return D.from + (D.to - D.from) * math.max(0, math.min(1.04, kmh / D.top)) end
+-- (the needle: on its peg standing, swinging up to the 0 over the first half km/h, then the scale)
+function hud.needle_angle(kmh)
+  if kmh < 0.5 then return D.rest + (D.from - D.rest) * (kmh / 0.5) end
+  return angle_of(kmh)
+end
 
-local TICK = { 62, 54, 49, 230 }
-local NEEDLE = { 214, 84, 66, 255 }
+local TICK = { 52, 44, 40, 255 }
+local NEEDLE = { 214, 76, 58, 255 }
 local HUB = { w = 0, h = 0, color = { 62, 54, 49, 255 } }
+local PEG = { w = 0, h = 0, color = { 112, 102, 96, 255 } }
 
--- The cluster for van `v` (its `gear`, `speed`, `handbrake`, `hint` and `hint_t`).
+-- The instrument for van `v` (its `gear`, `speed`, `handbrake`, `hint` and `hint_t`).
 function hud.draw(v, w, h)
   local L = hud.layout(w, h)
   hud.last = L
-  -- the speedometer: the disc, the ticks and numbers, the needle eased towards the speed
   nova.ui.sprite("ui/minimap_disc", L.cx, L.cy, { w = L.rim * 2, h = L.rim * 2 })
+  -- the scale: bold dark ticks, the numbers just inside them
   for k = 0, D.top, 5 do
     local a = angle_of(k)
     local major = k % 10 == 0
-    stroke(L, a, D.r - (major and 11 or 7), D.r - 3, major and 2.6 or 1.6, TICK)
+    stroke(L, a, D.r - (major and 14 or 9), D.r - 3, major and 4.2 or 2.8, TICK)
     if major then
-      local nx, ny = L.cx + math.sin(a) * (D.r - 21), L.cy - math.cos(a) * (D.r - 21)
-      ui.text(nx, ny - F.small * 0.62, tostring(k), { size = F.small, align = "center", color = C.ink, bold = true })
+      local nr = D.r - 25
+      ui.text(L.cx + math.sin(a) * nr, L.cy - math.cos(a) * nr - F.small * 0.64, tostring(k),
+        { size = F.small, align = "center", color = C.ink, bold = true })
     end
   end
-  ui.text(L.cx, L.cy - D.r * 0.42 - F.small * 0.5, "km/h", { size = F.small - 2, align = "center", color = ui.alpha(C.faint, 0.9) })
+  -- the peg the needle rests on, below the 0
+  PEG.w, PEG.h = s(7), s(7)
+  nova.ui.sprite("ui/minimap_joint", L.peg[1], L.peg[2], PEG)
+  ui.text(L.cx, L.cy + D.r * 0.2 - F.small * 0.5, "km/h", { size = F.small - 2, align = "center", color = ui.alpha(C.faint, 0.9) })
+  -- the handbrake's warning light: a circled P, lit red while B holds it, faint when off
+  local on = v.handbrake and true or false
+  hud.lit, hud.shown = on, v.gear -- (for the tests: what this frame's instrument showed)
+  local lw, lh = s(34), s(22)
+  ui.key(L.lamp[1] - lw / 2, L.lamp[2] - lh / 2, lw, lh, on and C.red or C.slate, { alpha = on and 1 or 0.3 })
+  ui.text(L.lamp[1], L.lamp[2] - F.small * 0.72, "(P)", { size = F.small, align = "center", color = ui.alpha(C.cream, on and 1 or 0.8), bold = true })
+  -- the gears: one row in the dial's foot, the one the lever is in on a raised red key
+  local kw, kh = s(21), s(24)
+  for _, g in ipairs(ORDER) do
+    local p = L.letters[g]
+    if g == v.gear then
+      ui.key(p[1] - kw / 2, p[2] - kh / 2 - s(1), kw, kh, C.red)
+      ui.text(p[1], p[2] - F.hint * 0.68, g, { size = F.hint, align = "center", color = C.cream, bold = true })
+    else
+      ui.text(p[1], p[2] - F.small * 0.66, g, { size = F.small, align = "center", color = ui.alpha(C.faint, 0.95), bold = true })
+    end
+  end
+  -- the needle (over the face, under the hub), eased towards the speed
   local kmh = math.abs(v.speed or 0) * 3.6
   hud.kmh = (hud.kmh or kmh) + (kmh - (hud.kmh or kmh)) * D.ease
-  if hud.kmh < 0.05 then hud.kmh = 0 end
-  local a = angle_of(hud.kmh)
-  stroke(L, a + math.pi, 0, 9, 3.4, NEEDLE)        -- (its short tail past the hub)
-  stroke(L, a, 0, D.r - 8, 3.4, NEEDLE)
-  HUB.w, HUB.h = s(16), s(16)
+  if hud.kmh < 0.02 then hud.kmh = 0 end
+  local a = hud.needle_angle(hud.kmh)
+  hud.angle = a
+  stroke(L, a + math.pi, 0, 10, 4, NEEDLE)        -- (its short tail past the hub)
+  stroke(L, a, 0, D.r - 9, 4, NEEDLE)
+  HUB.w, HUB.h = s(17), s(17)
   nova.ui.sprite("ui/minimap_joint", L.cx, L.cy, HUB)
-  -- the handbrake lamp: a circled P, lit red while B holds it, a faint slate key when off
-  local on = v.handbrake and true or false
-  hud.lit, hud.shown = on, v.gear -- (for the tests: what this frame's display showed)
-  local bw, bh = s(40), s(26)
-  ui.key(L.hb[1] - bw / 2, L.hb[2] - bh / 2, bw, bh, on and C.red or C.slate, { alpha = on and 1 or 0.35 })
-  ui.text(L.hb[1], L.hb[2] - F.hint * 0.72, "(P)", { size = F.hint, align = "center", color = ui.alpha(C.cream, on and 1 or 0.75), bold = true })
-  -- the lever's column on its panel, left of the dial
-  ui.panel(L.x, L.y, L.w, L.h, { scale = 0.4 })
-  local kw, kh = s(28), L.row + s(3)
-  for _, g in ipairs(ORDER) do
-    local cy = L.rows[g]
-    if g == v.gear then
-      ui.key(L.col - kw / 2, cy - kh / 2 - s(1), kw, kh, C.red)
-      ui.text(L.col, cy - F.button * 0.66, g, { size = F.button, align = "center", color = C.cream, bold = true })
-    else
-      ui.text(L.col, cy - F.hint * 0.62, g, { size = F.hint, align = "center", color = ui.alpha(C.faint, 0.85), bold = true })
-    end
-  end
-  -- X at the top end (up, towards P) and A at the bottom end (down, towards L), each pressed while held
-  local top, bottom = L.rows.P + s(4), L.rows.L - s(4)
-  ui.glyph(L.btn, top, "X", s(21), { down = nova.input.down("interact") })
-  chevron(L.btn, top + s(18), true, 0.8)
-  ui.glyph(L.btn, bottom, "A", s(21), { down = nova.input.down("confirm") })
-  chevron(L.btn, bottom - s(18), false, 0.8)
-  -- a refused shift: why, on a slip over the panel, for a moment
+  -- a refused shift: why, on a slip beside the dial, for a moment
   local t = v.hint_t or 0
   if t > 0 and v.hint and hud.HINTS[v.hint] then
     local al = math.min(1, t / 0.3)
     local str = hud.HINTS[v.hint]
-    local tw = ui.text_width(str, F.small)
-    local sw, sh = tw + s(28), s(30)
-    local sx = L.x + L.w - sw
-    ui.panel(sx, L.y - sh - s(8), sw, sh, { scale = 0.4, alpha = al })
-    ui.text(sx + s(14), L.y - sh - s(8) + sh / 2 - F.small * 0.66, str, { size = F.small, color = ui.alpha(C.ink, al) })
+    local sw, sh = ui.text_width(str, F.small) + s(28), s(30)
+    local sx, sy = L.x - sw - s(8), L.cy - sh / 2
+    ui.panel(sx, sy, sw, sh, { scale = 0.4, alpha = al })
+    ui.text(sx + s(14), sy + sh / 2 - F.small * 0.66, str, { size = F.small, color = ui.alpha(C.ink, al) })
   end
 end
 

@@ -5974,10 +5974,32 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
             (vw - (cx + rim) - 20.0).abs() < 1.0 && (cy + rim - foot).abs() < 1.0,
             "{size}: the dial in the bottom right corner, on the minimap's foot line"
         );
+        // one instrument (the owner: "merge them ... Not just two separate shapes"): the gears in a row inside the dial's foot, the
+        // lamp inside it too, no button glyphs on it
         assert!(
-            x + w < cx - rim && cx - rim - (x + w) < 20.0 && (y + h - foot).abs() < 1.0,
-            "{size}: the lever's panel just left of the dial"
+            (x - (cx - rim)).abs() < 1e-6
+                && (w - 2.0 * rim).abs() < 1e-6
+                && (y + h - foot).abs() < 1.0,
+            "{size}: the instrument is the dial"
         );
+        let inside = lua(
+            &g,
+            "(function() local L = require('lib.gear_hud').last; local ok = true; for _, p in pairs(L.letters) do \
+             if math.sqrt((p[1] - L.cx) ^ 2 + (p[2] - L.cy) ^ 2) > L.r - 8 or p[2] < L.cy then ok = false end end; \
+             if math.sqrt((L.lamp[1] - L.cx) ^ 2 + (L.lamp[2] - L.cy) ^ 2) > L.r - 8 then ok = false end; return tostring(ok) end)()",
+        );
+        assert_eq!(
+            inside, "true",
+            "{size}: the gears and the lamp inside the dial, the gears below the hub"
+        );
+        let glyphs = r
+            .drawn("ui_sprite", Some("round"))
+            .into_iter()
+            .filter(|s| {
+                s["x"].as_f64().unwrap_or(0.0) > cx - rim && s["y"].as_f64().unwrap_or(0.0) > top
+            })
+            .count();
+        assert_eq!(glyphs, 0, "{size}: no button glyphs on the instrument");
         assert!(x > vw / 2.0, "{size}: on the right");
         for t in r.drawn("ui_text", Some("Get out")) {
             let bottom = t["y"].as_f64().unwrap() + t["h"].as_f64().unwrap();
@@ -7347,5 +7369,42 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
     assert!(
         speed < -1.0 && (kmh + speed * 3.6).abs() < 0.8,
         "backing up, the needle at {kmh} for {speed} m/s"
+    );
+}
+
+/// The instrument reads cleanly (the coordinator's list of the cluster's weak points): standing, the needle rests on its peg, clear
+/// of the "0", of every number and of the gears' row; the handbrake lamp keeps clear of the numbers; the ticks are bold and dark.
+#[test]
+fn the_instruments_needle_rests_clear_of_the_numbers_and_the_lamp_does_not_crowd_them() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 30 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local H = require('lib.gear_hud'); local L, D = H.last, H.DIAL; local a = H.angle; \
+         local function off_needle(px, py) local dx, dy = math.sin(a), -math.cos(a); local t = math.max(0, math.min(L.r - 9, (px - L.cx) * dx + (py - L.cy) * dy)); \
+           return math.sqrt((px - L.cx - dx * t) ^ 2 + (py - L.cy - dy * t) ^ 2) end; \
+         local near_num, near_gear, lamp = 1e9, 1e9, 1e9; \
+         for k = 0, D.top, 10 do local ka = D.from + (D.to - D.from) * k / D.top; local nx, ny = L.cx + math.sin(ka) * (D.r - 25), L.cy - math.cos(ka) * (D.r - 25); \
+           near_num = math.min(near_num, off_needle(nx, ny)); lamp = math.min(lamp, math.sqrt((nx - L.lamp[1]) ^ 2 + (ny - L.lamp[2]) ^ 2)) end; \
+         for _, p in pairs(L.letters) do near_gear = math.min(near_gear, off_needle(p[1], p[2])) end; \
+         return string.format('%.4f %.4f %.2f %.2f %.2f %.2f', a, D.rest, near_num, near_gear, lamp, math.deg(D.from - D.rest)) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!((v[0] - v[1]).abs() < 1e-6, "standing, on the peg ({out})");
+    assert!(v[5] >= 15.0, "the peg is well below the 0 ({out})");
+    assert!(
+        v[2] > 12.0,
+        "the resting needle clear of every number ({out})"
+    );
+    assert!(v[3] > 10.0, "and of the gears ({out})");
+    // (centre to centre: the lamp is 18 units tall and a number about 13, so 20 leaves a clear gap; the "0" and "40" are far off)
+    assert!(v[4] > 20.0, "the lamp clear of the numbers ({out})");
+    let src = std::fs::read_to_string(game_dir().join("lib/gear_hud.lua")).unwrap();
+    assert!(
+        src.contains("local TICK = { 52, 44, 40, 255 }"),
+        "the ticks are a dark, opaque ink"
     );
 }

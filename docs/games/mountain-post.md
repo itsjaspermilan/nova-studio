@@ -186,8 +186,11 @@ same letter).
 - **The van's lever** (the sixth play: an automatic with PRNDL): A steps toward L (down the column), X toward P (up); the column
   reads P R N D L top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
   with an analog speedometer") it is shown in the bottom right with an analog speedometer (0 to 40 km/h, the minimap's frame, a
-  soft red needle, eased; backing up it shows the speed it backs at) and the handbrake lamp in the dial's foot; the prompts stand
-  above that cluster while driving (lib/gear_hud.lua). It is in P each time someone gets in, and left in P on getting out.
+  soft red needle, eased; backing up it shows the speed it backs at). ~~The PRNDL panel beside the dial, with X and A glyphs,
+  and the handbrake lamp in the dial's foot~~ (replaced: "merge them in a nice UI way. Not just two separate shapes"; "We don't
+  need the button chips there either") it is ONE round instrument: the gears a row P R N D L in the dial's foot (the current
+  one on the red key), the handbrake's "(P)" warning light over the hub, bold dark ticks, the needle resting on a peg below the
+  0; no button glyphs. The prompts stand above it while driving (lib/gear_hud.lua). It is in P each time someone gets in, and left in P on getting out.
   ~~Among P, R, N and D it moves only with L2 held and the van all but stopped (under 0.5 m/s); otherwise a soft click and "Hold
   the brake to shift".~~ (replaced: "We can remove the brake requirement honestly") It moves at once with no pedal; the one guard:
   never into P while moving faster than 1 m/s, nor into R while going forwards faster than that (a soft click and "Stop to
