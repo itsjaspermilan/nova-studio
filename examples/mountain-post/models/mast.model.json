@@ -130,7 +130,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":2,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.56,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -153,7 +153,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":2,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.56,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -176,7 +176,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":2,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.56,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -199,7 +199,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.885,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.56,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -222,7 +222,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.736,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.56,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -245,7 +245,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.587,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.54,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -268,7 +268,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.438,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.301,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -291,7 +291,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.29,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":2.063,"segments":3,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -314,7 +314,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":1.141,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":1.825,"segments":2,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -2377,7 +2377,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.24,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.384,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -2400,7 +2400,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.24,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.384,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -2442,14 +2442,14 @@
           "shape": "mesh",
           "color": "#8c8478",
           "verts": [
-            [-8, 0, -8],
-            [8, 0, -8],
-            [-8, 0, 8],
-            [8, 0, 8],
-            [-8, 3.2, -8],
-            [8, 3.2, -8],
-            [-8, 3.2, 8],
-            [8, 3.2, 8]
+            [-11.2, 0, -11.2],
+            [11.2, 0, -11.2],
+            [-11.2, 0, 11.2],
+            [11.2, 0, 11.2],
+            [-11.2, 3.84, -11.2],
+            [11.2, 3.84, -11.2],
+            [-11.2, 3.84, 11.2],
+            [11.2, 3.84, 11.2]
           ],
           "polys": [
             {"v":[1,3,2,0]},
@@ -2459,7 +2459,30 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.8,"segments":2,"angle":30}]
+          "modifiers": [{"type":"bevel","width":1.536,"segments":2,"angle":30}]
+        },
+        {
+          "shape": "mesh",
+          "color": "#aca394",
+          "verts": [
+            [-7.6, 3.2, -7.6],
+            [7.6, 3.2, -7.6],
+            [-7.6, 3.2, 7.6],
+            [7.6, 3.2, 7.6],
+            [-7.6, 6.4, -7.6],
+            [7.6, 6.4, -7.6],
+            [-7.6, 6.4, 7.6],
+            [7.6, 6.4, 7.6]
+          ],
+          "polys": [
+            {"v":[1,3,2,0]},
+            {"v":[6,7,5,4]},
+            {"v":[4,5,1,0]},
+            {"v":[3,7,6,2]},
+            {"v":[2,6,4,0]},
+            {"v":[5,7,3,1]}
+          ],
+          "modifiers": [{"type":"bevel","width":1.28,"segments":2,"angle":30}]
         }
       ],
       "children": []

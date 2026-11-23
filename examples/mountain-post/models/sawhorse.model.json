@@ -28,7 +28,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.4,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.64,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -51,7 +51,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.32,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.512,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -74,7 +74,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.32,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.512,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -97,7 +97,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.32,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.512,"segments":1,"angle":30}]
         },
         {
           "shape": "mesh",
@@ -120,7 +120,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.32,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.512,"segments":1,"angle":30}]
         }
       ],
       "children": []

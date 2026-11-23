@@ -208,6 +208,11 @@ for (const b of played) {
   }
 }
 
+// The bass's upper voice (the owner's sixth play went to the Retroid's small speaker, which plays little under 200 Hz and nearly nothing under
+// 100: the bass layer had 36 % of its energy under 80 Hz and 77 % under 200): the same line an octave up, a round triangle, so that the
+// bass's second and third harmonics (its weight at 100 to 500 Hz) are notes of their own and the fundamental is the smaller part.
+const bassUp = bass.map((n) => ({ ...n, pitch: n.pitch + 12, vel: r2(n.vel * 0.9) }));
+
 const brushes = [];
 for (const b of played) {
   const k = b.section === "B" ? 0.8 : b.section === "C" ? 1.15 : 1;
@@ -273,11 +278,15 @@ function pianoTracks(voice) {
   throw new Error(`no voice ${voice}`);
 }
 // The layers' balance: all four with the piano at most about 3 dB louder than the piano alone (measured below, every run).
-const LAYER = { bass: 0.6, brushes: 1, pad: 0.21, celesta: 0.34 };
+const LAYER = { bass: 0.42, bassUp: 0.4, brushes: 1, pad: 0.21, celesta: 0.34 };
 function songFor(voice, lufs = -18) {
   const tracks = [
     ...pianoTracks(voice),
-    synth("bass", bass, { wave: "saw", cutoff: 380, resonance: 0.1, sweep: 0.3, attack: 0.012, decay: 0.9, sustain: 0.5, release: 0.22, volume: LAYER.bass, pan: -0.05, reverb: 0.12 }),
+    // (the low voice: a saw opened to 560 Hz for its 2nd to 6th harmonics, its fundamental cut where a small speaker has none (60 Hz, 9 dB)
+    // and the 120 to 300 Hz presence lifted: a parametric EQ, band 1 at 60 Hz, band 2 at 250 Hz; band 3 left alone)
+    synth("bass", bass, { wave: "saw", cutoff: 560, resonance: 0.1, sweep: 0.3, attack: 0.012, decay: 0.9, sustain: 0.5, release: 0.22, volume: LAYER.bass, pan: -0.05, reverb: 0.12,
+      fx: [{ type: "parametric", params: { f1: 60, g1: -9, q1: 0.8, f2: 250, g2: 4, q2: 0.8, f3: 5000, g3: 0, q3: 1 } }] }),
+    synth("bass upper", bassUp, { wave: "saw", cutoff: 640, resonance: 0.08, sweep: 0.25, attack: 0.012, decay: 0.9, sustain: 0.5, release: 0.22, volume: LAYER.bassUp, pan: -0.05, reverb: 0.12 }),
     { name: "brushes", kind: "drums", kit: "chip", volume: LAYER.brushes, pan: 0.15, mute: false, reverb: 0.25, fx: [{ type: "eq", params: { low: -6, mid: -2, midFreq: 2500, high: -10 } }], notes: brushes },
     synth("pad", pad, { wave: "saw", unison: 3, detune: 9, cutoff: 850, resonance: 0.05, sweep: 0, attack: 0.9, decay: 0.5, sustain: 0.85, release: 1.4, volume: LAYER.pad, reverb: 0.45 }),
     synth("celesta", celesta, { wave: "fm", fmRatio: 3, fmIndex: 0.45, attack: 0.003, decay: 1.6, sustain: 0, release: 0.5, volume: LAYER.celesta, pan: 0.2, reverb: 0.45 }),
@@ -291,7 +300,7 @@ function songFor(voice, lufs = -18) {
 }
 const STEMS = [
   { name: "piano", tracks: ["right hand", "left hand"] },
-  { name: "bass", tracks: ["bass"] },
+  { name: "bass", tracks: ["bass", "bass upper"] },
   { name: "brushes", tracks: ["brushes"] },
   { name: "pad", tracks: ["pad"] },
   { name: "celesta", tracks: ["celesta"] },

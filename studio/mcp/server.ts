@@ -740,6 +740,7 @@ tool(
     scale_bar: { type: "boolean" },
     repeat: { type: "number", description: "Px between a long road's names (380)." },
     label_size: { type: "number", description: "Px of the road names (2.4% of the height)." },
+    text_min: { type: "number", description: "The smallest word, in px: the subtitle and the scale numbers grow to it, a name never shrinks below it (none by default)." },
     wobble: { type: "number", description: "Px of the hand's wobble (0.7; 0 for ruled lines)." },
   },
   ["scene"],

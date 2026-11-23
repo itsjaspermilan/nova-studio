@@ -13,6 +13,10 @@ const xz = ([e, n]) => [-e, n];
 // The sheet: from a little west of Hazel's cabin to a little east of Pip's, from below the post office to the lake beyond the gorge.
 // Drawn twice, each at the size it is shown (lib/cards.lua draws it one texel to a pixel, nearly the screen's height): 650 px high
 // for the Retroid's 720p screen (ui/map_720) and 976 for 1080p (ui/map). The lettering and the roads are sized for each.
+// The smallest word on either map, in pixels at the size it is shown (the owner's sixth play: the subtitle and the scale's numbers were 13 px
+// on the Retroid's 720p screen, too small to read at arm's length): the cartouche's subtitle, the scale's numbers and every name are this
+// big or bigger (test the_paper_map_has_no_word_under_16_px_at_720p).
+export const TEXT_MIN = 16;
 const E0 = -200, E1 = 228, N0 = -246, N1 = 352;
 for (const [name, H] of [["ui/map", 976], ["ui/map_720", 650]]) {
 const k = H / 990;
@@ -25,7 +29,9 @@ console.log(tool("map_make", {
   subtitle: "the valley, its roads and its creek",
   seed: 3,
   font: "rounded",
-  label_size: Math.round(28 * k), // (18 px on the Retroid's screen)
+  label_size: Math.round(28 * k), // (18 px on the Retroid's screen: a place's name 0.86 of it, 16 by text_min)
+  text_min: TEXT_MIN,
+  repeat: Math.round(300 * k), // (a long road gets its name again; on the small map a little sooner, with the larger print)
   palette: {
     paper: "#f3e5c3", ink: "#45382c", label: "#3e3631", halo: PAL.cream, red: PAL.red, roof: PAL.roofRed, slate: PAL.slate,
     wood: PAL.wood, wood_dark: PAL.woodDark, stone: PAL.stone, mustard: PAL.mustard, blue: "#4f78ad",
@@ -48,6 +54,6 @@ console.log(tool("map_make", {
     stone_wall: { icon: "wall" },
   },
   marks: [{ at: xz(pad("overlook")), icon: "viewpoint", label: "Overlook" }],
-  areas: [{ at: xz([60, 322]), text: "the lake side" }],
+  areas: [{ at: xz([-125, 322]), text: "the lake side" }],
 }, { quiet: true }));
 }

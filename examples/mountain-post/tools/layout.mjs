@@ -81,8 +81,13 @@ export const PLACES = {
 };
 
 // The signposts at each junction: where the post stands and which roads its arms name, each arm pointing along its road (the owner's
-// fifth play: one board each way a road goes, so Post Road has an arm each way at both junctions, level with each other).
+// fifth play: one board each way a road goes, so Post Road has an arm each way at both junctions, level with each other). `turn`
+// (degrees, added to the arm's turn about the post) swings an arm off its road's line, never more than 40: a board pointing straight
+// along a road is seen edge-on from that road (the owner's sixth play, Kettle Creek's post from the south: "Post Road" edge-on at 25 m),
+// so each arm is swung until every board, from every road that comes to the post, 25 m out, is seen at 30 degrees or more (the numbers
+// come from a search over the turns that keeps the arms 50 degrees or more apart; test
+// `every_signpost_board_is_seen_at_a_readable_angle_from_each_approach`).
 export const SIGNS = [
-  { at: [-15.5, -72], arms: [{ text: "FERN LANE", toward: [-40, -78] }, { text: "POST ROAD", toward: [-6, -110] }, { text: "POST ROAD", toward: [-4, -30] }] },
-  { at: [5.5, 30], arms: [{ text: "KETTLE CREEK RD", toward: [44, 26] }, { text: "POST ROAD", toward: [12, 62] }, { text: "POST ROAD", toward: [-2, -10] }] },
+  { at: [-15.5, -72], arms: [{ text: "FERN LANE", toward: [-40, -78], turn: -30 }, { text: "POST ROAD", toward: [-6, -110], turn: 35 }, { text: "POST ROAD", toward: [-4, -30], turn: -40 }] },
+  { at: [5.5, 30], arms: [{ text: "KETTLE CREEK RD", toward: [44, 26], turn: -40 }, { text: "POST ROAD", toward: [12, 62], turn: -35 }, { text: "POST ROAD", toward: [-2, -10], turn: -40 }] },
 ];

@@ -168,6 +168,10 @@ obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing
   obj("bridge", mid, { ry: r2(ry_facing(d[0], d[1])), a: xz(DECK_ENDS.a).map(r2), b: xz(DECK_ENDS.b).map(r2) }, "bridge");
   take(mid, 9);
 }
+// The view from the BRIDGE OUT barrier across the gorge to what is left of the bridge's far half (the owner's sixth play: distant forest
+// partly hid it): from the barrier to the far ruin, a corridor 5 m either side at the barrier widening to 16 m at the far ruin, and a
+// little way past it, in which no forest mass stands (every mass kept out by its own size: tests/mountain_post.rs).
+let BRIDGE_VIEW = null;
 {
   const pts = roadLines.post_road, end = pts.at(-1), dir = norm([pts.at(-1)[0] - pts.at(-3)[0], pts.at(-1)[1] - pts.at(-3)[1]]);
   obj("barrier", [end[0] - dir[0] * 1.5, end[1] - dir[1] * 1.5], { ry: r2(ry_facing(dir[0], dir[1]) + Math.PI) }, "barrier");
@@ -178,14 +182,18 @@ obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing
   while (clearOf("old_bridge", ruin, ry_facing(0, 1)) < 0.4) ruin = [ruin[0] + dir[0] * 0.5, ruin[1] + dir[1] * 0.5];
   obj("old_bridge", ruin, { ry: r2(ry_facing(0, 1)) }, "old_bridge");
   obj("old_bridge_far", [ruin[0], 271], { ry: r2(ry_facing(0, 1)) }, "old_bridge_far");
+  BRIDGE_VIEW = { from: [end[0] - dir[0] * 1.5, end[1] - dir[1] * 1.5], to: [ruin[0], 271] };
   take(end, 14);
   // a view point: the old bridge's far pier and the lake side
   obj("spot", [end[0] - dir[0] * 6, end[1] - dir[1] * 6], {}, "bridge_out_view");
 }
 
+// (an arm's turn about its post: pointing along its road, then swung off it by `turn` degrees: layout.mjs SIGNS; and the way it points on the map)
+const armRy = (s, a) => ry_facing(a.toward[0] - s.at[0], a.toward[1] - s.at[1]) - Math.PI / 2 + ((a.turn ?? 0) * Math.PI) / 180;
+const armDir = (s, a) => [-Math.cos(r2(armRy(s, a))), -Math.sin(r2(armRy(s, a)))];
 // ---- signposts: at each junction, an arm for each road pointing along it ------------------------------------------------------------
 SIGNS_AT.forEach((s, i) => {
-  obj("signpost", s.at, { arms: s.arms.map((a) => ({ text: a.text, ry: r2(ry_facing(a.toward[0] - s.at[0], a.toward[1] - s.at[1]) - Math.PI / 2) })) }, `sign_${i + 1}`);
+  obj("signpost", s.at, { arms: s.arms.map((a) => ({ text: a.text, ry: r2(armRy(s, a)) })) }, `sign_${i + 1}`);
   take(s.at, 2);
 });
 
@@ -224,7 +232,7 @@ const SIGHT = [];
 {
   const ARM_MID = 1.75; // (the middle of a board along its arm: entities/signpost.lua)
   for (const s of SIGNS_AT) {
-    const boards = [s.at, ...s.arms.map((a) => { const d = norm([a.toward[0] - s.at[0], a.toward[1] - s.at[1]]); return [s.at[0] + d[0] * ARM_MID, s.at[1] + d[1] * ARM_MID]; })];
+    const boards = [s.at, ...s.arms.map((a) => { const d = armDir(s, a); return [s.at[0] + d[0] * ARM_MID, s.at[1] + d[1] * ARM_MID]; })];
     for (const pts of Object.values(roadLines)) {
       // (the point of the road nearest the sign, then out along it either way)
       let best = 0, bd = Infinity;
@@ -308,6 +316,18 @@ for (const at of [...SIGNS_AT.map((s) => s.at), hz.gate, pp.gate]) {
     if (dRoadOf(p) > 9 && tree(p, k % 2 ? "pine2" : "birch", 1.35)) break;
   }
 }
+// (a mass is a capsule along its own x, as nature.mjs makes it: length L, depth D; its puffs reach 0.6 D)
+const MASS_SIZE = { forest_long: [42, 13], forest_tall: [28, 15], forest_round: [20, 16] };
+const hidesBridge = (kind, p, ry, sx) => {
+  const [L, D] = MASS_SIZE[kind], half = (L / 2 - D * 0.4) * sx, ax = [-Math.cos(ry), -Math.sin(ry)];
+  const a = [p[0] - ax[0] * half, p[1] - ax[1] * half], b = [p[0] + ax[0] * half, p[1] + ax[1] * half];
+  const { from, to } = BRIDGE_VIEW, len = Math.hypot(to[0] - from[0], to[1] - from[1]), d = [(to[0] - from[0]) / len, (to[1] - from[1]) / len];
+  for (let m = 0; m <= len + 6; m += 2) {
+    const q = [from[0] + d[0] * m, from[1] + d[1] * m], width = 5 + 11 * Math.min(1, m / len);
+    if (segDist([a, b], q) < D * 0.6 * sx + width) return true;
+  }
+  return false;
+};
 // the forest masses where nobody goes: away from the roads and the houses, the far bank, the map's edges
 for (let n = B.n0 + 20; n < B.n1 + 10; n += 46) for (let e = B.e0 + 10; e < B.e1; e += 48) {
   const p = [e + (R() - 0.5) * 22, n + (R() - 0.5) * 22];
@@ -317,7 +337,9 @@ for (let n = B.n0 + 20; n < B.n1 + 10; n += 46) for (let e = B.e0 + 10; e < B.e1
   if (!farBank && (dRoad < 48 || dPlaceOf(p) < 60 || dWater < 16 || picnicView(p))) continue;
   if (!farBank && edge > 60 && R() < 0.35) continue; // (an open meadow here and there inside the valley)
   const kind = ["forest_long", "forest_tall", "forest_round"][Math.floor(R() * 3)];
-  obj(kind, p, { ry: r2(R() * 6.28), sx: r2(1.0 + R() * 0.5) });
+  const ry = r2(R() * 6.28), sx = r2(1.0 + R() * 0.5);
+  if (hidesBridge(kind, p, ry, sx)) continue; // (the bridge's far half stays in view from the barrier)
+  obj(kind, p, { ry, sx });
   take(p, 14);
   masses++;
 }
