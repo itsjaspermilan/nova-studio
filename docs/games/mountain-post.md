@@ -888,3 +888,7 @@ The owner, 2026-11-23: "We should move the PRNDL to the right along with an anal
 
 The owner, 2026-11-23: "We don't need the camera dodge when the player is behind the van or other characters." (the van and
 characters simply hide the postmaster for a moment; nothing is cut and the camera does not move for them.)
+
+The owner, 2026-11-23: "I also think the circle cutout comes on too aggressively. It should only be present when the camera is
+really blocked by some item. Think about other games." And: "For the speedo and gears, can we merge them in a nice UI way. Not
+just two separate shapes."
