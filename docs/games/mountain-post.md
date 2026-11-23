@@ -244,3 +244,85 @@ These replace the matching lines above where they differ.
   clumps of three to eight by the roads and the houses with open grass between, a big "hero" tree at each signpost and gate, and
   where nobody goes (the valley's sides, beyond the creek, the far bank, the edges) a few dozen soft forest masses: lumpy rows of
   big puffs in the pine greens with a scalloped top and a darker foot (tools/nature.mjs, placed by tools/scene.mjs).
+
+## The owner's second play: the menus, the parcel card, the music, the ambience (2026-11-22)
+
+These replace the matching lines above where they differ (the slice spec's "Sound" line about the music, step 3's panel).
+
+- **One UI theme:** "Can we spruce up the menu UI a bit? Looks kinda bad. Maybe let's make a UI system with Kenney assets? I want a
+  cohesive theme that we can use." Every piece of UI is now drawn from one small kit (below), made from Kenney's UI Pack (CC0).
+- **The van's panel:** "if there is only one item in the van, the menu should still pop up to show what's there." It did, but
+  only within 1.35 m of the spot behind the van, while the doors swung open at 2.1 m: walking up, the doors opened and nothing
+  showed until the postmaster stood at the bumper. The panel now opens with the doors (2.0 m), one parcel or two.
+- **One parcel card:** "Instead of listing all the active packages in the top left, the user should be able to scroll through
+  them with LB/RB assuming they're not in the van storage menu." One card in the top-left corner shows one parcel on the go:
+  "carrying" (in the postmaster's arms, shown first) or "in the van". Parcels still on the office's shelf are not counted: the
+  shelf shows them, and the card is for what you are out delivering. With more than one, "1 of 2" and L1 / R1 under it; L1 and
+  R1 go round them on foot, driving and in the office. At the van's open back L1 and R1 are the panel's: the card fades back
+  without its count and buttons and keeps its parcel. During a conversation or under a card it is hidden.
+- **Music:** "The music is a little repetitive. Can we use piano?" A new piece for felt piano alone (below).
+- **Ambience:** "I think the ambiance is a little loud at times." Measured and brought under the music (below, "Sound levels").
+
+### UI theme
+
+Made by `tools/ui-kit.mjs` from ten pictures of Kenney's **UI Pack 2.0** (grey set, drawn at twice the size), recoloured into the
+toy palette by a gradient map (the pack's four greys become ours); the files and their sources are listed in
+`licenses/kenney-ui-pack.txt` (and the game's own `licenses/`, which `nova export` adds to the exported THIRD-PARTY.txt). Drawn by
+`lib/ui.lua`; nothing else in the game draws a panel, a button or a chip.
+
+| Piece | Picture | Use |
+| --- | --- | --- |
+| panel | `ui/kit/panel`: cream paper (#f3e6c8) on a wooden frame (#9a6a44) with a darker foot (#6f4a31) | every card, the dialogue box, the van's panel, the pause menu, the map's frame, the letter, the end card, prompt chips |
+| key | `ui/kit/raised` / `pressed` (neutral, tinted), or the paper `panel` / `panel_down` | buttons (the chosen one red), the title strip, name tags, L1 / R1 |
+| round | `ui/kit/round` / `round_down`, tinted | the face buttons: A red, B mustard, X blue, Y green, letters in cream |
+| slip | `ui/kit/slip`: white with the post's red double edge | a parcel's label (the label card, the van's panel) |
+| rule | `ui/kit/rule`: a wooden groove | under the letter's address, between the card and its count |
+| chevrons | `ui/kit/chev_l` / `chev_r`, slate | beside L1 and R1 |
+
+- **Colours:** paper #f3e6c8, ink #3e3631 (text), faint #7a6550 (second lines), wood #9a6a44, post red #c94a3b (title strips, the
+  chosen button, "in the van"), postal blue #4f78ad ("carrying"), mustard #e2b04a, green #6f9f52, slate #706660 (shoulder keys),
+  cream #fff8ea (text on red and on keys). Speakers' tags: Hazel #86583c, Pip #d29634.
+- **Fonts:** the game's own: `rounded` (Fredoka) for headings, buttons, prompts and small labels; `serif` (Lora) for what is read
+  (names and streets, lines of dialogue, the letter); `script` for the Mayor's name. The pack's Kenney Future was left out: it is
+  a hard geometric face that fights the soft toys.
+- **Sizes** (the screen's units, 540 high): headings 26 on a 46-high strip; buttons 24 to 28 on 56-high keys; prompts 19 on
+  40-high chips with a 25 button; dialogue and names 22 to 25; small labels 15. A panel's frame is drawn at half the pack's
+  double size (8 units), a chip's at 0.4.
+- **Spacing:** 18 to 22 units from the screen's edge (cards 20, 18 from the top-left; prompts 22 from the bottom-right, 10
+  apart); 18 inside a panel; a title strip sits across a panel's top edge, half over it.
+- **Behaviour:** a button cap or key shows held (the flat picture, lower by its foot) while its button is down; cards rise 30 units
+  and fade in over 0.2 s over a dimming of the world; the end card dims nearly to black first.
+
+### The music: "Fernhollow" for felt piano
+
+`tools/music.mjs` writes it note by note: F major, 68 to the minute easing to 61 at the end of each section, two hands on Nova's
+new `piano` instrument (struck strings from their partials, a little sharp as a stiff string's are, falling in two stages,
+a felt hammer; `brightness` 0.34 and 0.26: muted), a room, nothing else (no drums, no bass but the left hand). Two bars of left
+hand play once; then 57 bars loop, about 3 minutes 20: A (the tune, a broken-chord left hand), A' (ornamented, the left hand in
+flowing eighths), B (D minor and B flat, lower and quieter over long chords), A'' (the tune an octave up, soft, the left hand
+thinned), C (B flat: a slow rising tune over rolling arpeggios, the fullest, ending on a bar with no tune), B' (B an octave up
+over C's arpeggios), A''' (once more, ending on a new cadence) and a last bar of one low held F. Phrases end on rests; the level
+rises and falls within each section and across the piece. -18 LUFS, played at 0.3 (about -28.5 LUFS heard on foot, a little
+under the voices and well under the horn). **Nobody has listened to it**: offline renders and `sound_report` only.
+
+### Sound levels
+
+The ambience as rendered by `tools/ambience.mjs` (a minute at each place, the music stopped; LUFS by BS.1770; "loudest 3 s" is
+the short-term maximum, "loudest moment" the 400 ms momentary maximum). Before → after:
+
+| Where | whole minute | loudest 3 s | loudest moment |
+| --- | --- | --- | --- |
+| on the creek's bridge | -21.8 → -31.3 | -21.3 → -30.7 | -20.4 → -28.8 |
+| driving over the bridge (engine silenced) | -31.1 → -36.7 | -21.6 → -32.8 | -18.1 → -28.2 |
+| Hazel's gate, while she saws | -29.2 → -32.9 | -28.1 → -32.1 | -25.4 → -29.9 |
+| Pip's gate | -30.6 → -34.3 | -29.3 → -33.3 | -26.1 → -30.6 |
+| the post office's yard (air and birds) | -30.6 → -34.3 | -29.3 → -33.3 | -26.1 → -30.6 |
+| the music on foot, for comparison | -28.5 to -29.4 | -27 | -26 |
+
+**The ceiling** for the whole bed, wherever you stand or drive: **-30 LUFS over any three seconds and -28 for its loudest
+moment**, under the music (about -28.5) and the voices (about -22). The loud one was the creek: -22 LUFS on its bridge, 6 dB over
+the music, and it jumped by 10 dB for a moment driving over it (the mixer took its level from the camera, which glides and
+jumps). It is now 12 dB quieter there; its level and its place along the bed glide over half a second however the camera moves,
+and the radio's likewise. The air is 3.5 dB lower (lower still in the cab), the birds 4.4 dB lower, never two at once and never
+right overhead, and Hazel's saw 4 dB lower. Pip's radio and tinkering stay faint from his gate (under -50 LUFS), louder near
+his cabin. Offline renders, not a listening test: the Retroid's speaker has not heard any of it.

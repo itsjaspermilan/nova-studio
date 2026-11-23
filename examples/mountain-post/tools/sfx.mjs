@@ -150,7 +150,7 @@ for (let i = 1; i <= 2; i++) {
     { wave: "triangle", freq: i === 1 ? 210 : 190, attack: 0.05, hold: 0.2, decay: 0.15, vibrato: 0.3, vibratoSpeed: 30, volume: 0.15 },
   ] });
 }
-group("saw", ["saw1", "saw2"], { pitch: [0.97, 1.03] });
+group("saw", ["saw1", "saw2"], { pitch: [0.97, 1.03], volume: [0.55, 0.65] }); // (4 dB under the stroke as made: a gentle sound of work from the gate, under the music)
 for (let i = 1; i <= 3; i++) {
   sfx(`tinker${i}`, { volume: 0.8, width: 0.4, reverb: 0.1, hit: 0.4, layers: [
     { wave: "sine", freq: 1400 + i * 260, fm: 2, fmRatio: 2.76, fmDecay: 0.05, hold: 0.002, decay: 0.12, volume: 0.35 },

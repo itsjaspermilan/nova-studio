@@ -46,61 +46,81 @@ function cards.update(dt)
   end
 end
 
-local C = ui.C
+local C, F = ui.C, ui.F
 
+-- (cards come in with a short rise and fade: s goes 0 to 1)
+local function rise(t, d) local s = math.min(1, t / (d or 0.18)); return s, 1 - (1 - s) * (1 - s) end
+
+-- A parcel's label held up to read: a paper card with "Parcel" on its title strip, the label slip on it, "To:" and the name and
+-- the street large.
 local function label_card(which, w, h, t)
-  local s = math.min(1, t / 0.18)
+  local s, e = rise(t)
   local cw, ch = 640, 300
-  local x, y = (w - cw) / 2, (h - ch) / 2 - 20 + (1 - s) * 30
-  nova.ui.rect(0, 0, w, h, { 20, 14, 10, math.floor(110 * s) })
-  ui.paper(x, y, cw, ch, { top = { 236, 214, 172 }, bottom = { 214, 186, 140 } })
-  -- the label itself, stuck on the brown paper: a white slip with a red edge
-  nova.ui.rect(x + 50, y + 44, cw - 100, ch - 88, { 252, 249, 240 }, { radius = 6, outline = { color = C.red, width = 3 } })
-  local name, street = words.labels[which]:match("^(.-), (.*)$")
-  nova.ui.text(x + 80, y + 66, "To:", { font = "serif", size = 22, color = C.faint })
-  nova.ui.text(x + cw / 2, y + 100, name, { font = "serif", size = 50, align = "center", color = C.ink })
-  nova.ui.text(x + cw / 2, y + 170, street, { font = "serif", size = 36, align = "center", color = C.ink })
-  nova.ui.text(x + cw - 70, y + 66, "PARCEL", { font = "rounded", size = 16, align = "right", color = C.red })
+  local x, y = (w - cw) / 2, (h - ch) / 2 - 6 + (1 - e) * 30
+  ui.dim(w, h, s * 0.8)
+  ui.panel(x, y, cw, ch, { alpha = s })
+  ui.title_strip(w / 2, y - 20, words.parcel, { alpha = s })
+  ui.slip(x + 36, y + 42, cw - 72, ch - 80, { alpha = s })
+  local name, street = ui.label_lines(which)
+  nova.ui.text(x + 70, y + 66, "To:", { font = "serif", size = 22, color = ui.alpha(C.faint, s) })
+  nova.ui.text(w / 2, y + 98, name, { font = "serif", size = 50, align = "center", color = ui.alpha(C.ink, s) })
+  nova.ui.text(w / 2, y + 168, street, { font = "serif", size = 36, align = "center", color = ui.alpha(C.ink, s) })
 end
 
+-- The Mayor's letter: a sheet of the paper, who it is to over a rule, her words, her name in her hand.
 local function letter_card(w, h, t)
-  local s = math.min(1, t / 0.2)
-  local cw, ch = math.min(720, w - 80), 470
-  local x, y = (w - cw) / 2, (h - ch) / 2 + (1 - s) * 40
-  nova.ui.rect(0, 0, w, h, { 20, 14, 10, math.floor(120 * s) })
-  ui.paper(x, y, cw, ch, { top = { 250, 245, 232 }, bottom = { 240, 230, 208 } })
-  nova.ui.text(x + 44, y + 34, words.labels.letter, { font = "serif", size = 18, color = C.faint })
-  nova.ui.text(x + 44, y + 76, words.letter[1], { font = "serif", size = 25, width = cw - 88, color = C.ink, line_spacing = 1.2 })
-  nova.ui.text(x + 44, y + 300, words.letter[2], { font = "serif", size = 23, width = cw - 88, color = C.ink, line_spacing = 1.2 })
-  nova.ui.text(x + cw - 44, y + ch - 66, words.letter_from, { font = "script", size = 28, align = "right", color = { 70, 60, 120 } })
+  local s, e = rise(t, 0.2)
+  local cw, ch = math.min(720, w - 80), 476
+  local x, y = (w - cw) / 2, (h - ch) / 2 + (1 - e) * 40
+  ui.dim(w, h, s * 0.85)
+  ui.panel(x, y, cw, ch, { alpha = s })
+  nova.ui.text(x + 44, y + 28, words.labels.letter, { font = "serif", size = 18, color = ui.alpha(C.faint, s) })
+  ui.rule(x + 40, y + 58, cw - 80, { alpha = s })
+  nova.ui.text(x + 44, y + 78, words.letter[1], { font = "serif", size = F.body + 1, width = cw - 88, color = ui.alpha(C.ink, s), line_spacing = 1.2 })
+  nova.ui.text(x + 44, y + 300, words.letter[2], { font = "serif", size = F.body - 1, width = cw - 88, color = ui.alpha(C.ink, s), line_spacing = 1.2 })
+  nova.ui.text(x + cw - 44, y + ch - 70, words.letter_from, { font = "script", size = 28, align = "right", color = ui.alpha({ 70, 60, 120 }, s) })
 end
 
+-- The paper map in a wooden frame (a panel round it; the sheet has the town's name on it already).
 local function map_card(w, h, t)
-  local s = math.min(1, t / 0.2)
-  nova.ui.rect(0, 0, w, h, { 20, 14, 10, math.floor(140 * s) })
-  local mh = h - 40
+  local s, e = rise(t, 0.2)
+  ui.dim(w, h, s)
+  local mh = h - 74
   local mw = mh * 1000 / 1100
-  nova.ui.sprite("ui/map", w / 2, h / 2 + (1 - s) * 30, { w = mw, h = mh, rotation = (1 - s) * 0.05 - 0.012 })
+  local x, y = (w - mw) / 2, (h - mh) / 2 + 10 + (1 - e) * 30
+  ui.panel(x - 12, y - 12, mw + 24, mh + 28, { alpha = s })
+  nova.ui.sprite("ui/map", w / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * s) } })
 end
 
+-- The end: the screen goes dark, then a card with the spec's words, and A to go on.
 local function ending_card(w, h, t)
   local a = math.min(1, t / 1.5)
-  nova.ui.rect(0, 0, w, h, { 34, 26, 20, math.floor(235 * a) }, { layer = "top" })
+  -- (not on the top layer: the card's panel is drawn over it, and the scene hides its prompts and corner card under a card)
+  ui.dim(w, h, a, 235)
   local ta = math.max(0, math.min(1, (t - 1.0) / 1.2))
-  nova.ui.text(w / 2, h / 2 - 22, words.ending, { font = "serif", size = 40, align = "center", color = { 246, 236, 214, math.floor(255 * ta) } })
-  if t > 2.5 then ui.glyph(w / 2, h / 2 + 70, "A", 28) end
+  if ta <= 0 then return end
+  local tw = nova.ui.text_width(words.ending, { font = "serif", size = 36 })
+  local cw, ch = tw + 100, 150
+  local x, y = (w - cw) / 2, h / 2 - 70
+  ui.panel(x, y, cw, ch, { alpha = ta })
+  ui.title_strip(w / 2, y - 20, words.title, { alpha = ta })
+  nova.ui.text(w / 2, y + 44, words.ending, { font = "serif", size = 36, align = "center", color = ui.alpha(C.ink, ta) })
+  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("A", words.hint.close) / 2, y + ch + 18, "A", words.hint.close) end
 end
 
+-- Paused: a small card, its two choices as keys (the chosen one red, pressed while A is held).
 local function pause_card(o, w, h)
-  nova.ui.rect(0, 0, w, h, { 20, 14, 10, 150 })
-  local cw, ch = 340, 230
+  ui.dim(w, h, 1)
+  local cw, ch = 360, 230
   local x, y = (w - cw) / 2, (h - ch) / 2
-  ui.paper(x, y, cw, ch)
-  nova.ui.text(w / 2, y + 26, words.pause.title, { font = "serif", size = 34, align = "center", color = C.ink })
+  ui.panel(x, y, cw, ch)
+  ui.title_strip(w / 2, y - 22, words.pause.title, { min_w = 170 })
   for i, label in ipairs({ words.pause.resume, words.pause.quit }) do
-    local yy = y + 92 + (i - 1) * 58
-    if o.choice == i then nova.ui.rect(x + 40, yy - 6, cw - 80, 46, C.blue, { radius = 10 }) end
-    nova.ui.text(w / 2, yy, label, { font = "rounded", size = 28, align = "center", color = o.choice == i and C.cream or C.ink })
+    local yy = y + 52 + (i - 1) * 76
+    local on = o.choice == i
+    local down = on and nova.input.down("act")
+    ui.key(x + 46, yy, cw - 92, 56, on and C.red or nil, { scale = 0.5, down = down })
+    nova.ui.text(w / 2, yy + 12 + (down and 4 or 0), label, { font = "rounded", size = F.button + 4, align = "center", color = on and C.cream or C.ink })
   end
 end
 
@@ -111,7 +131,7 @@ function cards.draw(w, h)
   elseif k == "letter" then letter_card(w, h, t); ui.hints({ { "A", words.hint.close } }, w, h)
   elseif k == "map" then map_card(w, h, t); ui.hints({ { "Y", words.hint.close } }, w, h)
   elseif k == "ending" then ending_card(w, h, t)
-  elseif k == "pause" then pause_card(open, w, h) end
+  elseif k == "pause" then pause_card(open, w, h); ui.hints({ { "A", words.hint.choose } }, w, h) end
 end
 
 return cards

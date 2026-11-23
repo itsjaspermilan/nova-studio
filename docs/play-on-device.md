@@ -47,7 +47,8 @@ Each step is printed as `[step] ...` (the studio shows these); the end is `apk: 
 
 The work is in `crates/nova-runtime/src/android.rs`, the same steps the old script ran: `cargo ndk` for the engine
 (`libnova_runtime.so`, arm64-v8a), `aapt2` for the manifest (from `crates/nova-runtime/android/`, filled from
-`nova.json`) and resources, the engine stored uncompressed, `assets/THIRD-PARTY.txt`, the packed game as
+`nova.json`) and resources, the engine stored uncompressed, `assets/THIRD-PARTY.txt` (the engine's notices, then the game's own
+`licenses/` folder: docs/project-format.md), the packed game as
 `assets/project.npk`, then `zipalign -p 4` and `apksigner`. `icon.png` becomes the launcher icon at five sizes
 (resized in Rust). The tools come from `ANDROID_HOME` (newest build-tools and platform) and `JAVA_HOME`.
 

@@ -3,7 +3,7 @@
 local words = {}
 
 words.title = "Fernhollow Post"
-words.press = "Press A"
+words.press = "Start" -- (on the title, beside the A button's cap)
 
 -- The labels: name and street, nothing else.
 words.labels = {
@@ -67,5 +67,9 @@ words.hint = {
 -- the panel at the van's open back that shows its parcels one at a time
 words.picker = { title = "In the van" }
 words.pause = { title = "Paused", resume = "Resume", quit = "Quit" }
+-- the card in the corner: where the parcel it shows is
+words.card = { hands = "carrying", van = "in the van" }
+-- on the strip over the label held up to read
+words.parcel = "Parcel"
 
 return words

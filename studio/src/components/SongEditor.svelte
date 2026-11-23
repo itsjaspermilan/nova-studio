@@ -802,6 +802,9 @@
             </label>
             {#if formulaError}<p class="bad small" role="alert">{formulaError}</p>{/if}
             <p class="dim small">A function of <code>p</code> (the phase, which sets the pitch), <code>t</code> (seconds) and <code>f</code> (Hz). Try <code>sin(2*pi*p) * (1 - t)</code>.</p>
+          {:else if current.wave === "piano"}
+            <label class="slider" title="0 a felt-muted piano, 1 an open grand; a harder note (velocity) is brighter too"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.35} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.35).toFixed(2)}</output></label>
+            <p class="dim small">Struck strings: low notes ring for seconds, high ones briefly; the release is the damper when the key is let go.</p>
           {:else if current.wave === "organ"}
             <label class="slider" title="More or fewer of the upper harmonics"><span>Bright</span><input type="range" min="0" max="1" step="0.01" value={current.brightness ?? 0.5} oninput={(e) => setTrack({ brightness: Number(e.currentTarget.value) })} /><output>{(current.brightness ?? 0.5).toFixed(2)}</output></label>
           {/if}

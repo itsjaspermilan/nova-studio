@@ -88,8 +88,14 @@ my-game/
   lib/util.lua     modules, loaded with require("lib.util")
   shaders/*.wgsl   custom shaders: one `fn shade(s: Surface) -> vec4<f32>` each (docs/shaders.md)
   sounds/*.wav|ogg  sound effects; music/*.ogg streamed music; fonts/*.ttf; locales/*.json; animations/*.anim.json
+  licenses/*.txt|md the licences of art, sounds and fonts the game took from others (a Kenney pack's): the exports add them to THIRD-PARTY.txt
   anything else    ignored
 ```
+
+**The game's own licences.** `nova export desktop` writes the engine's notices to `THIRD-PARTY.txt` beside the program, and
+`nova export android` to the APK's `assets/THIRD-PARTY.txt`; each `.txt` and `.md` file in the game's `licenses/` folder is added
+after them, in name order under its file name, under the heading "This game's own assets". A game without the folder carries the
+engine's alone.
 
 `nova.json` can also say `"materials": true` (or a list of model names) to light models by their glTF material: normal maps,
 metallic, roughness and emission (docs/materials.md). Without it every model keeps the plain look.
@@ -1390,6 +1396,17 @@ optional fields, and a song can have a room; a song with none of them renders ex
                                                                          // about half a beat: side-chain pumping
 "room": { "size": 0.55, "damping": 0.4, "mix": 1 }   // song level: how long the reverb rings, how dull its tail is, how loud
 ```
+
+**Instruments.** A synth track's `wave` can also be a whole instrument with its own settings (the fuller voice's unison, filter
+and vibrato do not apply): `fm` (`fmRatio`, `fmIndex`: electric pianos, bells), `pluck` (a Karplus-Strong string: `damping`,
+`brightness`), `organ` (`brightness`), `piano`, `wavetable` (`wtPos`), `formula` and `sample`. **`piano`** is struck strings made
+from their partials: each a little sharp of the harmonic series (a stiff string, more in the treble), falling in two stages (the
+prompt sound, then the long aftersound) and faster the higher it is; a felt hammer that rounds off the top and leaves every eighth
+partial weak; two strings a note a fraction of a cent apart that beat slowly; a soft knock and a short rise at the start. Low notes
+ring for seconds, high ones briefly, and a harder note (`vel`) is louder and brighter. `brightness` 0 is a felt-muted upright (the
+"felt piano" of quiet game and film music), 1 an open grand (default 0.35). Give it `sustain: 1` and a short `attack`: the track's
+release is the damper falling when the key is let go, so a note's `len` is how long the key is held (`"release": 0.4` for a
+gentle damper). It takes no `bend`. The presets "Felt piano" and "Piano" set it up.
 
 `duck` (0 to 1) listens to every heard drum track's kicks (pitch 36), including those near the end, which dip the start (the song loops).
 A song's `master` can carry an effect chain like a track's (`"fx": [{ "type": "compressor", "params": { ... } }]`), a loudness target

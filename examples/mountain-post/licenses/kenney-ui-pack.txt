@@ -1,0 +1,41 @@
+	UI Pack (2.0)
+
+	Created/distributed by Kenney (www.kenney.nl)
+	Creation date: 12-06-2024
+
+			------------------------------
+
+	License: (Creative Commons Zero, CC0)
+	http://creativecommons.org/publicdomain/zero/1.0/
+
+	This content is free to use in personal, educational and commercial projects.
+	Support us by crediting Kenney or www.kenney.nl (this is not mandatory)
+
+			------------------------------
+
+	Donate:   http://support.kenney.nl
+	Patreon:  http://patreon.com/kenney/
+
+	Follow on Twitter for updates:
+	http://twitter.com/KenneyNL
+
+			------------------------------
+
+(The pack's License.txt above, as it came.) Used by Fernhollow Post (examples/mountain-post) for its one UI theme. These files
+of the pack, recoloured into the game's palette by examples/mountain-post/tools/ui-kit.mjs, are in
+examples/mountain-post/sprites/ui/kit/:
+
+  panel.png       PNG/Grey/Double/button_rectangle_depth_flat.png   (the paper panel on a wooden frame)
+  panel_down.png  PNG/Grey/Double/button_rectangle_flat.png         (a paper key held down)
+  raised.png      PNG/Grey/Double/button_rectangle_depth_flat.png   (a key, tinted by the game)
+  pressed.png     PNG/Grey/Double/button_rectangle_flat.png         (a key held down, tinted)
+  round.png       PNG/Grey/Double/button_round_depth_flat.png       (a face button's cap)
+  round_down.png  PNG/Grey/Double/button_round_flat.png             (a face button held down)
+  slip.png        PNG/Extra/Double/input_outline_rectangle.png      (a parcel's label slip)
+  rule.png        PNG/Extra/Double/divider_edges.png                (a rule under a heading)
+  chev_l.png      PNG/Grey/Double/arrow_basic_w_small.png           (beside L1)
+  chev_r.png      PNG/Grey/Double/arrow_basic_e_small.png           (beside R1)
+
+No other file of the pack (its fonts, sounds, vectors or other colours) is in the repository. The pack was downloaded from
+kenney.nl with the project owner's approval (2026-11-22). The same text is examples/mountain-post/licenses/kenney-ui-pack.txt,
+which the game's exports add to their THIRD-PARTY.txt.

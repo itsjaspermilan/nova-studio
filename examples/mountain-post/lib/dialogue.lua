@@ -7,8 +7,8 @@ local dialogue = {}
 -- Each speaker's voice: the sound group, how fast the words come (characters a second), a syllable every how many letters, and the
 -- pitch (with a little wobble).
 local VOICES = {
-  hazel = { sound = "voice_hazel", cps = 34, every = 3, pitch = 1.0, wobble = 0.05, colour = { 120, 94, 70 } },
-  pip = { sound = "voice_pip", cps = 62, every = 2, pitch = 1.0, wobble = 0.09, colour = { 214, 150, 40 } },
+  hazel = { sound = "voice_hazel", cps = 34, every = 3, pitch = 1.0, wobble = 0.05, colour = { 134, 88, 60 } },
+  pip = { sound = "voice_pip", cps = 62, every = 2, pitch = 1.0, wobble = 0.09, colour = { 210, 150, 52 } },
 }
 
 local cur -- { who, name, lines, i, shown, t, on_line, on_done }
@@ -68,18 +68,16 @@ end
 function dialogue.draw(w, h)
   if not cur then return end
   local v = VOICES[cur.who] or VOICES.hazel
-  local bw = math.min(900, w - 80)
-  local x, y, bh = (w - bw) / 2, h - 176, 140
-  ui.paper(x, y, bw, bh)
-  -- the name on a tab over the panel's top-left corner
-  local tw = nova.ui.text_width(cur.name, { font = "rounded", size = 24 }) + 34
-  nova.ui.rect(x + 24, y - 20, tw, 40, v.colour, { radius = 12, outline = { color = { 255, 248, 232 }, width = 2 } })
-  nova.ui.text(x + 24 + tw / 2, y - 14, cur.name, { font = "rounded", size = 24, align = "center", color = { 255, 250, 240 } })
+  local bw = math.min(860, w - 80)
+  local x, y, bh = (w - bw) / 2, h - 170, 142
+  ui.panel(x, y, bw, bh)
+  -- the name on a tag in the speaker's colour, over the panel's top-left corner
+  ui.tag(x + 26, y - 22, cur.name, v.colour)
   local text = cur.lines[cur.i]:sub(1, math.floor(cur.shown))
-  nova.ui.text(x + 30, y + 30, text, { font = "serif", size = 25, width = bw - 70, color = ui.C.ink, line_spacing = 1.15 })
+  nova.ui.text(x + 32, y + 30, text, { font = "serif", size = ui.F.body + 1, width = bw - 96, color = ui.C.ink, line_spacing = 1.15 })
   if cur.shown >= #cur.lines[cur.i] then
     local bob = math.sin(nova.time() * 5) * 2
-    ui.glyph(x + bw - 30, y + bh - 26 + bob, "A", 26)
+    ui.glyph(x + bw - 34, y + bh - 32 + bob, "A", 28, { down = nova.input.down("act") })
   end
 end
 
