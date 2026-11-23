@@ -21,6 +21,12 @@ local Van = nova.entity { model = "van", tags = { "van" }, velocity = false }
 -- `steer_speed` (full lock a second) and ease in and out of that; the body's turning then follows what the wheels ask over `yaw_lag`
 -- seconds (a heavy van takes a moment to start and to stop turning), and asks less than the wheels as the sideways pull grows past
 -- `corner` m/s^2 (gentle understeer: a bend taken too fast runs wide rather than darting in).
+-- Letting go comes back quicker than turning in (the owner, third play: "The 'turn back to straight' when the player eases off the
+-- left stick while driving is too slow"): wheels heading back towards the middle move at `return_speed` with a quicker easing
+-- (`return_ease`), and the body's turning unwinds over `unwind_lag`, so a van let go at town speeds runs straight within a third of a
+-- second; turning in keeps its weighty easing. The lock is modest ("We can also increase the turn radius for the van"): a kerb-to-kerb
+-- circle of about 9.5 m at a crawl, sweeping round a bend rather than pivoting, and wider the faster it goes (less lock, and the
+-- understeer past `corner`).
 Van.TUNE = {
   power = 2.3,          -- m/s^2 pulling away (a leisurely start); it fades as the speed climbs to `top`
   top = 12.5,           -- the speed the pull fades to nothing at; with the air and the rolling it tops out near 10.5 m/s on the flat
@@ -30,11 +36,14 @@ Van.TUNE = {
   drag = 0.004,         -- the air, per (m/s)^2
   grass = 0.6,          -- m/s^2 more rolling on the grass (the soft ground holds it back; with the starting van's pull it still gets going)
   gravel = 0.12,        -- and on a gravel lane
-  lock = math.rad(20),  -- the front wheels at full lock, at a crawl
+  lock = math.rad(18.3), -- the front wheels at full lock, at a crawl: a 10 m kerb-to-kerb circle on the 1.31 m wheelbase (it was 9.2)
   lock_fast = 0.35,     -- the share of the lock the stick gives at the top speed (less lock the faster it goes)
   steer_speed = 1.0,    -- the most the wheels move in a second (in shares of full lock): a flick of the stick is never a snap
   steer_ease = 5.0,     -- how quickly the wheels' own movement starts and stops (1/s)
-  yaw_lag = 0.28,       -- seconds for the body's turning to catch up with the wheels
+  return_speed = 5.0,   -- the most the wheels move in a second heading back towards the middle (stick eased off or let go)
+  return_ease = 24,     -- and how quickly that movement starts (1/s): back to straight at once, not a slow unwinding
+  yaw_lag = 0.28,       -- seconds for the body's turning to catch up with the wheels as they turn in
+  unwind_lag = 0.06,    -- and as they come back (the van straightens with the wheels)
   corner = 3.2,         -- m/s^2 of sideways pull past which it turns less than the wheels ask (understeer)
   past = 0.12,          -- the share of what the wheels ask past `corner` that it still turns (small: it runs wide, gently)
   grip = 6,             -- how fast a sideways slip dies away (1/s): it holds the road, with a little give
@@ -44,9 +53,13 @@ Van.TUNE = {
 local FEEL = Van.TUNE
 local GEARS = { 4, 7.5, 11 }           -- the speed at which each gear runs out (for the engine's note only; the slower van's range)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
--- The stubby van (tools/van.mjs) is 2.4 m long (2.5 with its bumpers) and 1.48 wide, from z -1.13 (the foot of its leaning back)
--- to 1.27 (its nose).
-Van.BODY = { offs = { 0.58, 0, -0.58 }, r = 0.72 }
+-- The van (tools/van.mjs) is 2.97 m long over its bumpers (z -1.48 to 1.49) and 1.34 wide.
+Van.BODY = { offs = { 0.83, 0, -0.83 }, r = 0.66 }
+-- The lamps (tools/van.mjs makes each its own part): the headlamps glow softly while `head` is on; the tail lamps glow bright while
+-- braking and the reverse lamps light while reversing (by themselves). `beams` casts real light from the headlamps (two spot lights,
+-- nova.point_light): off in the daytime slice, for night to switch on. Van:lamps() says what is lit this frame.
+Van.LIGHTS = { head = true, beams = false, beam_reach = 16, beam_color = { 255, 236, 200 } }
+Van.HEADLAMPS = { { 0.47, 0.5, 1.43 }, { -0.47, 0.5, 1.43 } }   -- (the lenses' middles, the van's own metres)
 local GRAVITY = 9.8
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 
@@ -104,7 +117,8 @@ function Van:create()
   self.ride = ride_of(layout)
   self.wheel_r = self.stations[1].y
   -- (the rear doors are children of the body in the model: they lean, roll, pitch and turn with it, and only swing on their hinges)
-  self.parts_table = { body = { rx = 0, rz = 0, y = 0 }, door_l = { ry = 0 }, door_r = { ry = 0 }, steering = { ry = 0 } }
+  self.parts_table = { body = { rx = 0, rz = 0, y = 0 }, door_l = { ry = 0 }, door_r = { ry = 0 }, steering = { ry = 0 },
+    lamp_head = { visible = true }, lamp_brake = { visible = false }, lamp_reverse = { visible = false }, lamp_reverse_off = { visible = true } }
   for _, s in ipairs(self.stations) do self.parts_table[s.name] = s.front and { rx = 0, ry = 0, y = 0 } or { rx = 0, y = 0 } end
   local n = #self.stations
   local function list(v) local t = {} for i = 1, n do t[i] = v end return t end
@@ -112,13 +126,13 @@ function Van:create()
   self.pitch, self.roll, self.lift = 0, 0, 0
   self.last_vf = 0
   -- (lifted by the hills as one thing, by the ground under its middle: the springs below put each wheel on its own ground)
-  self.draw_opts = { ry = 0, parts = self.parts_table, lift = "origin" }
+  -- (never cut away by nova.see_through: when the van would hide the postmaster, the camera moves instead: lib/camera.lua)
+  self.draw_opts = { ry = 0, parts = self.parts_table, lift = "origin", see_through = false }
   self.back_open = 0      -- the rear doors, 0 shut to 1 open
   self.back_want = 0
   self.knock = 0
   self.engine = engine_sound.new(require("engines.van"), { volume = 0.55 })
   self.engine_on = false
-  self.side_opts = { w = 1.9, h = 0.34 }
 end
 
 function Van:teleport(x, z, heading)
@@ -144,10 +158,15 @@ function Van:drive(dt)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
   local vl = self.velx * cosh - self.velz * sinh
-  -- the wheels: towards what the stick asks (less lock the faster it goes), at a limited and eased speed (it never darts)
+  -- the wheels: towards what the stick asks (less lock the faster it goes), at a limited and eased speed (it never darts); heading
+  -- back towards the middle (the stick eased off or let go) quicker and with a quicker easing than turning in
   local want = steer_in * (1 - (1 - FEEL.lock_fast) * math.min(1, math.abs(vf) / FEEL.top))
-  local rate = math.max(-FEEL.steer_speed, math.min(FEEL.steer_speed, (want - self.steer) * 8))
-  self.steer_v = (self.steer_v or 0) + (rate - (self.steer_v or 0)) * math.min(1, dt * FEEL.steer_ease)
+  local back = self.steer ~= 0 and (want - self.steer) * self.steer < 0
+  local top, ease = FEEL.steer_speed, FEEL.steer_ease
+  if back then top, ease = FEEL.return_speed, FEEL.return_ease
+  else self.steer_v = math.max(-top, math.min(top, self.steer_v or 0)) end -- (past the middle, turning in again: its own pace)
+  local rate = math.max(-top, math.min(top, (want - self.steer) * (back and 30 or 8)))
+  self.steer_v = (self.steer_v or 0) + (rate - (self.steer_v or 0)) * math.min(1, dt * ease)
   local before = self.steer
   self.steer = self.steer + self.steer_v * dt
   -- (no overshoot past what the stick asks)
@@ -159,7 +178,9 @@ function Van:drive(dt)
   local side = math.abs(ask * vf)
   if side > FEEL.corner then ask = ask * (FEEL.corner + (side - FEEL.corner) * FEEL.past) / side end
   if live and math.abs(steer_in) < 0.05 and math.abs(vf) > 2 then ask = ask + FEEL.pull * (vf > 0 and 1 or -1) end
-  local yaw = (self.yaw_rate or 0) + (ask - (self.yaw_rate or 0)) * math.min(1, dt / FEEL.yaw_lag)
+  local was = self.yaw_rate or 0
+  local lag = (math.abs(ask) < math.abs(was) or ask * was < 0) and FEEL.unwind_lag or FEEL.yaw_lag
+  local yaw = was + (ask - was) * math.min(1, dt / lag)
   self.heading = self.heading + yaw * dt
   self.yaw_rate = yaw
   sinh, cosh = math.sin(self.heading), math.cos(self.heading)
@@ -170,10 +191,13 @@ function Van:drive(dt)
     local share = math.max(0, vf) / FEEL.top
     vf = vf + FEEL.power * go * math.max(0, 1 - share * share) * dt
   end
+  -- (the lamps: the tail lamps glow bright while it brakes, the reverse lamps light while it backs up)
+  self.braking, self.reversing = false, false
   if brake > 0 then
-    if vf > 0.3 then vf = math.max(0, vf - FEEL.brake * brake * dt)
-    elseif go <= 0 then vf = math.max(-FEEL.reverse, vf - FEEL.power * 0.7 * brake * dt) end
+    if vf > 0.3 then vf = math.max(0, vf - FEEL.brake * brake * dt); self.braking = brake > 0.05
+    elseif go <= 0 then vf = math.max(-FEEL.reverse, vf - FEEL.power * 0.7 * brake * dt); self.reversing = brake > 0.05 end
   end
+  if live and vf < -0.15 then self.reversing = true end
   -- rolling, engine braking, the air, the hills
   local sign = vf >= 0 and 1 or -1
   local coast = (go > 0 and 0.15 or FEEL.coast) + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
@@ -341,6 +365,7 @@ function Van:update(dt)
 end
 
 local SIDE = { color = { 255, 255, 255, 255 } }
+local BEAM = { radius = 16, color = { 255, 236, 200 }, dir = { 0, -0.12, 1 }, angle = 46 }
 local PARCEL = { hazel = "parcel_hazel", pip = "parcel_pip" }
 function Van:draw()
   local pt = self.parts_table
@@ -357,24 +382,48 @@ function Van:draw()
   pt.door_l.ry, pt.door_r.ry = -self.back_open * 1.9, self.back_open * 1.9
   -- the steering wheel turns with the front wheels, about a quarter turn each way
   pt.steering.ry = -self.steer * 1.6
+  -- the lamps
+  local lit = self:lamps()
+  pt.lamp_head.visible, pt.lamp_brake.visible = lit.head, lit.brake
+  pt.lamp_reverse.visible, pt.lamp_reverse_off.visible = lit.reverse, not lit.reverse
   self.draw_opts.ry = self.heading
   nova.model("van", self.x, 0, self.z, self.draw_opts)
-  -- FERNHOLLOW POST on both sides of the box, behind the doorways, just off the panel, moving with the body's lean
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
+  -- (the headlamps' beams, for night: two spot lights tilted down onto the road ahead)
+  if lit.beams then
+    for _, at in ipairs(Van.HEADLAMPS) do
+      local x, y, z = self:to_world(at[1], at[2], at[3])
+      BEAM.radius, BEAM.color = Van.LIGHTS.beam_reach, Van.LIGHTS.beam_color
+      BEAM.dir[1], BEAM.dir[2], BEAM.dir[3] = sinh, -0.12, cosh
+      nova.point_light(x, y + nova.terrain_height(self.x, self.z), z, BEAM)
+    end
+  end
+  -- FERNHOLLOW POST on both sides of the cargo box, on its upper half behind the doorways, just off the panel, moving with the lean
   for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.805, 1.27, -0.46)
+    local x, y, z = self:to_world(side * 0.68, 1.2, -0.58)
     SIDE.face = { cosh * side, 0, -sinh * side }
-    SIDE.w, SIDE.h = 0.76, 0.259
-    nova.billboard("van_side", x, y, z, 0.76, SIDE)
+    SIDE.w, SIDE.h = 0.95, 0.324
+    nova.billboard("van_side", x, y, z, 0.95, SIDE)
   end
   -- the parcels in the hold, on its floor, the first loaded furthest in
   for i, which in ipairs(state.van_load) do
-    self:draw_inside(PARCEL[which], i == 1 and 0.22 or -0.24, 0.67, i == 1 and -0.55 or -0.8, i * 0.4)
+    self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.57, i == 1 and -0.5 or -0.95, i * 0.4)
   end
 end
 
+-- What is lit this frame: the headlamps (Van.LIGHTS.head) and their beams (Van.LIGHTS.beams, needs head), the brake lamps while
+-- braking, the reverse lamps while backing up.
+local LIT = {}
+function Van:lamps()
+  LIT.head = Van.LIGHTS.head and true or false
+  LIT.beams = LIT.head and Van.LIGHTS.beams and true or false
+  LIT.brake = self.driven and self.braking or false
+  LIT.reverse = self.driven and self.reversing or false
+  return LIT
+end
+
 -- Draws a model at a place in the van's body (its own metres), turned with the van and carried by the body's lean.
-local INSIDE = { ry = 0, rx = 0, rz = 0, lift = "origin" }
+local INSIDE = { ry = 0, rx = 0, rz = 0, lift = "origin", see_through = false }
 function Van:draw_inside(model, lx, ly, lz, turn)
   local x, y, z = self:to_world(lx, ly, lz)
   y = y + nova.terrain_height(self.x, self.z) - nova.terrain_height(x, z)

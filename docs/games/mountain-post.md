@@ -399,3 +399,32 @@ These replace the matching lines above where they differ (the UI theme, the musi
 - **Van shape:** "We gotta reassess the van. It looks kinda borked now and too wide. We can slim it down and use those reference
   images." The rule from here: keep the reference mail truck's own proportions (about 1 : 0.45 : 0.55 long, wide, high) and
   scale the whole thing, rather than shrinking one side at a time.
+
+### What the third play changed (the van, its lamps, the steering, the cameras; the van's panel and the UI are another round's)
+
+- **The van, from the reference's own proportions** (tools/van.mjs): 2.97 m long over its bumpers, 1.34 wide, 1.63 high (1 : 0.45 :
+  0.55; the reference truck is about 1 : 0.43 : 0.48, ours a little shorter and taller for its length, gently chibi), wheels 0.54
+  across (a third of its height). One smooth skin lofted from three explicit curves (the side's top and bottom lines, the plan's
+  half-width, the cross-section), its nose and back rounded over, the windscreen's pillars rounded in plan, with everything cut into
+  it (the wells, the doorways, the windscreen, the opening behind the rear doors, the two tones and the band): the car kit's approach
+  (studio/mcp/makers/car/kit.mjs). From the side: a dark bumper, a blunt nose 0.74 high, a short bonnet (16% of the length) rising
+  to a windscreen leaning back 12.5 degrees nearly to the roof, one flat roof with a thin lip, an upright back leaning in 6 cm, the
+  underside sweeping up at 25 degrees behind the rear wheel to the step. The front wheel under the front of the open doorway, the
+  rear at 70% of the length. The red band swoops down past the doorway towards the front wheel. Lightly tinted glass in the
+  windscreen and the rear doors' windows: it made bodies see-through before because Nova blended a whole mesh when any of its
+  vertices was see-through; now only the see-through triangles are blended (crates/nova-runtime/src/gfx.rs, `solid_first`).
+- **Lamps** (the owner: "we should add lights. Taillights, headlights etc."): their own parts. Square headlamps at the nose's outer
+  corners, softly lit, an amber lamp beside each; at the back a stack each side of the doors (red tail lamp, amber indicator, white
+  reverse lamp); amber side markers at the front corners, red at the back. The tail lamps glow bright while braking, the reverse
+  lamps light while backing up (entities/van.lua, `Van:lamps()`); `Van.LIGHTS.beams` casts two spot lights from the headlamps for
+  a night to come (off in the slice). Indicators stay unlit.
+- **Steering:** letting go of the stick brings the wheels back at 5 times their turn-in speed with a quick easing, and the body
+  straightens with them: at 6 m/s the van runs straight 0.27 s after a full-lock turn is let go (turn-in is unchanged). Less lock
+  (18.3 degrees): a 10 m kerb-to-kerb circle at a crawl (it was 9.2), 11.4 m at 4 m/s, wider still faster. The test driver
+  (lib/autopilot.lua) slows before a sharp bend or turn-in and, in a three-point turn, puts the wheel over before each leg.
+- **Cameras:** the van is never cut away (`see_through = false`, new in `nova.model`); on foot, when the van would hide the
+  postmaster, the camera lifts (or swings) just enough for them to show past it, and eases back. Lower and more behind: on foot the
+  boom rises 26 degrees from 8 m behind them with a 42 degree lens, the camera looking down 15 degrees (the postmaster in the lower
+  middle, the horizon along the top); driving it rises 16 degrees from 9.6 m, looking down 7 (the van in the lower third, the road
+  and the horizon ahead). Coming out of the post office they step out to the foot of the porch (4 m) and everything within 6 m of the
+  camera is cut away there (the porch roof and posts), easing back to the usual 2.5 m by 9 m out.

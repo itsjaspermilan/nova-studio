@@ -203,7 +203,8 @@ struct VertexOut {
     @location(7) local: vec4<f32>,
 };
 
-// The dirt an instance carries in the w slot of its matrix's fourth column (1 in a clean one): 2 + a whole number of 23 bits, which
+// The dirt an instance carries in the w slot of its matrix's fourth column (1 in a clean one; negated when the draw is never cut by
+// `nova.see_through`): 2 + a whole number of 23 bits, which
 // are how much (7), whether it lies on top (1) and its colour (5 each, sRGB). Unpacked by the pixels that have some: rgb the colour
 // (linear), w how much (to 1), plus 2 when it lies on top too (snow).
 fn dirt_of(w: f32) -> vec4<f32> {
@@ -359,10 +360,11 @@ fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
 // round that point, stopping `opts.x` metres short of it (so the ground and the walls beside and behind the point stay), its edge
 // dithered over the outer 30%. A pixel lower than `opts.z` metres above its own model's base is never cut (the ground, a road, the
 // foot of a wall): tree crowns, roofs, the upper walls and a vehicle's body go. The shadow maps are not touched: a cut tree still
-// casts its shadow.
-fn see_through_cut(world: vec3<f32>, above_base: f32, pixel: vec2<f32>) -> bool {
+// casts its shadow. A model drawn with `see_through = false` (a vehicle the camera works round instead) is never cut.
+fn see_through_cut(world: vec3<f32>, above_base: f32, pixel: vec2<f32>, slot: f32) -> bool {
     let o = globals.see_through_opts;
-    if (o.y <= 0.0 || above_base < o.z) {
+    // (a draw that asked never to be cut, `see_through = false`, carries a negative dirt slot: see `ModelInstance::kept_whole`)
+    if (o.y <= 0.0 || above_base < o.z || slot < 0.0) {
         return false;
     }
     let axis = globals.see_through.xyz - globals.eye.xyz;
@@ -403,7 +405,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
-    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
+    if (see_through_cut(in.world, in.local.w, in.position.xy, in.dirt)) { discard; }
     // (a part of a textured model whose material has no picture has its UVs far out, model.rs NO_TEXTURE_UV: it is drawn white, in
     // its own colours; sampled anyway, since a sample must be taken by every pixel alike)
     let picture = textureSample(base_texture, base_sampler, in.uv);
@@ -431,7 +433,7 @@ fn fs_detail(in: VertexOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
-    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
+    if (see_through_cut(in.world, in.local.w, in.position.xy, in.dirt)) { discard; }
     let picture = textureSample(base_texture, base_sampler, in.uv);
     let grain = textureSample(detail_map, detail_sampler, in.uv * detail_params.scale.xy).rgb * 2.0;
     let plain = in.uv.x > 1.0e6;
@@ -460,8 +462,8 @@ fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
     let n = safe_normalize(in.normal);
     var surface = base.rgb;
     var glow = in.emissive;
-    if (in.dirt > 1.5) {
-        let dirt = dirt_of(in.dirt);
+    if (abs(in.dirt) > 1.5) {
+        let dirt = dirt_of(abs(in.dirt));
         let cover = dirt_cover(in.local, n, dirt.w, smoothstep(10.0, 25.0, distance(in.world, globals.eye.xyz)));
         surface = mix(surface, dirt.rgb, cover);
         glow = glow * (1.0 - 0.7 * cover);
@@ -705,7 +707,7 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
-    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
+    if (see_through_cut(in.world, in.local.w, in.position.xy, in.dirt)) { discard; }
     let picture = textureSample(base_texture, base_sampler, in.uv);
     let base = select(picture, vec4<f32>(1.0), in.uv.x > 1.0e6) * in.color;
     // (every map is sampled by every pixel alike; a part without one ignores what it read)
@@ -735,8 +737,8 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
     var lamp = 1.0;
     let away = distance(in.world, globals.eye.xyz);
     // dirt lies over the surface: its own dull colour, and no metal, gloss, lacquer or glass shows through it
-    if (in.dirt > 1.5) {
-        let dirt = dirt_of(in.dirt);
+    if (abs(in.dirt) > 1.5) {
+        let dirt = dirt_of(abs(in.dirt));
         let cover = dirt_cover(in.local, geo, dirt.w, smoothstep(10.0, 25.0, away)) * (1.0 - 0.5 * glass);
         albedo = mix(albedo, dirt.rgb, cover);
         metallic = metallic * (1.0 - cover);

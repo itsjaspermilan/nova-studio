@@ -295,7 +295,9 @@ native resolution.
 **Model options:** `scale`, `rx`, `ry`, `rz` (radians), `tint` `{r,g,b[,a]}`, `parts`. Models are
 instanced: draws of the same model in a frame become one GPU draw call. A model with see-through colours (a vertex alpha
 below 255: `#rrggbbaa` in the model editor) is drawn after the solid ones, blended and without writing depth, so a puff of
-dust or a window shows what is behind it; it does not sort against other see-through models.
+dust or a window shows what is behind it; it does not sort against other see-through models. Only its see-through triangles are
+(those with a see-through corner): the rest of the same mesh is drawn solid, so a pane of tinted glass in a car's body leaves the
+body solid (until 2026-11-22 one see-through vertex made the whole mesh blended, and a body with glass in it showed its own inside).
 
 **Lights.** Models are lit by one sun, an ambient floor and up to sixteen point lights:
 
@@ -346,7 +348,8 @@ Inside a cone from the eye to a circle of `radius` metres round `at`, stopping `
 more than `above` metres over its own base are dropped by a screen-door, its edge dithered (`amount` drops a share of them: ease it to
 fade the hole in and out); `near` drops every such pixel within that many metres of the eye too, its edge dithered over the last
 fifth (an eye inside a tree's crown sees out of it, and a roof right under a high camera is no wall across the picture). Tree crowns, roofs, upper walls and a parked van go; the ground, roads and the foot of a wall stay, and so
-does everything beside and behind the point. The shadows are not touched, and it costs a few instructions a pixel. It stays until
+does everything beside and behind the point. A model drawn with `see_through = false` in `nova.model`'s options is never cut (a van
+the camera moves round instead, as Fernhollow Post's does). The shadows are not touched, and it costs a few instructions a pixel. It stays until
 changed, across scenes too: a scene with another camera calls `nova.see_through()` in its `enter`. Fernhollow Post's on-foot camera
 uses it (`examples/mountain-post/lib/camera.lua`); the test is `crates/nova-runtime/tests/see_through_gpu.rs`.
 

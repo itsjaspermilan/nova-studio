@@ -165,7 +165,7 @@ end
 local DUST = { color = { 196, 178, 150, 110 } }
 -- At the wheel: the place in the cab (the van's own metres, tools/van.mjs SEAT less the seated body's depth under its feet's
 -- level), kept with the van as it moves; the clip is the seated one.
-Postmaster.SEAT = { 0.3, 0.495, 0.26 }
+Postmaster.SEAT = { 0.28, 0.425, 0.22 }
 function Postmaster:sit(dt)
   local v = nova.first("van")
   if v then
@@ -181,7 +181,7 @@ function Postmaster:sit(dt)
   face.update(self.mood, dt)
 end
 
-local SEATED = { ry = 0, rx = 0, rz = 0, lift = "origin" }
+local SEATED = { ry = 0, rx = 0, rz = 0, lift = "origin", see_through = false } -- (kept whole, like the van)
 function Postmaster:draw_seated(v)
   -- in the cab, carried by the body: the van's turn, then the body's pitch and roll, at the seat's place in the leaning body
   local sx, sy, sz = v:to_world(self.SEAT[1], self.SEAT[2], self.SEAT[3])

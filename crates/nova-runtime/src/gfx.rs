@@ -144,6 +144,19 @@ impl ModelInstance {
         self
     }
 
+    /// The same instance never cut away by `nova.see_through` (`nova.model`'s `see_through = false`: a vehicle the game keeps whole and
+    /// moves the camera round instead). Rides in the sign of the dirt slot (the w slot of the fourth column, 1 or 2 plus the dirt's
+    /// code, always positive otherwise): the shaders read its size as the dirt and a negative one as "keep". Apply it after `dirty`.
+    pub fn kept_whole(mut self) -> Self {
+        self.matrix[3][3] = -self.matrix[3][3].abs();
+        self
+    }
+
+    /// Whether this instance is kept whole by `nova.see_through` (see [`ModelInstance::kept_whole`]).
+    pub fn is_kept_whole(&self) -> bool {
+        self.matrix[3][3] < 0.0
+    }
+
     /// The same instance (not a skinned one) as a piece of a model whose own origin is `below` world units under this piece's: dirt and
     /// the model's shade at its foot are measured from the model's base, not the piece's (a wheel's hub). Rides in the w slot of the
     /// matrix's first column, where a skinned instance has its joints.
@@ -876,8 +889,12 @@ struct GpuMesh {
     indices: wgpu::Buffer,
     index_count: u32,
     texture: wgpu::BindGroup,
-    /// Some vertex is see-through: the mesh is drawn after the solid ones, blended.
+    /// Some vertex is see-through: those triangles are drawn after the solid ones, blended.
     translucent: bool,
+    /// How many of its indices (from the first) are solid triangles, drawn in the solid pass and into the shadows; the rest (a pane
+    /// of glass in a car's body, any triangle with a see-through corner) are drawn in the blended pass. [`Gfx::upload_mesh`] puts the
+    /// solid ones first, so one see-through pane no longer makes the whole mesh see-through.
+    solid: u32,
     /// Joints and weights, for a skinned mesh (drawn by the skinned pipelines, never see-through).
     skin: Option<wgpu::Buffer>,
     /// A sphere that holds the whole mesh (centre, radius), in the mesh's own space, for culling.
@@ -1018,6 +1035,27 @@ fn sphere_visible(planes: &[glam::Vec4; 6], centre: Vec3, radius: f32) -> bool {
 
 /// Whether an instance of a mesh with these bounds can be seen: its sphere moved and scaled by the instance's matrix. A skinned
 /// mesh's sphere is the rest pose's, grown by half to allow for limbs that swing out.
+/// The indices with the solid triangles first and those with a see-through corner (a vertex alpha under 255) after, and how many
+/// indices the solid ones take (see `GpuMesh::solid`). The order within each group is kept.
+fn solid_first(vertices: &[MeshVertex], indices: &[u32]) -> (Vec<u32>, u32) {
+    let clear = |t: &[u32]| {
+        t.iter()
+            .any(|&i| vertices.get(i as usize).is_some_and(|v| v.color[3] < 255))
+    };
+    let (mut solid, mut seen): (Vec<u32>, Vec<u32>) =
+        (Vec::with_capacity(indices.len()), Vec::new());
+    for t in indices.chunks(3) {
+        if clear(t) {
+            seen.extend_from_slice(t)
+        } else {
+            solid.extend_from_slice(t)
+        }
+    }
+    let n = solid.len() as u32;
+    solid.extend(seen);
+    (solid, n)
+}
+
 fn instance_visible(
     planes: &[glam::Vec4; 6],
     bounds: ([f32; 3], f32),
@@ -2837,11 +2875,13 @@ impl Gfx {
                 contents: bytemuck::cast_slice(&mesh.vertices),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
+        // the solid triangles first, then those with a see-through corner (see `GpuMesh::solid`)
+        let (ordered, solid) = solid_first(&mesh.vertices, &mesh.indices);
         let indices = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("mesh indices"),
-                contents: bytemuck::cast_slice(&mesh.indices),
+                contents: bytemuck::cast_slice(&ordered),
                 usage: wgpu::BufferUsages::INDEX,
             });
         let translucent = mesh.vertices.iter().any(|v| v.color[3] < 255);
@@ -2956,6 +2996,7 @@ impl Gfx {
             index_count: mesh.indices.len() as u32,
             texture,
             translucent,
+            solid,
             skin: None,
             bounds: bounding_sphere(&mesh.vertices),
             material,
@@ -2987,6 +3028,7 @@ impl Gfx {
         let mesh = &mut self.meshes[id];
         mesh.skin = Some(buffer);
         mesh.translucent = false;
+        mesh.solid = mesh.index_count;
         id
     }
 
@@ -3174,6 +3216,11 @@ impl Gfx {
                             index_count: indices.len() as u32,
                             texture: atlas,
                             translucent: vertices.iter().any(|v| v.color[3] < 255),
+                            solid: if vertices.iter().any(|v| v.color[3] < 255) {
+                                0
+                            } else {
+                                indices.len() as u32
+                            },
                             skin: None,
                             bounds: bounding_sphere(vertices),
                             material: None,
@@ -3183,11 +3230,12 @@ impl Gfx {
                 }
                 MeshOp::Variant { id, base, vertices } => {
                     let Some(b) = self.mesh(*base) else { continue };
-                    let (indices, index_count, texture, translucent, material, detail) = (
+                    let (indices, index_count, texture, translucent, solid, material, detail) = (
                         b.indices.clone(),
                         b.index_count,
                         b.texture.clone(),
                         b.translucent,
+                        b.solid,
                         b.material.clone(),
                         b.detail.clone(),
                     );
@@ -3207,6 +3255,7 @@ impl Gfx {
                             index_count,
                             texture,
                             translucent,
+                            solid,
                             skin: None,
                             bounds: bounding_sphere(vertices),
                             material,
@@ -3263,6 +3312,12 @@ impl Gfx {
                             texture,
                             translucent: base_translucent
                                 || vertices.iter().any(|v| v.color[3] < 255),
+                            solid: if base_translucent || vertices.iter().any(|v| v.color[3] < 255)
+                            {
+                                0
+                            } else {
+                                indices.len() as u32
+                            },
                             skin: None,
                             bounds: bounding_sphere(vertices),
                             material,
@@ -3924,7 +3979,7 @@ impl Gfx {
                     start = end;
                     continue;
                 };
-                if casts && !mesh.translucent {
+                if casts && mesh.solid > 0 {
                     if mesh.skin.is_some() != skinned_now {
                         skinned_now = mesh.skin.is_some();
                         if skinned_now {
@@ -3947,7 +4002,7 @@ impl Gfx {
                         ),
                     );
                     pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
+                    pass.draw_indexed(0..mesh.solid, 0, 0..(end - start) as u32);
                     stats.draw_calls += 1;
                 }
                 start = end;
@@ -4078,8 +4133,13 @@ impl Gfx {
                         start = end;
                         continue;
                     };
-                    // (skinned meshes are always solid)
-                    if mesh.translucent != translucent {
+                    // (skinned meshes are always solid) the solid triangles in the first pass, the see-through ones in the second
+                    let range = if translucent {
+                        mesh.solid..mesh.index_count
+                    } else {
+                        0..mesh.solid
+                    };
+                    if range.is_empty() {
                         start = end;
                         continue;
                     }
@@ -4132,9 +4192,9 @@ impl Gfx {
                             .slice(start as u64 * stride..end as u64 * stride),
                     );
                     pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..mesh.index_count, 0, 0..(end - start) as u32);
+                    stats.triangles += range.len() as u32 / 3 * (end - start) as u32;
+                    pass.draw_indexed(range, 0, 0..(end - start) as u32);
                     stats.draw_calls += 1;
-                    stats.triangles += mesh.index_count / 3 * (end - start) as u32;
                     start = end;
                 }
                 if !shaded_models.is_empty() {

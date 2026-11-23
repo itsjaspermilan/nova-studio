@@ -1,0 +1,14 @@
+{
+  "size": "1280x720",
+  "start_scene": "office",
+  "out": "build/third-play-door",
+  "route": [
+    { "wait": 10 },
+    { "walk_to": [0.9, 1.7], "max": 300 },
+    { "hold": ["move_y=1"], "until": "nova.current_scene() == 'valley'", "max": 120 },
+    { "wait": 1, "capture": "door-0: leaving the post office, the first frame outside" },
+    { "wait": 30, "capture": "door-05: half a second on" },
+    { "wait": 90, "capture": "door-2: two seconds on" },
+    { "hold": ["move_y=-1"], "frames": 60, "capture": "door-run: running away from the post office" }
+  ]
+}
