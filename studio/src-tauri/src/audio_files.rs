@@ -91,6 +91,37 @@ pub fn wav_loop_points(wav: &[u8]) -> Option<(u32, u32)> {
     None
 }
 
+/// The cue points of a WAV file's `cue ` chunk (frames, ascending): the studio writes a song's bar lines there.
+pub fn wav_cue_points(wav: &[u8]) -> Vec<u32> {
+    let mut out = Vec::new();
+    if wav.len() < 12 || &wav[0..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
+        return out;
+    }
+    let word = |at: usize| {
+        wav.get(at..at + 4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+    };
+    let mut at = 12;
+    while at + 8 <= wav.len() {
+        let Some(size) = word(at + 4).map(|s| s as usize) else {
+            break;
+        };
+        let body = at + 8;
+        if &wav[at..at + 4] == b"cue " && size >= 4 {
+            let count = word(body).unwrap_or(0) as usize;
+            for i in 0..count.min((size - 4) / 24) {
+                if let Some(frame) = word(body + 4 + i * 24 + 20) {
+                    out.push(frame);
+                }
+            }
+        }
+        at = body + size + (size & 1);
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// Encodes WAV bytes (8, 16, 24 or 32-bit PCM or float; mono or stereo) as Ogg Vorbis at `quality` (-0.1 to 1). A loop in the WAV's `smpl` chunk is written as the
 /// Vorbis comments `LOOPSTART` and `LOOPLENGTH` (in frames), which the game reads to loop back to the loop's start instead of the beginning.
 pub fn wav_to_ogg(wav: &[u8], quality: f32) -> Result<Vec<u8>, String> {
@@ -107,6 +138,13 @@ pub fn wav_to_ogg(wav: &[u8], quality: f32) -> Result<Vec<u8>, String> {
         builder
             .comment_tag("LOOPLENGTH", (end - start).to_string())
             .map_err(|e| format!("cannot write the loop points: {e}"))?;
+    }
+    let cues = wav_cue_points(wav);
+    if !cues.is_empty() {
+        let list: Vec<String> = cues.iter().map(u32::to_string).collect();
+        builder
+            .comment_tag("BARS", list.join(","))
+            .map_err(|e| format!("cannot write the bar lines: {e}"))?;
     }
     let mut encoder = builder
         .bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
@@ -372,6 +410,35 @@ mod tests {
                 .iter()
                 .all(|(k, _)| k != "LOOPSTART")
         );
+    }
+
+    /// A song's bar lines travel as the WAV's cue points and come out as the Ogg's `BARS` comment (frames, by commas).
+    #[test]
+    fn wav_cue_points_become_the_bars_comment() {
+        let mut w = wav(1, 8_000, 1.0, 440.0, 16, false);
+        assert!(wav_cue_points(&w).is_empty());
+        let mut chunk = Vec::new();
+        chunk.extend(b"cue ");
+        chunk.extend((4u32 + 24 * 3).to_le_bytes());
+        chunk.extend(3u32.to_le_bytes());
+        for (i, f) in [4000u32, 0, 2000].iter().enumerate() {
+            for v in [i as u32 + 1, *f] {
+                chunk.extend(v.to_le_bytes());
+            }
+            chunk.extend(b"data");
+            for v in [0u32, 0, *f] {
+                chunk.extend(v.to_le_bytes());
+            }
+        }
+        w.extend(chunk);
+        let riff = (w.len() - 8) as u32;
+        w[4..8].copy_from_slice(&riff.to_le_bytes());
+        assert_eq!(wav_cue_points(&w), vec![0, 2000, 4000]);
+        let ogg = wav_to_ogg(&w, 0.3).unwrap();
+        let reader = lewton::inside_ogg::OggStreamReader::new(Cursor::new(&ogg)).unwrap();
+        let tags: std::collections::HashMap<String, String> =
+            reader.comment_hdr.comment_list.iter().cloned().collect();
+        assert_eq!(tags.get("BARS").map(String::as_str), Some("0,2000,4000"));
     }
 
     /// Writes the fixture the game's tests use: a 3 second mono 8 kHz Ogg with a loop from frame 8000 to 16000 (`NOVA_WRITE_LOOP_FIXTURE=path`).

@@ -82,10 +82,12 @@ pub enum Command {
     },
     /// Adaptive music: start several tracks (stems of one piece) together, in step, each at its own level (0 to 1).
     /// They replace any music that plays. `bar_seconds` is the length of a bar, for level changes that wait for a bar line
-    /// (0 when the piece has no bars).
+    /// (0 when the piece has no bars). `bars`, when not empty, are the piece's own bar lines instead (seconds from the start of
+    /// the file, ascending: a piece whose tempo changes), and a looping file's bar lines come round with its loop.
     PlayLayers {
         layers: Vec<(Box<Play>, f32)>,
         bar_seconds: f64,
+        bars: Vec<f64>,
     },
     /// Fade a layer to a level (0 to 1) over `fade` seconds, now or (`at_bar`) when the music next reaches a bar line.
     LayerLevel {
@@ -234,6 +236,8 @@ pub struct Mixer {
     music_volume: f32,
     /// The bar length of the layered music that plays (0: none) and the level changes waiting for its next bar line: (voice id, level, fade seconds).
     bar_seconds: f64,
+    /// The layered music's own bar lines (seconds into the file, ascending), when it gave them.
+    bars: Vec<f64>,
     pending: Vec<(u64, f32, f32)>,
     /// Output frames of streamed music that were silence because the decoder was behind.
     underruns: u64,
@@ -436,6 +440,7 @@ impl Mixer {
             sfx_volume: 1.0,
             music_volume: 1.0,
             bar_seconds: 0.0,
+            bars: Vec::new(),
             pending: Vec::with_capacity(MAX_VOICES),
             underruns: 0,
         }
@@ -453,7 +458,13 @@ impl Mixer {
             Some(s) => {
                 let rate = s.feed.rate() as f64;
                 let mut frames = s.started_at + s.consumed;
-                if let Some(len) = s.feed.pass_frames() {
+                if let Some((start, end)) = s.feed.loop_points() {
+                    // a play that loops between the file's loop points comes back to the loop's start, not the beginning
+                    let (start, end) = (start as f64, end as f64);
+                    if frames >= end && end > start {
+                        frames = start + (frames - start) % (end - start);
+                    }
+                } else if let Some(len) = s.feed.pass_frames() {
                     frames %= len as f64;
                 }
                 Some(frames / rate)
@@ -539,18 +550,84 @@ impl Mixer {
     /// How many frames from now the layered music reaches its next bar line, if that is inside this block of `frames`.
     fn frames_to_bar(&self, frames: usize) -> Option<usize> {
         let bar = self.bar_seconds;
-        if bar <= 0.0 {
+        if bar <= 0.0 && self.bars.is_empty() {
             return None;
         }
         let position = self.music_position()?;
-        let into = position % bar;
-        let wait = if into < 1e-6 || bar - into < 1e-6 {
-            0.0
+        let wait = if self.bars.is_empty() {
+            let into = position % bar;
+            if into < 1e-6 || bar - into < 1e-6 {
+                0.0
+            } else {
+                bar - into
+            }
         } else {
-            bar - into
+            self.wait_for_listed_bar(position)?
         };
         let k = (wait * self.device_rate as f64).round() as usize;
         (k < frames).then_some(k)
+    }
+
+    /// Seconds from `position` (in the file) to the next of the music's own bar lines; past the last one before the loop's end,
+    /// the first one after the loop's start, once the loop comes round.
+    fn wait_for_listed_bar(&self, position: f64) -> Option<f64> {
+        const EPS: f64 = 1e-6;
+        let (loop_start, loop_end) = self.music_loop()?;
+        if let Some(b) = self
+            .bars
+            .iter()
+            .find(|&&b| b >= position - EPS && b < loop_end - EPS)
+        {
+            return Some((b - position).max(0.0));
+        }
+        let first = self
+            .bars
+            .iter()
+            .find(|&&b| b >= loop_start - EPS && b < loop_end - EPS)?;
+        Some((loop_end - position).max(0.0) + (first - loop_start).max(0.0))
+    }
+
+    /// Where the music that plays goes round, in seconds: (loop start, loop end), the whole file when it has no loop points.
+    fn music_loop(&self) -> Option<(f64, f64)> {
+        let v = self.voices.iter().find(|v| v.music && !v.stopping)?;
+        match &v.stream {
+            Some(s) => {
+                let rate = s.feed.rate() as f64;
+                match s.feed.loop_points() {
+                    Some((a, b)) => Some((a as f64 / rate, b as f64 / rate)),
+                    None => Some((
+                        0.0,
+                        s.feed
+                            .pass_frames()
+                            .map_or(f64::INFINITY, |n| n as f64 / rate),
+                    )),
+                }
+            }
+            None => Some((
+                0.0,
+                v.sample.frames.len() as f64 / v.sample.rate.max(1) as f64,
+            )),
+        }
+    }
+
+    /// True when a streamed stem of the layered music has not yet got the frames for the next `frames` of output decoded:
+    /// then none of the stems plays them (they wait together), so the stems never fall out of step.
+    fn layers_waiting(&self, frames: usize) -> bool {
+        let mut stems = 0;
+        let mut short = false;
+        for v in self.voices.iter().filter(|v| v.layer && !v.stopping) {
+            let Some(s) = &v.stream else { continue };
+            stems += 1;
+            if s.feed.is_patient() || s.feed.done() || s.last {
+                continue;
+            }
+            let held = usize::from(s.cur.is_some()) + usize::from(s.next.is_some());
+            let need = (frames as f64 * v.step + s.frac).ceil() as usize + 2;
+            if s.feed.available() + held < need {
+                short = true;
+            }
+        }
+        stems > 1 && short
     }
 
     pub fn apply(&mut self, command: Command) {
@@ -593,6 +670,7 @@ impl Mixer {
             Command::PlayLayers {
                 layers,
                 bar_seconds,
+                bars,
             } => {
                 for v in self.voices.iter_mut().filter(|v| v.music) {
                     v.stopping = true;
@@ -601,6 +679,11 @@ impl Mixer {
                 }
                 self.pending.clear();
                 self.bar_seconds = bar_seconds.max(0.0);
+                self.bars = bars
+                    .into_iter()
+                    .filter(|b| b.is_finite() && *b >= 0.0)
+                    .collect();
+                self.bars.sort_by(f64::total_cmp);
                 for (p, level) in layers {
                     if p.stream.is_none() && p.sample.frames.is_empty() {
                         continue;
@@ -614,10 +697,12 @@ impl Mixer {
                 fade,
                 at_bar,
             } => {
-                if at_bar && self.bar_seconds > 0.0 {
+                if at_bar && (self.bar_seconds > 0.0 || !self.bars.is_empty()) {
                     self.pending.retain(|(i, _, _)| *i != id);
                     self.pending.push((id, level, fade));
                 } else {
+                    // (the latest request wins: one waiting for a bar line is dropped)
+                    self.pending.retain(|(i, _, _)| *i != id);
                     self.set_layer_level(id, level, fade);
                 }
             }
@@ -663,6 +748,7 @@ impl Mixer {
             Command::StopAll => self.voices.clear(),
             Command::StopMusic { fade } => {
                 self.pending.clear();
+                self.bars.clear();
                 if fade <= 0.0 {
                     self.voices.retain(|v| !v.music);
                 } else {
@@ -736,7 +822,12 @@ impl Mixer {
         }
         // glide towards a volume, pan or pitch a script asked for (about 10 ms)
         let glide = 1.0 - (-1.0 / (0.01 * self.device_rate as f32)).exp();
+        let layers_wait = self.layers_waiting(frames);
         for voice in &mut self.voices {
+            if layers_wait && voice.layer && voice.stream.is_some() && !voice.stopping {
+                self.underruns += frames as u64; // (all the stems wait for the one that is behind)
+                continue;
+            }
             let volume = if voice.music {
                 self.music_volume
             } else {
@@ -1042,6 +1133,7 @@ mod tests {
         m.apply(Command::PlayLayers {
             layers,
             bar_seconds,
+            bars: Vec::new(),
         });
     }
 
@@ -1152,6 +1244,178 @@ mod tests {
             out.iter().step_by(2).all(|v| (v - 0.1 * C).abs() < 0.005),
             "the old request must not carry over"
         );
+    }
+
+    /// Streamed stems are sample-locked: when one stem's decoder is behind, all of them wait (the music is silent for that
+    /// block) instead of the others running on, so they come back in step.
+    #[test]
+    fn streamed_stems_wait_for_each_other_and_stay_in_step() {
+        let x = |n: i16| [n * 8, n * 8];
+        let ramp: Vec<[i16; 2]> = (0..500).map(x).collect();
+        let (send, frames) = std::sync::mpsc::channel();
+        let quick = StreamFeed::from_frames(1000, ramp.clone(), true);
+        let slow = crate::stream::from_channel(1000, frames);
+        for f in &ramp[..100] {
+            send.send(
+                f.iter()
+                    .map(|v| v * 3)
+                    .collect::<Vec<i16>>()
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let stem = |id: u64, feed: StreamFeed| {
+            (
+                Box::new(Play {
+                    stream: Some(feed),
+                    music: true,
+                    looping: true,
+                    ..play(
+                        id,
+                        &Arc::new(Sample {
+                            rate: 1000,
+                            frames: Vec::new(),
+                        }),
+                    )
+                }),
+                1.0,
+            )
+        };
+        let mut m = Mixer::new(1000);
+        m.apply(Command::PlayLayers {
+            layers: vec![stem(1, quick), stem(2, slow)],
+            bar_seconds: 0.0,
+            bars: Vec::new(),
+        });
+        // (one unit of the ramp in each ear: the quick stem gives n, the slow one 3n, so in step the mix is 4n)
+        let unit = 8.0 * C / 32768.0;
+        let out = render(&mut m, 50);
+        assert!(
+            (out[2 * 10] - 40.0 * unit).abs() < 1e-4,
+            "in step at first: {}",
+            out[20] / unit
+        );
+        let out = render(&mut m, 200);
+        assert!(
+            out.iter().all(|v| *v == 0.0),
+            "the slow stem is behind: both wait"
+        );
+        // (the rest of the first pass, then a few more passes: the slow stem loops as the quick one does)
+        for f in ramp[100..].iter().chain(ramp.iter().cycle().take(3000)) {
+            send.send(
+                f.iter()
+                    .map(|v| v * 3)
+                    .collect::<Vec<i16>>()
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let out = render(&mut m, 200);
+        for (k, pair) in out.chunks(2).enumerate().take(150) {
+            let n = 50.0 + k as f32;
+            assert!(
+                (pair[0] - 4.0 * n * unit).abs() < 1e-4,
+                "frame {k}: {} (in step: {})",
+                pair[0] / unit,
+                4.0 * n
+            );
+        }
+        assert!(m.underruns() >= 200);
+        // and round the loop several times, still in step (the ramp is 500 frames long)
+        let out = render(&mut m, 2000);
+        for (k, pair) in out.chunks(2).enumerate() {
+            let n = ((250 + k) % 500) as f32;
+            assert!(
+                (pair[0] - 4.0 * n * unit).abs() < 1e-4,
+                "frame {k} after the loops: {} (in step: {})",
+                pair[0] / unit,
+                4.0 * n
+            );
+        }
+    }
+
+    /// A change asked for now replaces one that was waiting for the bar line (the latest request wins).
+    #[test]
+    fn a_change_now_drops_one_waiting_for_the_bar_line() {
+        let mut m = Mixer::new(1000);
+        layered(&mut m, [1.0, 0.0, 0.0], 0.1);
+        render(&mut m, 30);
+        m.apply(Command::LayerLevel {
+            id: 3,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        m.apply(Command::LayerLevel {
+            id: 3,
+            level: 0.0,
+            fade: 0.0,
+            at_bar: false,
+        });
+        let out = render(&mut m, 200);
+        assert!(
+            out.iter().step_by(2).all(|v| (v - 0.1 * C).abs() < 0.005),
+            "the waiting change must not land"
+        );
+    }
+
+    /// The piece's own bar lines (a song with tempo changes): a change waits for the next listed one, and past the last one it
+    /// waits for the first after the loop comes round.
+    #[test]
+    fn a_level_change_waits_for_the_next_listed_bar_line_round_the_loop() {
+        let mut m = Mixer::new(1000);
+        let layers = [(1u64, 3277i16), (2, 6554)]
+            .iter()
+            .zip([1.0, 0.0])
+            .map(|(&(id, v), level)| {
+                (
+                    Box::new(Play {
+                        music: true,
+                        looping: true,
+                        ..play(id, &constant(1000, v, 400))
+                    }),
+                    level,
+                )
+            })
+            .collect();
+        // bar lines at 50 and 250 ms of a 400 ms piece
+        m.apply(Command::PlayLayers {
+            layers,
+            bar_seconds: 0.0,
+            bars: vec![0.25, 0.05],
+        });
+        render(&mut m, 100);
+        m.apply(Command::LayerLevel {
+            id: 2,
+            level: 1.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        let out = render(&mut m, 200);
+        assert!(
+            (out[2 * 149] - 0.1 * C).abs() < 0.005,
+            "before 250 ms: {}",
+            out[2 * 149]
+        );
+        assert!(
+            (out[2 * 150] - 0.3 * C).abs() < 0.01,
+            "at 250 ms: {}",
+            out[2 * 150]
+        );
+        // at 300 ms: the next bar line is 50 ms into the next time round, 150 ms on
+        m.apply(Command::LayerLevel {
+            id: 2,
+            level: 0.0,
+            fade: 0.0,
+            at_bar: true,
+        });
+        let out = render(&mut m, 200);
+        assert!((out[2 * 149] - 0.3 * C).abs() < 0.01, "{}", out[2 * 149]);
+        assert!((out[2 * 150] - 0.1 * C).abs() < 0.005, "{}", out[2 * 150]);
     }
 
     #[test]

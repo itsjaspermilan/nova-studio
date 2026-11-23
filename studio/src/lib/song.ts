@@ -1432,7 +1432,9 @@ export function expandClips(song: Song): Song {
   };
 }
 
-export function renderSong(source: Song, rate = RATE): Sound {
+/// `linear`: leave out the soft clip of fuller songs and the last guard against peaks over full scale, so that renders of parts
+/// of a song add up to the render of the whole (renderStems).
+export function renderSong(source: Song, rate = RATE, { linear = false }: { linear?: boolean } = {}): Sound {
   const song = applyAutomation(expandClips(source));
   const stepSec = stepSeconds(song);
   const total = Math.round(songSeconds(song) * rate);
@@ -1626,7 +1628,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
     right.set(mr.subarray(0, total));
   }
   // A fuller song gets a gentle soft clip so that the loudest moments round off instead of being scaled down as a whole.
-  if (richSong) {
+  if (richSong && !linear) {
     for (let i = 0; i < total; i++) {
       left[i] = softClip(left[i]!, 1.1);
       right[i] = softClip(right[i]!, 1.1);
@@ -1655,7 +1657,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
   // Keep peaks under full scale without touching quiet songs.
   let peak = 0;
   for (let i = 0; i < total; i++) peak = Math.max(peak, Math.abs(left[i]!), Math.abs(right[i]!));
-  if (peak > 0.97) {
+  if (peak > 0.97 && !linear) {
     const g = 0.97 / peak;
     for (let i = 0; i < total; i++) {
       left[i] = left[i]! * g;
@@ -1663,4 +1665,36 @@ export function renderSong(source: Song, rate = RATE): Sound {
     }
   }
   return { rate, channels: [left, right] };
+}
+
+/// One stem of layered music: a name and the tracks (by name) it plays.
+export interface StemSpec {
+  name: string;
+  tracks: string[];
+}
+
+/// A song as stems for layered music (`nova.music.layers`): one sound per stem, each the song with only that stem's tracks heard,
+/// all the song's length, with the same loop and the same tails wrapped onto the loop's start, so the game can play them
+/// together, in step, and fade each one. The room (the reverb) is shared out exactly, each stem carrying its own tracks' share.
+/// The master's effects, loudness target and ceiling act on the whole mix, so the stems leave them out and share one gain
+/// instead: the one that brings their sum (every stem at full) to the song's `lufs` (or its master volume when it has none),
+/// lowered if need be so that the sum never peaks over the song's `limit` (or just under full scale). `gain` is that gain.
+export function renderStems(source: Song, stems: StemSpec[], rate = RATE): { stems: { name: string; sound: Sound }[]; gain: number } {
+  // (each rendered without the soft clip or the peak guard, which would not add up; the shared gain is applied after)
+  const plain: Song = { ...source, master: { volume: 1 } };
+  const sounds = stems.map((st) => renderSong({ ...plain, tracks: plain.tracks.map((t) => ({ ...t, mute: t.mute || !st.tracks.includes(t.name), solo: false })) }, rate, { linear: true }));
+  const total = sounds[0]?.channels[0]?.length ?? 0;
+  const sum = [new Float32Array(total), new Float32Array(total)];
+  for (const s of sounds) for (let c = 0; c < 2; c++) for (let i = 0; i < total; i++) sum[c]![i]! += s.channels[c]![i]!;
+  let gain = source.master?.volume ?? 1;
+  if (source.master?.lufs !== undefined) {
+    const now = integratedLufs(sum, rate);
+    if (Number.isFinite(now)) gain = 10 ** ((source.master.lufs - now) / 20);
+  }
+  let peak = 0;
+  for (const c of sum) for (const v of c) peak = Math.max(peak, Math.abs(v));
+  const ceiling = source.master?.limit !== undefined ? 10 ** (source.master.limit / 20) : 0.97;
+  if (peak * gain > ceiling) gain = ceiling / peak;
+  for (const s of sounds) for (const c of s.channels) for (let i = 0; i < c.length; i++) c[i] = c[i]! * gain;
+  return { stems: stems.map((st, i) => ({ name: st.name, sound: sounds[i]! })), gain };
 }

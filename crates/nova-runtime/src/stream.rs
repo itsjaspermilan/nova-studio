@@ -52,6 +52,8 @@ pub struct StreamFeed {
     ring: Arc<Ring>,
     /// An offline render (`nova run --headless --audio-out`): `pop` waits for the decoder instead of giving silence.
     patient: bool,
+    /// Where a looping play goes round (start frame, end frame), when the file has loop points; None for the whole track.
+    loop_points: Option<(u64, u64)>,
 }
 
 impl Drop for StreamFeed {
@@ -92,6 +94,26 @@ impl StreamFeed {
     /// Makes `pop` wait for the decoder when nothing is ready, for rendering sound offline, faster than it plays.
     pub fn wait_for_decoder(&mut self) {
         self.patient = true;
+    }
+
+    /// Frames decoded and waiting to be read.
+    pub fn available(&self) -> usize {
+        self.ring.write.load(Ordering::Acquire) - self.ring.read.load(Ordering::Relaxed)
+    }
+
+    /// The decoder has no more frames to give (they may still wait in the ring).
+    pub fn done(&self) -> bool {
+        self.ring.done.load(Ordering::Acquire)
+    }
+
+    /// Whether `pop` waits for the decoder (an offline render).
+    pub fn is_patient(&self) -> bool {
+        self.patient
+    }
+
+    /// Where this play goes round (start frame, end frame), when it loops between the file's loop points.
+    pub fn loop_points(&self) -> Option<(u64, u64)> {
+        self.loop_points
     }
 
     /// True once everything has been read and no more will ever come.
@@ -144,6 +166,19 @@ impl StreamFeed {
     }
 }
 
+/// A stream fed by hand (tests): the frames sent arrive in order, as a decoder that is sometimes behind would give them;
+/// dropping the sender ends it.
+#[cfg(test)]
+pub(crate) fn from_channel(rate: u32, frames: std::sync::mpsc::Receiver<[i16; 2]>) -> StreamFeed {
+    spawn(rate, move |push, _| {
+        for f in frames {
+            if !push(f) {
+                return;
+            }
+        }
+    })
+}
+
 /// Starts a decoder thread running `produce`, which calls `push` for every frame and stops when `push` says false.
 fn spawn<F>(rate: u32, produce: F) -> StreamFeed
 where
@@ -186,6 +221,7 @@ where
         rate,
         ring,
         patient: false,
+        loop_points: None,
     }
 }
 
@@ -197,6 +233,9 @@ pub struct StreamSource {
     /// Where a looping play goes back to (start frame, end frame), from the file's `LOOPSTART` and `LOOPLENGTH` comments (frames): the music plays
     /// from the beginning to the end frame, then loops between the two. None: the whole track loops.
     pub loop_points: Option<(u64, u64)>,
+    /// The piece's bar lines (frames from the start of the file, ascending), from the file's `BARS` comment (frames, separated by
+    /// commas), which the studio writes for songs with tempo changes; level changes of layered music can wait for them.
+    pub bars: Vec<u64>,
 }
 
 fn open(
@@ -236,10 +275,20 @@ impl StreamSource {
             (Some(start), None, Some(end)) if end > start => Some((start, end)),
             _ => None,
         };
+        let mut bars: Vec<u64> = reader
+            .comment_hdr
+            .comment_list
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("BARS"))
+            .map(|(_, v)| v.split(',').filter_map(|b| b.trim().parse().ok()).collect())
+            .unwrap_or_default();
+        bars.sort_unstable();
+        bars.dedup();
         Ok(Self {
             bytes,
             rate,
             loop_points,
+            bars,
         })
     }
 
@@ -258,7 +307,7 @@ impl StreamSource {
             Some((s, e)) if start_frame >= e => s + (start_frame - s) % (e - s),
             _ => start_frame,
         };
-        spawn(self.rate, move |push, note_pass| {
+        let mut feed = spawn(self.rate, move |push, note_pass| {
             let mut skip = start_frame;
             let mut first_pass = true;
             loop {
@@ -312,7 +361,9 @@ impl StreamSource {
                     return;
                 }
             }
-        })
+        });
+        feed.loop_points = points;
+        feed
     }
 }
 

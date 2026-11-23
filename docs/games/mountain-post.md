@@ -362,6 +362,38 @@ intro's last chord lifts a beat early so that nothing of it still rings at the l
 B bars 1 and 2, C bars 1 and 2, as the song mixes them, all at -17.4 to -18 LUFS) to `build/audition/` as WAV and AAC for the
 owner to choose by ear. **Nobody has listened to any of it.**
 
+**Layers while driving** (the owner, after the clips: "I like A for the day and I like C for the nighttime. Is there a way to get
+creative with the audio? So it's pretty simple when not in the vehicle, then as the player drives more and more layers can come on?";
+then: "for stopping, the layers should start to fade as the speed slows"). The piece (same form, key, tempo and length) is five stems
+of one song, written in `tools/music.mjs` and played together, sample-locked, by `lib/music.lua`:
+
+| stem | what it plays | alone (LUFS) | the stack so far |
+| --- | --- | --- | --- |
+| piano | the felt piano: the tune and a lighter left hand (A', C and B' keep only the beats of their flowing eighths) | -18.0 | -18.0 |
+| bass | a round bass (a saw through a low filter at 380 Hz): the root on 1 and the fifth on 3 | -25.6 | -17.4 |
+| brushes | a shaker on the eighths with a ghost just before beats 3 and 1 (the lilt), soft taps on 2 and 4, softened at the top | -27.1 | -16.9 |
+| pad | warm, slow strings (three detuned saws through a low filter) holding each chord from D3 up | -25.4 | -16.4 |
+| celesta | the celesta answering the tune in its rests (its last two notes an octave up), an arpeggio where the tune is silent | -26.0 | -16.3 |
+
+All five are 1.7 dB louder than the piano alone (under the 3 dB allowed); the music still plays at 0.3 on foot and lower in the
+cab (0.72 of that, as before), so the full stack in the van is about 1.2 dB under the piano on foot, well under the voices. On the
+handheld's speaker the stack plays about 1.8 dB quieter than on headphones (the bass sits low: alone, 36 % of it is under 80 Hz),
+the piano alone 1.1 dB. sound_report warns that the layer stems start late and have long silences: that is right for a stem (the
+intro and the breath are the piano's alone, the celesta only answers), and every stem's loop seam matches. The rule (`lib/music.lua`, `music.step`; the game calls it each frame): on foot, indoors (0.26, a touch lower) and on the title
+the piano alone; getting in changes nothing; driving faster than 2 m/s earns the layers one by one (the first after about 4.5 s of
+driving, then one about every 9 s, 1.6 times sooner at cruise), each fading in over 3.5 s from the piece's next bar line; the
+layers follow the speed on the way down, from 6 m/s to 0.8 m/s, the last earned first, eased over a second and changed only in
+steps of 0.05 (so wobbles at cruise do nothing), and gone by a stop; pulling away again brings the earned ones back with the speed,
+with no new wait; getting out forgets the drive (what is left fades over 3 s); a card or a conversation leaves the piano alone, a
+little lower (0.8). `--audition` writes each stage as a file (build/audition/stages/) and a 68 s drive
+(build/audition/fernhollow-drive.wav and .m4a: on foot, in at 6 s, the layers joining at 12.8, 18.4, 24.0 and 29.7 s, slowing for a
+junction at 34 s and thinning, pulling away at 40 s and filling again, stopping at 55 to 59 s, out at 61 s), with the levels from
+the game's own rule (music.simulate, run in the game) placed on the bar lines as the mixer places them. **Nobody has listened to
+it.**
+
+**For the night, later:** the owner liked the celesta clip (C) "for the nighttime". Night is not in the slice; `tools/music.mjs`
+keeps "celesta" as the named night voice (`NIGHT_VOICE`; set `VOICE` to it to hear the layers under it).
+
 ### Sound levels
 
 The ambience as rendered by `tools/ambience.mjs` (a minute at each place, the music stopped; LUFS by BS.1770; "loudest 3 s" is

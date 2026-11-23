@@ -488,3 +488,59 @@ describe("a reverb send lane", () => {
     expect(dry).toBeLessThan(wet * 0.2);
   });
 });
+
+import { renderStems as renderStemsOf, renderSong as renderWhole } from "./song";
+import { integratedLufs as lufsOf } from "./loudness";
+import { decodeWav as decodeW, encodeWav as encodeW } from "./wav";
+
+describe("stems for layered music", () => {
+  const two = (): Song => ({
+    version: 1, bpm: 120, stepsPerBeat: 4, length: 32,
+    tracks: [
+      { ...synthTrack("tune"), wave: "triangle", reverb: 0.3, notes: [{ step: 0, len: 8, pitch: 72, vel: 0.8 }, { step: 16, len: 8, pitch: 76, vel: 0.8 }] },
+      { ...synthTrack("bass"), wave: "sine", notes: [{ step: 0, len: 16, pitch: 41, vel: 0.9 }, { step: 16, len: 16, pitch: 43, vel: 0.9 }] },
+      { ...synthTrack("off"), wave: "square", notes: [{ step: 4, len: 4, pitch: 60, vel: 1 }] },
+    ],
+    room: { size: 0.5, damping: 0.5, mix: 1 },
+    master: { volume: 1, lufs: -18, limit: -1 },
+    loop: { from: 8, to: 32 },
+  });
+  it("are each the song with their tracks heard, add up to the song without the master's effects, and share one gain", () => {
+    const song = two();
+    const { stems, gain } = renderStemsOf(song, [{ name: "tune", tracks: ["tune"] }, { name: "bass", tracks: ["bass"] }]);
+    expect(stems.map((s) => s.name)).toEqual(["tune", "bass"]);
+    const n = stems[0]!.sound.channels[0]!.length;
+    expect(stems[1]!.sound.channels[0]!.length).toBe(n);
+    // the sum of the stems is the song with only those tracks, at one gain (the room shared out exactly)
+    const plain = renderWhole({ ...song, master: { volume: 1 }, tracks: song.tracks.map((t) => ({ ...t, mute: t.name === "off" })) }, 44100, { linear: true });
+    const sum = [0, 1].map((c) => stems[0]!.sound.channels[c]!.map((v, i) => v + stems[1]!.sound.channels[c]![i]!));
+    // (one gain for the whole: the sum is the plain mix times a constant)
+    let xy = 0, xx = 0, peak = 0;
+    for (let i = 0; i < n; i++) { xy += sum[0]![i]! * plain.channels[0]![i]!; xx += plain.channels[0]![i]! ** 2; peak = Math.max(peak, Math.abs(sum[0]![i]!), Math.abs(sum[1]![i]!)); }
+    const k = xy / xx;
+    let err = 0;
+    for (let i = 0; i < n; i++) err = Math.max(err, Math.abs(sum[0]![i]! - plain.channels[0]![i]! * k));
+    expect(err).toBeLessThan(1e-4);
+    expect(gain).toBeGreaterThan(0);
+    // the sum meets the loudness target, or the ceiling if that is lower
+    expect(peak).toBeLessThanOrEqual(10 ** (-1 / 20) + 1e-6);
+    const l = lufsOf(sum as Float32Array[], 44100);
+    expect(peak > 10 ** (-1 / 20) - 1e-3 || Math.abs(l + 18) < 0.2).toBe(true);
+    // each stem alone is quieter than the two together (one gain, not each brought up to the target)
+    expect(lufsOf(stems[1]!.sound.channels, 44100)).toBeLessThan(l);
+  });
+  it("carry the bar lines as cue points and the loop in the WAV", () => {
+    const song = two();
+    const { stems } = renderStemsOf(song, [{ name: "tune", tracks: ["tune"] }, { name: "bass", tracks: ["bass"] }]);
+    const bytes = encodeW(stems[0]!.sound, { start: 100, end: 2000 }, [0, 44100, 88200]);
+    const text = new TextDecoder("latin1").decode(bytes);
+    expect(text.includes("smpl")).toBe(true);
+    const at = text.indexOf("cue ");
+    expect(at).toBeGreaterThan(0);
+    const v = new DataView(bytes.buffer);
+    expect(v.getUint32(at + 8, true)).toBe(3);
+    expect([0, 1, 2].map((i) => v.getUint32(at + 12 + i * 24 + 20, true))).toEqual([0, 44100, 88200]);
+    // a reader that does not know the chunks still reads the sound
+    expect(decodeW(bytes).channels[0]!.length).toBe(stems[0]!.sound.channels[0]!.length);
+  });
+});

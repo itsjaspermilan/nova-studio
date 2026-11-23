@@ -1,17 +1,19 @@
 -- The title card: the name over a painted valley, the song beginning, A to start (a prompt chip of the UI kit). A goes into the post office.
 local ui = require("lib.ui")
 local words = require("lib.words")
+local music = require("lib.music")
 
 local Title = nova.scene {}
 
 function Title:enter()
   self.t, self.leaving = 0, nil
   nova.see_through() -- (the valley's cut-away round the postmaster stays until changed: quitting to the title clears it)
-  nova.music.play("fernhollow", { volume = 0.36, fade = 1.5 })
+  music.start("title")
 end
 
 function Title:update(dt)
   self.t = self.t + dt
+  music.update(dt, {})
   if self.leaving then
     self.leaving = self.leaving + dt
     if self.leaving > 0.6 then nova.goto_scene("office") end

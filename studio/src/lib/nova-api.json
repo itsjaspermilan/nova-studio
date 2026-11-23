@@ -885,15 +885,15 @@
  {
   "name": "nova.music.layers",
   "kind": "function",
-  "signature": "nova.music.layers({ names }, { levels, bpm, beats, bar, volume, fade })",
-  "doc": "Adaptive music: play the stems of one piece (the files the studio's Stems export writes) together and in step, each at its own level from 0 to 1 (levels = {1, 0, 0}). Give bpm and beats (or bar, in seconds) so level changes can wait for a bar line. Replaces any music that plays; it cannot be seeked. Silent stems keep playing so they stay in step.",
+  "signature": "nova.music.layers({ names }, { levels, bpm, beats, bar, bars, volume, fade })",
+  "doc": "Adaptive music: play the stems of one piece (song_write with stems, or the studio's Stems export) together and sample-locked, each at its own level from 0 to 1 (levels = {1, 0, 0}): they start on one frame, loop together at the file's loop points, and if one stem's decoder falls behind they all wait for it. Level changes can wait for a bar line: the piece's own bar lines come from the first stem's file (song_write writes them, tempo changes and all), or give bars (a list of seconds into the file), or a steady bpm and beats (or bar, in seconds). Replaces any music that plays; it cannot be seeked. Silent stems keep playing (and decoding) so they stay in step: each stem costs a decoder thread and its compressed bytes in memory.",
   "group": "Sound"
  },
  {
   "name": "nova.music.layer",
   "kind": "function",
   "signature": "nova.music.layer(name, level, { fade, at })",
-  "doc": "Fade one stem of the layered music to a level from 0 to 1 over fade seconds. at = \"bar\" waits for the music's next bar line (needs bpm or bar in nova.music.layers); the default is now.",
+  "doc": "Fade one stem of the layered music to a level from 0 to 1 over fade seconds. at = \"bar\" waits for the music's next bar line (the piece's own, or bpm, bar or bars given to nova.music.layers); the default is now, which also drops a change of that stem still waiting for a bar line.",
   "group": "Sound"
  },
  {

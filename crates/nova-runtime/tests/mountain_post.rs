@@ -1808,7 +1808,11 @@ fn the_song_is_a_long_piano_piece_in_sections() {
     .unwrap();
     let tracks = song["tracks"].as_array().unwrap();
     assert!(!tracks.is_empty());
-    for t in tracks {
+    // (the piano is the stem that always plays: its two hands; the layers that join while driving are tested at the end)
+    for t in tracks
+        .iter()
+        .filter(|t| t["name"] == "right hand" || t["name"] == "left hand")
+    {
         assert_eq!(t["kind"], "synth", "no drums");
         assert_eq!(t["wave"], "piano", "{}", t["name"]);
         assert!(
@@ -1857,7 +1861,10 @@ fn the_song_is_a_long_piano_piece_in_sections() {
         .map(|n| n["vel"].as_f64().unwrap())
         .fold((1.0f64, 0.0f64), |(a, b), v| (a.min(v), b.max(v)));
     assert!(hi - lo > 0.25, "the level rises and falls: {lo} to {hi}");
-    assert!(root.join(format!("{GAME}/music/fernhollow.ogg")).is_file());
+    assert!(
+        root.join(format!("{GAME}/music/fernhollow_piano.ogg"))
+            .is_file()
+    );
 }
 
 /// "I think the ambiance is a little loud at times." The bed is steady: the creek's level eases when the camera jumps (from the
@@ -3238,4 +3245,187 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
         "it rolls down the slope without the handbrake: {out}"
     );
     assert!(v[2] < 0.02, "held still on the handbrake: {out}");
+}
+
+// ---- the music in layers (the owner, after the clips: "pretty simple when not in the vehicle, then as the player drives more and
+// more layers can come on"; and "for stopping, the layers should start to fade as the speed slows") ---------------------------------
+
+/// The rule of lib/music.lua, run on its own (music.step, as the game runs it each frame): on foot nothing joins the piano; driving
+/// earns the four layers in order, the first after about 4.5 s and then about every 9 s of driving (sooner at cruise), each entering
+/// on a bar line; small wobbles at cruise change nothing; slowing thins them as the speed falls, the last earned first, gone by a
+/// stop; pulling away brings the earned ones back within a couple of seconds, with no new wait; getting out forgets the drive; a card
+/// or a conversation leaves the piano alone.
+#[test]
+fn the_music_rule_is_piano_on_foot_layers_while_driving_and_they_follow_the_speed_down() {
+    let g = game();
+    let out = lua(
+        &g,
+        r#"(function()
+      local m = require('lib.music')
+      local st = m.new_state()
+      local dt = 0.05
+      local log = {}
+      local function run(seconds, input)
+        local changes = {}
+        for _ = 1, math.floor(seconds / dt + 0.5) do
+          local speed = type(input.speed) == 'function' and input.speed(st.t) or input.speed
+          for _, c in ipairs(m.step(st, dt, { driving = input.driving, speed = speed, quiet = input.quiet })) do
+            c.t = st.t
+            changes[#changes + 1] = c
+            log[#log + 1] = c
+          end
+        end
+        return changes
+      end
+      local function level(i) return st.sent[i] end
+      -- on foot for half a minute: nothing joins
+      assert(#run(30, { driving = false, speed = 0 }) == 0, 'on foot the piano is alone')
+      -- in the van, standing: nothing changes at once
+      assert(#run(3, { driving = true, speed = 0 }) == 0, 'getting in changes nothing')
+      -- driving at cruise: the layers are earned in order, each entering on a bar line
+      local t0 = st.t
+      local got = run(40, { driving = true, speed = 9 })
+      local first = {}
+      for _, c in ipairs(got) do if not first[c.layer] then first[c.layer] = c end end
+      for i = 1, 4 do
+        assert(first[i], 'layer ' .. i .. ' joined')
+        assert(first[i].at == 'bar', 'layer ' .. i .. ' enters on a bar line')
+        if i > 1 then assert(first[i].t > first[i - 1].t + 3, 'one at a time: ' .. i) end
+      end
+      assert(first[1].t - t0 > 2.5 and first[1].t - t0 < 6, 'the first after a few seconds: ' .. (first[1].t - t0))
+      assert(first[4].t - t0 < 35, 'all four within half a minute at cruise: ' .. (first[4].t - t0))
+      assert(st.earned == 4 and level(4) == 1, 'all four in full')
+      -- small wobbles at cruise: nothing pumps
+      assert(#run(15, { driving = true, speed = function(t) return 9 + 0.5 * math.sin(t * 1.7) end }) == 0, 'wobbles at cruise change nothing')
+      -- slowing to a stop over 4 s: the layers thin as the speed falls, the last earned first, all gone by the stop
+      local down = st.t
+      local thinning = run(5, { driving = true, speed = function(t) return math.max(0, 9 * (1 - (t - down) / 4)) end })
+      local gone = {}
+      for _, c in ipairs(thinning) do
+        assert(c.at == 'now', 'no waiting for a bar line on the way down')
+        if c.level == 0 and not gone[c.layer] then gone[c.layer] = c.t end
+      end
+      for i = 1, 4 do assert(gone[i], 'layer ' .. i .. ' faded as the van slowed') end
+      assert(gone[4] <= gone[3] and gone[3] <= gone[2] and gone[2] <= gone[1], 'the last earned goes first')
+      assert(gone[4] - down < 3.5, 'it starts as the speed falls, not at the stop: ' .. (gone[4] - down))
+      run(1, { driving = true, speed = 0 })
+      for i = 1, 4 do assert(level(i) == 0, 'stopped: the piano alone') end
+      assert(st.earned == 4, 'a stop keeps what this drive earned')
+      -- pulling away: the earned layers come back with the speed, without a new wait
+      local away = st.t
+      run(6, { driving = true, speed = function(t) return math.min(9, 9 * (t - away) / 3) end })
+      for i = 1, 4 do assert(level(i) == 1, 'layer ' .. i .. ' back with the speed') end
+      -- a card: the piano alone; closed again, they return
+      run(3, { driving = true, speed = 9, quiet = true })
+      for i = 1, 4 do assert(level(i) == 0, 'under a card the piano is alone') end
+      run(3, { driving = true, speed = 9 })
+      assert(level(4) == 1, 'after the card')
+      -- getting out: everything fades and the drive is forgotten
+      local out = run(1, { driving = false, speed = 0 })
+      for _, c in ipairs(out) do assert(c.level == 0 and c.fade >= 2, 'out of the van: a fade of a few seconds') end
+      assert(st.earned == 0 and level(1) == 0, 'the drive is forgotten')
+      return 'ok ' .. #log
+    end)()"#,
+    );
+    assert!(out.starts_with("ok"), "{out}");
+}
+
+/// The game plays the music as five stems of one piece from the start (the piano heard, the rest silent), and in the valley the
+/// rule is wired to the van: driving earns layers, braking to a stop leaves only the piano, getting out forgets the drive.
+#[test]
+fn the_valley_plays_the_stems_and_driving_brings_in_the_layers() {
+    let mut g = game();
+    let status = "(function() local s = require('lib.music').status(); return s.earned .. ' ' .. table.concat(s.levels, ',') end)()";
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 30 }},
+            {{ "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }},
+            {{ "hold": ["go", "steer=0.5"], "frames": 740, "record": "{status} --driving" }},
+            {{ "hold": ["brake"], "frames": 150 }}, {{ "wait": 120 }},
+            {{ "wait": 60, "record": "{status} --stopped" }},
+            {{ "press": "van", "frames": 5 }}, {{ "wait": 200, "record": "{status} --out" }} ] }}"#
+        ),
+    );
+    let started: Vec<String> = r.json["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| s["text"].as_str().map(str::to_string))
+        .filter(|t| t.starts_with("music"))
+        .collect();
+    assert!(
+        started.iter().any(|t| t
+            == "music layers fernhollow_piano + fernhollow_bass + fernhollow_brushes + fernhollow_pad + fernhollow_celesta"),
+        "{started:?}"
+    );
+    // the last value each phase recorded: what has been earned, and each layer's level
+    let at = |tag: &str| -> (f64, Vec<f64>) {
+        let runs = r.record(&format!("{status} --{tag}"));
+        let v = &runs
+            .last()
+            .unwrap_or_else(|| panic!("nothing recorded {tag}"))
+            .2;
+        let (e, l) = v.split_once(' ').unwrap();
+        (
+            e.parse().unwrap(),
+            l.split(',').map(|x| x.parse().unwrap()).collect(),
+        )
+    };
+    let (earned, levels) = &at("driving");
+    assert!(
+        *earned >= 2.0,
+        "twelve seconds of driving (most of it pulling away) earn layers: {earned} {levels:?}"
+    );
+    assert!(
+        levels[0] > 0.9,
+        "the first layer plays at speed: {levels:?}"
+    );
+    let (earned_stopped, levels) = &at("stopped");
+    assert!(
+        levels.iter().all(|l| *l == 0.0),
+        "stopped: the piano alone {levels:?}"
+    );
+    assert_eq!(earned_stopped, earned, "a stop keeps what was earned");
+    assert_eq!(at("out").0, 0.0, "getting out forgets the drive");
+}
+
+/// The stems stay in step: one length, one loop and one set of bar lines for all five (the mixer starts them on one frame and makes
+/// them wait for each other: mixer.rs, streamed_stems_wait_for_each_other_and_stay_in_step), and the bar lines are the piece's own.
+#[test]
+fn the_five_stems_share_one_length_one_loop_and_the_pieces_bar_lines() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // the length of an Ogg in frames: the granule position of its last page
+    let frames = |bytes: &[u8]| -> u64 {
+        let at = bytes.windows(4).rposition(|w| w == b"OggS").unwrap();
+        u64::from_le_bytes(bytes[at + 6..at + 14].try_into().unwrap())
+    };
+    type Stem = (u64, Option<(u64, u64)>, Vec<u64>); // its length, its loop, its bar lines
+    let mut first: Option<Stem> = None;
+    for stem in ["piano", "bass", "brushes", "pad", "celesta"] {
+        let bytes =
+            std::fs::read(root.join(format!("{GAME}/music/fernhollow_{stem}.ogg"))).unwrap();
+        let len = frames(&bytes);
+        let src = nova_runtime::stream::StreamSource::new(bytes).unwrap();
+        assert!(src.loop_points.is_some(), "{stem}: the loop's points");
+        assert!(
+            src.bars.len() >= 50,
+            "{stem}: the bar lines ({})",
+            src.bars.len()
+        );
+        let this = (len, src.loop_points, src.bars.clone());
+        match &first {
+            None => first = Some(this),
+            Some(f) => assert_eq!(f, &this, "{stem} is not in step with the piano"),
+        }
+    }
+    // the bar lines follow the piece's tempo (it eases at the ends of sections), so they are not evenly spaced
+    let bars = &first.unwrap().2;
+    let gaps: Vec<u64> = bars.windows(2).map(|w| w[1] - w[0]).collect();
+    assert!(
+        gaps.iter().max().unwrap() - gaps.iter().min().unwrap() > 1000,
+        "{gaps:?}"
+    );
+    // the stems replace the single file the piece used to be (the game plays only them)
+    assert!(!root.join(format!("{GAME}/music/fernhollow.ogg")).exists());
 }
