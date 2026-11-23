@@ -14,6 +14,7 @@
 --   degree lens, the postmaster about a fifth of the screen high in its lower middle, the sky and the far hills along the top; driving
 --   15 degrees down, the van in the lower third and the road and the horizon ahead. What stands between the camera and the postmaster
 --   or the van (tree crowns, a roof, the porch) is cut away round them (nova.see_through); only the ground lifts it, smoothly.
+-- - Nobody else is cut away either (residents, the driver): only scenery is. The same dodge covers a resident standing between.
 -- - The van is never cut away (the owner: "I don't like that the van dithers away to make way for the player": it is drawn with
 --   see_through = false). When the postmaster on foot would be hidden behind it, the camera moves instead: it eases up, or round to the
 --   side, just as far as it must for them to show over or past the van, and eases back once the van is no longer in the way (DODGE).
@@ -149,16 +150,47 @@ local function van_between(v, ex, ey, ez, px, py, pz)
 end
 camera.van_between = van_between
 
+-- Whether a person (a resident: an upright cylinder, CHAR) stands between the eye and a point: the nearest the line comes to their
+-- axis, on the ground plan, within their radius and at a height they reach. They are never cut away either (the owner, sixth
+-- play: "We don't need to have the circle cut through other characters or the truck"): the camera moves round them like the van.
+camera.CHAR = { r = 0.42, h = 1.7 }
+local function person_between(r, ex, ey, ez, px, py, pz)
+  local dx, dz = px - ex, pz - ez
+  local l2 = dx * dx + dz * dz
+  if l2 < 1e-6 then return false end
+  local t = math.max(0, math.min(1, ((r.x - ex) * dx + (r.z - ez) * dz) / l2))
+  local qx, qz = ex + dx * t, ez + dz * t
+  if (qx - r.x) ^ 2 + (qz - r.z) ^ 2 > camera.CHAR.r ^ 2 then return false end
+  local g = world.height(r.x, r.z)
+  local y = ey + (py - ey) * t
+  return y > g - 0.1 and y < g + camera.CHAR.h
+end
+camera.person_between = person_between
+
 -- How far the camera must lift or swing for the postmaster (their middle and their head) to show over or past the van: the smallest
 -- change of the two it tries, as a lift and a swing (0, 0 when the van is not in the way).
-local function dodge_for(C, f, p, base, v)
-  if not v or (v.x - p.x) ^ 2 + (v.z - p.z) ^ 2 > (C.dist + 3) ^ 2 then return 0, 0 end
+local function dodge_for(C, f, p, base, v, others)
+  local reach = (C.dist + 3) ^ 2
+  if v and (v.x - p.x) ^ 2 + (v.z - p.z) ^ 2 > reach then v = nil end
+  -- (the people who could be in the way: near enough to the postmaster, and not right beside them)
+  local near_people = {}
+  for _, r in ipairs(others or {}) do
+    local d2 = (r.x - p.x) ^ 2 + (r.z - p.z) ^ 2
+    if d2 < reach and d2 > 0.6 ^ 2 then near_people[#near_people + 1] = r end
+  end
+  if not v and #near_people == 0 then return 0, 0 end
   local D = camera.DODGE
   local pitch0 = C.pitch + (cam.pitch_off or 0)
   local function clear(yaw, pitch)
     local ex, ey, ez = boom(C, yaw, pitch, f)
     ey = ey + (cam.lift or 0)
-    return not van_between(v, ex, ey, ez, p.x, base + 0.4, p.z) and not van_between(v, ex, ey, ez, p.x, base + 0.85, p.z)
+    for _, y in ipairs({ 0.4, 0.85 }) do
+      if v and van_between(v, ex, ey, ez, p.x, base + y, p.z) then return false end
+      for _, r in ipairs(near_people) do
+        if person_between(r, ex, ey, ez, p.x, base + y, p.z) then return false end
+      end
+    end
+    return true
   end
   if clear(cam.yaw, pitch0) then return 0, 0 end
   -- (the smallest move: up a step, or round a step either way, the swing counted a little dearer than the lift)
@@ -188,7 +220,7 @@ local function place(dt, C, x, base, z, look_at, dodge_from)
   end
   -- (round the van: the lift and swing it needs, eased there, and eased back once the van is out of the way)
   if dodge_from then
-    local wp, wy = dodge_for(C, f, dodge_from.p, dodge_from.base, dodge_from.v)
+    local wp, wy = dodge_for(C, f, dodge_from.p, dodge_from.base, dodge_from.v, dodge_from.others)
     if not cam.ready then cam.dodge_p, cam.dodge_y = wp, wy end
     local D = camera.DODGE
     local kp = math.min(1, dt * (wp > (cam.dodge_p or 0) and D.ease or D.back))
@@ -233,7 +265,7 @@ function camera.foot(p, dt)
     local d = math.sqrt((p.x - n[1]) ^ 2 + (p.z - n[2]) ^ 2)
     near = math.max(near, 2.5 + (n.near - 2.5) * smooth(n.r, n.r * 0.5, d))
   end
-  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 2.0, margin = 0.9, near = near }, { p = p, base = base, v = nova.first("van") })
+  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 2.0, margin = 0.9, near = near }, { p = p, base = base, v = nova.first("van"), others = nova.all("resident") })
 end
 
 -- Behind the van: the same rule, quicker.
@@ -319,6 +351,30 @@ function camera.apply(dt)
   else
     nova.see_through()
   end
+end
+
+-- Where a world point is on the screen of a `w` x `h` view (the UI's units: nova.view("exact")), as this frame's camera sees it
+-- (apply() has set it): x, y, and how far in front of the eye it is in metres; nil when it is behind the eye. A right-handed look-at, the
+-- lens's field of view the vertical one.
+function camera.project(x, y, z, w, h)
+  local e, a = cam.eye, cam.at
+  local fx, fy, fz = a[1] - e[1], a[2] - e[2], a[3] - e[3]
+  local fl = math.sqrt(fx * fx + fy * fy + fz * fz)
+  if fl < 1e-6 then return nil end
+  fx, fy, fz = fx / fl, fy / fl, fz / fl
+  -- right = forward x up(0, 1, 0), up = right x forward
+  local rx, rz = -fz, fx
+  local rl = math.sqrt(rx * rx + rz * rz)
+  if rl < 1e-6 then return nil end
+  rx, rz = rx / rl, rz / rl
+  local ux, uy, uz = -rz * fy, rz * fx - rx * fz, rx * fy
+  local dx, dy, dz = x - e[1], y - e[2], z - e[3]
+  local depth = dx * fx + dy * fy + dz * fz
+  if depth < 0.05 then return nil end
+  local t = math.tan(math.rad(cam.fov) / 2)
+  local sx = w / 2 + (dx * rx + dz * rz) / (depth * t * (w / h)) * (w / 2)
+  local sy = h / 2 - (dx * ux + dy * uy + dz * uz) / (depth * t) * (h / 2)
+  return sx, sy, depth
 end
 
 -- "Forward" and "right" on the ground as this camera sees it (for the stick).

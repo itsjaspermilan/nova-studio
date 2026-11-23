@@ -51,6 +51,18 @@ function Valley:enter()
   self.van = nova.named("van")
   self.p.indoors = false
   self.p.seated = false
+  nova.pause(false)
+  self.paused = false
+  ui.van_panel_reset()
+  -- nobody is ever cut away by the see-through circle (the owner, sixth play: "We don't need to have the circle cut through other
+  -- characters or the truck"): the residents, the postmaster and what they carry are drawn with see_through = false, like the van
+  -- (only scenery is cut: crowns, roofs, the porch); where one hides the postmaster the camera moves instead (lib/camera.lua)
+  for _, r in ipairs(nova.all("resident")) do
+    if r.draw_opts then r.draw_opts.see_through = false end
+    if r.parcel_opts then r.parcel_opts.see_through = false end
+  end
+  if self.p.draw_opts then self.p.draw_opts.see_through = false end
+  if self.p.parcel_opts then self.p.parcel_opts.see_through = false end
   self.t = 0
   self.fade_in = state.came_out and 1 or 0
   self.mode = "foot"
@@ -90,6 +102,7 @@ function Valley:enter()
 end
 
 function Valley:leave()
+  nova.pause(false)
   ambience.stop()
   state.van = { x = self.van.x, z = self.van.z, heading = self.van.heading }
   self.van.engine:stop()
@@ -154,8 +167,9 @@ function Valley:actions()
   local at_back = v:stopped() and v.back_open > 0.5 and self:to_back() < AT_BACK
   local at_door = v:stopped() and self:to_door() < AT_DOOR
   if at_back then
-    if state.carrying and #state.van_load < state.VAN_HOLDS then a = "load"
-    elseif not state.carrying and #state.van_load > 0 then a = "pick" end
+    -- (a full van refuses the parcel softly when X is pressed: Valley:act)
+    if state.carrying then a = "load"
+    elseif #state.van_load > 0 then a = "pick" end
   end
   if at_door and not state.carrying then b = "get_in" end
   if not a and not at_back and not at_door then
@@ -220,6 +234,13 @@ function Valley:act(a, r)
     nova.sound.play("knock", { volume = 0.6, at = { r.x, world.height(r.x, r.z) + 1, r.z }, range = 30 })
     self:say(r, { words.people[r.who].without }, { words.people[r.who].faces.without })
   elseif a == "load" then
+    if #state.van_load >= state.VAN_HOLDS then
+      -- full: refused, softly (the panel says so for a moment; the parcel stays in the arms)
+      self.full_t = 1
+      nova.sound.play("tick", { volume = 0.4, pitch = 0.72 })
+      nova.log("the van is full")
+      return
+    end
     -- into the hold, at once: the van dips a little on its springs
     local which = state.carrying
     state.van_load[#state.van_load + 1] = which
@@ -296,8 +317,29 @@ function Valley:back_doors()
   end
 end
 
+-- Start (the pause menu) and Select (the paper map) stop the world (the owner, sixth play: "Pressing start should actually pause the
+-- game", "Pressing Select for the map should actually pause the game"): nova.pause freezes every entity (the van, the residents, the
+-- postmaster and their animations) and the engine's clock (wind, clouds, water); this scene's own clocks (`t`, the camera, the ambience's
+-- timers, the music's layer timers, the doors, the fades) stand too, the stick is not read, and closing the card carries on from the
+-- same moment. The music goes on, ducked (`quiet`), and the van's engine goes quiet.
 function Valley:update(dt)
+  self.dt = dt
+  local kind = cards.kind()
+  local paused = kind == "pause" or kind == "map"
+  if paused ~= self.paused then
+    self.paused = paused
+    nova.pause(paused)
+    if paused then self.van.engine:silence() end
+    nova.log(paused and "paused" or "resumed")
+  end
+  if paused then
+    cards.update(dt)
+    music.update(dt, { driving = self.mode == "van", speed = self.van.speed, quiet = true })
+    self.hint = nil
+    return
+  end
   self.t = self.t + dt
+  self.full_t = math.max(0, (self.full_t or 0) - dt * 0.5)
   self.fade_in = math.max(0, self.fade_in - dt / FADE)
   local p, v = self.p, self.van
   if self.leaving then
@@ -381,8 +423,9 @@ function Valley:hints()
     list[#list + 1] = { "SELECT", words.hint.map }
     return list
   end
+  -- (at the van's open back the floating panel has its own buttons)
+  if self:panel_mode() then return { { "SELECT", words.hint.map } } end
   local a, b = self:actions()
-  if a == "pick" then return { { "SELECT", words.hint.map } } end -- (the panel has its own buttons)
   if a then list[#list + 1] = { "X", a == "give" and words.hint.give or a == "load" and words.hint.load or a == "knock" and words.hint.knock or words.hint.talk } end
   if b then list[#list + 1] = { "Y", words.hint.get_in }
   elseif state.carrying and self.van:stopped() and self:to_door() < AT_DOOR then list[#list + 1] = { nil, words.hint.load_at_back } end
@@ -390,30 +433,57 @@ function Valley:hints()
   return list
 end
 
--- The panel at the van's back is a light overlay, not a mode: it fades and slides up over PICKER_FADE seconds while the zone wants it
--- (empty hands, parcels in the van, standing at the open back, nothing else open) and fades away when they walk off. Nothing waits
--- for it: no lock on the stick or the camera, no pause, the world runs on. `picker_a` is how far up it is (0 to 1); the parcels it
--- shows are kept while it fades out, so the last one taken does not vanish at once.
+-- The panel at the van's back is a light overlay, not a mode: it floats above the open rear doors (ui.van_panel) and fades up over
+-- PICKER_FADE seconds while the zone wants it (standing at the open back, nothing else open) and away when they walk off. Nothing waits
+-- for it: no lock on the stick or the camera, no pause, the world runs on. `picker_a` is how far up it is (0 to 1); what it shows is
+-- kept while it fades out, so the last one taken does not vanish at once.
 local PICKER_FADE = 0.2
 function Valley:fade_picker(dt)
-  local want = not cards.active() and not dialogue.active() and not self.leaving and self:picker() ~= nil
-  if want then self.pk = { list = { table.unpack(state.van_load) }, i = self.pick_i } end
+  local mode = (not cards.active() and not dialogue.active() and not self.leaving) and self:panel_mode() or nil
+  if mode then self.pk = { mode = mode, list = { table.unpack(state.van_load) }, i = self.pick_i, count = #state.van_load } end
+  local want = mode ~= nil
   local a = self.picker_a or 0
   self.picker_a = want and math.min(1, a + dt / PICKER_FADE) or math.max(0, a - dt / PICKER_FADE)
 end
 
+-- What the panel at the van's open back is for now: "pick" (parcels in the van, empty hands), "load" (a parcel in the arms) or "empty"
+-- (nothing either way); nil away from the open back.
+function Valley:panel_mode()
+  local p, v = self.p, self.van
+  if not p.control or self.mode ~= "foot" then return nil end
+  if not (v:stopped() and v.back_open > 0.5 and self:to_back() < AT_BACK) then return nil end
+  if state.carrying then return "load" end
+  return #state.van_load > 0 and "pick" or "empty"
+end
+
 -- (what the panel at the van's back shows now, for the tests: nil when it is not open)
 function Valley:picker()
-  local a = self:actions()
-  if a ~= "pick" then return nil end
+  if self:panel_mode() ~= "pick" then return nil end
   return state.van_load[math.max(1, math.min(#state.van_load, self.pick_i))]
+end
+
+-- The point the panel stands on: the middle of the rear doorway, 0.3 m over the roof line at the back (the van's own metres: the roof
+-- is 1.6 high, the back at z = -1.42, a little behind it), on the screen. Where it is when the camera cannot place it (behind the eye).
+Valley.PANEL_AT = { 0, 1.9, -1.45 }
+function Valley:panel_anchor(w, h)
+  local v = self.van
+  local x, y, z = v:to_world(Valley.PANEL_AT[1], Valley.PANEL_AT[2], Valley.PANEL_AT[3])
+  -- (the renderer lifts the van by the hill under its middle: so does this point)
+  local sx, sy = camera.project(x, y + nova.terrain_height(v.x, v.z), z, w, h)
+  if not sx then return w / 2, h * 0.5 end
+  -- seen from the front (the camera orbited to the other side of the van) the doors' point can land over the postmaster: the panel then
+  -- stands above their head instead of on it (the owner: "The popup currently blocks the player")
+  local p = self.p
+  local hx, hy = camera.project(p.x, nova.terrain_height(p.x, p.z) + (p.y or 0) + 1.45, p.z, w, h)
+  if hx and math.abs(sx - hx) < ui.s(150) and sy > hy - ui.s(14) then sy = hy - ui.s(14) end
+  return sx, sy
 end
 
 local PUFF = { color = { 226, 226, 224, 70 } }
 local BOARD = { w = 2.1, h = 0.43 }
 local OUT = { w = 2.0, h = 0.73 }
 function Valley:draw()
-  camera.apply(1 / 60)
+  camera.apply(self.paused and 0 or 1 / 60)
   -- chimney smoke: soft puffs rising and drifting with the wind, thinning as they go
   for _, c in ipairs(self.chimneys) do
     for i = 0, 13 do
@@ -461,7 +531,15 @@ function Valley:draw_ui()
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h, math.atan(camera.forward())) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
-    if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then ui.picker(self.pk.list, math.max(1, math.min(#self.pk.list, self.pk.i)), w, h, self.picker_a) end
+    if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then
+      -- the van's panel, floating over the open doors
+      local pk = self.pk
+      local ax, ay = self:panel_anchor(w, h)
+      ui.van_panel({ mode = pk.mode, list = pk.list, i = math.max(1, math.min(#pk.list, pk.i or 1)), count = pk.count, cap = state.VAN_HOLDS,
+        note = math.min(1, (self.full_t or 0) * 1.4), ax = ax, ay = ay, a = self.picker_a }, w, h, self.dt)
+    else
+      ui.van_panel_reset()
+    end
   end
   dialogue.draw(w, h)
   cards.draw(w, h)

@@ -82,6 +82,14 @@ if (doing("minimap")) {
     { circle: [100, 98, 85], fill: { radial: [100, 98, 85], stops: [[0, "#dfe0b0"], [0.8, "#d5d8a6"], [1, "#c6c896"]] } },
     { ring: [100, 98, 85, 1.5], fill: "#6f4a31", opacity: 0.55 },
   ]);
+  // the disc's rim again, with nothing inside it: drawn over the roads, so they end under the frame (a road is cut at the meadow's edge
+  // and the cut hides under this ring, instead of showing as a flat end). The same colours and place as the disc's own paper edge and
+  // wood, out to 92 px (the roads reach 87).
+  img("ui/minimap_rim", [200, 200], [
+    { ring: [100, 98, 86, 2], fill: "#f3e6c8" },
+    { ring: [100, 98, 85.375, 0.75], fill: "#6f4a31", opacity: 0.55 },
+    { ring: [100, 98, 89.5, 5], fill: "#9a6a44" },
+  ]);
   img("ui/minimap_north", [48, 48], [
     { circle: [24, 25, 19], fill: "#2a2018", opacity: 0.35, blur: 1.5 },
     { circle: [24, 23, 18], fill: PAL.red, stroke: { color: "#f3e6c8", width: 3, align: "inside" } },
