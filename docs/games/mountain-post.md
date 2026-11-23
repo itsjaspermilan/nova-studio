@@ -244,3 +244,25 @@ These replace the matching lines above where they differ.
   clumps of three to eight by the roads and the houses with open grass between, a big "hero" tree at each signpost and gate, and
   where nobody goes (the valley's sides, beyond the creek, the far bank, the edges) a few dozen soft forest masses: lumpy rows of
   big puffs in the pine greens with a scalloped top and a darker foot (tools/nature.mjs, placed by tools/scene.mjs).
+
+## The owner's second play on the Retroid (2026-11-22: finished both deliveries)
+
+Kept: the indoor top-down camera ("seems good!"), leaving the van ("perfect"), the trees in clumps ("Better, keep it"), loading at
+the back ("Good first pass!"). To change, in the owner's words:
+
+- **Van:** "Don't like it still. It seems too tall still, we need to make it shorter (vertically). The turning is too aggressive
+  and doesn't feel like there's actual weight to it. The back doors look like a bunch of rectangles just stuck together, not a
+  solid door." And: "the van can be slower to start and wait for the upgrades to be faster".
+- **Walking:** "The character walk needs to be reworked a bit. I think the animation needs to slow down a bit and the player
+  should be able to move faster."
+- **Camera on foot:** "When walking I think we can clone the Animal Crossing camera." "When leaving the post office, I think we
+  can be further away from the post office because as the user walks, the camera turns around quickly." "If I just walk around
+  in a circle, there is quite a bit of stutter that happens."
+- **Prompts:** "If I'm close to the van trying to get the package, I only get an option to 'knock' even though 1 I'm not at a
+  door, 2 I'm not trying to talk to the person and they keep following me."
+- **Sound:** "The music is a little repetitive. Can we use piano? Also I think the ambiance is a little loud at times."
+- **UI:** "Can we spruce up the menu UI a bit? Looks kinda bad. Maybe let's make a UI system with Kenney assets? I want a cohesive
+  theme that we can use. Then we can use that for the van menu. Also if there is only one item in the van, the menu should still
+  pop up to show what's there. Instead of listing all the active packages in the top left, the user should be able to scroll
+  through them with LB/RB assuming they're not in the van storage menu." The owner approved downloading one Kenney pack: UI Pack
+  2.0 (CC0), from kenney.nl.
