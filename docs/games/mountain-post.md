@@ -925,3 +925,15 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
   circle now counts only blockers beyond that near range. An eye that would sit in or within 3 m of a tree's crown is drawn in toward
   the postmaster (`camera.PULL`: down to 0.55 of the boom, eased, held 0.5 s). Buildings are not pulled from: they fade. Test:
   `scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_crown`.
+
+## The owner's notes, 2026-11-23 (evening)
+
+1. "I thought we were removing the requirement to brake when shifting gears?" (It is removed in the build installed after
+   this note; the build they played was older.)
+2. "We should add a tailpipe with exhaust for the truck."
+3. "We can remove the conveyor belt from the post office. Looks kinda dumb haha."
+4. "Instead of creating a popup when the user picks up a package, there should be a similar floating tooltip when the player
+   is near the package that shows a trimmed version of that popup. Also there should be a white outline on what the user is
+   about to pickup."
+5. "Let's angle the fox tail a little higher."
+6. "Also let's make the van blue with a red stripe."
