@@ -869,3 +869,6 @@ yet."
 
 The owner, 2026-11-23: "We need to add creep for D R and L." (idle creep like a real automatic: off the brake in D, R or L the
 van eases forward or back at walking pace; none in P or N.)
+
+The owner, 2026-11-23: "We can remove the brake requirement honestly." (shifting needs no brake; only shifting into P or R while
+moving faster than about 1 m/s is refused.)
