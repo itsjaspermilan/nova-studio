@@ -6185,9 +6185,7 @@ fn the_buildings_share_one_house_style_rounded_and_in_the_palette() {
         // windows: glass 1.1 x 0.95 m
         let windows =
             sized("#5a7d8f", [1.1, 0.95, 0.04], 0.012) + sized("#ffe0a0", [1.1, 0.95, 0.04], 0.012);
-        let want = if kind == "post_office" {
-            2
-        } else if kind == "cabin_hazel" {
+        let want = if kind == "post_office" || kind == "cabin_hazel" {
             2
         } else {
             1
