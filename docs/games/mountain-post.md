@@ -875,3 +875,4 @@ moving faster than about 1 m/s is refused.)
 
 The owner, 2026-11-23: "I do want to keep the PRNDL UI on screen." The gear display stays whenever driving; removing the button
 chips later (feedback for later, item 1) must not remove it.
+The owner, 2026-11-23: "We should move the PRNDL to the right along with an analog speedometer."
