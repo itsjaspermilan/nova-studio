@@ -986,3 +986,6 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
 ### "The colour scheme for the player seems a little drab" (2026-11-23)
 
 Three brighter outfits were pictured in the valley at the game camera, close and beside the blue van (`build/gallery/bright-options-*.png`, not committed): A a marigold cardigan, denim trousers, a tomato-red bucket hat and a teal neckerchief; B a sunflower cardigan, teal trousers and the tomato hat; C as A with a teal hat and a tomato neckerchief. **Chosen: A.** The marigold pops off the grass and the grey road without matching the fox's own orange, the denim legs read against the road and the fur, the tomato hat answers the van's red band, and the teal neckerchief is one bright accent; the teal hat (C) and the teal trousers (B) sank into the grass at eight metres. Nothing of it is a uniform. Hazel's shirt is a warmer rust and her trousers olive, Pip's vest sunnier and his trousers a clearer blue. The colours are `CAST` in tools/palette.mjs.
+12. "Sorry flip X and A while driving again": while driving A steps toward L, X toward P (as before the swap).
+13. "There's a weird bug where you can see the side windows extending past the van when you're looking at the back of the
+    window."

@@ -547,7 +547,7 @@ fn getting_in_and_out_works_only_where_it_should() {
     // moving, Y does not get out (into D first: the brake held, A three times from P)
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "press": "interact", "frames": 10 }, { "hold": ["brake"], "press": "interact", "frames": 10 }, { "hold": ["brake"], "press": "interact", "frames": 10 },
+        r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 10 }, { "hold": ["brake"], "press": "confirm", "frames": 10 }, { "hold": ["brake"], "press": "confirm", "frames": 10 },
         { "hold": ["go"], "frames": 150 }, { "hold": ["go"], "press": "van", "frames": 10 } ] }"#,
     );
     assert!(num(&g, "nova.named('van').speed") > 3.0);
@@ -5714,7 +5714,7 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 10, "lua": "GEAR0 = nova.named('van').gear" }, { "press": "interact" }, { "wait": 5 } ] }"#,
+        { "wait": 10, "lua": "GEAR0 = nova.named('van').gear" }, { "press": "confirm" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "GEAR0"), "P", "in P on getting in");
     assert_eq!(
@@ -5732,7 +5732,7 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     for _ in 0..2 {
         play(
             &mut g,
-            r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
+            r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
         );
         seen.push(lua(&g, "nova.named('van').gear"));
     }
@@ -5740,20 +5740,20 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     // A steps back towards P, then X on again
     play(
         &mut g,
-        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "N");
     play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     // rolling at speed: D to L and back with no brake
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "hold": ["go"], "press": "interact", "frames": 6 },
+        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "hold": ["go"], "press": "confirm", "frames": 6 },
         { "hold": ["go"], "frames": 4, "lua": "IN_L = nova.named('van').gear .. ' ' .. nova.named('van').speed" },
-        { "press": "confirm" }, { "wait": 4 } ] }"#,
+        { "press": "interact" }, { "wait": 4 } ] }"#,
     );
     let in_l = lua(&g, "IN_L");
     assert!(in_l.starts_with("L "), "D to L on the move: {in_l}");
@@ -5878,7 +5878,7 @@ fn the_reversing_beeper_sounds_only_in_r() {
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 200 }, { "hold": ["brake"], "press": "interact", "frames": 8 } ] }"#,
+        { "wait": 200 }, { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
     );
     assert_eq!(beeps(&r), 0, "none in P");
     assert_eq!(lua(&g, "nova.named('van').gear"), "R");
@@ -5900,12 +5900,12 @@ fn the_reversing_beeper_sounds_only_in_r() {
     assert!(vol <= 0.3, "quiet: played at {vol} (the horn at 0.7)");
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.2", "max": 200 }, { "hold": ["brake"], "press": "interact", "frames": 8 } ] }"#,
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.2", "max": 200 }, { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "N");
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "wait": 300 }, { "hold": ["brake"], "press": "interact", "frames": 8 }, { "hold": ["go"], "frames": 300 } ] }"#,
+        r#"{ "steps": [ { "wait": 300 }, { "hold": ["brake"], "press": "confirm", "frames": 8 }, { "hold": ["go"], "frames": 300 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     assert_eq!(beeps(&r), 0, "none in N or D");
@@ -6005,7 +6005,7 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
         );
         play(
             &mut g,
-            r#"{ "steps": [ { "hold": ["brake"], "press": "interact", "frames": 8 }, { "wait": 2 } ] }"#,
+            r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 8 }, { "wait": 2 } ] }"#,
         );
         assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "R");
     }
@@ -6014,7 +6014,7 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 5 }, { "press": "interact" }, { "wait": 5 }, { "press": "confirm" }, { "wait": 5 }, { "press": "horn" }, { "wait": 5 } ] }"#,
+        { "wait": 5 }, { "press": "confirm" }, { "wait": 5 }, { "press": "interact" }, { "wait": 5 }, { "press": "horn" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(logged(&r).iter().filter(|l| *l == "horn").count(), 1);
 }
@@ -7302,7 +7302,7 @@ fn a_creeping_van_is_not_stopped_until_braked_or_in_p() {
     play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "press": "interact" }, { "wait": 3 }, { "press": "interact" }, { "wait": 3 }, { "press": "interact" }, { "wait": 150 }, { "press": "van" }, { "wait": 5 } ] }"#,
+        { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 150 }, { "press": "van" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     assert!(num(&g, "nova.named('van').speed") > 1.0, "creeping in D");
@@ -7338,7 +7338,7 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
     assert!(num(&g, "require('lib.gear_hud').kmh") < 0.01, "0 standing");
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" },
         { "hold": ["go"], "frames": 360, "record": "string.format('%.3f', require('lib.gear_hud').kmh)" } ] }"#,
     );
     let (kmh, speed) = (
@@ -7359,7 +7359,7 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
     assert!(step < 0.6, "eased: at most {step} km/h a frame");
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" },
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
         { "hold": ["go"], "frames": 200 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "R");
