@@ -506,3 +506,37 @@ These replace the matching lines above where they differ (the UI theme, the musi
   the map too."
 - **Road signs:** "hard to see from far away. Some of the lines don't show up almost like a rendering issue?"
 - **Van:** "the turning radius while slow isn't as tight as I would hope it to be."
+
+### What the fifth play changed: walking and running (the movement and the animation)
+
+"It doesn't look like the character is a stiff person sliding while walking." Measured first: the old clips, played by time at a
+rate chosen from the speed, had the sole that touched the ground slide 17 to 60 cm a step (at a creep worst of all); the chibi's
+straight legs swung so that the foot on the ground was the one coming forward.
+
+- **Played by the ground covered** (Nova: the animator's `by = "distance"`, docs/project-format.md): the walk, run and trot move on
+  by the metres walked over each clip's stride (`"stride"` in the model file, written by character3d_make and tools/strides.mjs:
+  0.728 m walk, 0.765 m run, 0.664 m trot), mixed by speed, one cycle shared by every state, so B pressed or let go and a parcel taken
+  or set down carry on with the same foot. Below the walk the stride shortens with the speed (short steps, not slow motion).
+- **Feet that keep to the ground** (Nova: `nova.gait`, `crates/nova-runtime/lua/gait.lua`): each foot is fixed where it lands; each
+  frame the one-piece leg is turned from the hip to reach it (a foot behind rolls onto its toe, one in front lands on its heel, the
+  leg may lengthen or shorten up to 12% and 16%); the hips sit as high as the feet allow and dip 2 to 3 cm as a foot lands, sway and
+  roll over the standing foot, the shoulders turn against them; a stop finishes the step in the air and brings the other foot up;
+  a turn on the spot shuffles. On the porch and the bridge's deck the postmaster is drawn lifted as one by the ground under him, so
+  the creek's bank under the bridge no longer bends him.
+- **Weight:** the speed is a critically damped spring (0.15 to 0.3 s to the full walk, longer to the run, a settle of about 0.25 s to
+  a stop, longer from a run); the body turns at a limited rate with the head looking first, goes the way it faces (up to 78 degrees
+  off it while turning), and a turn right back brakes nearly straight, then pivots: it never slides backwards facing the wrong way.
+  It leans into setting off and back as it stops.
+- **Life:** springs (`follow`) on the head (lags and nods), the fox's ears, the tail (swings out of a turn), the satchel (now its own
+  part), the mittens (a follow-through at each arm swing) and the arms out in the run; standing a while, a look round or a shift of
+  weight now and then. Hazel walks at 1.25 m/s with a heavy rolling gait (more roll and sway, little bounce, a slower beat); Pip at
+  1.6 with a shorter stride (a quicker beat), a big bounce, high feet and long ears that trail and flop. The ears are parts of their
+  own now (character3d_make).
+- **Measured** (tests at the end of crates/nova-runtime/tests/mountain_post.rs; the sole as drawn, its point on the ground followed
+  frame to frame): at every stick tilt from 0.2 to full, the run, the trot, starting, stopping, run to walk and back, turning at a
+  walk and a run, a turn right back and a turn on the spot, no standing sole slides more than 0.6 cm in a step, most under 0.2 (the test allows 1.5);
+  up, down and across the steepest open hillside near the road, up the porch steps and onto the bridge, under 1.5 cm. Pictures:
+  `build/gallery/` (made by the agent, not committed).
+- **Not done or not checked:** nothing is tried on the Retroid yet. On the porch's 15 cm steps a straight 20 cm leg cannot stand on
+  two steps at once: the hips jump less than before but a toe can poke into the next riser for a frame. The probe's "slide" is the
+  model's own drawing; the per-vertex hill lift (the renderer) shears the body a little on a steep slope.

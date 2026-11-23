@@ -216,6 +216,37 @@ describe("character3d_make", () => {
     expect(makeCharacter3d({}).faces).toBeUndefined();
   });
 
+  it("gives each gait clip its stride, and hangs an animal's ears and a satchel's bag on parts of their own, so a game can let them follow", () => {
+    for (const build of ["chibi", "average"]) {
+      const made = makeCharacter3d({ species: "rabbit", build, accessory: "satchel" });
+      const doc = parsed(made.model);
+      // the ground a cycle covers is the no-slide speed times the clip's length, on the gait clips only
+      for (const name of ["walk", "run", "trot"]) {
+        const c = doc.clips!.find((x) => x.name === name)!;
+        expect(c.stride, `${build} ${name}`).toBeCloseTo((made.speeds as Record<string, number>)[name]! * c.duration, 2);
+        expect(made.clips.find((x) => x.name === name)!.stride).toBe(c.stride);
+      }
+      for (const name of ["idle", "wave", "sit", "carry"]) expect(doc.clips!.find((x) => x.name === name)!.stride).toBeUndefined();
+      // the ears under the head, each with its root as its pivot (high on the head, one either side), not in the head's own mesh
+      const find = (ps: any[], n: string): any => { for (const p of ps) { if (p.name === n) return p; const f = find(p.children ?? [], n); if (f) return f; } };
+      const head = find(doc.parts, "head");
+      const ears = ["ear_l", "ear_r"].map((n) => head.children.find((p: any) => p.name === n));
+      expect(ears[0].origin[0]).toBeGreaterThan(0);
+      expect(ears[1].origin[0]).toBeLessThan(0);
+      for (const e of ears) expect(e.cubes.length).toBeGreaterThan(0);
+      expect(made.parts).toEqual(expect.arrayContaining(["ear_l", "ear_r", "bag"]));
+      // the bag hangs from the spine on the right hip
+      const bag = find(doc.parts, "bag");
+      expect(find(doc.parts, "spine").children).toContain(bag);
+      expect(bag.origin[0]).toBeLessThan(0);
+    }
+    // a bear's round ears are parts too; a figure with no satchel has no bag; a person has no ears to hang
+    const bear = makeCharacter3d({ species: "bear", build: "chibi" });
+    expect(bear.parts).toEqual(expect.arrayContaining(["ear_l", "ear_r"]));
+    expect(bear.parts).not.toContain("bag");
+    expect(makeCharacter3d({}).parts).not.toContain("ear_l");
+  });
+
   it("paints a chibi's face on a squashed round head: every drawing a decal part, all but the first of each set hidden at rest, one texture", () => {
     for (const species of ["fox", "bear", "rabbit"]) {
       const made = makeCharacter3d({ species, build: "chibi", head_scale: 1.75, accessory: species === "bear" ? "apron" : "none", emblem: species === "fox" ? "envelope" : "none" });

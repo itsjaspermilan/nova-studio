@@ -63,6 +63,8 @@ function restrideJson(model) {
       }
     }
     clip.duration = p[name].duration;
+    // (the ground one cycle covers, which the game's animator plays it by: entities/postmaster.lua, lib/resident.lua)
+    clip.stride = Math.round(TARGET[name] * clip.duration * 1000) / 1000;
     for (const e of clip.events ?? []) e.t = Math.round(e.t * k * 10000) / 10000;
   }
   return changed;

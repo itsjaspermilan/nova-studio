@@ -350,8 +350,9 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
       samplers.push({ input, output, interpolation: "LINEAR" });
       channels.push({ sampler: samplers.length - 1, target: { node, path: track.prop === "position" ? "translation" : track.prop } });
     }
-    // (named moments ride along as extras: the game reads `extras.nova.events` of each animation)
-    if (channels.length) animations.push({ name: clip.name, samplers, channels, ...(clip.events?.length ? { extras: { nova: { events: clip.events.map((e) => ({ t: e.t, name: e.name })) } } } : {}) });
+    // (named moments and a gait's stride ride along as extras: the game reads `extras.nova.events` and `extras.nova.stride`)
+    const nova = { ...(clip.events?.length ? { events: clip.events.map((e) => ({ t: e.t, name: e.name })) } : {}), ...(clip.stride ? { stride: clip.stride } : {}) };
+    if (channels.length) animations.push({ name: clip.name, samplers, channels, ...(Object.keys(nova).length ? { extras: { nova } } : {}) });
   }
 
   // Circles stay `[x, z, r]` under `colliders`; capsules and boxes have keys of their own (older readers ignore them). Lengths are in metres,

@@ -59,6 +59,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     match name {
         "nova.timers" => Some(include_str!("../lua/timers.lua")),
         "nova.anim" => Some(include_str!("../lua/anim.lua")),
+        "nova.gait" => Some(include_str!("../lua/gait.lua")),
         "nova.engine_sound" => Some(include_str!("../lua/engine_sound.lua")),
         _ => None,
     }
@@ -2347,6 +2348,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     events.set(k + 1, e)?;
                 }
                 entry.set("events", events)?;
+                // a gait's ground covered in one cycle (metres), when the model file gives it: the animator's `by = "distance"`
+                if let Some(stride) = c.stride {
+                    entry.set("stride", stride)?;
+                }
                 list.set(i + 1, entry)?;
             }
             Ok(list)
