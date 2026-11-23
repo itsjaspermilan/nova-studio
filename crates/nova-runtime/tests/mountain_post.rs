@@ -6980,3 +6980,215 @@ fn the_creek_runs_between_smooth_painted_banks() {
         "the waterline wiggles by up to {worst:.2} m from row to row"
     );
 }
+
+// ---- the post office room: the package counter, the picture frame, the belt window, the old computer (the owner, 2026-11-23) ----------
+
+/// Where the aisle in front of a tile of the package counter is (tile 1 is the leftmost; they are 0.6 m apart).
+fn aisle_in_front_of_tile(g: &Game, i: usize) -> (f64, f64) {
+    (
+        num(g, &format!("nova.named('tile_{i}').x")),
+        num(g, &format!("nova.named('tile_{i}').z")) + 0.85,
+    )
+}
+
+/// The package counter has ten square tiles in a row along the back wall, 0.6 m apart, and the day's two parcels lie one to a tile
+/// on the first two from the left (the rest empty); each parcel sits at its tile's middle.
+#[test]
+fn the_package_counter_holds_one_parcel_to_a_tile() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "route": [ { "wait": 10 } ] }"#,
+    );
+    assert_eq!(num(&g, "#nova.all('tile')"), 10.0);
+    for i in 1..=10 {
+        assert!(
+            (num(&g, &format!("nova.named('tile_{i}').x")) - (-3.0 + 0.6 * (i as f64 - 1.0))).abs()
+                < 1e-6,
+            "tile {i} is 0.6 m from the last"
+        );
+        assert!(
+            (num(&g, &format!("nova.named('tile_{i}').z")) - num(&g, "nova.named('tile_1').z"))
+                .abs()
+                < 1e-6,
+            "the tiles are in one row"
+        );
+    }
+    // the first parcels on the first two tiles, nothing else on a tile
+    assert_eq!(
+        lua(&g, "(function() local t = require('lib.state').settle(); local s = {}; for i = 1, 10 do s[#s + 1] = tostring(t[i]) end; return table.concat(s, ',') end)()"),
+        "hazel,pip,nil,nil,nil,nil,nil,nil,nil,nil"
+    );
+    // each parcel at its tile's middle
+    for (who, tile) in [("hazel", 1), ("pip", 2)] {
+        for axis in ["x", "z"] {
+            assert!(
+                (num(&g, &format!("nova.named('parcel_{who}').{axis}"))
+                    - num(&g, &format!("nova.named('tile_{tile}').{axis}")))
+                .abs()
+                    < 1e-6,
+                "{who} lies at the middle of tile {tile}"
+            );
+        }
+    }
+    // and the old shelf (by the right-hand wall) is gone: nothing of the parcels is drawn there
+    assert_eq!(num(&g, "(function() local n = 0; for _, d in ipairs(nova.testing.drawn('model', 'parcel_')) do if d.x > 3.0 then n = n + 1 end end; return n end)()"), 0.0);
+}
+
+/// Taking a parcel empties its tile (the model leaves it) and the other stays put; putting it back fills the first free tile; every
+/// tile and the Mayor's letter can be reached on foot.
+#[test]
+fn taking_a_parcel_empties_its_tile_and_putting_it_back_fills_the_first_free_one() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit'); S = require('lib.state')", "route": [
+        { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('hazel')" }, { "until": "not T.walking()", "max": 600 },
+        { "wait": 5, "lua": "OFFER = nova.scene_now():action()" },
+        { "press": "interact" }, { "wait": 30 }, { "press": "interact" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(lua(&g, "OFFER"), "take");
+    assert_eq!(lua(&g, "S.carrying"), "hazel");
+    let tiles = "(function() local t = S.settle(); return tostring(t[1]) .. ',' .. tostring(t[2]) .. ',' .. tostring(t[3]) end)()";
+    assert_eq!(
+        lua(&g, tiles),
+        "nil,pip,nil",
+        "tile 1 is empty, Pip's parcel stayed"
+    );
+    assert_eq!(
+        num(&g, "(function() local n = 0; local t = nova.named('tile_1'); for _, d in ipairs(nova.testing.drawn('model', 'parcel_hazel')) do if math.abs(d.x - t.x) < 0.2 and math.abs(d.z - t.z) < 0.2 and d.y < 1.0 then n = n + 1 end end; return n end)()"),
+        0.0,
+        "no parcel model is on the emptied tile"
+    );
+    // put it back from another place along the counter: it goes to the first free tile, which is tile 1 again
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.named('postmaster').walk_to = { nova.named('tile_5').x, nova.named('tile_5').z + 0.85 }" }, { "until": "not T.walking()", "max": 600 },
+        { "wait": 5, "lua": "OFFER = nova.scene_now():action()" }, { "press": "interact" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(lua(&g, "OFFER"), "put_back");
+    assert_eq!(lua(&g, "tostring(S.carrying)"), "nil");
+    assert_eq!(lua(&g, tiles), "hazel,pip,nil");
+    // every tile can be reached (the postmaster stands in front of it, in reach), and the letter can be read
+    for i in 1..=10 {
+        let (x, z) = aisle_in_front_of_tile(&g, i);
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "nova.named('postmaster').walk_to = {{ {x}, {z} }}" }}, {{ "until": "not T.walking()", "max": 900 }}, {{ "wait": 3, "lua": "REACHED = (function() local p = nova.named('postmaster'); return math.sqrt((p.x - ({x})) ^ 2 + (p.z - ({z})) ^ 2) end)()" }} ] }}"#
+            ),
+        );
+        assert!(
+            num(&g, "REACHED") < 0.35,
+            "tile {i} is reachable: {}",
+            num(&g, "REACHED")
+        );
+    }
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.named('postmaster').walk_path = { { -2.4, -1.46 }, { -2.4, 0.35 }, { 1.0, 0.35 } }" }, { "until": "not T.walking()", "max": 900 },
+        { "wait": 10 }, { "lua": "OFFER = tostring(nova.scene_now():action()); POS = nova.named('postmaster').x .. ' ' .. nova.named('postmaster').z .. ' ctl ' .. tostring(nova.named('postmaster').control)" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "OFFER"),
+        "read",
+        "the Mayor's letter on the desk mat can be read (at {})",
+        lua(&g, "POS")
+    );
+}
+
+/// The picture frame's number is the parcels not yet delivered (in the room, in the arms or in the van): 2, then 1, then 0, and two
+/// figures from ten on.
+#[test]
+fn the_picture_frame_counts_the_parcels_still_to_deliver() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "S = require('lib.state')", "route": [ { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().tally"), "2");
+    // one in the arms and one in the van are still to deliver
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.carrying = 'hazel'; S.on_shelf.hazel = false; S.van_load = { 'pip' }; S.on_shelf.pip = false" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().tally"), "2");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.delivered.hazel = true; S.carrying = nil" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().tally"), "1");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.delivered.pip = true; S.van_load = {}" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().tally"), "0");
+    // a backlog of twelve shows both figures
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.WAITING = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l' }; S.delivered = {}" }, { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().tally"), "12");
+}
+
+/// The old computer on the front counter is only scenery for now: standing at it offers nothing, and X there does nothing.
+#[test]
+fn the_old_computer_has_no_prompt() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "route": [
+        { "wait": 10, "lua": "local c = nova.named('old_computer'); nova.named('postmaster').walk_to = { c.x, c.z + 1.0 }" }, { "until": "not T.walking()", "max": 600 },
+        { "wait": 5, "lua": "OFFER = tostring(nova.scene_now():action()); HINT = #nova.scene_now().hint" },
+        { "press": "interact" }, { "wait": 20, "lua": "CARD = tostring(require('lib.cards').active())" } ] }"#,
+    );
+    assert_eq!(lua(&g, "OFFER"), "nil");
+    assert_eq!(num(&g, "HINT"), 1.0, "only the map's hint (Select) is shown");
+    assert_eq!(lua(&g, "CARD"), "false");
+    assert_eq!(
+        lua(&g, "tostring(require('lib.state').letter_read)"),
+        "false"
+    );
+}
+
+/// Through a whole slice playthrough the number in the picture frame is the number of parcels not yet handed over, every frame the
+/// room is shown: 2 at the start, 1 after the first delivery (back in the room), 0 after the second.
+#[test]
+#[ignore = "long: about 17 s; scripts/test.sh all (or one mountain_post) runs it"]
+fn the_picture_frame_shows_the_parcels_still_to_deliver_through_the_whole_slice() {
+    let mut g = game();
+    let mut plan: Value = serde_json::from_str(&slice_route(false)).unwrap();
+    let setup = plan["lua"].as_str().unwrap().to_string();
+    plan["lua"] = Value::String(format!("{setup}; SEEN = {{}}; S = require('lib.state')"));
+    plan["lua_each_frame"] = Value::String(
+        "local sc = nova.scene_now(); if sc and sc.tally and nova.current_scene() == 'office' then local k = sc.tally .. '/' .. S.remaining(); SEEN[k] = (SEEN[k] or 0) + 1 end".into(),
+    );
+    let r = testing::play(&mut g, &plan.to_string()).expect("the route plays");
+    assert!(r.errors().is_empty(), "errors: {:?}", r.errors());
+    assert_eq!(
+        lua(&g, "tostring(S.delivered.hazel and S.delivered.pip)"),
+        "true"
+    );
+    let seen = lua(
+        &g,
+        "(function() local k = {}; for key, n in pairs(SEEN) do k[#k + 1] = key .. '=' .. n end; table.sort(k); return table.concat(k, ' ') end)()",
+    );
+    // (every frame the room was shown, the number drawn was the number still to deliver; a frame or two when it was entered may lag)
+    let mut shown = std::collections::BTreeMap::new();
+    for kv in seen.split(' ') {
+        let (k, n) = kv.split_once('=').unwrap();
+        let (drawn, want) = k.split_once('/').unwrap();
+        let n: u32 = n.parse().unwrap();
+        if drawn != want {
+            assert!(n <= 2, "the frame showed {drawn}, {want} to deliver: {seen}");
+        } else {
+            shown.insert(drawn.to_string(), n);
+        }
+    }
+    for n in ["2", "1", "0"] {
+        assert!(
+            shown.get(n).copied().unwrap_or(0) > 10,
+            "the frame showed {n} for a while: {seen}"
+        );
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "size": "1280x720",
+  "start_scene": "office",
+  "lua": "T = require('lib.testkit'); S = require('lib.state'); C = require('lib.camera')",
+  "route": [
+    { "wait": 60, "capture": "office_1_start" },
+    { "lua": "nova.named('postmaster').walk_to = T.shelf_spot('hazel')" },
+    { "until": "not T.walking()", "max": 600 },
+    { "wait": 12, "capture": "office_2_at_tile" },
+    { "press": "interact" },
+    { "wait": 40 },
+    { "press": "interact" },
+    { "wait": 30, "capture": "office_3_taken" },
+    { "lua": "S.carrying = nil; S.delivered.hazel = true; S.came_out = true; nova.goto_scene('office')" },
+    { "wait": 60, "capture": "office_4_one_delivered" },
+    { "lua": "C.pinned = { -0.4, 2.6, 1.6, -0.4, 0.8, -0.6, 40 }" },
+    { "wait": 5, "capture": "office_5_front_counter" },
+    { "lua": "C.pinned = { 2.4, 2.4, -0.2, 3.0, 1.0, -2.6, 38 }" },
+    { "wait": 5, "capture": "office_6_conveyor" },
+    { "lua": "C.pinned = { 0, 3.2, -0.2, 0, 1.6, -2.6, 40 }" },
+    { "wait": 5, "capture": "office_7_frame" }
+  ],
+  "out": "build/gallery"
+}
