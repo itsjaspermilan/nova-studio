@@ -46,7 +46,9 @@ const SKINS: Record<string, string> = { light: "#f0c8a0", tan: "#dba77c", brown:
 export interface Character3d {
   model: Args;
   parts: string[];
-  clips: { name: string; duration: number; loop: boolean; events: string[] }[];
+  clips: { name: string; duration: number; loop: boolean; events: string[]; stride?: number }[];
+  /// Its legs are one piece from hip to ankle (a chibi): nova.gait can plant its feet (the entity it writes uses it).
+  gait: boolean;
   speeds: Record<string, number>;
   capsule: { radius: number; height: number };
   says: string;
@@ -306,6 +308,8 @@ export function makeCharacter3d(a: Args): Character3d {
   head.rings([{ y: -0.03, rx: 0.058, rz: 0.055 }, { y: 0.05, rx: 0.055, rz: 0.052 }], 8, tone(skin, -0.3), { smooth: true });
   const face = new Mesh3("#2a2430", { bend: false });
   const faceParts: Args[] = [];
+  // (an animal's ears, each a part of the head with its pivot at the ear's root, so a game can let them follow the body's motion)
+  const earParts: Args[] = [];
   // (an animal's: the height of the top of its head over x, z; where its face is; the head's painted decal)
   let headTop = (_x: number, _z: number) => headC + headR[1];
   let headFront = (_x: number, _y: number) => headR[2];
@@ -379,13 +383,17 @@ export function makeCharacter3d(a: Args): Character3d {
     const ear = (k: number, xf: number, h: number, w: number, d: number, lean: number, tipC: string, inner?: string) => {
       const at: V3 = [k * xf * RX, headTop(k * xf * RX, -0.06 * RZ) - 0.03 * RY, -0.06 * RZ];
       const shape = (sc: number) => [{ y: 0, rx: w * sc, rz: d * sc }, { y: h * 0.42, rx: w * 1.04 * sc, rz: d * sc, cx: k * h * 0.42 * lean }, { y: h * 0.8, rx: w * 0.6 * sc, rz: d * 0.8 * sc, cx: k * h * 0.8 * lean }, { y: h, rx: 0, cx: k * h * lean }];
-      head.rings(shape(1), 12, (i) => (i >= 2 ? tipC : skin), { at, smooth: true });
-      if (inner) head.rings(shape(0.6).map((r) => ({ ...r, y: r.y * 0.88 })), 12, inner, { at: [at[0] + k * 0.004, at[1] + 0.012, at[2] + d * 0.5], smooth: true });
+      const m = new Mesh3(skin, { bend: false });
+      m.rings(shape(1), 12, (i) => (i >= 2 ? tipC : skin), { smooth: true });
+      if (inner) m.rings(shape(0.6).map((r) => ({ ...r, y: r.y * 0.88 })), 12, inner, { at: [k * 0.004, 0.012, d * 0.5], smooth: true });
+      earParts.push(part(k > 0 ? "ear_l" : "ear_r", at, [m]));
     };
     const roundEar = (k: number, xf: number, r: number, inner: string) => {
       const x = k * xf * RX, at: V3 = [x, headTop(x, -0.1 * RZ) - 0.02 * RY, -0.1 * RZ];
-      ellipsoid(head, at, [r, r, r * 0.5], skin);
-      ellipsoid(head, [at[0], at[1] + r * 0.02, at[2] + r * 0.32], [r * 0.6, r * 0.6, r * 0.22], inner);
+      const m = new Mesh3(skin, { bend: false });
+      ellipsoid(m, [0, 0, 0], [r, r, r * 0.5], skin);
+      ellipsoid(m, [0, r * 0.02, r * 0.32], [r * 0.6, r * 0.6, r * 0.22], inner);
+      earParts.push(part(k > 0 ? "ear_l" : "ear_r", at, [m]));
     };
     const hatted = hat === "cap" || hat === "peaked" || hat === "straw" || hat === "wizard";
     for (const k of [-1, 1]) {
@@ -553,15 +561,19 @@ export function makeCharacter3d(a: Args): Character3d {
 
   // ---- an accessory (`accent_color` colours it)
   const accent = col(a.accent_color, "accent_color", accessory === "satchel" ? "#7a4e2c" : accessory === "headphones" ? "#c8463a" : accessory === "glasses" ? "#3e302a" : "#c23b33");
+  const bagM = new Mesh3(accent, { bend: false });
+  let bagAt: V3 | undefined;
   if (accessory === "satchel") {
     // a strap from the left shoulder across the chest to a bag on the right hip, and back across the back
     for (const zs of [1, -1]) {
       const z = (v: number) => zs * v * (chibi ? 1.2 : 1);
       extras.tube([[0.13 * wide, neckUp * 0.97, z(0.04)], [0.06 * wide, neckUp * 0.74, z(0.128)], [-0.08 * wide, neckUp * 0.4, z(0.122)], [-0.17 * wide, neckUp * 0.08, z(0.118)], [-0.2 * wide, -0.02, z(0.06)]], 0.013, 5, tone(accent, -0.4));
     }
-    extras.box([-0.215 * wide, -0.07, 0.0], [0.07, 0.19, 0.25], accent, { taper: [1, 0.92] });
-    extras.box([-0.25 * wide, -0.02, 0.0], [0.02, 0.12, 0.26], tone(accent, -0.35), { flat: true });
-    extras.box([-0.26 * wide, -0.05, 0.0], [0.012, 0.03, 0.04], pal.gold!, { flat: true });
+    // (the bag itself is a part of its own hanging from the strap's end, so a game can let it swing)
+    bagAt = [-0.215 * wide, 0.02, 0];
+    bagM.box([0, -0.09, 0.0], [0.07, 0.19, 0.25], accent, { taper: [1, 0.92] });
+    bagM.box([-0.035 * wide, -0.04, 0.0], [0.02, 0.12, 0.26], tone(accent, -0.35), { flat: true });
+    bagM.box([-0.045 * wide, -0.07, 0.0], [0.012, 0.03, 0.04], pal.gold!, { flat: true });
   } else if (accessory === "scarf") {
     extras.rings([{ y: neckUp * 0.9, rx: 0.12 * wide, rz: 0.1 }, { y: neckUp * 1.04, rx: 0.095, rz: 0.088 }], 10, accent, { smooth: true });
     extras.box([0.05 * wide, neckUp * 0.72, 0.125], [0.05, 0.16, 0.02], tone(accent, -0.3), { rz: -8 });
@@ -618,7 +630,7 @@ export function makeCharacter3d(a: Args): Character3d {
   };
   const parts = [
     part("hips", [0, hipsY, 0], [pelvis, skirt, belt, ...(hipsPaint ? [hipsPaint] : [])], [
-      part("spine", [0, spineUp, 0], [torso, extras, packM, ...(torsoPaint ? [torsoPaint] : [])], [part("head", [0, neckUp, 0], [head, face, hairM, hatM, headExtra, ...(headPaint ? [headPaint] : [])], faceParts), side("arm", 1), side("arm", -1)]),
+      part("spine", [0, spineUp, 0], [torso, extras, packM, ...(torsoPaint ? [torsoPaint] : [])], [part("head", [0, neckUp, 0], [head, face, hairM, hatM, headExtra, ...(headPaint ? [headPaint] : [])], [...faceParts, ...earParts]), side("arm", 1), side("arm", -1), ...(bagAt ? [part("bag", bagAt, [bagM])] : [])]),
       side("leg", 1),
       side("leg", -1),
       ...(tailM.polys.length ? [part("tail", [0, -0.04, -0.11 * wide], [tailM])] : []),
@@ -831,6 +843,10 @@ export function makeCharacter3d(a: Args): Character3d {
     const step = (sw: number) => 2 * L * Math.sin((sw * Math.PI) / 180);
     chibiSpeeds = { walk: r3((2 * step(walkSwing)) / walkC), run: r3((2 * step(runSwing)) / runC), trot: r3((2 * step(trotSwing)) / trotC) };
   }
+  // each gait clip says the ground its feet cover in one cycle (metres), so a game can play it by the distance walked (the animator's
+  // `by = "distance"`): played so, the feet keep to the ground at any speed
+  const gaitSpeeds = chibiSpeeds ?? { walk: walkStride / (0.6 * walkD), run: runStride / (0.36 * runD), trot: trotStride / (0.45 * trotD) };
+  for (const c of clips) if (c.name === "walk" || c.name === "run" || c.name === "trot") c.stride = r3(gaitSpeeds[c.name as "walk"] * c.duration);
   const model = modelDoc(parts, { clips });
   // the painted decals: each shape its block in one texture, painted through its unwrap
   let picture: Raster | undefined;
@@ -848,10 +864,11 @@ export function makeCharacter3d(a: Args): Character3d {
   const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat === "peaked" ? "peaked cap" : hat}` : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `${item === "axe" ? "an" : "a"} ${item} in the right hand` : ""].filter(Boolean).join(", ");
   return {
     model,
-    parts: ["hips", "spine", "head", "arm_l", "fore_l", "hand_l", "arm_r", "fore_r", "hand_r", "leg_l", "shin_l", "foot_l", "leg_r", "shin_r", "foot_r", ...(hasTail ? ["tail"] : [])],
-    clips: clips.map((c) => ({ name: c.name, duration: c.duration, loop: !!c.loop, events: c.name === "walk" || c.name === "run" || c.name === "trot" ? ["step when each foot lands"] : (c.events ?? []).map((e: Args) => `${e.name} at ${e.t}`) })),
+    parts: ["hips", "spine", "head", "arm_l", "fore_l", "hand_l", "arm_r", "fore_r", "hand_r", "leg_l", "shin_l", "foot_l", "leg_r", "shin_r", "foot_r", ...(hasTail ? ["tail"] : []), ...earParts.map((p) => p.name as string), ...(bagAt ? ["bag"] : [])],
+    clips: clips.map((c) => ({ name: c.name, duration: c.duration, loop: !!c.loop, ...(c.stride ? { stride: c.stride } : {}), events: c.name === "walk" || c.name === "run" || c.name === "trot" ? ["step when each foot lands"] : (c.events ?? []).map((e: Args) => `${e.name} at ${e.t}`) })),
     speeds,
     capsule,
+    gait: chibi,
     ...(animal ? { faces: `the face is painted on the head: each drawing of the eyes, the brows and the mouth is a part under head, and one of each set shows (the first; the others are hidden until the game shows one: parts = { eye_wide = { visible = true }, eye_open = { visible = false } }): ${Object.entries(FACE_SETS).map(([k, v]) => `${k} ${v.join(", ")}`).join("; ")}. Expressions: ${Object.entries(EXPRESSIONS).map(([k, v]) => `${k} = ${v.join(" + ")}`).join("; ")}; blink with eye_shut; while talking swap the mouth back and forth with its partner (${Object.entries(TALK).map(([a, b]) => `${a} with ${b}`).join(", ")})` } : {}),
     ...(picture ? { picture } : {}),
     head: { width: r3(headR[0] * 2), height: r3(headR[1] * 2), depth: r3(headR[2] * 2) },
@@ -859,12 +876,12 @@ export function makeCharacter3d(a: Args): Character3d {
     lua: (name, sp) => `local Hero = nova.entity { model = "${name}", tags = { "hero" }, velocity = false }
 function Hero:create()
   self.anim = nova.animator("${name}", { start = "move", fade = 0.15, states = {
-    move = { blend = "speed", points = { { 0, "idle" }, { ${sp.walk}, "walk" }, { ${sp.run}, "run" } } },  -- anim:set("speed", metres a second)
+    move = { blend = "speed", by = "distance", points = { { 0, "idle" }, { ${sp.walk}, "walk" }, { ${sp.run}, "run" } } },  -- anim:set("speed", metres a second), anim:move(metres walked)
     jump = { clip = "jump", loop = false, fade = 0.06 },
     wave = { clip = "wave", loop = false, next = "move" }, attack = { clip = "attack", loop = false, next = "move", fade = 0.05 }, hurt = { clip = "hurt", loop = false, next = "move", fade = 0.05 },
   }, on_event = function(event) if event == "step" then nova.sound.play("step") end end })
 end
-function Hero:update(dt) self.anim:set("speed", self.speed or 0); self.anim:update(dt) end  -- and move with nova.solid.move(x, y, z, ${capsule.radius}, ${capsule.height}, dx, dy, dz)
+function Hero:update(dt) self.anim:set("speed", self.speed or 0); self.anim:move((self.speed or 0) * dt); self.anim:update(dt) end  -- and move with nova.solid.move(x, y, z, ${capsule.radius}, ${capsule.height}, dx, dy, dz)${chibi ? "; for feet that keep to the ground use nova.gait (docs/project-format.md): self.gait:update(dt, self, self.anim) in place of move and update, and draw with parts = self.gait:parts()" : ""}
 function Hero:draw() self.anim:draw(self.x, self.y, self.z, { ry = self.face or 0 }) end  -- face = math.atan(dx, dz) looks along the way it moves`,
   };
 }
@@ -887,14 +904,17 @@ function Hero:create()
   self.anim = nova.animator("${model}", {
     start = "move", fade = 0.15,
     states = {
-      move = { blend = "speed", points = { { 0, "idle" }, { WALK, "walk" }, { RUN, "run" } } },
+      -- (played by the ground covered: each clip's stride, so the feet keep pace with the ground at any speed)
+      move = { blend = "speed", by = "distance", points = { { 0, "idle" }, { WALK, "walk" }, { RUN, "run" } } },
       jump = { clip = "jump", loop = false, fade = 0.06 },
       wave = { clip = "wave", loop = false, next = "move" },
     },
     on_event = function(event)
       if event == "step" and self.on_ground then self:step() end
     end,
-  })
+  })${c.gait ? `
+  -- the feet: each one fixed to the ground while it stands, the legs turned from the hips to reach it, the hips bobbing and leaning
+  self.gait = nova.gait("${model}")` : ""}
 end
 
 -- A foot has landed. (Play your footstep here: nova.sound.play("step", { volume = 0.5 }).)
@@ -923,6 +943,7 @@ function Hero:update(dt)
   end
   self.vy = self.vy - GRAVITY * dt
   -- one move against everything solid: nova.solid (the ground, entities with solid = true) and the scenery's trunks
+  local px, pz = self.x, self.z
   local m = nova.solid.move(self.x, self.y, self.z, RADIUS, HEIGHT, (self.dir_x or 0) * self.speed * dt, self.vy * dt, (self.dir_z or 0) * self.speed * dt)
   self.x, self.y, self.z = m.x, m.y, m.z
   if m.ground then
@@ -933,12 +954,18 @@ function Hero:update(dt)
   end
   if self.on_ground and self.anim:state() == "jump" then self.anim:play("move") end
   self.anim:set("speed", self.speed)
-  self.anim:update(dt)
+${c.gait ? `  if self.on_ground then
+    self.gait:update(dt, self, self.anim)   -- (moves the animator on by the ground covered, updates it, plants the feet)
+  else
+    self.anim:update(dt)
+    self.gait:reset(self)                   -- (in the air: both feet put down again where it lands)
+  end` : `  self.anim:move(math.sqrt((self.x - px) ^ 2 + (self.z - pz) ^ 2))   -- (the cycle moves on by the ground covered)
+  self.anim:update(dt)`}
 end
 
 function Hero:draw()
   if self.visible == false then return end
-  self.anim:draw(self.x, self.y, self.z, { ry = self.face })
+  self.anim:draw(self.x, self.y, self.z, { ry = self.face${c.gait ? ", parts = self.on_ground and self.gait:parts() or nil" : ""} })
 end
 
 return Hero

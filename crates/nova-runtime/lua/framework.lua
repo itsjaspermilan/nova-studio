@@ -831,7 +831,7 @@ Animator.__index = Animator
 
 local function sorted_points(state, name)
   local points = {}
-  for i, p in ipairs(state.points or {}) do points[i] = { at = p[1], clip = p[2] } end
+  for i, p in ipairs(state.points or {}) do points[i] = { at = p[1], clip = p[2], stride = p.stride } end
   table.sort(points, function(a, b) return a.at < b.at end)
   if #points < 2 then error(("animator state '%s' needs points = { { 0, \"idle\" }, { 3, \"walk\" } } (at least two)"):format(name), 3) end
   return points
@@ -841,13 +841,22 @@ end
 --- to play once, `next = "idle"` for where it goes when it ends, `speed = 1.5` to play faster, `fade` for how long to
 --- crossfade into it), or `{ blend = "speed", points = { { 0, "idle" }, { 3, "walk" }, { 7, "sprint" } } }`: the clips are
 --- mixed by the number set with `anim:set("speed", v)`, and their cycles stay in step.
+---
+--- A blend of gaits can be played by the ground covered instead of by time: `{ blend = "speed", by = "distance", points = ... }`
+--- and `anim:move(metres)` each frame (before `update`). The cycle then moves on by the metres walked over the stride (the
+--- ground one cycle covers: the clip's `stride` in the model file, which character3d_make writes, or `stride = 0.7` on the point,
+--- `{ 1.6, "walk", stride = 0.7 }`), mixed between the two clips like their weights, so the feet keep pace with the ground at
+--- any speed. Below the first gait (between "idle" and "walk") the stride shortens with the speed (`shorten`, 0.5: the stride goes
+--- as the speed to that power; `shortest`, 0.35: the least share of the walk's stride), so a creep takes short steps rather than a
+--- whole stride in slow motion. Every distance state shares one cycle, so going from one to another (a walk with a parcel) or
+--- back from a clip (a wave) carries on with the same foot. `anim:stride()` is the stride now, `anim:cycle()` the shared phase.
 function nova.animator(model, spec)
   if type(spec) ~= "table" or type(spec.states) ~= "table" then
     error("nova.animator(model, { start = \"idle\", states = { idle = { clip = \"idle\" } } })", 2)
   end
-  local durations, clip_events = {}, {}
-  for _, c in ipairs(nova.model_clips(model)) do durations[c.name], clip_events[c.name] = c.duration, c.events end
-  local a = setmetatable({ model = model, spec = spec, durations = durations, clip_events = clip_events, fade = spec.fade or 0.2, params = {}, speed = 1, entries = {}, on_event = spec.on_event, fired = {} }, Animator)
+  local durations, clip_events, strides = {}, {}, {}
+  for _, c in ipairs(nova.model_clips(model)) do durations[c.name], clip_events[c.name], strides[c.name] = c.duration, c.events, c.stride end
+  local a = setmetatable({ model = model, spec = spec, durations = durations, clip_events = clip_events, strides = strides, fade = spec.fade or 0.2, params = {}, speed = 1, entries = {}, on_event = spec.on_event, fired = {}, walk_phase = 0 }, Animator)
   for name, state in pairs(spec.states) do
     if state.clip then
       if not durations[state.clip] then error(("animator state '%s': model '%s' has no clip '%s'"):format(name, model, state.clip), 2) end
@@ -856,12 +865,27 @@ function nova.animator(model, spec)
       for _, p in ipairs(state._sorted) do
         if not durations[p.clip] then error(("animator state '%s': model '%s' has no clip '%s'"):format(name, model, p.clip), 2) end
       end
+      if state.by == "distance" then
+        local any = false
+        for _, p in ipairs(state._sorted) do
+          p.stride = p.stride or strides[p.clip]
+          if p.stride then any = true end
+        end
+        if not any then error(("animator state '%s' is played by distance but none of its clips has a stride (the model file's clip \"stride\", or { 1.6, \"walk\", stride = 0.7 })"):format(name), 2) end
+      elseif state.by ~= nil then
+        error(("animator state '%s': by = \"distance\" (or leave it out to play by time)"):format(name), 2)
+      end
     else
       error(("animator state '%s' needs a clip = \"...\" or a blend = \"parameter\" with points"):format(name), 2)
     end
   end
   local first = spec.start or "idle"
   if not spec.states[first] then error(("animator has no state '%s' to start in (set start = ...)"):format(first), 2) end
+  -- (the distance state whose stride counts before one is played: the first by name)
+  local names = {}
+  for name, state in pairs(spec.states) do if state.by == "distance" then names[#names + 1] = name end end
+  table.sort(names)
+  if names[1] then a._last_dist = spec.states[names[1]] end
   a:play(first)
   return a
 end
@@ -911,8 +935,57 @@ function Animator:time()
     if e.state.loop ~= false and length > 0 then t = t % length end
     return clip, t, length > 0 and t / length or 0
   end
-  return clip, e.phase * length, e.phase
+  local phase = e.state.by == "distance" and self.walk_phase or e.phase
+  return clip, phase * length, phase
 end
+
+-- The stride (metres a cycle) of a distance blend at a value of its parameter: between two gaits, mixed like their weights; below
+-- the first gait, shorter with the speed (state.shorten, state.shortest); past the last, the last's.
+local function stride_at(state, value)
+  local pts = state._sorted
+  local first, last
+  for i = 1, #pts do if pts[i].stride then first = first or i; last = i end end
+  local a = pts[first]
+  if value <= a.at then
+    local k = a.at > 0 and math.max(0, value) / a.at or 1
+    return a.stride * math.max(state.shortest or 0.35, k) ^ (state.shorten or 0.5)
+  end
+  if value >= pts[last].at then return pts[last].stride end
+  for i = first + 1, last do
+    local b = pts[i]
+    if b.stride and value <= b.at then
+      local f = (value - a.at) / math.max(b.at - a.at, 1e-6)
+      return a.stride + (b.stride - a.stride) * f
+    end
+    if b.stride then a = b end
+  end
+  return pts[last].stride
+end
+
+--- The stride now (metres the feet cover in one cycle) of the newest distance state (or the last one played), nil without one.
+function Animator:stride()
+  for i = #self.entries, 1, -1 do
+    local st = self.entries[i].state
+    if st.by == "distance" then self._last_dist = st; break end
+  end
+  local st = self._last_dist
+  if not st then return nil end
+  return stride_at(st, self.params[st.blend] or 0)
+end
+
+--- Moves the shared cycle of the distance states on by the ground covered (metres; call it before `update`). Returns the phase.
+function Animator:move(metres)
+  local stride = self:stride()
+  if not stride then error("anim:move(metres) is for a state with by = \"distance\"", 2) end
+  if type(metres) ~= "number" or metres ~= metres then error("anim:move(metres): give the metres walked", 2) end
+  if self._from == nil then self._from = self.walk_phase end
+  self._moved = (self._moved or 0) + metres
+  self.walk_phase = (self.walk_phase + math.max(0, metres) / math.max(stride, 1e-3)) % 1
+  return self.walk_phase
+end
+
+--- The shared phase of the distance states (0 to 1 over a cycle), and the stride now.
+function Animator:cycle() return self.walk_phase, self:stride() end
 
 --- How far the current state is through its clip, 0 to 1.
 function Animator:phase()
@@ -941,6 +1014,8 @@ function Animator:update(dt)
   -- where the newest state is before time moves: the clip events between there and where it gets to are this frame's
   local lead = self.entries[#self.entries]
   local lead_name, before = self:time()
+  if lead.state.by == "distance" and self._from then before = self._from * self.durations[lead_name] end
+  self._from = nil
   local started = lead.fresh
   lead.fresh = false
   for _, e in ipairs(self.entries) do
@@ -949,6 +1024,8 @@ function Animator:update(dt)
       e.t = e.t + dt * rate
       local length = self.durations[state.clip]
       if state.loop == false and e.t >= length then e.t = length; e.done = true end
+    elseif state.by == "distance" then
+      e.phase = self.walk_phase -- (moved on by anim:move, shared by every distance state)
     else
       local a, b, f = blend_pair(state, self.params[state.blend] or 0)
       local length = self.durations[a.clip] * (1 - f) + self.durations[b.clip] * f
@@ -994,8 +1071,9 @@ function Animator:layers()
       layers[#layers + 1] = { clip = state.clip, time = e.t, weight = e.w, loop = state.loop ~= false }
     else
       local a, b, f = blend_pair(state, self.params[state.blend] or 0)
-      if f < 1 then layers[#layers + 1] = { clip = a.clip, time = e.phase * self.durations[a.clip], weight = e.w * (1 - f) } end
-      if f > 0 then layers[#layers + 1] = { clip = b.clip, time = e.phase * self.durations[b.clip], weight = e.w * f } end
+      local phase = state.by == "distance" and self.walk_phase or e.phase
+      if f < 1 then layers[#layers + 1] = { clip = a.clip, time = phase * self.durations[a.clip], weight = e.w * (1 - f) } end
+      if f > 0 then layers[#layers + 1] = { clip = b.clip, time = phase * self.durations[b.clip], weight = e.w * f } end
     end
   end
   return layers
@@ -2702,6 +2780,11 @@ anim.bind {
 function nova.play_anim(name, opts) return anim.play(name, opts) end
 function nova.stop_anims(target) anim.stop_all(target) end
 function nova.anim_data(name) return anim.data(name) end
+
+-- Feet that keep to the ground and springs that follow the body (lua/gait.lua): nova.gait(model, opts), nova.spring(opts).
+local gait = require("nova.gait")
+function nova.gait(model, opts) return gait.new(model, opts) end
+function nova.spring(opts) return gait.spring(opts) end
 -- (a game that does not use nova.start can step its animations itself, from its own update)
 function nova.update_anims(dt) anim.update(dt) end
 nova.anims_playing = anim.count

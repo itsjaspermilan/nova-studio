@@ -3,6 +3,11 @@
 -- about), turn to look at them and stay there, and face them while they talk (the "talk" clip on their own lines). Given their
 -- parcel, they hold it while they talk and then set it down on the porch. When the postmaster has gone they go back to work.
 -- entities/hazel.lua and entities/pip.lua are this with their own model, voice and work.
+--
+-- They walk the way the postmaster does (Nova's gait, nova.gait: the walk played by the ground covered, the feet fixed to the ground
+-- while they stand, the hips, the lean and the parts that follow on springs), each in their own manner (`spec.gait`): Hazel heavy and
+-- slow with a rolling gait, Pip light and bouncy with his ears trailing. They turn towards where they go before they set off and go
+-- the way they face; their speed eases in and out.
 local state = require("lib.state")
 local world = require("lib.world")
 local face = require("lib.face")
@@ -10,6 +15,7 @@ local dialogue = require("lib.dialogue")
 
 local PARCELS = { hazel = "parcel_hazel", pip = "parcel_pip" }
 local MEET_STEP = 2.0 -- metres from their work towards the gate that they come to meet the postmaster
+local wrap = function(a) return (a + math.pi) % (2 * math.pi) - math.pi end
 
 return function(who, spec)
   local R = nova.entity { model = who, tags = { "resident" }, velocity = false, who = who }
@@ -25,7 +31,8 @@ return function(who, spec)
     self.anim = nova.animator(who, {
       start = "work", fade = 0.25,
       states = {
-        move = { blend = "speed", points = { { 0, "idle" }, { spec.walk, "walk" } } },
+        -- (played by the ground covered: the walk's stride, the clip's or the spec's own)
+        move = { blend = "speed", by = "distance", points = { { 0, "idle" }, { spec.walk, "walk", stride = spec.stride } } },
         work = { clip = "work", loop = true },
         talk = { clip = "talk", loop = true },
         wave = { clip = "wave", loop = false, next = "move" },
@@ -35,6 +42,13 @@ return function(who, spec)
     self.parcel_opts = { ry = 0 }
     self.mood = face.new(who == "hazel" and 3 or 7, spec.rest)
     self.draw_opts = { ry = 0, parts = nil }
+    -- the feet, the hips and the springs (each resident's own manner: spec.gait)
+    local style = { ground = function(x, z) return world.lift(x, z) end }
+    for k, v in pairs(spec.gait or {}) do style[k] = v end
+    self.walker = nova.gait(who, style)
+    self.walk_parts = {}
+    self.speed_spring = nova.spring { stiffness = (spec.ease or 11) ^ 2, damping = 1 }
+
     self.work_sound_t = 0
     -- (the parcel set down on the porch afterwards: beside the door)
     local door = nova.named("door_" .. who)
@@ -106,11 +120,17 @@ return function(who, spec)
         self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * math.min(1, dt * 3)
       end
     end
-    self.speed = self.speed + (want_speed - self.speed) * math.min(1, dt * 6)
-    if self.speed > 0.02 then
-      local dx, dz = tx - self.x, tz - self.z
-      local l = math.sqrt(dx * dx + dz * dz)
-      if l > 1e-3 then self.x, self.z = world.move(self.x, self.z, dx / l * self.speed * dt, dz / l * self.speed * dt, 0.3) end
+    -- they go the way they face: turned away from where they are going they slow and turn first (no walking sideways or backwards)
+    if want_speed > 0 then
+      local err = wrap(math.atan(tx - self.x, tz - self.z) - self.face)
+      want_speed = want_speed * math.max(0, math.min(1, (math.cos(err) + 0.2) / 1.0))
+    end
+    local ss = self.speed_spring
+    if math.abs(ss.value - self.speed) > 1e-9 then ss:set(self.speed) end
+    self.speed = math.max(0, ss:update(want_speed, dt))
+    if want_speed == 0 and self.speed < 0.02 then self.speed = 0; ss:set(0) end
+    if self.speed > 0.0 then
+      self.x, self.z = world.move(self.x, self.z, math.sin(self.face) * self.speed * dt, math.cos(self.face) * self.speed * dt, 0.3)
     end
     self.y = world.lift(self.x, self.z)
     -- which clip: walking, working (at home, nobody near), talking (on their own line), or standing
@@ -121,7 +141,8 @@ return function(who, spec)
     else want_state = "move" end
     if self.anim:state() ~= want_state and self.anim:state() ~= "wave" then self.anim:play(want_state) end
     self.anim:set("speed", self.speed)
-    self.anim:update(dt)
+    -- (the animator moved on by the ground covered and updated, the feet planted, the springs: nova.gait)
+    self.walker:update(dt, self, self.anim, self.holding and self.carry_layer or nil)
     -- the sound of the work, by where it is (the saw, the radio's crackle is the mast's own: lib/ambience.lua)
     if spec.work_sound and self.mode == "work" and self.speed < 0.05 then
       self.work_sound_t = self.work_sound_t - dt
@@ -145,7 +166,7 @@ return function(who, spec)
   function R:draw()
     local extra = self.holding and self.carry_layer or nil
     local o = self.draw_opts
-    o.ry, o.extra, o.parts = self.face, extra, face.parts(self.mood)
+    o.ry, o.extra, o.parts = self.face, self.walker:extra(extra), self.walker:parts(face.parts(self.mood, self.walk_parts))
     self.anim:draw(self.x, self.y, self.z, o)
     if self.holding then
       local s, c = math.sin(self.face), math.cos(self.face)

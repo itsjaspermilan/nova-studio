@@ -825,6 +825,18 @@ pub struct Clip {
     /// Named moments of the clip, in time order (a foot landing, a blade passing): the glTF animation's
     /// `extras.nova.events`, `[{ "t": seconds, "name": "step" }]`. The framework calls back when a playing clip passes one.
     pub events: Vec<(f64, String)>,
+    /// For a gait: the ground its feet cover in one cycle, in metres (`extras.nova.stride`), so the animator can play it by the
+    /// distance walked (`by = "distance"`). None for a clip that is not a gait.
+    pub stride: Option<f64>,
+}
+
+/// A glTF animation's stride (`extras.nova.stride`): a number above 0, or nothing.
+fn read_stride(animation: &gltf::Animation) -> Option<f64> {
+    let raw = animation.extras().as_ref()?;
+    let value = serde_json::from_str::<serde_json::Value>(raw.get()).ok()?;
+    value["nova"]["stride"]
+        .as_f64()
+        .filter(|s| s.is_finite() && *s > 0.0)
 }
 
 /// A glTF animation's events (`extras.nova.events`): entries that are not `{ "t": number >= 0, "name": text }` are left out.
@@ -1257,6 +1269,7 @@ pub fn import_parts_with(bytes: &[u8], pictures: Pictures) -> Result<ModelParts,
             duration,
             channels,
             events: read_events(&animation),
+            stride: read_stride(&animation),
         });
     }
     let colliders = read_shapes(&scene, "colliders", |c: &[f32; 3]| c[2] > 0.0);

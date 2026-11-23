@@ -193,6 +193,10 @@ export interface Clip {
   /// Named moments of the clip, in time order: a foot landing (`{ t: 0.25, name: "step" }`), a blade passing. The game is told
   /// when a playing clip passes one (`on_clip_event`, the animator's `on_event`), so sounds and effects keep time with the motion.
   events?: ClipEvent[];
+  /// For a walk, run or other gait that loops: the ground its feet cover in one cycle (metres at the model's own size), so the game
+  /// can play it by the distance walked (the animator's `by = "distance"`) and the feet never slide. Played at its own pace it is
+  /// slide-free at `stride / duration` metres a second.
+  stride?: number;
 }
 
 export interface ClipEvent {
@@ -501,6 +505,8 @@ export function parseModel(text: string): Parsed {
         if (sorted.length) c.events = sorted;
         else delete c.events;
       }
+      const stride = (c as { stride?: unknown }).stride;
+      if (stride !== undefined && !(typeof stride === "number" && stride > 0 && stride <= 100)) return { ok: false, error: `${at}.stride must be the metres a cycle of the gait covers (a number above 0)` };
     }
   }
   const poses = (o as { poses?: unknown }).poses;
@@ -613,7 +619,8 @@ export function serializeModel(source: ModelDoc): string {
     const track = (t: Track) => `        { "part": ${JSON.stringify(t.part)}, "prop": "${t.prop}", "keys": [${t.keys.map((k) => `{ "t": ${k.t}, "value": ${vec(k.value)}${k.ease && k.ease !== "linear" ? `, "ease": "${k.ease}"` : ""} }`).join(", ")}] }`;
     const tracks = c.tracks.length ? `[\n${c.tracks.map(track).join(",\n")}\n      ]` : "[]";
     const events = c.events?.length ? `,\n      "events": [${c.events.map((e) => `{ "t": ${e.t}, "name": ${JSON.stringify(e.name)} }`).join(", ")}]` : "";
-    return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}${events}\n    }`;
+    const stride = c.stride ? `,\n      "stride": ${c.stride}` : "";
+    return `    {\n      "name": ${JSON.stringify(c.name)},\n      "duration": ${c.duration},\n      "loop": ${c.loop},\n      "tracks": ${tracks}${events}${stride}\n    }`;
   };
   const clips = doc.clips?.length ? `,\n  "clips": [\n${doc.clips.map(clip).join(",\n")}\n  ]` : "";
   const poses = doc.poses?.length ? `,\n  "poses": [\n${doc.poses.map((q) => `    ${JSON.stringify(q)}`).join(",\n")}\n  ]` : "";

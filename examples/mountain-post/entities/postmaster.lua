@@ -7,29 +7,61 @@
 -- the chest (the "carry" clip laid over the arms) and B gives a brisk trot instead, banking half as much. In the van they sit at the wheel (the "sit" clip), drawn in the cab and carried by the
 -- body as it leans, the hands on the wheel as it turns, the head turning a little into a bend. The scene decides what A and B do;
 -- this file only moves, animates and is heard.
+--
+-- How it moves (the owner's fifth play: "it doesn't look like the character is a stiff person sliding while walking"): the speed
+-- eases in and out (a spring: about 0.2 s to the full walk, a little longer to the run, a short settle to a stop); the body turns
+-- towards the stick at a limited rate, the head looking round first, and always goes the way it faces, so a sharp turn back slows,
+-- plants and pivots instead of sliding backwards. The feet are Nova's gait (nova.gait): the walk, run and trot are played by the
+-- ground covered, each foot fixed to the ground while it stands, the legs turned from the hips to reach them, so nothing slides at
+-- any speed; the hips dip as a foot lands and sway, the shoulders turn against them, the body leans into the way it goes and back
+-- as it stops, and the head, ears, tail, bag and mittens follow on springs.
 local world = require("lib.world")
 local state = require("lib.state")
 local camera = require("lib.camera")
 local face = require("lib.face")
 
--- the speeds at which the walk, run and trot do not slide: the long, calm strides of tools/strides.mjs (TARGET there; the owner after
--- the second play: "the animation needs to slow down a bit and the player should be able to move faster")
-local WALK, RUN, TROT = 1.6, 3.0, 2.2
-local STROLL = 1.6                    -- the walk's top: the stick alone walks, up to this
+-- the top speeds of the walk, run and trot are those of the long, calm strides of tools/strides.mjs (TARGET there; the owner after
+-- the second play: "the animation needs to slow down a bit and the player should be able to move faster"); the clips are played by
+-- the ground covered, so the feet keep to it at these and every speed between
+local STROLL = 1.6                   -- the walk's top: the stick alone walks, up to this
 local TILT = 0.9                      -- a push this far (or further) walks at the full walk; less, slower
 local TOP, TOP_CARRY = 3.0, 2.2        -- metres a second holding B: running, trotting with a parcel
 -- The bank while running: the body rolls into a turn by how fast it is turning (radians of roll per radian a second of turn), up to
 -- BANK_MAX, eased in and out; half as much trotting with a parcel; none walking. A sharp about-turn (the way it wants to face far
 -- from the way it faces) is a pivot, not a bank.
 local BANK_PER, BANK_MAX, BANK_EASE = 0.11, math.rad(13), 10
--- (the clips are mixed at these speeds and played at the pace that keeps the feet in step: at their own pace at the top of each gait)
-local function pace(speed, laden)
-  local top, fast = laden and TOP_CARRY or TOP, laden and TROT or RUN
-  if speed <= STROLL then return 1 + (STROLL / WALK - 1) * math.max(0, speed) / STROLL end
-  local f = math.min(1, (speed - STROLL) / (top - STROLL))
-  return speed / (WALK + (fast - WALK) * f)
-end
 local RADIUS = 0.26
+-- the speed's spring (its square root is how quick: about 0.2 s to the full walk, 0.3 s on to the run, 0.25 s to a stop)
+local EASE_WALK, EASE_RUN, EASE_STOP = 19, 13, 18
+-- turning (radians a second at most): quicker standing or slow, slower running; a turn back further than about 110 degrees from
+-- where it faces brings it to a stop first, so it plants and pivots
+local TURN_SLOW, TURN_WALK, TURN_RUN = 13, 8.5, 6
+local CRAB = math.rad(78)
+local wrap = function(a) return (a + math.pi) % (2 * math.pi) - math.pi end
+
+-- the gait: Nova's feet-on-the-ground walking (nova.gait), with the postmaster's own bounce and the parts that follow the body
+local GAIT = {
+  bounce = { { 0, 0 }, { 1.6, 0.02 }, { 2.2, 0.026 }, { 3.0, 0.03 } },
+  lift = { { 0, 0.025 }, { 1.6, 0.045 }, { 3.0, 0.075 } },
+  -- (the run clip already leans well into it: a little more with speed, more while speeding up, back while stopping)
+  lean = { { 0, 0 }, { 1.6, 0.05 }, { 3.0, 0.07 } },
+  follow = {
+    -- the big head: lags as the body sets off or stops, nods with each step, looks round first into a turn
+    { part = "head", stiffness = 90, damping = 0.45, max = 0.45, rx = { fwd = -0.006, up = 0.005 }, ry = { look = 0.55 }, rz = { side = 0.006 } },
+    -- the fox's ears trail a little as it goes and flick as it lands
+    { part = "ear_l", stiffness = 160, damping = 0.35, max = 0.4, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = -0.003 } },
+    { part = "ear_r", stiffness = 160, damping = 0.35, max = 0.4, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = 0.003 } },
+    -- the brush: swings out of a turn, bounces with the steps
+    { part = "tail", stiffness = 45, damping = 0.3, max = 0.6, ry = { turn = 0.12, side = 0.02 }, rx = { up = -0.006, fwd = 0.01 } },
+    -- the satchel swings at the hip
+    { part = "bag", stiffness = 40, damping = 0.25, max = 0.5, rx = { fwd = 0.02 }, rz = { side = -0.025, cycle = 0.06 } },
+    -- the mittens follow through at the end of each swing of the arms (and the arms out in the run flutter with the bob)
+    { part = "hand_l", stiffness = 120, damping = 0.4, max = 0.35, swing = { "arm_l", "hand_l" }, rx = { swing = 0.03 } },
+    { part = "hand_r", stiffness = 120, damping = 0.4, max = 0.35, swing = { "arm_r", "hand_r" }, rx = { swing = 0.03 } },
+    { part = "arm_l", stiffness = 200, damping = 0.3, max = 0.2, rz = { up = 0.004 } },
+    { part = "arm_r", stiffness = 200, damping = 0.3, max = 0.2, rz = { up = -0.004 } },
+  },
+}
 
 local Postmaster = nova.entity { model = "postmaster", tags = { "postmaster", "player" }, velocity = false }
 
@@ -45,9 +77,10 @@ function Postmaster:create()
   self.anim = nova.animator("postmaster", {
     start = "move", fade = 0.18,
     states = {
-      move = { blend = "speed", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP, "run" } } },
+      -- (played by the ground covered: the clips' strides, tools/strides.mjs)
+      move = { blend = "speed", by = "distance", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP, "run" } } },
       -- (with a parcel: the walk, then the trot; the carry is laid over the arms of both)
-      laden = { blend = "speed", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP_CARRY, "trot" } } },
+      laden = { blend = "speed", by = "distance", points = { { 0, "idle" }, { STROLL, "walk" }, { TOP_CARRY, "trot" } } },
       wave = { clip = "wave", loop = false, next = "move", fade = 0.15 },
       sit = { clip = "sit", fade = 0.1 },
     },
@@ -58,9 +91,20 @@ function Postmaster:create()
   self.mood = face.new(5)
   self.gait = "still"           -- still, walk, run or trot (what the stick asks for; the tests read it)
   self.dust = {}                 -- little puffs kicked up by the run's steps
-  self.draw_opts = { ry = 0, rz = 0 }
+  self.draw_opts = { ry = 0 }
   self.bank = 0                  -- the roll into a turn while running (radians; the tests read it)
   self.run_held = false
+  self.speed_spring = nova.spring { stiffness = EASE_WALK ^ 2, damping = 1 }
+  self.look = 0                  -- where the head looks first, from where the body faces (radians)
+  self.walker = nova.gait("postmaster", {
+    bounce = GAIT.bounce, lift = GAIT.lift, lean = GAIT.lean, follow = GAIT.follow,
+    ground = function(x, z)
+      if self.indoors then return 0 end
+      if self.on_deck then return world.height(x, z) - nova.terrain_height(self.x, self.z) end
+      return world.lift(x, z)
+    end,
+  })
+  self.walk_parts = {}
 end
 
 -- A smile for a moment (a parcel handed over, a letter read).
@@ -120,17 +164,36 @@ function Postmaster:update(dt)
     if d < 0.12 or self.walk_budget <= 0 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(pace, d * 4) end
     len = 1
   end
-  -- (into and out of the run a little quicker than the walk eases: the arms go out and come in over about 0.2 s)
-  local quick = want > STROLL + 0.01 or self.speed > STROLL + 0.01
-  self.speed = self.speed + (want - self.speed) * math.min(1, dt * (quick and 12 or 9))
+  -- the body turns towards the way asked at a limited rate (the head looks there first), and slows for a sharp turn: further than
+  -- about 80 degrees round it slows to a stop, pivots and sets off again, never sliding backwards facing the wrong way
   local turn_rate, pivot = 0, 0
+  local look = 0
+  self.want_turn = 0
   if want > 0 and len > 0.15 then
-    local turn = (math.atan(dx, dz) - self.face + math.pi) % (2 * math.pi) - math.pi
-    local step = turn * math.min(1, dt * 11)
+    local turn = wrap(math.atan(dx, dz) - self.face)
+    local limit = self.speed < 0.5 and TURN_SLOW or self.speed > STROLL + 0.2 and TURN_RUN or TURN_WALK
+    -- (a turn right back: it brakes first, nearly straight, the feet planting, and pivots once it has slowed)
+    if math.abs(turn) > 1.75 and self.speed > 0.9 then limit = 1.5 end
+    local step = math.max(-limit * dt, math.min(limit * dt, turn * math.min(1, dt * 12)))
     self.face = self.face + step
     turn_rate, pivot = step / math.max(dt, 1e-6), math.abs(turn)
-    self.dir_x, self.dir_z = dx / math.max(len, 1e-6), dz / math.max(len, 1e-6)
+    want = want * math.max(0, math.min(1, (math.cos(turn) - 0.2) / 0.8))
+    look = math.max(-0.6, math.min(0.6, turn))
+    self.want_turn = wrap(turn - step)
   end
+  self.look = self.look + (look - self.look) * math.min(1, dt * 14)
+  -- it goes the way it faces, or up to CRAB off it towards the way asked while it turns (the feet are planted, so a few frames of
+  -- that read as a lean into the turn, never a slide; a test walker that steers by where it went learns the stick)
+  local go = self.face + math.max(-CRAB, math.min(CRAB, self.want_turn or 0))
+  self.dir_x, self.dir_z = math.sin(go), math.cos(go)
+  -- the speed eases in and out (a critically damped spring: no snap, no overshoot)
+  local ss = self.speed_spring
+  -- (a stop from a run takes a moment longer than one from a walk: the feet need a step or two to plant)
+  local ease = want < self.speed - 0.01 and ((want < 0.05 and self.speed > STROLL + 0.2) and EASE_RUN or EASE_STOP) or (want > STROLL + 0.01 or self.speed > STROLL + 0.01) and EASE_RUN or EASE_WALK
+  ss.stiffness = ease * ease
+  if math.abs(ss.value - self.speed) > 1e-9 then ss:set(self.speed) end
+  self.speed = math.max(0, ss:update(want, dt))
+  if want == 0 and self.speed < 0.02 then self.speed = 0; ss:set(0) end
   -- the bank: only running (by how far into the run it is: the arms' share), half trotting, into the turn (turning left, +face, tips
   -- the top to the left, +x: a negative roll)
   local runw = math.max(0, math.min(1, (self.speed - STROLL) / (top - STROLL)))
@@ -143,13 +206,18 @@ function Postmaster:update(dt)
   end
   self:keep_clear()
   self.y = self.indoors and 0 or world.lift(self.x, self.z)
+  -- (on a deck, the bridge or a porch, it is drawn lifted as one by the ground under it, not each point by the hills under the deck:
+  -- the creek's bank under the bridge would bend it; its feet then stand on the deck's own heights)
+  self.on_deck = not self.indoors and self.y > 0
   self.carry_w = self.carry_w + ((state.carrying and 1 or 0) - self.carry_w) * math.min(1, dt * 8)
   local laden = state.carrying ~= nil
   self.gait = self.speed < 0.08 and "still" or self.speed <= STROLL + 0.05 and "walk" or laden and "trot" or "run"
   self.anim:play(laden and "laden" or "move", { fade = 0.25 })
   self.anim:set("speed", self.speed)
-  self.anim.speed = self.anim:state() == "wave" and 1 or pace(self.speed, laden)
-  self.anim:update(dt)
+  -- the feet: the animator moved on by the ground covered, the feet planted, the hips and the springs (nova.gait)
+  local extra = self.carry_w > 0.01 and self.carry_layer or nil
+  self.carry_layer[1].weight = self.carry_w
+  self.walker:update(dt, self, self.anim, extra)
   for i = #self.dust, 1, -1 do
     local p = self.dust[i]
     p.age = p.age + dt
@@ -195,6 +263,7 @@ function Postmaster:sit(dt)
     self.face = v.heading
   end
   self.speed, self.gait, self.bank = 0, "still", 0
+  self.walker.ready = false -- (getting out puts both feet down where it stands)
   self.anim:play("sit", { fade = 0.1 })
   self.anim.speed = 1
   self.anim:update(dt)
@@ -231,10 +300,10 @@ function Postmaster:draw()
   end
   self.carry_layer[1].weight = self.carry_w
   local o = self.draw_opts
-  local parts = face.parts(self.mood)
-  -- (the turns the seat gave the arms, the head and the tail are let go)
-  if parts.arm_l then parts.arm_l.rx, parts.arm_r.rx, parts.head.ry, parts.tail.visible = 0, 0, 0, true end
-  o.ry, o.rz, o.extra, o.parts = self.face, self.bank or 0, self.carry_w > 0.01 and self.carry_layer or nil, parts
+  -- (the face's drawings, and the gait's turns: the hips and legs to the feet, the body's lean and bank, the springs)
+  local parts = face.parts(self.mood, self.walk_parts)
+  o.ry, o.extra, o.parts = self.face, self.walker:extra(self.carry_w > 0.01 and self.carry_layer or nil), self.walker:parts(parts)
+  o.lift = self.on_deck and "origin" or nil
   self.anim:draw(self.x, self.y, self.z, o)
   for _, p in ipairs(self.dust) do
     local k = p.age / 0.5
