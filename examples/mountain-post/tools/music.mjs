@@ -16,9 +16,11 @@
 // Phrases breathe (a rest at the end of most two-bar phrases), the velocity rises and falls over each section and over the whole,
 // and the tempo eases at section ends. Run from the repository's root: scripts/env.sh node examples/mountain-post/tools/music.mjs
 // (song_write renders it to music/fernhollow.ogg with its loop points; sound_report checks levels, the seam and a small speaker).
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { GAME, tool } from "./lib.mjs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { GAME, REPO, tool } from "./lib.mjs";
 
 const SPB = 2; // steps a beat: eighths
 const BAR = 4 * SPB;
@@ -146,6 +148,9 @@ markers.push({ step: 0, name: "intro" });
 leftBar("F", "intro", 0.42); bar++;
 leftBar("Csus", "intro", 0.36); bar++;
 const LOOP = step(bar, 0);
+// (the intro's last chord is let go a beat early, so that its damper has fallen before the loop's start: the game comes back to
+// that point from the end, where nothing of the intro rings, and a tail still sounding there would click at every loop)
+for (const n of left) n.len = Math.max(1, Math.min(n.len, step(bar - 1, 3) - n.step));
 section("A", A, HARM.A, "broken", 0.62);
 section("A'", A2, HARM.A, "flowing", 0.66);
 section("B", B, HARM.B, "long", 0.52);
@@ -169,22 +174,98 @@ for (const t of tempos.sort((a, b) => a.step - b.step)) {
   if (tempoTrack.length && tempoTrack.at(-1).step === t.step) tempoTrack[tempoTrack.length - 1] = t; else tempoTrack.push(t);
 }
 
-const piano = (name, notes, extra) => ({
-  name, kind: "synth", wave: "piano", duty: 0.5, attack: 0.002, decay: 0.05, sustain: 1, release: 0.45, volume: 0.62, pan: 0, mute: false,
-  reverb: 0.34, ...extra, notes,
-});
-const song = {
-  version: 1, bpm: BPM, stepsPerBeat: SPB, length: LENGTH,
-  tracks: [
-    piano("right hand", right, { brightness: 0.34 }),
-    piano("left hand", left, { brightness: 0.26, volume: 0.5, release: 0.6 }),
-  ],
-  room: { size: 0.68, damping: 0.55, mix: 1 },
-  master: { volume: 1, fx: [{ type: "compressor", params: { threshold: -20, ratio: 1.5, attack: 20, release: 250, makeup: 0 } }], lufs: -18, limit: -1.5 },
-  markers, tempos: tempoTrack,
-  loop: { from: LOOP, to: LENGTH },
-};
-writeFileSync(join(GAME, "build", "fernhollow-score.json"), JSON.stringify({ bars: bar, loopFromBar: 2, sections: markers }, null, 1));
-console.log(`${bar} bars, ${right.length + left.length} notes, loop from step ${LOOP} to ${LENGTH}`);
-console.log(tool("song_write", { name: "fernhollow", song }));
-console.log(tool("sound_report", { sounds: [{ name: "music/fernhollow", volume: 0.3 }, { name: "horn", volume: 0.7 }, { name: "step_grass1", volume: 0.4 }, { name: "voice_hazel1", volume: 0.45 }, { name: "creek_loop", volume: 0.75 }, { name: "forest_air", volume: 0.42 }] }));
+// ---- the instrument -------------------------------------------------------------------------------------------------------------------
+// Which instrument plays it: "felt" (the felt piano) ships. "epiano" (a mellow electric piano: a warm tine with a soft bell on the
+// attack and a slow shimmer) and "celesta" (a soft, rounded celesta or music box, the tune an octave up) are the other two the owner
+// can choose between by ear; set VOICE to one of them and run this again to make it the game's music.
+// `--audition` writes a clip of each (the same 24 seconds: the tune, a quiet passage, the fullest) to build/audition/ and changes
+// nothing in the game.
+const VOICE = "felt";
+
+const sectionAt = (s) => markers.filter((m) => m.step <= s).at(-1)?.name ?? "intro";
+const synth = (name, notes, set) => ({ name, kind: "synth", duty: 0.5, attack: 0.002, decay: 0.05, sustain: 1, release: 0.4, volume: 0.6, pan: 0, mute: false, ...set, notes });
+const master = { volume: 1, fx: [{ type: "compressor", params: { threshold: -20, ratio: 1.5, attack: 20, release: 250, makeup: 0 } }], lufs: -18, limit: -1.5 };
+
+function songFor(voice) {
+  let tracks, room;
+  if (voice === "felt") {
+    // Nova's piano voiced as a felt upright: dull, the right hand a little brighter than the left, a soft damper (release), a room
+    tracks = [
+      synth("right hand", right, { wave: "piano", brightness: 0.38, release: 0.5, volume: 0.62, reverb: 0.36 }),
+      synth("left hand", left, { wave: "piano", brightness: 0.18, release: 0.7, volume: 0.5, reverb: 0.4 }),
+    ];
+    room = { size: 0.66, damping: 0.7, mix: 1 };
+  } else if (voice === "epiano") {
+    // a tine electric piano: FM with the modulator on the note (a warm body whose bend fades as it rings), a quiet bell an octave
+    // and a fifth over it that dies in a quarter of a second, a slow chorus for the shimmer
+    const shimmer = [{ type: "chorus", params: { rate: 0.35, depth: 2.2, mix: 0.35 } }];
+    tracks = [
+      synth("right hand", right, { wave: "fm", fmRatio: 1, fmIndex: 1.3, attack: 0.003, decay: 2.2, sustain: 0.3, release: 0.35, volume: 0.6, reverb: 0.3, fx: shimmer }),
+      synth("right hand bell", right.map((n) => ({ ...n, vel: r2(n.vel * 0.8) })), { wave: "fm", fmRatio: 7, fmIndex: 0.8, attack: 0.002, decay: 0.25, sustain: 0, release: 0.1, volume: 0.07, reverb: 0.3 }),
+      synth("left hand", left, { wave: "fm", fmRatio: 1, fmIndex: 0.8, attack: 0.004, decay: 2.6, sustain: 0.3, release: 0.45, volume: 0.48, reverb: 0.3, fx: shimmer }),
+    ];
+    room = { size: 0.6, damping: 0.65, mix: 1 };
+  } else if (voice === "celesta") {
+    // a celesta or music box: a sine with a soft bell (FM, the modulator an octave and a fifth up, its bend gone within half a second)
+    // that falls away; the tune an octave up where it is not high already, the left hand an octave up too and quieter
+    const up = (n, by) => ({ ...n, pitch: n.pitch + by });
+    const high = new Set(["A''", "B'"]);
+    tracks = [
+      synth("right hand", right.map((n) => up(n, high.has(sectionAt(n.step)) ? 0 : 12)), { wave: "fm", fmRatio: 3, fmIndex: 0.45, attack: 0.003, decay: 1.8, sustain: 0, release: 0.5, volume: 0.55, reverb: 0.42 }),
+      synth("left hand", left.map((n) => up(n, 12)), { wave: "fm", fmRatio: 3, fmIndex: 0.25, attack: 0.004, decay: 2.4, sustain: 0, release: 0.6, volume: 0.4, reverb: 0.42 }),
+    ];
+    room = { size: 0.72, damping: 0.7, mix: 1 };
+  } else throw new Error(`no voice ${voice}`);
+  return { version: 1, bpm: BPM, stepsPerBeat: SPB, length: LENGTH, tracks, room, master, markers, tempos: tempoTrack, loop: { from: LOOP, to: LENGTH } };
+}
+
+if (process.argv.includes("--audition")) {
+  await audition();
+} else {
+  const song = songFor(VOICE);
+  writeFileSync(join(GAME, "build", "fernhollow-score.json"), JSON.stringify({ bars: bar, loopFromBar: 2, sections: markers, voice: VOICE }, null, 1));
+  console.log(`${bar} bars, ${right.length + left.length} notes, loop from step ${LOOP} to ${LENGTH}, ${VOICE}`);
+  console.log(tool("song_write", { name: "fernhollow", song }));
+  console.log(tool("sound_report", { sounds: [{ name: "music/fernhollow", volume: 0.3 }, { name: "horn", volume: 0.7 }, { name: "step_grass1", volume: 0.4 }, { name: "voice_hazel1", volume: 0.45 }, { name: "creek_loop", volume: 0.75 }, { name: "forest_air", volume: 0.42 }] }));
+}
+
+// The three clips: each voice's whole song rendered as song_write renders it (its room, master and loudness), then three pieces
+// joined with short crossfades: the tune (A, bars 1 to 3), the quiet B (bars 1 and 2) and the fullest C (bars 1 and 2).
+async function audition() {
+  const out = join(GAME, "build", "audition");
+  mkdirSync(out, { recursive: true });
+  // the studio's own renderer, bundled for Node by the rolldown the studio has (this checkout's, or the main checkout's)
+  const common = execFileSync("git", ["-C", REPO, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" }).trim();
+  const bundler = [join(REPO, "studio/node_modules/.bin/rolldown"), join(dirname(common), "studio/node_modules/.bin/rolldown")].find(existsSync);
+  if (!bundler) throw new Error("no studio/node_modules: run `cd studio && ../scripts/env.sh npm ci` (a download: ask first)");
+  const entry = join(out, "render-entry.ts");
+  writeFileSync(entry, `export { renderSong, stepTime } from ${JSON.stringify(join(REPO, "studio/src/lib/song.ts"))};\nexport { encodeWav } from ${JSON.stringify(join(REPO, "studio/src/lib/wav.ts"))};\n`);
+  execFileSync(bundler, [entry, "--file", join(out, "render.mjs"), "--format", "esm", "--platform", "node"], { stdio: "ignore" });
+  const { renderSong, stepTime, encodeWav } = await import(`${pathToFileURL(join(out, "render.mjs")).href}?${Date.now()}`);
+  const names = { felt: "a-felt-piano", epiano: "b-electric-piano", celesta: "c-celesta" };
+  for (const voice of ["felt", "epiano", "celesta"]) {
+    const song = songFor(voice);
+    const full = renderSong(song);
+    const rate = full.rate;
+    const at = (name, bars) => Math.round(stepTime(song, markers.find((m) => m.name === name).step + bars * BAR) * rate);
+    const pieces = [["A", 3], ["B", 2], ["C", 2]].map(([name, bars]) => [at(name, 0), at(name, bars)]);
+    const xf = Math.round(0.6 * rate); // each piece runs this much into the next, which fades in under it
+    const total = pieces.reduce((s, [a, b]) => s + (b - a), 0);
+    const ch = [new Float32Array(total), new Float32Array(total)];
+    let w = 0;
+    for (const [a, b] of pieces) {
+      const len = b - a + (w + b - a < total ? xf : 0); // (the last piece fades out at its own end)
+      for (let i = 0; i < len && w + i < total; i++) {
+        const fin = w > 0 && i < xf ? Math.sin((Math.PI / 2) * (i / xf)) : 1;
+        const fout = i >= len - xf ? Math.cos((Math.PI / 2) * ((i - (len - xf)) / xf)) : 1;
+        for (let c = 0; c < 2; c++) ch[c][w + i] += (full.channels[c][a + i] ?? 0) * fin * fout;
+      }
+      w += b - a;
+    }
+    writeFileSync(join(out, `${names[voice]}-song.json`), JSON.stringify(song));
+    const wav = join(out, `${names[voice]}.wav`), m4a = join(out, `${names[voice]}.m4a`);
+    writeFileSync(wav, encodeWav({ rate, channels: ch }));
+    execFileSync("afconvert", ["-f", "m4af", "-d", "aac", "-b", "160000", wav, m4a]);
+    console.log(`${voice}: ${(total / rate).toFixed(1)} s -> ${wav} and ${m4a}`);
+  }
+}

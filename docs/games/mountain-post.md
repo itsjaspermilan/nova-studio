@@ -348,6 +348,20 @@ over C's arpeggios), A''' (once more, ending on a new cadence) and a last bar of
 rises and falls within each section and across the piece. -18 LUFS, played at 0.3 (about -28.5 LUFS heard on foot, a little
 under the voices and well under the horn). **Nobody has listened to it**: offline renders and `sound_report` only.
 
+**"The piano sounds kinda twangy and annoying still"** (the owner, on the handheld). Not brightness (the piece was already dull above
+2.5 kHz) but the instrument; measured on single notes (the full numbers are in `docs/sound-for-agents.md`, "The piano's twang"):
+its two strings a note were equally loud, so every partial beat to nothing (dips of 40 to 46 dB: a held C5 or C6 lost its
+fundamental a second or two in and the centroid of C6 jumped from 1.2 to 2.8 kHz, a slow "wah" on every note); the partials fell
+like a sawtooth's (the second only 3.5 dB under the first) and the high ones rang as long as the low; the hammer's comb lifted
+partials 9 to 14 of the left hand's notes back up into a nasal hump (600 Hz to 1.8 kHz, ringing 4 to 10 s); and the damper was a
+straight fade that held, then dropped 20 dB in its last 130 ms. Nova's `piano` is now voiced as a felt piano (song.ts) and the
+piece is played on it again (right hand `brightness` 0.38, left 0.18, releases 0.5 and 0.7, a duller room, damping 0.7; the
+intro's last chord lifts a beat early so that nothing of it still rings at the loop's start). Form, notes and length are unchanged
+(-18 LUFS, 206.5 s, the seam matches). Two other voices for the same notes are a switch in `tools/music.mjs` (`VOICE`: "felt",
+"epiano", "celesta"), and `scripts/env.sh node examples/mountain-post/tools/music.mjs --audition` writes the same 24.7 s of each (A bars 1 to 3,
+B bars 1 and 2, C bars 1 and 2, as the song mixes them, all at -17.4 to -18 LUFS) to `build/audition/` as WAV and AAC for the
+owner to choose by ear. **Nobody has listened to any of it.**
+
 ### Sound levels
 
 The ambience as rendered by `tools/ambience.mjs` (a minute at each place, the music stopped; LUFS by BS.1770; "loudest 3 s" is

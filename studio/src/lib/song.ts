@@ -784,93 +784,120 @@ function oscillator(wave: Wave, duty: number, rng: () => number) {
   };
 }
 
-/// The "piano" instrument: a struck string, built from its partials. Each partial sits a little sharp of the harmonic series (a
-/// stiff string's inharmonicity, more in the treble), falls away in two stages (the prompt sound and the long aftersound) and the
-/// faster the higher it is; a felt hammer rounds off the top (less with `brightness` and with a harder note) and, struck an eighth
-/// of the way along, leaves every eighth partial weak; two strings a note, a fraction of a cent apart, beat slowly against each
-/// other; the hammer's soft knock and a short ramp start it. Low notes ring for many seconds and high ones briefly. The track's
-/// envelope still applies on top: its release is the damper falling when the key is let go.
-function pianoVoice(t: Track, rng: () => number, vel: number) {
+/// The "piano" instrument: a struck string, built from its partials and voiced as a soft felt piano. Each partial sits a little
+/// sharp of the harmonic series (a stiff string's inharmonicity, more in the treble). The felt hammer is a low-pass steeper than
+/// the string's own fall, opened by a harder note and by `brightness`: a soft note is its fundamental and a few quiet partials,
+/// with next to nothing above a few kilohertz, and struck about an eighth of the way along the hammer leaves the eighth partial a
+/// little weak. Each partial falls in two stages (the prompt sound, then the long aftersound), the higher the faster, so a note
+/// mellows as it rings. Two strings a note, the second quieter and a fraction of a cent off, beat slowly and shallowly (a few dB,
+/// under a beat a second in the partials that are heard). A rounded rise of several milliseconds (longer for a soft note and in
+/// the bass) and a dull thump of the felt start it. When the key is let go (after `hold` seconds) the damper stops the strings,
+/// the high partials first, over the track's `release`, with a faint thump of its own; the track's attack, decay and sustain
+/// still shape the held part. Low notes ring for many seconds and high ones briefly.
+function pianoVoice(t: Track, rng: () => number, vel: number, hold = Infinity) {
   const bright = clamp(t.brightness ?? 0.35, 0, 1);
   const v = clamp(vel, 0.05, 1);
-  let parts: Float64Array | null = null; // per partial and string: re, im, cos, sin, fast amp, slow amp, fast fall, slow fall
+  const release = Math.max(0.02, t.release);
+  const SECOND = 0.3; // the second string's share
+  // per partial: the two strings' rotations (re, im, cos, sin each), the prompt and after levels, their falls, the damper's fall
+  const STRIDE = 13;
+  let parts: Float64Array | null = null;
   let count = 0;
   let n = 0;
-  let ramp = 0;
-  let knock = 0, knockLevel = 0, knockFall = 0, knockLp = 0;
-  const STRIDE = 8;
+  let ramp = 1, liftAt = 0, endAt = 0, fadeLen = 1;
+  let thump = 0, thumpLevel = 0, thumpFall = 0, lp1 = 0, lp2 = 0, lpK = 0;
   const setup = (freq: number, rate: number) => {
     const midi = 69 + 12 * Math.log2(freq / 440);
-    const B = clamp(1e-4 * 2 ** ((midi - 60) / 12), 2e-5, 2e-3); // inharmonicity
-    const top = Math.min(rate * 0.45, 7000);
-    const corner = 700 + 2600 * bright + 1600 * v; // the felt's roll-off
-    const tilt = 1.5 - 0.35 * bright - 0.45 * v; // (a harder blow throws more of the upper partials)
+    const B = clamp(1e-4 * 2 ** ((midi - 60) / 12), 2e-5, 1e-3); // inharmonicity
+    const top = Math.min(rate * 0.45, 6000);
+    // the felt: a corner (Hz) above which the partials fall away steeply, higher for a harder note, a brighter piano, a higher string
+    const corner = (450 + 1100 * bright + 1000 * v) * clamp(freq / 262, 0.5, 4) ** 0.25;
+    const tilt = 1.45 - 0.35 * bright - 0.3 * v; // the string's own fall with the partial's number
     const ring = clamp(6.5 * (262 / freq) ** 0.75, 0.5, 14); // seconds to fall to 1/e for the fundamental's aftersound
+    // one detune for the pair of strings (cents), so the k-th partial beats k times as fast as the first
+    const pair = 2 ** ((0.25 + rng() * 0.35) / 1200);
     const list: number[] = [];
     let total = 0;
     for (let k = 1; k <= 40; k++) {
       const fk = freq * k * Math.sqrt(1 + B * k * k);
       if (fk > top) break;
-      const comb = Math.abs(Math.sin(Math.PI * k * 0.125)) * 0.85 + 0.15;
-      const amp = comb / k ** tilt / (1 + (fk / corner) ** 2);
-      const slow = ring / (1 + 0.28 * (k - 1) ** 1.25);
-      for (let s = 0; s < 2; s++) {
-        const detune = s === 0 ? 1 : 2 ** ((0.4 + rng() * 0.6) / 1200);
-        const w = (2 * Math.PI * fk * detune) / rate;
-        list.push(1, 0, Math.cos(w), Math.sin(w), amp * 0.55, amp * 0.45, Math.exp(-1 / (slow * 0.16 * rate)), Math.exp(-1 / (slow * rate)));
-        total += amp;
-      }
+      const comb = 0.7 + 0.3 * Math.abs(Math.sin(Math.PI * k * 0.12));
+      const felt = 1 / Math.sqrt(1 + (fk / corner) ** 4);
+      const board = 1 / Math.sqrt(1 + (80 / fk) ** 2); // the soundboard gives the lowest fundamentals less
+      const amp = (comb * felt * board) / k ** tilt;
+      if (amp < 1e-4) continue;
+      const after = ring / (1 + 0.3 * (k - 1) + (fk / 600) ** 1.5);
+      const prompt = 0.45 + 0.25 * Math.min(1, (k - 1) / 8);
+      const damper = release / (5 + 0.8 * (k - 1));
+      const w1 = (2 * Math.PI * fk) / rate, w2 = w1 * pair;
+      list.push(1, 0, Math.cos(w1), Math.sin(w1), 1, 0, Math.cos(w2), Math.sin(w2), amp * prompt, amp * (1 - prompt),
+        Math.exp(-1 / (after * 0.12 * rate)), Math.exp(-1 / (after * rate)), Math.exp(-1 / (damper * rate)));
+      total += amp * (1 + SECOND);
     }
     // (so that a full-strength note peaks near 1: the partials start in step)
     const norm = 1 / Math.max(1e-6, total * 0.75);
-    for (let i = 0; i < list.length; i += STRIDE) { list[i + 4]! *= norm; list[i + 5]! *= norm; }
+    for (let i = 0; i < list.length; i += STRIDE) { list[i + 8]! *= norm; list[i + 9]! *= norm; }
     parts = Float64Array.from(list);
     count = list.length / STRIDE;
-    ramp = Math.max(1, Math.round((0.003 + 0.006 * (1 - v)) * rate));
-    knockLevel = 0.05 * v;
-    knockFall = Math.exp(-1 / (0.006 * rate));
-    knock = 1;
+    ramp = Math.max(1, Math.round((0.005 + 0.007 * (1 - v)) * (1 + 0.5 * clamp((60 - midi) / 24, 0, 1)) * rate));
+    liftAt = Number.isFinite(hold) ? Math.round(hold * rate) : Number.MAX_SAFE_INTEGER;
+    endAt = Number.isFinite(hold) ? Math.round((hold + release) * rate) : Number.MAX_SAFE_INTEGER;
+    fadeLen = Math.max(1, Math.round(release * 0.25 * rate));
+    // the felt's thump: noise through two low-passes near 300 Hz, over a dozen milliseconds
+    lpK = 1 - Math.exp((-2 * Math.PI * 300) / rate);
+    thumpLevel = 0.5 * v;
+    thumpFall = Math.exp(-1 / (0.012 * rate));
+    thump = 1;
   };
   return (freq: number, rate: number) => {
     if (!parts) setup(freq, rate);
     const p = parts!;
+    const damped = n >= liftAt;
+    if (n === liftAt) { thump = 0.25; thumpFall = Math.exp(-1 / (0.02 * rate)); } // the damper's own faint thump
     let out = 0;
     for (let i = 0; i < count; i++) {
       const o = i * STRIDE;
-      const re = p[o]!, im = p[o + 1]!, c = p[o + 2]!, s = p[o + 3]!;
-      p[o] = re * c - im * s;
-      p[o + 1] = re * s + im * c;
-      const a = p[o + 4]! + p[o + 5]!;
-      out += a * p[o + 1]!;
-      p[o + 4] = p[o + 4]! * p[o + 6]!;
-      p[o + 5] = p[o + 5]! * p[o + 7]!;
+      let re = p[o]!, im = p[o + 1]!;
+      p[o] = re * p[o + 2]! - im * p[o + 3]!;
+      p[o + 1] = re * p[o + 3]! + im * p[o + 2]!;
+      re = p[o + 4]!; im = p[o + 5]!;
+      p[o + 4] = re * p[o + 6]! - im * p[o + 7]!;
+      p[o + 5] = re * p[o + 7]! + im * p[o + 6]!;
+      out += (p[o + 8]! + p[o + 9]!) * (p[o + 1]! + SECOND * p[o + 5]!);
+      const fall = damped ? p[o + 12]! : 1;
+      p[o + 8] = p[o + 8]! * p[o + 10]! * fall;
+      p[o + 9] = p[o + 9]! * p[o + 11]! * fall;
     }
     // (the rotation's rounding drifts its length a little: put each partial back on the circle now and then)
     if ((n & 4095) === 4095) {
       for (let i = 0; i < count; i++) {
-        const o = i * STRIDE;
-        const l = Math.hypot(p[o]!, p[o + 1]!) || 1;
-        p[o] = p[o]! / l;
-        p[o + 1] = p[o + 1]! / l;
+        for (const o of [i * STRIDE, i * STRIDE + 4]) {
+          const l = Math.hypot(p[o]!, p[o + 1]!) || 1;
+          p[o] = p[o]! / l;
+          p[o + 1] = p[o + 1]! / l;
+        }
       }
     }
-    // the hammer's felt: a soft knock of dull noise, and a short rise
-    if (knock > 1e-4) {
-      knockLp += ((rng() * 2 - 1) - knockLp) * 0.18;
-      out += knockLp * knock * knockLevel;
-      knock *= knockFall;
+    if (thump > 1e-4) {
+      lp1 += ((rng() * 2 - 1) - lp1) * lpK;
+      lp2 += (lp1 - lp2) * lpK;
+      out += lp2 * thump * thumpLevel;
+      thump *= thumpFall;
     }
-    const r = n < ramp ? Math.sin((Math.PI / 2) * (n / ramp)) ** 2 : 1;
+    let g = n < ramp ? Math.sin((Math.PI / 2) * (n / ramp)) ** 2 : 1;
+    // (the last quarter of the release fades to nothing, so a note never stops on a step)
+    if (n >= endAt - fadeLen) g *= Math.max(0, (endAt - n) / fadeLen);
     n++;
-    return out * r * 1.6;
+    return out * g * 1.6;
   };
 }
 
 /// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong), an organ
 /// (added harmonics) and a piano (struck strings: `pianoVoice`).
-/// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch.
-function instrumentOscillator(t: Track, rng: () => number, vel = 1) {
-  if (t.wave === "piano") return pianoVoice(t, rng, vel);
+/// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch. `hold` is how long the
+/// key is held (seconds): the piano lets its damper fall after it.
+function instrumentOscillator(t: Track, rng: () => number, vel = 1, hold = Infinity) {
+  if (t.wave === "piano") return pianoVoice(t, rng, vel, hold);
   if (t.wave === "sample") {
     const snd = sampleBank.get(t.sample ?? "");
     if (!snd || !snd.channels[0]) return () => 0;
@@ -1508,11 +1535,14 @@ export function renderSong(source: Song, rate = RATE): Sound {
       }
       const hold = holdOf(n);
       const length = Math.round((hold + track.release) * rate);
-      const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1), n.vel) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
+      const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1), n.vel, hold) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
       const freq = midiFreq(n.pitch);
       const glide = n.bend ?? 0;
+      // (the piano's damper is its own: after the key is let go its envelope stays where it was and the voice falls away)
+      const piano = track.wave === "piano";
+      const held = piano ? envelope(hold, hold + 1, track.attack, track.decay, track.sustain, track.release) : 0;
       for (let k = 0; k < length; k++) {
-        const e = envelope(k / rate, hold, track.attack, track.decay, track.sustain, track.release);
+        const e = piano && k / rate >= hold ? held : envelope(k / rate, hold, track.attack, track.decay, track.sustain, track.release);
         // the glide runs over the note's held length, then stays where it got to
         const f = glide ? freq * 2 ** ((glide * Math.min(1, k / rate / hold)) / 12) : freq;
         if (e > 0) mix(startIndex + k, osc(f, rate) * e * n.vel * 0.5, nl, nr);
