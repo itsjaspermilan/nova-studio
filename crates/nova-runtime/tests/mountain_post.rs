@@ -3948,6 +3948,687 @@ fn no_tree_stands_between_an_approaching_van_and_a_signpost() {
     assert!(lines > 100, "sight lines checked: {lines}");
 }
 
+// ---------------------------------------------------------------------------------------------------------------- the owner's fifth play:
+// "We need to rethink the character movement and animations ... make sure it doesn't look like the character is a stiff person
+// sliding while walking." The walk, run and trot are played by the ground covered and the feet are Nova's gait (nova.gait): each
+// foot is fixed to the ground while it stands. These measure what is drawn: each frame the pose the game draws (nova.model_pose with
+// the animator's layers and the gait's parts), the sole as the lower half of an ellipse turned with the foot, the point of it on the
+// ground, and how far that very point of the sole moved on the ground since the frame before, summed over each step the foot stands.
+
+/// The foot probe: `FP_STEP(name)` after every frame; `FP.tags[tag]` gathers, per stretch of the route (`FP.tag`), the steps, the
+/// most any standing sole slid in one step (m), sank into the ground, and how far the hips went down; `FP.err` is the most the drawn
+/// ankle was ever off where the gait put it.
+const FOOT_PROBE: &str = r#"
+FP = { tags = {}, err = 0, tag = "" }
+local SOLE = { ankle = 0.044, forward = 0.025, half = 0.082, round = 0.034 }
+local PTS = {}
+for j = 0, 32 do
+  local t = math.pi + math.pi * j / 32
+  PTS[#PTS + 1] = { SOLE.forward + SOLE.half * math.cos(t), -(SOLE.ankle - SOLE.round) + SOLE.round * math.sin(t) }
+end
+local function place(T, j)
+  local z, y = PTS[j][1], PTS[j][2]
+  local ca, sa = math.cos(T.pitch), math.sin(T.pitch)
+  local zz, yy = z * ca + y * sa, -z * sa + y * ca
+  return T.x + zz * math.sin(T.yaw), T.y + yy, T.z + zz * math.cos(T.yaw)
+end
+function FP_STEP(name)
+  local p = nova.named(name)
+  local W = require("lib.world")
+  local layers = p.anim:layers()
+  for _, l in ipairs(p.walker:extra(p.carry_w and p.carry_w > 0.01 and p.carry_layer or nil)) do layers[#layers + 1] = l end
+  local pose = nova.model_pose(p.model or name, { layers = layers, parts = p.walker:parts({}) })
+  local feet = p.walker:feet()
+  local c, s = math.cos(p.face), math.sin(p.face)
+  local T = {}
+  for i, fname in ipairs({ "foot_l", "foot_r" }) do
+    local f = pose[fname]
+    local t = { x = p.x + f.x * c + f.z * s, z = p.z - f.x * s + f.z * c, y = (p.y or 0) + f.y, yaw = feet[i].yaw, pitch = feet[i].pitch }
+    if feet[i].planted then FP.err = math.max(FP.err, math.sqrt((t.x - feet[i].x) ^ 2 + (t.y - feet[i].y) ^ 2 + (t.z - feet[i].z) ^ 2)) end
+    local lo, lj = math.huge, 1
+    for j = 1, #PTS do local _, y = place(t, j); if y < lo then lo, lj = y, j end end
+    local ground = p.on_deck and (W.height(t.x, t.z) - nova.terrain_height(p.x, p.z)) or W.lift(t.x, t.z)
+    t.low, t.j, t.h = lo, lj, lo - ground
+    T[i] = t
+  end
+  local sup = FP.sup
+  -- (the support foot is one the gait has down: of two, the lower over its own ground; none in a run's flight)
+  if feet[1].planted and feet[2].planted then if not sup or sup == 0 or math.abs(T[1].h - T[2].h) > 0.003 then sup = T[1].h < T[2].h and 1 or 2 end
+  elseif feet[1].planted then sup = 1 elseif feet[2].planted then sup = 2 else sup = 0 end
+  local prev, cur = FP.prev, FP.cur
+  if cur and cur.foot == sup and sup > 0 and prev then
+    local ax, _, az = place(prev[sup], T[sup].j)
+    local bx, _, bz = place(T[sup], T[sup].j)
+    local d = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+    if d < 0.5 and T[sup].h < 0.01 and prev[sup].h < 0.01 then cur.slide = cur.slide + d end
+    cur.sink = math.max(cur.sink, -T[sup].h)
+    if feet[sup].planted and feet[sup].pivot == "flat" then cur.float = math.max(cur.float, T[sup].h) end
+    cur.drop = math.max(cur.drop, p.walker.drop or 0)
+    cur.speed, cur.n = cur.speed + (p.speed or 0), cur.n + 1
+  else
+    if cur and cur.n >= 3 then
+      local b = FP.tags[cur.tag] or { steps = 0, slide = 0, sink = 0, drop = 0, speed = 0, float = 0 }
+      FP.tags[cur.tag] = b
+      b.steps, b.slide, b.sink, b.drop = b.steps + 1, math.max(b.slide, cur.slide), math.max(b.sink, cur.sink), math.max(b.drop, cur.drop)
+      b.float = math.max(b.float, cur.float)
+      b.speed = math.max(b.speed, cur.speed / cur.n)
+    end
+    FP.cur = { foot = sup, slide = 0, sink = 0, drop = 0, speed = 0, float = 0, n = 0, tag = FP.tag }
+  end
+  FP.sup, FP.prev = sup, T
+end
+function FP_TAG(tag) return FP.tags[tag] or { steps = 0, slide = 0, sink = 0, drop = 0, speed = 0, float = 0 } end
+"#;
+
+fn install_probe(g: &Game) {
+    // (one line, without its comment lines)
+    let probe: Vec<&str> = FOOT_PROBE
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("--"))
+        .collect();
+    let probe = probe.join(" ");
+    assert_eq!(
+        lua(g, &format!("(function() {probe} return 'ok' end)()")),
+        "ok"
+    );
+}
+
+/// One stretch of a route with the probe, its steps gathered under `tag`.
+fn probed(g: &mut Game, who: &str, tag: &str, steps: &str) -> Report {
+    play(
+        g,
+        &format!(
+            r#"{{ "each_frame": "FP_STEP('{who}')", "steps": [ {{ "lua": "FP.tag = '{tag}'" }}, {steps} ] }}"#
+        ),
+    )
+}
+
+/// (steps, the most slide in a step, the most a sole sank, the hips' lowest, the top speed of a step) for a tag
+fn tag(g: &Game, tag: &str) -> (f64, f64, f64, f64, f64) {
+    let t = |f: &str| num(g, &format!("FP_TAG('{tag}').{f}"));
+    (t("steps"), t("slide"), t("sink"), t("drop"), t("speed"))
+}
+
+/// The postmaster on the flat stretch of road south of the post office, facing along it, the camera behind.
+const ON_THE_ROAD: &str = r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -125, 0; require('lib.camera').reset(0)" }, { "wait": 30 } ] }"#;
+
+/// No foot slides at any speed: a sweep of the stick from a creep to the full walk, the run, the trot with a parcel, starting and
+/// stopping at each, the run into and out of the walk, turning while walking and running, a turn right back, a turn on the spot.
+/// Each standing sole's point on the ground moves less than 1.5 cm in a step (the old clips, played by time, slid 17 to 60 cm a
+/// step), no sole sinks into the ground, the hips never fold up, and what is drawn is where the gait put the feet.
+#[test]
+fn no_foot_slides_at_any_speed_starting_stopping_or_turning() {
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    install_probe(&g);
+    let mut tags: Vec<String> = Vec::new();
+    for t in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0] {
+        let name = format!("walk {t}");
+        probed(
+            &mut g,
+            "postmaster",
+            "",
+            &format!(r#"{{ "hold": ["move_y=-{t}"], "frames": 25 }}"#),
+        );
+        probed(
+            &mut g,
+            "postmaster",
+            &name,
+            &format!(r#"{{ "hold": ["move_y=-{t}"], "frames": 70 }}"#),
+        );
+        tags.push(name);
+    }
+    for (name, steps) in [
+        ("run", r#"{ "hold": ["move_y=-1", "run"], "frames": 90 }"#),
+        ("stop from a run", r#"{ "wait": 40 }"#),
+        (
+            "start to a walk",
+            r#"{ "hold": ["move_y=-1"], "frames": 30 }"#,
+        ),
+        ("stop from a walk", r#"{ "wait": 40 }"#),
+        (
+            "start to a run",
+            r#"{ "hold": ["move_y=-1", "run"], "frames": 40 }"#,
+        ),
+        ("run to walk", r#"{ "hold": ["move_y=-1"], "frames": 40 }"#),
+        (
+            "walk to run",
+            r#"{ "hold": ["move_y=-1", "run"], "frames": 40 }"#,
+        ),
+        (
+            "turning at a walk",
+            r#"{ "hold": ["move_y=-0.7", "move_x=0.7"], "frames": 100 }"#,
+        ),
+        (
+            "turning at a run",
+            r#"{ "hold": ["move_y=-0.7", "move_x=0.7", "run"], "frames": 100 }"#,
+        ),
+        (
+            "turning right back",
+            r#"{ "hold": ["move_y=1"], "frames": 60 }"#,
+        ),
+        ("stop", r#"{ "wait": 40 }"#),
+        (
+            "trot",
+            r#"{ "lua": "require('lib.state').carrying = 'hazel'" }, { "hold": ["move_y=-1", "run"], "frames": 90 }"#,
+        ),
+        (
+            "stop with a parcel",
+            r#"{ "wait": 30, "lua": "require('lib.state').carrying = nil" }"#,
+        ),
+        (
+            "turn on the spot",
+            r#"{ "hold": ["move_x=1"], "frames": 6 }, { "wait": 50 }"#,
+        ),
+    ] {
+        probed(&mut g, "postmaster", name, steps);
+        tags.push(name.to_string());
+    }
+    probed(&mut g, "postmaster", "", r#"{ "wait": 2 }"#);
+    let mut seen = Vec::new();
+    for t in &tags {
+        let (steps, slide, sink, drop, speed) = tag(&g, t);
+        seen.push(format!(
+            "{t}: {steps} steps up to {speed:.2} m/s, slid {:.2} cm, sank {:.2} cm, hips down {:.1} cm",
+            slide * 100.0,
+            sink * 100.0,
+            drop * 100.0
+        ));
+        assert!(
+            slide < 0.015,
+            "{t}: a standing foot slid {slide} m in a step: {seen:#?}"
+        );
+        assert!(sink < 0.01, "{t}: a standing sole sank {sink} m: {seen:#?}");
+        assert!(drop <= 0.1001, "{t}: the hips folded {drop} m: {seen:#?}");
+    }
+    // every stretch that moves was measured, from a creep to the run
+    for t in tags
+        .iter()
+        .filter(|t| !t.starts_with("stop") && *t != "turn on the spot")
+    {
+        assert!(tag(&g, t).0 >= 1.0, "{t} has steps: {seen:#?}");
+    }
+    let creep = tag(&g, "walk 0.2").4;
+    let run = tag(&g, "run").4;
+    assert!(
+        creep < 0.5 && run > 2.8,
+        "the sweep goes from a creep to the run: {seen:#?}"
+    );
+    let err = num(&g, "FP.err");
+    // (within a centimetre: a leg at its longest may leave a standing ankle a few millimetres short for a frame)
+    assert!(
+        err < 0.01,
+        "the drawn ankles are where the gait put them: {err} m off"
+    );
+}
+
+/// Starts, stops and turns read as weight: the speed eases up (about 0.2 s to the full walk, longer to the full run) and settles to
+/// a stop (not at once, and not a skate); the body leans into setting off and back as it stops; a turn right back brakes, plants and
+/// pivots and never goes backwards facing the wrong way; a push to the side from standing turns on the spot with the feet stepping
+/// round; stopped, both feet are down under the hips.
+#[test]
+fn starts_stops_and_turns_read_as_weight_and_never_go_backwards() {
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let speeds = |r: &Report| -> Vec<f64> {
+        r.record("nova.named('postmaster').speed")
+            .iter()
+            .flat_map(|(a, b, v)| {
+                std::iter::repeat_n(v.parse::<f64>().unwrap(), (b - a + 1) as usize)
+            })
+            .collect()
+    };
+    // setting off: eased (the first frame barely moving), 90% of the walk in 0.15 to 0.3 s, the lean forward more than walking on
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1"], "frames": 40, "record": ["nova.named('postmaster').speed", "nova.named('postmaster').walker.out.spine.rx"] } ] }"#,
+    );
+    let v = speeds(&r);
+    assert!(v[0] < 0.4, "eased, not snapped: {v:?}");
+    let ninety = v.iter().position(|s| *s >= 0.9 * 1.6).unwrap();
+    assert!(
+        (9..=18).contains(&ninety),
+        "the full walk in 0.15 to 0.3 s: frame {ninety} of {v:?}"
+    );
+    let lean: Vec<f64> = r
+        .record("nova.named('postmaster').walker.out.spine.rx")
+        .iter()
+        .map(|(_, _, v)| v.parse().unwrap())
+        .collect();
+    let walking = *lean.last().unwrap();
+    assert!(
+        lean.iter().cloned().fold(0.0, f64::max) > walking + 0.005,
+        "a lean into setting off, more than walking on: {lean:?}"
+    );
+    // the run takes a little longer to reach than the walk
+    play(&mut g, r#"{ "steps": [ { "wait": 40 } ] }"#);
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1", "run"], "frames": 50, "record": "nova.named('postmaster').speed" } ] }"#,
+    );
+    let v = speeds(&r);
+    let run90 = v.iter().position(|s| *s >= 0.9 * 3.0).unwrap();
+    assert!(
+        run90 > ninety && run90 < 36,
+        "the full run a little later: frame {run90}"
+    );
+    // stopping from the walk: not at once, but settled within 0.4 s, leaning back
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1"], "frames": 50 } ] }"#,
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "wait": 40, "record": ["nova.named('postmaster').speed", "nova.named('postmaster').walker.out.spine.rx"] } ] }"#,
+    );
+    let v = speeds(&r);
+    assert!(v[2] > 0.5, "no instant freeze: {v:?}");
+    let still = v.iter().position(|s| *s < 0.02).unwrap();
+    assert!(still <= 24, "settled in 0.4 s: frame {still} of {v:?}");
+    let back: Vec<f64> = r
+        .record("nova.named('postmaster').walker.out.spine.rx")
+        .iter()
+        .map(|(_, _, v)| v.parse().unwrap())
+        .collect();
+    assert!(
+        back.iter().cloned().fold(1.0, f64::min) < walking - 0.005,
+        "leaning back as it stops: {back:?} against {walking}"
+    );
+    // both feet down under the hips once it has stopped
+    let feet = lua(
+        &g,
+        "(function() local p = nova.named('postmaster'); local o = {}; for i, f in ipairs(p.walker:feet()) do local s, c = math.sin(p.face), math.cos(p.face); \
+         local mx = (f.x - p.x) * c - (f.z - p.z) * s; local mz = (f.x - p.x) * s + (f.z - p.z) * c; o[i] = string.format('%s %.3f %.3f', tostring(f.planted), mx, mz) end; return table.concat(o, ' ') end)()",
+    );
+    let parts: Vec<&str> = feet.split(' ').collect();
+    assert_eq!(parts[0], "true", "{feet}");
+    assert_eq!(parts[3], "true", "{feet}");
+    for z in [parts[2], parts[5]] {
+        assert!(
+            z.parse::<f64>().unwrap().abs() < 0.08,
+            "under the hips: {feet}"
+        );
+    }
+    // a turn right back from the run: it never moves against the way it faces, it ends facing the other way, it brakes first
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1", "run"], "frames": 60 } ] }"#,
+    );
+    let r = play(
+        &mut g,
+        r#"{ "lua": "LASTX, LASTZ, WORST = nova.named('postmaster').x, nova.named('postmaster').z, 1", "each_frame": "local p = nova.named('postmaster'); local dx, dz = p.x - LASTX, p.z - LASTZ; local d = math.sqrt(dx * dx + dz * dz); if d > 1e-4 then WORST = math.min(WORST, (dx * math.sin(p.face) + dz * math.cos(p.face)) / d) end; LASTX, LASTZ = p.x, p.z",
+        "steps": [ { "hold": ["move_y=1", "run"], "frames": 90, "record": "string.format('%.3f %.3f', nova.named('postmaster').face, nova.named('postmaster').speed)" } ] }"#,
+    );
+    let worst = num(&g, "WORST");
+    assert!(
+        worst > 0.15,
+        "it never goes backwards or sideways against its facing: {worst}"
+    );
+    let face = num(&g, "nova.named('postmaster').face");
+    assert!(
+        (face.rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI).abs() < 0.2,
+        "facing back the other way: {face}"
+    );
+    let rows = r.record(
+        "string.format('%.3f %.3f', nova.named('postmaster').face, nova.named('postmaster').speed)",
+    );
+    let first: Vec<f64> = rows[4].2.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!(
+        first[0].abs() < 0.3 && first[1] > 1.0,
+        "it brakes before it pivots: {:?}",
+        &rows[..8]
+    );
+    // standing, a push to the side turns it on the spot, the feet stepping round (no skating round on planted feet)
+    play(&mut g, r#"{ "steps": [ { "wait": 60 } ] }"#);
+    let before = num(
+        &g,
+        "nova.named('postmaster').walker:feet()[1].steps + nova.named('postmaster').walker:feet()[2].steps",
+    );
+    let at = (
+        num(&g, "nova.named('postmaster').x"),
+        num(&g, "nova.named('postmaster').z"),
+    );
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_x=1"], "frames": 8 }, { "wait": 60 } ] }"#,
+    );
+    let after = num(
+        &g,
+        "nova.named('postmaster').walker:feet()[1].steps + nova.named('postmaster').walker:feet()[2].steps",
+    );
+    let moved = (num(&g, "nova.named('postmaster').x") - at.0)
+        .hypot(num(&g, "nova.named('postmaster').z") - at.1);
+    assert!(
+        after >= before + 2.0,
+        "the feet step round: {before} -> {after}"
+    );
+    assert!(moved < 0.35, "on the spot, near enough: {moved} m");
+    assert_eq!(
+        lua(
+            &g,
+            "tostring(nova.named('postmaster').walker:feet()[1].planted and nova.named('postmaster').walker:feet()[2].planted)"
+        ),
+        "true"
+    );
+}
+
+/// The cycle is one for the walk, the run and the trot and it carries on through every change: B pressed and let go, a parcel
+/// taken and set down (the animator's "move" and "laden" states), stopping and starting. It only ever moves forward, never jumps,
+/// and the footsteps keep an even beat at an even speed.
+#[test]
+fn the_cycle_carries_on_through_walk_run_trot_and_b_pressed_or_let_go() {
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let r = play(
+        &mut g,
+        r#"{ "lua": "PH, JUMP, BACK = nil, 0, 0", "each_frame": "local a = nova.named('postmaster').anim; local ph = a:cycle(); if PH then local d = (ph - PH) % 1; if d > 0.5 then BACK = BACK + 1 else JUMP = math.max(JUMP, d) end end; PH = ph",
+        "steps": [
+          { "hold": ["move_y=-1"], "frames": 40 }, { "hold": ["move_y=-1", "run"], "frames": 30 }, { "hold": ["move_y=-1"], "frames": 25 },
+          { "hold": ["move_y=-1", "run"], "frames": 12 }, { "hold": ["move_y=-1"], "frames": 12 },
+          { "lua": "require('lib.state').carrying = 'pip'" }, { "hold": ["move_y=-1"], "frames": 30 }, { "hold": ["move_y=-1", "run"], "frames": 30 },
+          { "lua": "require('lib.state').carrying = nil" }, { "hold": ["move_y=-1", "run"], "frames": 30 }, { "wait": 30 }, { "hold": ["move_y=-0.5"], "frames": 40 } ] }"#,
+    );
+    assert_eq!(num(&g, "BACK"), 0.0, "the cycle never runs backwards");
+    let jump = num(&g, "JUMP");
+    assert!(
+        jump < 0.2,
+        "never more than a fifth of a cycle in a frame: {jump}"
+    );
+    assert_eq!(lua(&g, "nova.named('postmaster').anim:state()"), "move");
+    // at the full walk the steps fall evenly, two a cycle (the cycle's length is the stride over the speed)
+    let r2 = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["move_y=-1"], "frames": 120 } ] }"#,
+    );
+    let steps: Vec<u64> = r2.json["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| {
+            s["text"]
+                .as_str()?
+                .starts_with("sound step_")
+                .then(|| s["frame"].as_u64())
+                .flatten()
+        })
+        .collect();
+    let gaps: Vec<i64> = steps
+        .windows(2)
+        .map(|w| w[1] as i64 - w[0] as i64)
+        .skip(2)
+        .collect();
+    assert!(gaps.len() >= 6, "{steps:?}");
+    let stride = num(&g, "select(2, nova.named('postmaster').anim:cycle())");
+    let half = stride / 1.6 / 2.0 * 60.0;
+    for gap in &gaps {
+        assert!(
+            ((*gap as f64) - half).abs() <= 2.5,
+            "an even beat of about {half} frames: {gaps:?}"
+        );
+    }
+    let _ = r;
+}
+
+/// The springs settle and never blow up, at 30 or 60 steps a second or one long step: nova.spring on its own (solved exactly, so
+/// the same at both rates), and the gait's parts that follow (the head, the ears, the tail, the bag, the mittens) driven through
+/// the same starts, turns and stops at both rates.
+#[test]
+fn the_springs_settle_and_never_blow_up_at_30_or_60_steps_a_second() {
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let out = lua(
+        &g,
+        "(function() local o = {}; for _, k in ipairs({ 20, 120, 900 }) do for _, z in ipairs({ 0.05, 0.3, 1 }) do \
+           local a, b, c = nova.spring { stiffness = k, damping = z }, nova.spring { stiffness = k, damping = z }, nova.spring { stiffness = k, damping = z }; \
+           local most, diff = 0, 0; \
+           for i = 1, 300 do a:update(1, 1 / 60); if i % 2 == 0 then b:update(1, 1 / 30); diff = math.max(diff, math.abs(a.value - b.value)) end; most = math.max(most, math.abs(a.value)) end; \
+           for i = 1, 20 do c:update(1, 0.25) end; \
+           o[#o + 1] = string.format('%g %g %.6f %.6f %.6f %.6f', k, z, a.value, most, diff, c.value) end end; return table.concat(o, '|') end)()",
+    );
+    for row in out.split('|') {
+        let v: Vec<f64> = row.split(' ').map(|s| s.parse().unwrap()).collect();
+        let (k, z, end, most, diff, long) = (v[0], v[1], v[2], v[3], v[4], v[5]);
+        assert!(diff < 1e-6, "{row}: the same at 30 and 60 steps a second");
+        assert!(
+            most < 2.0 && most.is_finite(),
+            "{row}: never more than one overshoot"
+        );
+        if z >= 1.0 {
+            assert!(most <= 1.0 + 1e-9, "{row}: damping 1 never overshoots");
+        }
+        if z * k.sqrt() * 5.0 > 9.0 {
+            assert!((end - 1.0).abs() < 1e-3, "{row}: settled in 5 s");
+        }
+        assert!(
+            long.is_finite() && long.abs() < 2.0,
+            "{row}: a long step is safe"
+        );
+    }
+    // the gait's followers, through a start, a turn and a stop, at both rates: never past their limits, and nearly the same
+    let run = |rate: u32| -> Vec<f64> {
+        let out = lua(
+            &g,
+            &format!(
+                "(function() local e = {{ x = 0, z = 0, face = 0, y = 0, speed = 0 }}; \
+                 local anim = nova.animator('postmaster', {{ start = 'move', states = {{ move = {{ blend = 'speed', by = 'distance', points = {{ {{ 0, 'idle' }}, {{ 1.6, 'walk' }}, {{ 3, 'run' }} }} }} }} }}); \
+                 local walker = nova.gait('postmaster', {{ follow = nova.named('postmaster').walker.o.follow }}); \
+                 local dt = 1 / {rate}; local most, bad = 0, false; local rms, n = {{}}, 0; \
+                 for i = 1, 3 * {rate} do local t = i * dt; \
+                   local want = t < 1 and 3 or t < 2 and 1.6 or 0; e.speed = e.speed + (want - e.speed) * math.min(1, dt * 8); \
+                   if t > 1 and t < 1.6 then e.face = e.face + 2.5 * dt end; \
+                   e.x, e.z = e.x + math.sin(e.face) * e.speed * dt, e.z + math.cos(e.face) * e.speed * dt; \
+                   anim:set('speed', e.speed); walker:update(dt, e, anim); \
+                   for _, f in ipairs(walker.followers) do for _, ax in ipairs(f.axes) do local v = ax.spring.value; if v ~= v or math.abs(v) > f.max + 1e-6 then bad = true end; most = math.max(most, math.abs(v)) end end; \
+                   if t < 2 then n = n + 1; local k = 0; for _, f in ipairs(walker.followers) do for _, ax in ipairs(f.axes) do k = k + 1; rms[k] = (rms[k] or 0) + ax.spring.value ^ 2 end end end end; \
+                 local o = {{}}; for k = 1, #rms do o[k] = math.sqrt(rms[k] / n) end; \
+                 for _, f in ipairs(walker.followers) do for _, ax in ipairs(f.axes) do o[#o + 1] = ax.spring.value end end; \
+                 return tostring(bad) .. ' ' .. most .. ' ' .. #rms .. ' ' .. table.concat(o, ' ') end)()"
+            ),
+        );
+        let mut v = out.split(' ');
+        assert_eq!(
+            v.next(),
+            Some("false"),
+            "a spring went past its limit or blew up at {rate} a second"
+        );
+        v.map(|s| s.parse().unwrap()).collect()
+    };
+    // (the most any part turned, then each spring's swing while moving (root mean square), then where each is a second after the stop)
+    let (a, b) = (run(30), run(60));
+    assert!(a[0] > 0.02, "the parts did move: {}", a[0]);
+    assert_eq!(a.len(), b.len());
+    let n = a[1] as usize;
+    for (x, y) in a[2..2 + n].iter().zip(&b[2..2 + n]) {
+        assert!(
+            (x - y).abs() < 0.02 + 0.35 * x.max(*y),
+            "30 and 60 steps a second swing alike: {:?} {:?}",
+            &a[2..2 + n],
+            &b[2..2 + n]
+        );
+    }
+    // and a second after the stop, everything has settled
+    for v in a[2 + n..].iter().chain(&b[2 + n..]) {
+        assert!(v.abs() < 0.1, "settled: {a:?} {b:?}");
+    }
+}
+
+/// Up and down a steep hillside, across it, up the post office's porch steps and over the bridge: the standing soles stay on the
+/// ground (neither sinking nor floating) and do not slide.
+#[test]
+fn feet_stay_on_the_ground_on_a_hillside_the_porch_steps_and_the_bridge() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    install_probe(&g);
+    // the steepest open grass within 40 m of the road south of the post office
+    let spot = lua(
+        &g,
+        "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
+           local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
+    );
+    let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (x, z, gx, gz) = (v[0], v[1], v[2], v[3]);
+    let s = gx.hypot(gz);
+    assert!(s > 0.2, "a steep hillside: {spot}");
+    let (ux, uz) = (gx / s, gz / s);
+    // up it, down it, across it (each a walk of a few metres through the spot)
+    for (name, dx, dz) in [
+        ("uphill", ux, uz),
+        ("downhill", -ux, -uz),
+        ("across", -uz, ux),
+    ] {
+        let (sx, sz) = (x - dx * 2.5, z - dz * 2.5);
+        let (tx, tz) = (x + dx * 2.5, z + dz * 2.5);
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = {sx}, {sz}, math.atan({dx}, {dz}); p.walk_to, p.walk_path = nil, nil" }}, {{ "wait": 20 }} ] }}"#
+            ),
+        );
+        probed(
+            &mut g,
+            "postmaster",
+            name,
+            &format!(
+                r#"{{ "lua": "local p = nova.named('postmaster'); p.walk_path = {{ {{ {tx}, {tz} }} }}; p.walk_pace = 1.6" }}, {{ "wait": 150 }}"#
+            ),
+        );
+    }
+    // the porch steps up to the post office's door, and over the bridge's deck
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.x, p.z = d.x + fx * 6, d.z + fz * 6; p.face = math.atan(-fx, -fz); p.walk_to, p.walk_path = nil, nil" }, { "wait": 20 } ] }"#,
+    );
+    probed(
+        &mut g,
+        "postmaster",
+        "porch",
+        r#"{ "lua": "local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.walk_path = { { d.x + fx * 1.4, d.z + fz * 1.4 } }; p.walk_pace = 1.6" }, { "wait": 260 }"#,
+    );
+    let porch_lift = num(
+        &g,
+        "require('lib.world').lift(nova.named('postmaster').x, nova.named('postmaster').z)",
+    );
+    assert!(porch_lift > 0.1, "up on the porch: {porch_lift}");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local b = require('lib.world').bridge; p.x, p.z = b.ax - b.dx * 2, b.az - b.dz * 2; p.face = math.atan(b.dx, b.dz); p.walk_to, p.walk_path = nil, nil" }, { "wait": 20 } ] }"#,
+    );
+    probed(
+        &mut g,
+        "postmaster",
+        "bridge",
+        r#"{ "lua": "local p = nova.named('postmaster'); local b = require('lib.world').bridge; p.walk_path = { { b.ax + b.dx * b.len * 0.5, b.az + b.dz * b.len * 0.5 } }; p.walk_pace = 1.6" }, { "wait": 420 }"#,
+    );
+    probed(&mut g, "postmaster", "", r#"{ "wait": 2 }"#);
+    for name in ["uphill", "downhill", "across", "porch", "bridge"] {
+        let (steps, slide, sink, _, _) = tag(&g, name);
+        assert!(steps >= 3.0, "{name}: walked ({steps} steps)");
+        assert!(slide < 0.015, "{name}: a foot slid {slide} m");
+        assert!(sink < 0.012, "{name}: a sole sank {sink} m");
+        // (and a flat standing sole is on the ground, the deck or the step, not floating over it)
+        let float = num(&g, &format!("FP_TAG('{name}').float"));
+        assert!(
+            float < 0.012,
+            "{name}: a standing sole floated {float} m over the ground"
+        );
+    }
+}
+
+/// Hazel and Pip walk the same way, each with a character: their feet do not slide either; Hazel is heavier and slower (fewer steps a
+/// second, a rolling gait: more roll of the hips, less bounce), Pip light and bouncy (a quicker beat, more bounce, his long ears
+/// trailing back as he goes and swinging far more than the fox's).
+#[test]
+fn hazel_and_pip_walk_on_planted_feet_each_in_their_own_way() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    install_probe(&g);
+    let mut beat = Vec::new();
+    for (who, mailbox) in [("hazel", "mailbox_3"), ("pip", "mailbox_7")] {
+        // the postmaster comes near: they walk to their gate; then he goes: they walk back to their work
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "local r = nova.named('{who}'); local p = nova.named('postmaster'); local b = nova.named('{mailbox}'); local dx, dz = b.x - r.x, b.z - r.z; local d = math.sqrt(dx * dx + dz * dz); p.x, p.z, p.control = r.x + dx / d * 6, r.z + dz / d * 6, false; R_ROLL, R_DROP, R_EAR = 0, 0, 0" }} ] }}"#
+            ),
+        );
+        probed(
+            &mut g,
+            who,
+            &format!("{who} out"),
+            &format!(
+                r#"{{ "wait": 120, "record": "string.format('%.3f %.3f %.3f %.3f', nova.named('{who}').speed, nova.named('{who}').walker.phase, nova.named('{who}').walker.drop or 0, nova.named('{who}').walker.out.ear_l and nova.named('{who}').walker.out.ear_l.rx or 0)" }}"#
+            ),
+        );
+        let r = probed(
+            &mut g,
+            who,
+            &format!("{who} back"),
+            r#"{ "lua": "local p = nova.named('postmaster'); p.x = p.x + 40" }, { "wait": 150 }"#,
+        );
+        let _ = r;
+        play(
+            &mut g,
+            r#"{ "steps": [ { "lua": "nova.named('postmaster').x = nova.named('postmaster').x - 40" }, { "wait": 2 } ] }"#,
+        );
+        // how quickly the cycle goes round at their walking speed, the bounce and the ears, while walking at their own speed
+        let rows = lua(
+            &g,
+            &format!(
+                "(function() local r = nova.named('{who}'); local e = {{ x = 0, z = 0, face = 0, y = 0, speed = 0, model = '{who}' }}; \
+                 local anim = nova.animator('{who}', r.anim.spec); anim:play('move'); local w = nova.gait('{who}', r.walker.o); \
+                 local dt, v = 1 / 60, r.anim.spec.states.move.points[2][1]; local cycles, lo, hi, ear, roll = 0, 1, -1, 0, 0; local last = 0; \
+                 for i = 1, 240 do e.speed = math.min(v, e.speed + dt * 4); e.z = e.z + e.speed * dt; anim:set('speed', e.speed); w:update(dt, e, anim); \
+                   if i > 120 then cycles = cycles + ((w.phase - last) % 1); local d = w.drop or 0; lo, hi = math.min(lo, d), math.max(hi, d); \
+                     if w.out.ear_l then ear = math.max(ear, math.abs(w.out.ear_l.rx or 0)) end; \
+                     local q = w.out.hips.quat; roll = math.max(roll, math.abs(2 * (q.w * q.z + q.x * q.y))) end; last = w.phase end; \
+                 return string.format('%.4f %.4f %.4f %.4f %.4f', cycles / 2, hi - lo, ear, roll, v) end)()"
+            ),
+        );
+        beat.push((who, rows));
+    }
+    play(&mut g, r#"{ "steps": [ { "wait": 2 } ] }"#);
+    for who in ["hazel out", "hazel back", "pip out", "pip back"] {
+        let (steps, slide, sink, _, _) = tag(&g, who);
+        assert!(steps >= 3.0, "{who}: walked ({steps} steps)");
+        assert!(slide < 0.015, "{who}: a foot slid {slide} m");
+        assert!(sink < 0.01, "{who}: a sole sank {sink} m");
+    }
+    let parse = |s: &str| -> Vec<f64> { s.split(' ').map(|x| x.parse().unwrap()).collect() };
+    let (h, p) = (parse(&beat[0].1), parse(&beat[1].1));
+    // (cycles a second, the hips' bob, the ears' swing, the hips' roll, the walking speed)
+    assert!(h[4] < p[4], "Hazel walks slower: {h:?} {p:?}");
+    assert!(
+        h[0] < p[0] * 0.85,
+        "Hazel takes fewer steps a second: {h:?} {p:?}"
+    );
+    assert!(p[1] > h[1] * 1.5, "Pip bounces more: {h:?} {p:?}");
+    assert!(
+        h[3] > p[3] * 1.5,
+        "Hazel rolls more over each foot: {h:?} {p:?}"
+    );
+    assert!(p[2] > 0.08, "Pip's ears trail back as he walks: {p:?}");
+    let fox_ear = num(
+        &g,
+        "(function() local p = nova.named('postmaster'); local most = 0; for _, f in ipairs(p.walker.followers) do if f.part == 'ear_l' then for _, ax in ipairs(f.axes) do if ax.name == 'rx' then most = math.abs(ax.gains.speed or 0) end end end end; return most end)()",
+    );
+    let pip_ear = num(
+        &g,
+        "(function() local p = nova.named('pip'); local most = 0; for _, f in ipairs(p.walker.followers) do if f.part == 'ear_l' then for _, ax in ipairs(f.axes) do if ax.name == 'rx' then most = math.abs(ax.gains.speed or 0) end end end end; return most end)()",
+    );
+    assert!(
+        pip_ear > fox_ear * 2.0,
+        "Pip's long ears trail far more than the fox's: {pip_ear} {fox_ear}"
+    );
+}
+
 // ---- the owner's polish note on the roads (2026-11-23): no gaps and no overlaps where roads meet, a logical change of surface ----
 
 /// The valley's roads as the engine reads them: models/road_valley.glb's triangles (x, y, z, and u), from road_make's network

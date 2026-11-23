@@ -746,8 +746,74 @@ self.anim:draw(x, y, z, { scale = 1.8, ry = self.face })
 ```
 
 In a blend state the clips' cycles stay in step (walk and run put their feet down together), whatever the mix. Sky Garden's player
-uses one. Not done: IK (feet on slopes, looking at things), additive and masked layers (an upper-body wave over a run), animation
-events, root motion.
+uses one. Not done: root motion.
+
+**Played by the ground covered** (added 2026-11-22). A blend of gaits played by time slides its feet at every speed but the one
+each clip was made for. `by = "distance"` plays it by the metres walked instead:
+
+```lua
+move = { blend = "speed", by = "distance", points = { { 0, "idle" }, { 1.6, "walk" }, { 3.0, "run" } } },
+-- every frame, before update:
+self.anim:set("speed", self.speed)
+self.anim:move(metres_moved_this_frame)
+self.anim:update(dt)
+```
+
+The cycle moves on by the metres over the **stride**, the ground one cycle of the clip covers: a clip in the model file may say
+`"stride": 0.728` (metres at the model's own size; `character3d_make` writes it on walk, run and trot, and `nova.model_clips` gives
+it), or a point may give its own, `{ 1.6, "walk", stride = 0.7 }`. Between two gaits the stride is mixed like their weights; below the
+first (from "idle" to "walk") it shortens with the speed, as the speed to the power `shorten` (0.5) and never below `shortest`
+(0.35) of the walk's, so a slow walk takes short steps rather than a whole stride in slow motion, and the blend with the idle makes
+the swing of the arms smaller too. All the distance states of an animator share one cycle (`anim:cycle()` gives its phase and the
+stride, `anim:stride()` the stride): a crossfade from the walk to a walk with a parcel, or back from a one-shot wave, carries on
+with the same foot. Events are told as the cycle passes them, so footsteps still keep time.
+
+**Feet that keep to the ground: `nova.gait`** (added 2026-11-22; `lua/gait.lua`). Playing by distance keeps the cycle in step with
+the ground; `nova.gait` keeps the feet on it, for a walker whose legs are one piece from hip to ankle (`character3d_make`'s people;
+a jointed leg is held straight). It needs a distance blend (above) and the clips' legs are overruled by it:
+
+```lua
+self.gait = nova.gait("hero", { bounce = { { 0, 0 }, { 1.6, 0.02 } }, ground = function(x, z) return porch_height(x, z) end,
+  follow = { { part = "tail", stiffness = 45, damping = 0.3, ry = { turn = 0.12 }, rx = { up = -0.006 } } } })
+-- every frame, after moving x, z and face:
+self.anim:set("speed", self.speed)
+self.gait:update(dt, self, self.anim, extra_layers)   -- moves the animator by the ground covered and updates it
+-- draw:
+self.anim:draw(self.x, self.y, self.z, { ry = self.face, parts = self.gait:parts(face_parts), extra = self.gait:extra(extra_layers) })
+```
+
+Each foot is down for `stance` of a cycle (a share by speed: 0.6 standing, 0.5 at a walk, 0.36 at a run, which then has a moment in
+the air), fixed to the ground in the world where it landed, and each frame the leg is turned from the hip to reach it; a foot behind
+the body rolls up onto its toe (`toe_roll`, 0.75 rad at most) and one far in front lands on its heel (`heel_roll`, 0.35) like a
+rocker that does not slip, and only then may the leg lengthen or shorten a little (`stretch` 1.12, `squash` 0.84: the foot is scaled
+back). A foot in the air swings to where it will land: under its hip where the body will be, half a stance ahead, never further than
+the leg can reach rolled onto its heel, lifted `lift` at the middle. So nothing slides at any speed, while speeding up or slowing,
+or turning. The hips are set as high as the feet allow (lowered for a foot that would be out of reach, never so low that a standing
+leg would push its foot into the ground, and never more than `max_drop`, 8 cm), dip as a foot lands (`bounce`), turn with the legs
+(`sway`, the shoulders `counter` to them), roll and shift over the standing foot (`roll`, `shift`) and lean into the way it goes,
+more while speeding up and back while slowing (`lean`, `lean_accel`); `entity.bank` rolls the body into a turn with the feet still
+down. A foot left behind near the end of its roll hurries the cycle along, so a sharp turn or a sudden start picks it up in time.
+Stopping (below `settle_speed`), the foot in the air finishes its step and a foot left behind or turned (`reach`, `turn`) steps up
+beside the other, and the cycle then holds with both feet down; turning on the spot shuffles the feet round. Standing a while it
+looks round now and then or shifts its weight onto one foot (`idle = false` leaves that out; `entity.look`, radians from where it
+faces, turns the head first into a turn). Numbers may be one value or points by speed. `ground(x, z)` is the height of the ground
+under a point: the hills of `nova.terrain` are the renderer's (it lifts each vertex by the ground under it), so give only what
+stands on them, a porch or a bridge. The legs are found by name (`leg_l`/`foot_l`, `leg_r`/`foot_r`; `legs = { { hip, foot,
+phase } }` names others), the sole is the lower half of an ellipse (`sole = { forward, half, round }`: character3d_make's by
+default).
+
+`follow` hangs parts on springs, the cure for a stiff body: each angle of a part (`rx`, `ry`, `rz`, on top of the clip's) chases the
+sum of its drivers times their gains, `fwd` and `side` (how fast the body speeds up, forward and to its left, m/s²), `up` (how fast
+the hips bob up), `turn` (rad/s), `speed` (m/s), `look`, `step` and `cycle` (sines of the beat of the steps and of the whole cycle),
+`swing` (with `swing = { "arm_l", "hand_l" }`, how fast that limb swings: a mitten's follow-through) and `one`; `stiffness`,
+`damping` and `max` (radians) shape it. A big head that lags and nods, long ears that trail and flop, a tail swinging out of a turn,
+a bag at the hip: `examples/mountain-post/entities/postmaster.lua`, `entities/hazel.lua`, `entities/pip.lua`.
+
+`nova.spring { stiffness = 100, damping = 0.5 }` is the spring on its own: `s:update(target, dt)` returns the value, `s:kick(v)`,
+`s:set(v)`. Each step is solved exactly (the damped spring's own motion over the step), so it settles the same at 30 or 60 steps a
+second and never blows up, however long a step. `gait:feet()` gives each foot in the world (the ankle, `planted`, `pivot` "flat",
+"toe", "heel" or "air", `pitch`, `yaw`, `steps`), `gait:reset(entity)` puts both feet down under it (after a jump to another place),
+`gait.drop` is how far the hips are below standing.
 
 **Collision against models (`nova.solid`).** For hills, caves, cliffs and buildings made in a 3D tool, whose surfaces are
 neither boxes nor ramps. Make a model's triangles solid, then move a capsule (a body with a width and a height) against them:
