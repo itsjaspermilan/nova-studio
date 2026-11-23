@@ -3777,8 +3777,16 @@ impl Gfx {
                 [c.margin, c.amount.clamp(0.0, 1.0), c.above, c.near]
             }),
             see_through_near: lit.see_through.map_or([0.0; 4], |c| {
-                let from = if c.near_from < 0.0 { c.near * 0.8 } else { c.near_from.min(c.near) };
-                let amount = if c.near_amount < 0.0 { c.amount } else { c.near_amount };
+                let from = if c.near_from < 0.0 {
+                    c.near * 0.8
+                } else {
+                    c.near_from.min(c.near)
+                };
+                let amount = if c.near_amount < 0.0 {
+                    c.amount
+                } else {
+                    c.near_amount
+                };
                 [from, amount.clamp(0.0, 1.0), 0.0, 0.0]
             }),
         };

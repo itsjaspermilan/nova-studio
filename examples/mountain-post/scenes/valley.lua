@@ -4,7 +4,7 @@
 -- hold for handbrake while driving."). On foot: X talks and hands over; at the van's back (its doors swing open by themselves as the
 -- postmaster comes near) X loads the parcel carried, or, empty-handed, a small panel shows the parcels in the van one at a time (L1
 -- and R1 go through them, A takes the one shown: the panel is a menu); Y at the van's left doorway gets in; B held runs. In the van:
--- R2 goes, L2 brakes (only), the stick steers, B held is the handbrake, A and X move the PRNDL lever (A towards L, X towards P;
+-- R2 goes, L2 brakes (only), the stick steers, B held is the handbrake, X and A move the PRNDL lever (X towards L, A towards P;
 -- entities/van.lua, lib/gear_hud.lua), L3 is the horn, Y gets out when stopped. Select is
 -- the paper map; Start pauses. Nothing takes the stick away for a walk the player has to watch (the owner, after the second pictures: "The user should
 -- just be outside."): the porch door is a short fade, getting in and out is at once. Nothing on the screen points anywhere: the
@@ -373,8 +373,8 @@ function Valley:update(dt)
     v.ctl.handbrake = nova.input.down("handbrake") and 1 or 0
     if v.autopilot and not v.autopilot.done then v.autopilot:steer(v, dt)
     else v.ctl.go, v.ctl.brake, v.ctl.steer = nova.input.axis("go"), nova.input.axis("brake"), nova.input.axis("steer") end
-    -- the lever (the owner's sixth play): A one gear towards L, X one towards P
-    if nova.input.pressed("confirm") then v:shift(1) elseif nova.input.pressed("interact") then v:shift(-1) end
+    -- the lever: X one gear towards L, A one towards P (swapped by the owner, 2026-11-23; it was A towards L)
+    if nova.input.pressed("interact") then v:shift(1) elseif nova.input.pressed("confirm") then v:shift(-1) end
     -- (L3, the left stick's click: the horn; X was, before the lever)
     if nova.input.pressed("horn") then
       nova.sound.play("horn", { volume = 0.7 })

@@ -22,7 +22,7 @@
 //   that still sweeps up behind the wheel; round wells cut in the body with a rolled lip, hollow inside.
 // - the front: the windscreen in a thick dark rubber frame with thin pillars, two small square headlamps at the nose's outer corners
 //   with a small amber lamp beside each, a small grille between, a mirror on a stalk at each pillar.
-// - two tones: cream above, sand below, a red band at mid height that swoops down towards the front wheel.
+// - two tones: a soft mail blue above, a deeper blue below, a red band at mid height that swoops down towards the front wheel.
 //
 // It is ONE smooth body surface with things cut into it (the approach of the car kit, studio/mcp/makers/car/kit.mjs: one skin from the
 // drawing's curves, everything a real truck has cut into it with the Cut-out modifier, only real separate pieces as shapes). The skin
@@ -49,8 +49,10 @@ import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
 const U = 16, u = (v) => Math.round(v * U * 1000) / 1000;
-// (the lower body a warm caramel sand under the red band: it was the cream a shade darker, and the two tones barely read apart)
-const CREAM = PAL.cream, LOWER = "#d8ad78", RED = PAL.red, INK = PAL.ink, TYRE = PAL.tyre;
+// (the lower body: a caramel sand under the band on the cream van; on the blue van a deeper blue: tools/palette.mjs mailBlue)
+// (the owner, after the sixth play: "Also let's make the van blue with a red stripe": the body a soft mail blue, the red band kept,
+// the lower body a deeper tone of the same blue; VAN_LOWER=caramel makes the earlier caramel lower body, for comparing)
+const BODY = PAL.mailBlue, LOWER = process.env.VAN_LOWER === "caramel" ? "#d8ad78" : PAL.mailBlueDeep, RED = PAL.red, INK = PAL.ink, TYRE = PAL.tyre;
 const DARK = shade(PAL.ink, 0.08);       // the bumpers: chunky, dark
 const STEEL = "#57524d";                  // plain dark steel wheels
 const FRAME = shade(PAL.ink, 0.18);       // the rubber round the windscreen and the windows
@@ -252,7 +254,7 @@ const WIN = { x: HW - 0.11, y0: 1.0, y1: 1.5 };   // the windscreen's opening (f
 // the opening behind the rear doors into the hold (its sill the hold's floor: ARCH_Y + ARCH + 0.05, just over the rear wells' linings)
 const BACK_OPEN = { x: 0.465, y0: ARCH_Y + ARCH + 0.05, y1: 1.45 }; // (a little inside the doors' edges all round: no daylight past them)
 export const cuts = [
-  // two tones: sand below the band, cream above; the red band
+  // two tones: the deeper blue below the band, the mail blue above; the red band
   { view: "side", points: poly([[-1.6, 0], [1.6, 0], ...BAND.lo.slice().reverse()]), color: LOWER },
   { view: "side", points: poly([...BAND.lo, ...BAND.hi]), color: RED },
   { view: "front", points: rr(-HW - 0.2, 0, HW + 0.2, 0.6, 0.001, 1), color: LOWER },
@@ -276,7 +278,7 @@ export const cuts = [
   // (its sill level with the hold's floor, which runs out under it to the back's face: nothing to see down into)
   { view: "back", points: rr(-BACK_OPEN.x, BACK_OPEN.y0, BACK_OPEN.x, BACK_OPEN.y1, 0.05), remove: true, depth: u(0.05), wall: INSIDE },
 ];
-const body = [mesh(SKIN.verts, SKIN.faces, CREAM, { keep: true, smooth: true, modifiers: [{ type: "cutout", cuts }] })];
+const body = [mesh(SKIN.verts, SKIN.faces, BODY, { keep: true, smooth: true, modifiers: [{ type: "cutout", cuts }] })];
 // (the skin's faces are wound by hand, outwards: `keep`; smooth shading across the whole skin)
 
 // (no roof cap: the thin slab that sat on the roof as the reference's lip read as "a weird rectangular piece atop the van" and, from
@@ -504,7 +506,7 @@ const extrude = (outline, hw) => {
 const door = (name, s) => {
   const slab = extrude([[-DT, 0], [0, 0], [0, DH], [-DT, DH]], DW / 2);
   const leaf = part(`${name}_leaf`, [-s * DW / 2, 0, 0], [
-    mesh(slab.verts, slab.faces, CREAM, { modifiers: [{ type: "bevel", width: u(0.025), segments: 3, angle: 30 }, { type: "cutout", cuts: doorCuts }] }),
+    mesh(slab.verts, slab.faces, BODY, { modifiers: [{ type: "bevel", width: u(0.025), segments: 3, angle: 30 }, { type: "cutout", cuts: doorCuts }] }),
     // the pane, lightly tinted, in the middle of the door's thickness
     bevelled([0, (DWIN.y0 + DWIN.y1) / 2, -DT / 2], [DWIN.w + 0.03, DWIN.y1 - DWIN.y0 + 0.03, 0.01], GLASS + PANE_ALPHA, { bevel: 0.004 }),
     // the handle, upright, by the seam
@@ -521,8 +523,24 @@ const steering = part("steering", [STEER.x, STEER.y, STEER.z], [
   bevelled([0.064, 0.026, 0], [0.045, 0.012, 0.03], PAL.mustard, { bevel: 0.005 }), // (a mark so its turning shows)
 ], [], [STEER.tilt, 0, 0]);
 
+// the tailpipe (the owner: "We should add a tailpipe with exhaust for the truck"): a short chunky pipe poking out under the rear
+// bumper on the driver's side (+x), angled a little down, with a rolled lip at its tip; entities/van.lua puffs exhaust from TAILPIPE.tip
+export const TAILPIPE = { x: 0.4, from: [0.37, -1.18], tip: [0.31, Z0 - 0.005], r: 0.045 }; // (its lip just behind the bumper's face: the van's length stays 2.97 m)
+const tailpipe = (() => {
+  const T = TAILPIPE, x = T.x;
+  const dy = T.tip[0] - T.from[0], dz = T.tip[1] - T.from[1];
+  const tilt = (Math.atan2(-dy, -dz) * 180) / Math.PI; // (degrees the pipe dips towards its tip)
+  return part("tailpipe", [0, 0, 0], [
+    tube([[x, T.from[0], T.from[1]], [x, T.tip[0], T.tip[1]]], T.r, "#6e6a64"),
+    bevelled([x, T.tip[0], T.tip[1] + 0.015], [T.r * 2.5, T.r * 2.5, 0.04], "#5a5651", { bevel: 0.016, segments: 2, rot: [tilt, 0, 0] }),
+    cyl([x, T.tip[0], T.tip[1] - 0.006], T.r * 0.75, 0.03, PAL.ink, { axis: "z", segments: 10 }),
+    // (a bracket up to the body under the bumper)
+    bevelled([x, (T.from[0] + 0.33) / 2 + 0.02, T.from[1] - 0.04], [0.03, 0.08, 0.03], DARK, { bevel: 0.008 }),
+  ]);
+})();
+
 export const van = model([
-  part("body", [0, 0, 0], body, [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse]),
+  part("body", [0, 0, 0], body, [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse, tailpipe]),
   wheel("wheel_fl", TR, AXF), wheel("wheel_fr", -TR, AXF), wheel("wheel_rl", TR, AXR), wheel("wheel_rr", -TR, AXR),
 ], { boxes: [{ x: 0, z: (Z0 + Z1) / 2, hw: HW + 0.02, hl: (Z1 - Z0) / 2, turn: 0 }] });
 

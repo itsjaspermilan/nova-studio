@@ -179,13 +179,13 @@ the right**, **B at the bottom**, **X at the top**, **Y on the left** (Android r
 same letter).
 - **X** (top) interacts on foot: talk, take from the shelf, read the letter, put a parcel back, hand over, and "Load package" at the
   van's open back; it goes on in a conversation and closes the label, the letter and the end card. ~~In the van X sounds the
-  horn.~~ (replaced 2026-11-23, the sixth play) In the van X moves the lever one gear towards P.
+  horn.~~ (replaced 2026-11-23, the sixth play) ~~In the van X moves the lever one gear towards P.~~ (swapped by the owner, 2026-11-23) In the van X moves the lever one gear towards L.
 - **Y** (left) gets into the van at its left doorway, and out of it when it has stopped.
 - **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
-  In the van (the sixth play) A moves the lever one gear towards L.
-- **The van's lever** (the sixth play: an automatic with PRNDL): A steps toward L (down the column), X toward P (up); the column
+  ~~In the van (the sixth play) A moves the lever one gear towards L.~~ (swapped by the owner, 2026-11-23) In the van A moves it one gear towards P.
+- **The van's lever** (the sixth play: an automatic with PRNDL): ~~A steps toward L, X toward P~~ X steps toward L (along the row P R N D L), A toward P (swapped by the owner, 2026-11-23); the column
   reads P R N D L top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
-  with an analog speedometer") it is shown in the bottom right with an analog speedometer (0 to 40 km/h, the minimap's frame, a
+  with an analog speedometer") it is shown in the bottom right with an analog speedometer (~~0 to 40 km/h~~ 0 to 100 km/h since "the speedo should go to 100 km/h but the van caps out at 40 since there are no upgrades yet": Van.TUNE.cap holds D at 40 km/h on the flat, L at about 23; the minimap's frame, a
   soft red needle, eased; backing up it shows the speed it backs at). ~~The PRNDL panel beside the dial, with X and A glyphs,
   and the handbrake lamp in the dial's foot~~ (replaced: "merge them in a nice UI way. Not just two separate shapes"; "We don't
   need the button chips there either") it is ONE round instrument: the gears a row P R N D L in the dial's foot (the current
@@ -254,7 +254,7 @@ These replace the matching lines above where they differ.
   over the rear two thirds whose front is the cab, a big upright windscreen in a dark frame, a low short bonnet stepping down
   from it to a blunt nose (two small square lamps, a small grille), small dark steel wheels in round hollow wells, and behind
   the rear wheel the underside sweeping up to the rear bumper while the back leans in to a roof with a rounded lip all round.
-  Cream above, sand below, one red band between that sweeps down along the bonnet. The cab is **open-sided**: a tall rounded
+  ~~Cream above, sand below~~ (replaced: "Also let's make the van blue with a red stripe") a soft mail blue above (PAL.mailBlue), a deeper blue below, one red band between that sweeps down along the bonnet; cream FERNHOLLOW POST letters; a chunky tailpipe under the rear bumper on the driver's side puffs soft exhaust while the engine runs (from getting in until getting out: "We should add a tailpipe with exhaust for the truck"). The cab is **open-sided**: a tall rounded
   doorway each side, no doors, a seat and a steering wheel inside; the windscreen is a real opening (a toy's: no glass). The
   rear doors (part of the body) have open windows into a lined hold, and the hold has a window into the cab, so from the chase
   camera behind the driver's head shows through the back. **The postmaster sits at the wheel** while driving (the
