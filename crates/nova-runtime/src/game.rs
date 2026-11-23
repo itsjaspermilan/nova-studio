@@ -2799,7 +2799,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             // Whole numbers, so scripts can use them with math.random and as grid sizes. On a
             // screen that is not 16:9 the exact width is fractional; this rounds down.
             // nova.view("exact"): the real size, fractional, for placing things against the right edge or the middle exactly.
-            let v = s.borrow().view;
+            let (v, scale) = {
+                let sh = s.borrow();
+                (sh.view, sh.pixel_scale.max(0.25))
+            };
             let whole = || {
                 (
                     Value::Integer(v[0].floor() as i64),
@@ -2811,9 +2814,18 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 None | Some(Value::Nil) | Some(Value::Boolean(false)) => Ok(whole()),
                 Some(Value::Boolean(true)) => Ok(real()),
                 Some(Value::String(t)) if t.to_str().is_ok_and(|t| t == "exact") => Ok(real()),
+                // nova.view("pixels"): the screen's size in real pixels (a 1280 x 720 screen gives 1280, 720), for drawing a
+                // picture one texel to a pixel (nova.ui.sprite with w and h of its own pixels divided by height / 540)
+                Some(Value::String(t)) if t.to_str().is_ok_and(|t| t == "pixels") => Ok((
+                    Value::Integer((v[0] * scale).round() as i64),
+                    Value::Integer((v[1] * scale).round() as i64),
+                )),
                 Some(other) => Err(lua_err(format!(
-                    "nova.view() gives whole units; nova.view(\"exact\") the real size (got {})",
-                    other.type_name()
+                    "nova.view() gives whole units; nova.view(\"exact\") the real size; nova.view(\"pixels\") the screen's pixels (got {})",
+                    match &other {
+                        Value::String(t) => format!("\"{}\"", t.to_string_lossy()),
+                        o => o.type_name().to_string(),
+                    }
                 ))),
             }
         })?,

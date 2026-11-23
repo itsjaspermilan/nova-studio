@@ -97,16 +97,32 @@ local function letter_card(w, h, t)
 end
 
 -- The paper map in a wooden frame (a panel round it; the sheet has the town's name on it already). It is drawn by Nova's map generator
--- (tools/map.mjs, map_make) and shown as large as the screen allows: nearly its whole height.
+-- (tools/map.mjs, map_make) at the size it is shown, nearly the screen's whole height, for each of the two screens it is made for: the
+-- Retroid's 720p (ui/map_720, 650 px high) and 1080p (ui/map, 976 px). It is drawn one texel to a pixel, its corner on a whole pixel,
+-- so its lettering is as sharp as it was drawn (scaled, a picture's thin strokes go soft). A screen much bigger draws it twice as big,
+-- still whole pixels.
+cards.MAPS = { { name = "ui/map_720", below = 900 }, { name = "ui/map" } }
+function cards.map_picture()
+  local _, ph = nova.view("pixels")
+  for _, m in ipairs(cards.MAPS) do
+    if not m.below or ph < m.below then return m.name, ph end
+  end
+end
 local function map_card(w, h, t)
   local k, e = rise(t, 0.2)
   ui.dim(w, h, k)
-  local pw, ph = nova.image_size("ui/map")
-  local mh = h - 52
-  local mw = mh * pw / ph
-  local x, y = (w - mw) / 2, (h - mh) / 2 + (1 - e) * 30
+  local name, ph = cards.map_picture()
+  local iw, ih = nova.image_size(name)
+  local px = ph / h -- (pixels to a unit)
+  -- (whole times bigger on a bigger screen; on one smaller than the picture was made for, shrunk to fit: soft, but whole)
+  local times = ph * 0.95 >= ih and math.floor(ph * 0.95 / ih) or ph * 0.92 / ih
+  local mw, mh = iw * times / px, ih * times / px
+  -- (the top-left corner on a whole pixel, rising in whole pixels)
+  local x = math.floor((w * px - iw * times) / 2) / px
+  local y = math.floor((h * px - ih * times) / 2 + (1 - e) * 30 * px + 0.5) / px
   ui.panel(x - s(12), y - s(12), mw + s(24), mh + s(28), { alpha = k })
-  nova.ui.sprite("ui/map", w / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * k) } })
+  cards.drawn_map = { name = name, x = x, y = y, w = mw, h = mh, px = px }
+  nova.ui.sprite(name, x + mw / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * k) } })
 end
 
 -- The end: the screen goes dark, then a card with the spec's words, and X to go on.

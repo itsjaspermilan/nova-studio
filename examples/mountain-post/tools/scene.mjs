@@ -181,11 +181,45 @@ const inGorge = (p) => p[1] > 232 && (p[1] < 266 || p[1] > 288);
 const picnicView = (p) => p[0] > pic[0] && p[0] < pic[0] + 70 && Math.abs(p[1] - pic[1]) < 26;
 const SPECIES = ["larch", "larch", "larch_small", "pine", "pine2", "pine3", "pine", "birch"];
 let trees = 0, rocks = 0, masses = 0;
-// one tree, where it may stand: chunky (a little larger than before), never with its crown over a road
+// The signposts' sight lines (the owner's fifth play: at 60 m a tree hid the Fern Lane board from Post Road). The rule: from every
+// road that comes to a signpost, along its last 70 m (both ways along the road), the line from the chase camera's place over the
+// road to each of the sign's boards is clear of every tree's crown. SIGHT holds those lines (in metres east and north), from 8 m out.
+const SIGHT = [];
+{
+  const ARM_MID = 1.75; // (the middle of a board along its arm: entities/signpost.lua)
+  for (const s of SIGNS) {
+    const boards = [s.at, ...s.arms.map((a) => { const d = norm([a.toward[0] - s.at[0], a.toward[1] - s.at[1]]); return [s.at[0] + d[0] * ARM_MID, s.at[1] + d[1] * ARM_MID]; })];
+    for (const pts of Object.values(roadLines)) {
+      // (the point of the road nearest the sign, then out along it either way)
+      let best = 0, bd = Infinity;
+      pts.forEach((p, i) => { const d = Math.hypot(p[0] - s.at[0], p[1] - s.at[1]); if (d < bd) (bd = d, (best = i)); });
+      if (bd > 30) continue;
+      for (const dir of [1, -1]) {
+        let acc = 0;
+        for (let i = best; pts[i + dir] && acc < 70; i += dir) {
+          acc += Math.hypot(pts[i + dir][0] - pts[i][0], pts[i + dir][1] - pts[i][1]);
+          // (the chase camera stands about 9.5 m behind the van, over the road)
+          if (acc >= 8) for (const b of boards) SIGHT.push([pts[i + dir], b]);
+        }
+      }
+    }
+  }
+}
+const segDist = ([a, b], p) => {
+  const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dz * t);
+};
+// (each kind's crown radius at its own size, from its model: metres at sx 1)
+const CROWN = { pine: 1.49, pine2: 1.61, pine3: 1.47, larch: 2.58, larch_small: 1.75, birch: 2.29 };
+const crownOf = (kind, size) => (CROWN[kind] ?? 2) * size * 1.05 + 0.3; // (with a margin: a crown just grazing the line still hides an edge)
+// (a crown of radius r there would cut a sight line; the last metre at the sign, the post's own, does not count)
+const hidesSign = (p, r) => SIGHT.some((l) => Math.hypot(p[0] - l[1][0], p[1] - l[1][1]) > 1 && segDist(l, p) < r);
+// one tree, where it may stand: chunky (a little larger than before), never with its crown over a road, never in a signpost's sight line
 const tree = (p, kind, grow = 1) => {
   if (inGorge(p) || distTo(creekLine, p) < 5 || !free(p, 2.2) || dPlaceOf(p) < 13) return false;
   const size = grow * (kind.startsWith("pine") ? 1.9 + R() * 1.0 : kind === "birch" ? 1.3 + R() * 0.4 : 1.0 + R() * 0.45);
   if (dRoadOf(p) < 6.5 + size * (kind.startsWith("pine") ? 1.6 : kind === "birch" ? 2.0 : 1.2)) return false;
+  if (hidesSign(p, crownOf(kind, size))) return false;
   obj(kind, p, { ry: r2(R() * 6.28), sx: r2(size) });
   take(p, 2.2);
   trees++;

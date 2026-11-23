@@ -415,8 +415,8 @@
  {
   "name": "nova.view",
   "kind": "function",
-  "signature": "nova.view([\"exact\"]) -> width, height",
-  "doc": "The size of the screen in logical units, 540 high: whole numbers (rounded down), so they work with math.random and as grid sizes. nova.view(\"exact\") gives the real width, fractional on a screen that is not 16:9: use it to put things exactly in the middle or against the right edge (nova.ui.menu does).",
+  "signature": "nova.view([\"exact\" | \"pixels\"]) -> width, height",
+  "doc": "The size of the screen in logical units, 540 high: whole numbers (rounded down), so they work with math.random and as grid sizes. nova.view(\"exact\") gives the real width, fractional on a screen that is not 16:9: use it to put things exactly in the middle or against the right edge (nova.ui.menu does). nova.view(\"pixels\") gives the screen's real size in pixels (1280, 720 on a 720p screen; height / 540 pixels to a unit): to choose a picture made for that screen and draw it one texel to a pixel, sharp.",
   "group": "Drawing"
  },
  {

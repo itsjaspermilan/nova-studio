@@ -596,3 +596,30 @@ These replace the matching lines above where they differ (the UI theme, the musi
   the crawl's lock in a three-point turn.
 - **Not checked on the Retroid**: everything above is pictures from the desktop renderer at 1280 x 720 and tests. The map's lettering
   is drawn at two thirds of its size on the device's screen; the pictures say it reads, the device has not.
+
+### The weak points of that round, fixed (2026-11-23)
+
+- **The map at 720p:** it was the 1080p picture drawn at two thirds, so its lettering was soft on the Retroid. Nova now tells a game the
+  screen's real size, `nova.view("pixels")` (1280, 720 on the device), and the map is drawn twice by `tools/map.mjs`, each at the size it
+  is shown: `ui/map_720` (482 x 650) and `ui/map` (724 x 976). `lib/cards.lua` picks by the pixel height and draws it one texel to a
+  pixel with its corner on a whole pixel (a test checks both screens), so the lettering is exactly as drawn.
+- **The minimap's roads:** each road is a stroked line now: soft-edged bars with a round joint at every bend (sprites made by
+  `tools/art.mjs`, so a road at any angle has smooth edges and does not shimmer as the disc turns), every casing before every fill.
+- **The map's shading:** the creek's cut in the heightmap was being shaded as a long dark slope. The generator shades and bands the land
+  from the terrain with its water channels and banks filled in from the ground round them and lightly smoothed, draws the contours from a
+  smoother copy still (a small bump had made a stray ring near the bottom right), only where the ground really slopes, and fades them
+  near the sheet's edge (the land rising to the map's rim drew a ruled line by the frame). Also: trees are kept off roads and names by
+  their crowns too, the scale bar and compass keep off water and roads (the bar takes the next shorter length when that finds a clear
+  place: 50 m on Fernhollow's), and a road's name stands a little further from a bridge.
+- **The KETTLE CREEK RD board:** one family now: every board 3.6 m; the long name on two lines (KETTLE CREEK over ROAD, 0.29 m capitals)
+  on a board 1.12 m high, hung a little higher (3.2 m), the post 3.9 m.
+- **Trees in front of the signs:** a rule in `tools/scene.mjs`: from every road that comes to a signpost, along its last 70 m either way,
+  the line from over the road to each board passes no tree's crown (a test checks it from the scene file, crowns measured from the
+  models). Every approach was looked at from 60 m.
+- **Measured distances:** `tools/routes/signs.json` places the van, measures the camera-to-signpost distance and corrects it, and logs
+  it: 10.1, 25.0, 40.0 and 60.0 m (12.4 m was the nearest from the south at the Kettle Creek junction: the van is then at the junction).
+  Measured from the driving camera at 1280 x 720: every name reads at 25 m and 40 m; at 60 m each board is plainly a sign, and FERN LANE
+  can still just be read.
+- **The lettering test:** it checks the mip level the GPU reads from the driving camera at 25 m (level 4) and 60 m (level 5): at 25 m
+  at least three quarters of the lettering's solid area must stay solid (this lettering keeps about 0.9; the lettering before the fifth
+  play kept 0.17, so the test would have caught it).

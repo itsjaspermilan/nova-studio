@@ -303,17 +303,17 @@ def("mast", () => {
 // ---- by the roads ---------------------------------------------------------------------------------------------------------------------
 def("signpost", () => {
   // a chunky post with up to two arms (the owner's fifth play: "the road signs are hard to see from far away"): the arms hang at the
-  // chase camera's height (their middles at 3.0 and 2.15 m), so the boards are seen face on from the van, not from under them
-  const c = [box([0, 1.8, 0], [0.26, 3.6, 0.26], C.sign), box([0, 3.66, 0], [0.36, 0.14, 0.36], C.woodLight), box([0, 0.15, 0], [0.56, 0.3, 0.56], C.stoneDark)];
+  // chase camera's height (their middles at 3.0, or 3.2 for a two-line board, and 2.15 m), so the boards are seen face on from the van
+  const c = [box([0, 1.95, 0], [0.26, 3.9, 0.26], C.sign), box([0, 3.96, 0], [0.36, 0.14, 0.36], C.woodLight), box([0, 0.15, 0], [0.56, 0.3, 0.56], C.stoneDark)];
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.16 }] });
 });
 // One arm, pointing along +x from the post: a pointed board with a light wooden rim (the quiet outline that keeps it apart from the dark
 // trees behind) round a dark panel on each face, on which the game draws the road's name in cream (sprites/fx/sign_*). The point shows
-// which way the road goes. Two lengths, so every name has letters of about the same height: 3.6 m for a short name (letters 0.36 m
-// high), 4.8 m for a long one (0.32 m); both 0.72 m high.
-export const SIGN = { h: 0.72, rim: 0.06, t: 0.06, panel: 0.014, point: 0.42, short: 3.6, long: 4.8 };
-const signArm = (L) => () => {
-  const { h, rim, t, panel, point } = SIGN;
+// which way the road goes. One family: every board 3.6 m long; a short name on one line (letters 0.36 m high) on a board 0.72 m high,
+// a long one on two lines ("KETTLE CREEK" over "ROAD", letters 0.29 m) on a board 1.12 m high (it was one line on a 4.8 m board).
+export const SIGN = { h: 0.72, tall: 1.12, rim: 0.06, t: 0.06, panel: 0.014, point: 0.42, length: 3.6 };
+const signArm = (L, h) => () => {
+  const { rim, t, panel, point } = SIGN;
   const outline = (x0, x1, tip, hh) => [[x0, -hh], [x1 - point, -hh], [tip, 0], [x1 - point, hh], [x0, hh]];
   const slab = (pts, z0, z1, color) => {
     const v = [...pts.map(([x, y]) => [x, y, z0]), ...pts.map(([x, y]) => [x, y, z1])];
@@ -326,8 +326,8 @@ const signArm = (L) => () => {
   const dark = shade(PAL.ink, 0.08);
   return one([board, slab(inner, t - 0.002, t + panel, dark), slab(inner, -t - panel, -t + 0.002, dark)]);
 };
-def("sign_arm", signArm(SIGN.short));
-def("sign_arm_long", signArm(SIGN.long));
+def("sign_arm", signArm(SIGN.length, SIGN.h));
+def("sign_arm_tall", signArm(SIGN.length, SIGN.tall));
 def("mailbox", () => one([
   box([0, 0.4, 0], [0.12, 0.8, 0.12], C.sign),
   bevelled([0, 0.92, 0.05], [0.36, 0.3, 0.55], PAL.teal, { bevel: 0.06 }),

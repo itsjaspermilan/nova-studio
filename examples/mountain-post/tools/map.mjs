@@ -11,25 +11,28 @@ const pad = (id) => PADS.find((p) => p.id === id).at;
 const xz = ([e, n]) => [-e, n];
 
 // The sheet: from a little west of Hazel's cabin to a little east of Pip's, from below the post office to the lake beyond the gorge.
-// 990 px high: one texel a pixel on a 1080p screen (the sheet nearly fills it), drawn at two thirds on the Retroid's 720p.
+// Drawn twice, each at the size it is shown (lib/cards.lua draws it one texel to a pixel, nearly the screen's height): 650 px high
+// for the Retroid's 720p screen (ui/map_720) and 976 for 1080p (ui/map). The lettering and the roads are sized for each.
 const E0 = -200, E1 = 228, N0 = -246, N1 = 352;
+for (const [name, H] of [["ui/map", 976], ["ui/map_720", 650]]) {
+const k = H / 990;
 console.log(tool("map_make", {
-  name: "ui/map",
+  name,
   scene: "valley",
   bounds: [-E1, N0, -E0, N1],
-  size: 990,
+  size: H,
   title: "Fernhollow",
   subtitle: "the valley, its roads and its creek",
   seed: 3,
   font: "rounded",
-  label_size: 28, // (18 px on the Retroid's screen, where the sheet is drawn at two thirds)
+  label_size: Math.round(28 * k), // (18 px on the Retroid's screen)
   palette: {
     paper: "#f3e5c3", ink: "#45382c", label: "#3e3631", halo: PAL.cream, red: PAL.red, roof: PAL.roofRed, slate: PAL.slate,
     wood: PAL.wood, wood_dark: PAL.woodDark, stone: PAL.stone, mustard: PAL.mustard, blue: "#4f78ad",
     forest: PAL.pine, forest_dark: PAL.pineDeep, forest_light: PAL.larch, trunk: PAL.trunk,
     road: "#fbf4e2", road_edge: "#5a4634", lane: "#efdfba", lane_edge: "#6d5640",
   },
-  roads: { kind: "roadline", classes: { road: { width: 13 }, gravel: { width: 9, lane: true } } },
+  roads: { kind: "roadline", classes: { road: { width: 13 * k }, gravel: { width: 9 * k, lane: true } } },
   water: { kind: "water", names: { creek: "Kettle Creek" } },
   water_below: 0.9,
   water_areas: [[-400, 292, 400, 700]], // (the lake beyond the gorge: entities/lake.lua's, past the terrain's edge)
@@ -47,3 +50,4 @@ console.log(tool("map_make", {
   marks: [{ at: xz(pad("overlook")), icon: "viewpoint", label: "Overlook" }],
   areas: [{ at: xz([60, 322]), text: "the lake side" }],
 }, { quiet: true }));
+}

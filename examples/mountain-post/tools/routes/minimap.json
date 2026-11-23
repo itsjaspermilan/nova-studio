@@ -1,0 +1,21 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "lua": "CAM = require('lib.camera'); ON_FOOT = function(x, z, face) local v = nova.named('van'); v.driven = false; v:teleport(x + 30, z + 30, 0); nova.scene_now().mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; p.x, p.z, p.face = x, z, face; CAM.pinned = nil; CAM.reset(face) end",
+  "route": [
+    { "wait": 20 },
+    { "lua": "ON_FOOT(4, -66, 0)" }, { "wait": 30, "capture": "minimap at the Fern Lane junction, camera north" },
+    { "lua": "ON_FOOT(4, -66, 0.35)" }, { "wait": 30, "capture": "camera 20 degrees" },
+    { "lua": "ON_FOOT(4, -66, 0.8)" }, { "wait": 30, "capture": "camera 46 degrees" },
+    { "lua": "ON_FOOT(4, -66, 1.5708)" }, { "wait": 30, "capture": "camera west" },
+    { "lua": "ON_FOOT(4, -66, 2.3)" }, { "wait": 30, "capture": "camera 132 degrees" },
+    { "lua": "ON_FOOT(4, -66, 3.1416)" }, { "wait": 30, "capture": "camera south" },
+    { "lua": "ON_FOOT(4, -66, -2.7)" }, { "wait": 30, "capture": "camera -155 degrees" },
+    { "lua": "ON_FOOT(4, -66, -1.2)" }, { "wait": 30, "capture": "camera -69 degrees" },
+    { "lua": "ON_FOOT(4, -66, 0.5)" }, { "wait": 2 },
+    { "hold": ["look_x=1"], "frames": 6, "capture": "turning, frame 1" },
+    { "hold": ["look_x=1"], "frames": 1, "capture": "turning, frame 2" },
+    { "hold": ["look_x=1"], "frames": 1, "capture": "turning, frame 3" }
+  ],
+  "out": "build/minimap_run"
+}
