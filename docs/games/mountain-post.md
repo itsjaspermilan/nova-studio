@@ -892,3 +892,4 @@ characters simply hide the postmaster for a moment; nothing is cut and the camer
 The owner, 2026-11-23: "I also think the circle cutout comes on too aggressively. It should only be present when the camera is
 really blocked by some item. Think about other games." And: "For the speedo and gears, can we merge them in a nice UI way. Not
 just two separate shapes."
+The owner, on the cluster: "We don't need the button chips there either." (no X/A glyphs on the instrument.)
