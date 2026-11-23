@@ -19,7 +19,7 @@ function testkit.to_van(where)
   local lx, lz = s:van_point({ 2.0, 0, -2.6 })
   p.walk_path = { { lx, lz }, { x, z } }
   p.walk_to = nil
-  p.walk_pace = 1.8 -- (a run, or a trot with a parcel: the tests hurry)
+  p.walk_pace = 2.8 -- (a run, or a trot with a parcel: the tests hurry)
 end
 -- In the valley: the postmaster straight into the van's seat or out beside it (a test's or a picture's shortcut; the game does the
 -- same on B at the doorway).
@@ -37,7 +37,52 @@ function testkit.to_office()
   local bx, bz = nova.scene_now():van_point({ 0, 0, -2.9 })
   p.walk_path = { { bx, bz }, { d.x + fx * 4.5, d.z + fz * 4.5 }, { d.x + fx * 0.2, d.z + fz * 0.2 } }
   p.walk_to = nil
-  p.walk_pace = 1.8 -- (a run, or a trot with a parcel: the tests hurry)
+  p.walk_pace = 2.8 -- (a run, or a trot with a parcel: the tests hurry)
+end
+
+-- How fast (m/s, the clip played at its own pace) the ankles of a walk-like clip move back under the body, on average over a cycle:
+-- the chibi's legs swing like pendulums (no foot is lifted), so in each half of the cycle one ankle goes back as far as the other comes
+-- forward, and the one going back is the one standing. The sole rolls from heel to toe as well, so the speed at which the clip does not
+-- slide is a little more than this (character3d_make's own walk, which it said was slide-free at 0.767 m/s, measures 0.629: 0.82 of it).
+-- Also the clip's length.
+function testkit.foot_speed(model, clip)
+  local dur
+  for _, c in ipairs(nova.model_clips(model)) do if c.name == clip then dur = c.duration end end
+  local n, back, prev = 240, 0, nil
+  for i = 0, n do
+    local pose = nova.model_pose(model, { clip = clip, time = dur * i / n })
+    local zl, zr = pose.foot_l.z, pose.foot_r.z
+    if prev then back = back + math.max(0, prev[1] - zl) + math.max(0, prev[2] - zr) end
+    prev = { zl, zr }
+  end
+  return back / dur, dur
+end
+
+-- Smoothness, frame to frame (the owner: "If I just walk around in a circle, there is quite a bit of stutter"): called after every
+-- frame, it keeps the largest change of each step from the step before (the postmaster's position, the camera's eye, the camera's
+-- heading) in testkit.worst, and says whether this frame stayed under `limits` ({ body = m, eye = m, yaw = rad }).
+testkit.worst = { body = 0, eye = 0, yaw = 0 }
+function testkit.smooth_step(limits)
+  local p, c = nova.named("postmaster"), require("lib.camera").state
+  local s = { p.x, p.z, c.eye[1], c.eye[2], c.eye[3], c.yaw }
+  local o, ok = testkit.prev, true
+  if o then
+    local d = {}
+    for i = 1, 6 do d[i] = s[i] - o[i] end
+    d[6] = (d[6] + math.pi) % (2 * math.pi) - math.pi
+    local e = testkit.step
+    if e then
+      local w = testkit.worst
+      local body = math.sqrt((d[1] - e[1]) ^ 2 + (d[2] - e[2]) ^ 2)
+      local eye = math.sqrt((d[3] - e[3]) ^ 2 + (d[4] - e[4]) ^ 2 + (d[5] - e[5]) ^ 2)
+      local yaw = math.abs(d[6] - e[6])
+      w.body, w.eye, w.yaw = math.max(w.body, body), math.max(w.eye, eye), math.max(w.yaw, yaw)
+      ok = body <= limits.body and eye <= limits.eye and yaw <= limits.yaw
+    end
+    testkit.step = d
+  end
+  testkit.prev = s
+  return ok
 end
 
 return testkit

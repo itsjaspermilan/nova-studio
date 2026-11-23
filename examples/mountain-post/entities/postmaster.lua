@@ -10,11 +10,13 @@ local state = require("lib.state")
 local camera = require("lib.camera")
 local face = require("lib.face")
 
-local WALK, RUN, TROT = 0.767, 1.633, 0.997 -- the speeds at which the chibi walk, run and trot do not slide (character3d_make's answer)
-local STROLL = 1.15                   -- the walk's top: a stick pushed up to TILT walks, up to this
+-- the speeds at which the walk, run and trot do not slide: the long, calm strides of tools/strides.mjs (TARGET there; the owner after
+-- the second play: "the animation needs to slow down a bit and the player should be able to move faster")
+local WALK, RUN, TROT = 1.6, 3.0, 2.2
+local STROLL = 1.6                    -- the walk's top: a stick pushed up to TILT walks, up to this
 local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
-local TOP, TOP_CARRY = 2.15, 1.45      -- metres a second at a full push: running (about twice the walk), trotting with a parcel
--- (the clips are mixed at these speeds and played quicker by as much as they need to keep the feet in step: quick little steps)
+local TOP, TOP_CARRY = 3.0, 2.2        -- metres a second at a full push: running, trotting with a parcel
+-- (the clips are mixed at these speeds and played at the pace that keeps the feet in step: at their own pace at the top of each gait)
 local function pace(speed, laden)
   local top, fast = laden and TOP_CARRY or TOP, laden and TROT or RUN
   if speed <= STROLL then return 1 + (STROLL / WALK - 1) * math.max(0, speed) / STROLL end
@@ -45,7 +47,6 @@ function Postmaster:create()
     },
     on_event = function(event) if event == "step" then self:step() end end,
   })
-  self.anim.speed = PACE
   self.carry_layer = { { clip = "carry", time = 0, weight = 0, mask = { "arm_l", "arm_r" } } }
   self.parcel_opts = { ry = 0 }
   self.mood = face.new(5)
@@ -164,7 +165,7 @@ end
 local DUST = { color = { 196, 178, 150, 110 } }
 -- At the wheel: the place in the cab (the van's own metres, tools/van.mjs SEAT less the seated body's depth under its feet's
 -- level), kept with the van as it moves; the clip is the seated one.
-Postmaster.SEAT = { 0.3, 0.575, 0.26 }
+Postmaster.SEAT = { 0.3, 0.495, 0.26 }
 function Postmaster:sit(dt)
   local v = nova.first("van")
   if v then

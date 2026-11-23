@@ -12,3 +12,7 @@ tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_
 tool("character3d_make", { name: "pip", species: "rabbit", build: "chibi", head_scale: 1.75, outfit: "vest", outfit_color: "#e0a92a", trim_color: "#4a6a8a", accessory: "headphones", emblem: "bolt" });
 tool("model_preview", { names: ["postmaster", "hazel", "pip"], fit: "each", yaw: 35, pitch: 12, width: 400, height: 520, image_out: "build/look/cast.png" });
 tool("model_preview", { names: ["postmaster", "hazel", "pip"], fit: "each", yaw: 200, pitch: 12, width: 400, height: 520, image_out: "build/look/cast-back.png" });
+
+// the longer, calmer strides of the walk, run and trot (the owner, after the second play): tools/strides.mjs
+import { longStrides } from "./strides.mjs";
+longStrides();

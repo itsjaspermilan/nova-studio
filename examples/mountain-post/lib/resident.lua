@@ -1,6 +1,7 @@
 -- A resident at home: busy at something near the house (Hazel at her sawhorses, Pip at the foot of his mast) until the postmaster
--- comes up the path; then they stop, turn and come a few steps to meet them, and face them while they talk (the "talk" clip on
--- their own lines). Given their parcel, they hold it while they talk and then set it down on the porch.
+-- comes up the path; then they stop, come a couple of steps towards their gate (a fixed place: they never follow the postmaster
+-- about), turn to look at them and stay there, and face them while they talk (the "talk" clip on their own lines). Given their
+-- parcel, they hold it while they talk and then set it down on the porch. When the postmaster has gone they go back to work.
 -- entities/hazel.lua and entities/pip.lua are this with their own model, voice and work.
 local state = require("lib.state")
 local world = require("lib.world")
@@ -8,6 +9,7 @@ local face = require("lib.face")
 local dialogue = require("lib.dialogue")
 
 local PARCELS = { hazel = "parcel_hazel", pip = "parcel_pip" }
+local MEET_STEP = 2.0 -- metres from their work towards the gate that they come to meet the postmaster
 
 return function(who, spec)
   local R = nova.entity { model = who, tags = { "resident" }, velocity = false, who = who }
@@ -37,12 +39,17 @@ return function(who, spec)
     -- (the parcel set down on the porch afterwards: beside the door)
     local door = nova.named("door_" .. who)
     self.porch = door and { door.x + 0.6, door.z + 0.3 } or { self.x, self.z }
+    -- where they come to meet the postmaster: a couple of steps from their work towards their gate (the mailbox), and no further. They
+    -- never follow anyone about (the owner, after the second play: "they keep following me"). (Found on the first update: the
+    -- mailbox may be made after them.)
+    self.meet = nil
+    -- they are out of doors, at their work: the prompt beside them is "Talk"; "Knock" is only for a door with someone behind it
+    self.outside = true
   end
 
-  -- The postmaster is this close: stop working and come to meet them (a few steps, no further than the gate).
+  -- How far the postmaster is from them.
   function R:notice(p)
-    local d = math.sqrt((p.x - self.x) ^ 2 + (p.z - self.z) ^ 2)
-    return d
+    return math.sqrt((p.x - self.x) ^ 2 + (p.z - self.z) ^ 2)
   end
 
   -- The face for what is being said (lib/face.lua): kept until the next line, back to neutral when the talk ends.
@@ -52,6 +59,15 @@ return function(who, spec)
   end
 
   function R:update(dt)
+    if not self.meet then
+      local box = nova.named(spec.mailbox or "")
+      self.meet = { self.home[1], self.home[2] }
+      if box then
+        local dx, dz = box.x - self.home[1], box.z - self.home[2]
+        local d = math.sqrt(dx * dx + dz * dz)
+        if d > 0.1 then local k = math.min(MEET_STEP, d * 0.5) / d; self.meet = { self.home[1] + dx * k, self.home[2] + dz * k } end
+      end
+    end
     self.mood.talking = self.talking and dialogue.typing()
     face.update(self.mood, dt)
     local p = nova.named("postmaster")
@@ -62,19 +78,19 @@ return function(who, spec)
         local want = math.atan(p.x - self.x, p.z - self.z)
         self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * math.min(1, dt * 6)
       end
-    elseif d < (spec.notice or 9) then
+    elseif d < (spec.notice or 9) or (self.mode == "meet" and d < (spec.notice or 9) + 3) then
+      -- the postmaster has come up the path: down tools, a few steps to the meeting place (fixed: never after them), and stand there
+      -- turned towards them while they are within a few metres
       self.mode = "meet"
-      -- (to a spot 1.6 m short of the postmaster, never more than 5 m from home)
-      local ax, az = p.x - self.x, p.z - self.z
-      if d > 1.4 then
-        tx, tz = self.x + ax / d * (d - 1.3), self.z + az / d * (d - 1.3)
-        local hx, hz = tx - self.home[1], tz - self.home[2]
-        local hd = math.sqrt(hx * hx + hz * hz)
-        if hd > 5 then tx, tz = self.home[1] + hx / hd * 5, self.home[2] + hz / hd * 5 end
-        local md = math.sqrt((tx - self.x) ^ 2 + (tz - self.z) ^ 2)
-        if md > 0.25 then want_speed = math.min(spec.walk * 1.2, md * 2) end
+      local mx, mz = self.meet[1] - self.x, self.meet[2] - self.z
+      local md = math.sqrt(mx * mx + mz * mz)
+      local want
+      if md > 0.15 then
+        tx, tz, want_speed = self.meet[1], self.meet[2], math.min(spec.walk, md * 2)
+        want = math.atan(mx, mz)
+      else
+        want = math.atan(p.x - self.x, p.z - self.z)
       end
-      local want = math.atan(p.x - self.x, p.z - self.z)
       self.face = self.face + ((want - self.face + math.pi) % (2 * math.pi) - math.pi) * math.min(1, dt * 5)
     else
       -- back to work: walk home, then face the work and get on with it

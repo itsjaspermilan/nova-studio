@@ -350,6 +350,13 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.see_through",
+  "kind": "function",
+  "signature": "nova.see_through{ at = { x, y, z }, radius = 1.5, margin = 1.2, above = 0.3, amount = 1, near = 0 } | nova.see_through()",
+  "doc": "Cuts away what stands between the camera and a point you keep in view (a character under a fixed, far camera that never moves in, as in a village diorama game): inside a cone from the eye to a circle of `radius` metres round `at`, stopping `margin` metres short of it, the pixels of every model more than `above` metres over its own base are dropped by a screen-door (`amount` of them, 0 to 1: ease it in and out), the edge of the hole dithered; `near` drops every such pixel within that many metres of the eye too (an eye inside a tree's crown sees out of it). Tree crowns, roofs, upper walls and a van's body go; the ground, roads and the foot of a wall stay, and so does everything beside or behind the point. Shadows are not touched. Call it every frame with the point (it stays until changed); `nova.see_through()` draws everything again (a scene does not clear it by itself).",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.point_light",
   "kind": "function",
   "signature": "nova.point_light(x, y, z [, { radius = 10, color = {r, g, b}, dir = {dx, dy, dz}, angle = 50 }])",

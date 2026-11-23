@@ -334,6 +334,22 @@ and a script that runs too long in one frame is stopped, so a big field is plant
 does it in about 0.3 s). On the Retroid, 30,000 tufts, 2,500 flowers, 260 bushes and 260 trees (180,000 triangles in view, 8,700 culled) held
 59.7 fps at 2.3 ms of GPU. Not done: grass that parts around the player, wind that varies by place (gusts you can see crossing), a LOD for trees (a cheap far tree), trunks as colliders.
 
+**Seeing a character through what is in front.** A camera that never moves in (a far, fixed diorama view, as in a village game)
+keeps its character in sight by cutting away what stands in front instead:
+
+```lua
+nova.see_through { at = { hero.x, hero.y + 0.5, hero.z }, radius = 1.6, margin = 1.2, above = 0.3, amount = 1, near = 2 }   -- every frame
+nova.see_through()                                                                                             -- draws everything again
+```
+
+Inside a cone from the eye to a circle of `radius` metres round `at`, stopping `margin` metres short of it, the pixels of every model
+more than `above` metres over its own base are dropped by a screen-door, its edge dithered (`amount` drops a share of them: ease it to
+fade the hole in and out); `near` drops every such pixel within that many metres of the eye too, its edge dithered over the last
+fifth (an eye inside a tree's crown sees out of it, and a roof right under a high camera is no wall across the picture). Tree crowns, roofs, upper walls and a parked van go; the ground, roads and the foot of a wall stay, and so
+does everything beside and behind the point. The shadows are not touched, and it costs a few instructions a pixel. It stays until
+changed, across scenes too: a scene with another camera calls `nova.see_through()` in its `enter`. Fernhollow Post's on-foot camera
+uses it (`examples/mountain-post/lib/camera.lua`); the test is `crates/nova-runtime/tests/see_through_gpu.rs`.
+
 **Look.** `nova.look` sets how the finished picture is treated, and stays until changed (`nova.look()` clears it):
 
 ```lua

@@ -301,6 +301,21 @@ impl Terrain {
     }
 }
 
+/// A hole cut through what stands between the camera and a point the game keeps in view (`nova.see_through`): a diorama camera that
+/// never moves in shows its character through tree crowns, roofs and a van's body. Inside a cone from the eye to a circle of
+/// `radius` metres round `at`, stopping `margin` metres short of it, the pixels of every model more than `above` metres over its own
+/// base are dropped by a screen-door (`amount` of them, its edge dithered), and every such pixel within `near` metres of the eye
+/// (an eye inside a tree's crown); the shadows are not touched. See `see_through_cut` in `mesh.wgsl`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SeeThrough {
+    pub at: [f32; 3],
+    pub radius: f32,
+    pub margin: f32,
+    pub amount: f32,
+    pub above: f32,
+    pub near: f32,
+}
+
 /// The wind that bends foliage (models drawn with a `sway`): the way it blows (a unit vector on the ground), how hard (0 is
 /// still), and the time the game keeps for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -412,6 +427,8 @@ pub struct Lighting {
     pub look: Look,
     pub wind: Wind,
     pub terrain: Terrain,
+    /// What is cut away between the camera and a point kept in view (`nova.see_through`); None draws everything.
+    pub see_through: Option<SeeThrough>,
     /// Opt-in quality settings; the world's pipelines are rebuilt when they change (`nova.graphics`, the manifest's `graphics`).
     pub quality: Quality,
     /// The 2D effects of this frame (lights, added light, shadows, reflections, rain); None when a game asks for none.
@@ -439,6 +456,7 @@ impl Default for Lighting {
             look: Look::default(),
             wind: Wind::default(),
             terrain: Terrain::default(),
+            see_through: None,
             quality: Quality::default(),
             fx2d: None,
         }
@@ -773,6 +791,10 @@ struct Globals {
     cascade_count: [f32; 4],
     /// rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky has a ground colour.
     ground: [f32; 4],
+    /// [`SeeThrough`]: xyz the point kept in view, w the hole's radius there.
+    see_through: [f32; 4],
+    /// x: how far short of the point the hole stops; y: how much is dropped (0: off); z: the height above a model's base under which nothing is cut.
+    see_through_opts: [f32; 4],
 }
 
 /// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
@@ -3600,6 +3622,12 @@ impl Gfx {
                 };
                 [l(0), l(1), l(2), 1.0]
             }),
+            see_through: lit
+                .see_through
+                .map_or([0.0; 4], |c| [c.at[0], c.at[1], c.at[2], c.radius]),
+            see_through_opts: lit.see_through.map_or([0.0; 4], |c| {
+                [c.margin, c.amount.clamp(0.0, 1.0), c.above, c.near]
+            }),
         };
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
@@ -3650,6 +3678,8 @@ impl Gfx {
                 cascade_info: [[0.0; 4]; MAX_CASCADES as usize],
                 cascade_count: [0.0; 4],
                 ground: [0.0; 4],
+                see_through: [0.0; 4],
+                see_through_opts: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

@@ -1,0 +1,12 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "lua": "STICK = 0; local orig = nova.input.axis; nova.input.axis = function(n) if STICK_ON and n == 'move_x' then return math.cos(STICK) elseif STICK_ON and n == 'move_y' then return math.sin(STICK) end return orig(n) end",
+  "each_frame": "if STICK_ON then STICK = STICK + (STICK_RATE or 0.03) end",
+  "route": [
+    { "wait": 10, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, 0; require('lib.camera').reset(0)" },
+    { "wait": 30, "lua": "STICK_ON = true" },
+    { "wait": 420, "capture": "circling",
+      "record": "(function() local p = nova.named('postmaster'); local c = require('lib.camera').state; return string.format('%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.3f %s', p.x, p.z, p.face, c.eye[1], c.eye[2], c.eye[3], c.yaw, p.speed, p.gait) end)()" }
+  ]
+}

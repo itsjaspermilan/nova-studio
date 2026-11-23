@@ -56,13 +56,13 @@ function Valley:enter()
   -- the van where it was left
   if state.van then self.van:teleport(state.van.x, state.van.z, state.van.heading) end
   -- out of the office's door: standing on the porch a step out from the door, facing away from it, free to go at once; the camera
-  -- out in the yard looking at them and the door (as a village game shows a door: you walk out towards the camera), never inside
-  -- the building behind them
+  -- straight behind them at the default (the owner: "We can have the camera start behind the player while on foot and exiting a
+  -- building"), high over the porch, whose roof and wall are cut away round them (lib/camera.lua): nothing to turn
   local door = nova.named("office_door")
   if state.came_out then
     local fx, fz = math.sin(door.ry or 0), math.cos(door.ry or 0)
     self.p.x, self.p.z, self.p.face = door.x + fx * 1.3, door.z + fz * 1.3, door.ry or 0
-    camera.reset((door.ry or 0) + math.pi)
+    camera.reset(door.ry or 0)
   else
     camera.reset(self.p.face)
   end
@@ -112,10 +112,23 @@ function Valley:lead_to(name)
   p.walk_to = nil
 end
 
--- The resident within reach, if any.
-function Valley:resident_near()
+-- The resident within reach and in front of the postmaster, if any (`loose`: in front only roughly, for handing a parcel over).
+local TALK_REACH, TALK_CONE = 2.4, math.rad(65)
+function Valley:resident_near(loose)
+  local p = self.p
   for _, r in ipairs(nova.all("resident")) do
-    if dist(self.p, r.x, r.z) < 2.6 then return r end
+    local d = dist(p, r.x, r.z)
+    local off = math.abs((math.atan(r.x - p.x, r.z - p.z) - p.face + math.pi) % (2 * math.pi) - math.pi)
+    if d < TALK_REACH + (loose and 0.3 or 0) and (d < 0.9 or off < (loose and math.rad(100) or TALK_CONE)) then return r end
+  end
+  return nil
+end
+
+-- The resident whose front door the postmaster is at, if they are indoors (nobody is, in the slice: they are out at their work).
+function Valley:door_near()
+  for _, r in ipairs(nova.all("resident")) do
+    local door = nova.named("door_" .. r.who)
+    if door and not r.outside and dist(self.p, door.x, door.z) < 1.5 then return r end
   end
   return nil
 end
@@ -124,23 +137,35 @@ end
 function Valley:to_back() local x, z = self:van_point(BACK); return dist(self.p, x, z) end
 function Valley:to_door() local x, z = self:van_point(DOOR); return dist(self.p, x, z) end
 
--- What A and B would do now, on foot: A "talk", "give", "knock", "load" (the parcel carried into the open back) or "pick" (the
--- one the panel shows out of it); B "get_in" at the left doorway. A third answer is the resident within reach.
+-- What A and B would do now, on foot: A "load" (the parcel carried into the open back), "pick" (the one the panel shows out of
+-- it), "give" (a resident's own parcel to them), "talk" (to a resident out of doors, close and in front) or "knock" (at a resident's
+-- front door while they are indoors); B "get_in" at the left doorway. A third answer is the resident it is about. The van comes
+-- first: at its open back or its doorway nobody else's prompt shows (the owner, after the second play: "If I'm close to the van trying
+-- to get the package, I only get an option to 'knock'").
 function Valley:actions()
   local p, v = self.p, self.van
   if not p.control or self.mode ~= "foot" then return nil, nil end
-  local a, b
-  local r = self:resident_near()
-  if r then
-    if state.delivered[r.who] then a = "talk"
-    elseif state.carrying == r.who then a = "give"
-    else a = "knock" end
-  end
-  if not a and v:stopped() and v.back_open > 0.5 and self:to_back() < AT_BACK then
+  local a, b, r
+  local at_back = v:stopped() and v.back_open > 0.5 and self:to_back() < AT_BACK
+  local at_door = v:stopped() and self:to_door() < AT_DOOR
+  if at_back then
     if state.carrying and #state.van_load < state.VAN_HOLDS then a = "load"
     elseif not state.carrying and #state.van_load > 0 then a = "pick" end
   end
-  if v:stopped() and not state.carrying and self:to_door() < AT_DOOR then b = "get_in" end
+  if at_door and not state.carrying then b = "get_in" end
+  if not a and not at_back and not at_door then
+    -- (handing a parcel over takes a looser "in front" than talking does)
+    r = state.carrying and self:resident_near(true)
+    if r and state.carrying == r.who and not state.delivered[r.who] then a = "give"
+    else
+      r = self:resident_near()
+      if r then a = "talk"
+      else
+        r = self:door_near()
+        if r then a = "knock" end
+      end
+    end
+  end
   return a, b, r
 end
 
@@ -157,6 +182,8 @@ function Valley:say(r, lines, faces, on_done)
     on_done = function()
       r:end_talk()
       self.talking_to = nil
+      -- (back behind the postmaster, at the default, gliding there from the talk's view)
+      camera.reset(self.p.face)
       camera.glide(0.6)
       self.p.control = true
       if on_done then on_done() end
@@ -177,6 +204,9 @@ function Valley:act(a, r)
       state.steps = state.steps + 1
       nova.log("delivered " .. r.who)
     end)
+  elseif a == "talk" and not state.delivered[r.who] then
+    -- (out at their work, no parcel for them yet: their line for a caller with empty hands)
+    self:say(r, { words.people[r.who].without }, { words.people[r.who].faces.without })
   elseif a == "talk" then
     local n = state.after[r.who] % #words.people[r.who].after + 1
     state.after[r.who] = n
@@ -212,6 +242,7 @@ function Valley:get_in()
   p:stop_walking()
   v:rock(0.3, -0.18)
   v.back_want = 0
+  camera.reset(v.heading)
   camera.glide(0.7)
   self.mode = "van"
   v.driven = true
@@ -240,8 +271,7 @@ function Valley:get_out()
   p.control = true
   v:rock(-0.25, 0.15)
   self.mode = "foot"
-  camera.state.yaw = v.heading
-  camera.state.boom = nil
+  camera.reset(v.heading)
   camera.glide(0.6)
   nova.log("got out")
 end

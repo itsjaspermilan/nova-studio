@@ -6,6 +6,7 @@ local Title = nova.scene {}
 
 function Title:enter()
   self.t, self.leaving = 0, nil
+  nova.see_through() -- (the valley's cut-away round the postmaster stays until changed: quitting to the title clears it)
   nova.music.play("fernhollow", { volume = 0.36, fade = 1.5 })
 end
 

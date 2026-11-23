@@ -2113,6 +2113,51 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(())
         })?,
     )?;
+    // see_through { at = { x, y, z }, radius = 1.5, margin = 1.2, above = 0.3, amount = 1, near = 0 }: cut away what stands between the camera and
+    // that point (gfx::SeeThrough, mesh.wgsl see_through_cut); see_through() draws everything again. It stays until changed.
+    let s = shared.clone();
+    nova.set(
+        "see_through",
+        lua.create_function(move |_, opts: Option<Table>| {
+            let Some(opts) = opts else {
+                s.borrow_mut().lighting.see_through = None;
+                return Ok(());
+            };
+            let usage = "see_through takes at = { x, y, z } and, if wanted, radius (metres, above 0), margin (0 or more), above (metres) amount (0 to 1) and near (metres, 0 or more): nova.see_through { at = { hero.x, hero.y + 0.5, hero.z }, radius = 1.5 }";
+            let at: Table = opts.get::<Option<Table>>("at")?.ok_or_else(|| lua_err(usage))?;
+            let mut p = [0.0f32; 3];
+            for (i, v) in p.iter_mut().enumerate() {
+                let n: f64 = at.get(i + 1).map_err(|_| lua_err(usage))?;
+                if !n.is_finite() {
+                    return Err(lua_err(usage));
+                }
+                *v = n as f32;
+            }
+            let some = Some(opts);
+            let radius = number_option(&some, "radius")?.unwrap_or(1.5);
+            let margin = number_option(&some, "margin")?.unwrap_or(1.2);
+            let above = number_option(&some, "above")?.unwrap_or(0.3);
+            let amount = number_option(&some, "amount")?.unwrap_or(1.0);
+            let near = number_option(&some, "near")?.unwrap_or(0.0);
+            if !(radius.is_finite() && radius > 0.0)
+                || !(margin.is_finite() && margin >= 0.0)
+                || !(near.is_finite() && near >= 0.0)
+                || !above.is_finite()
+                || !(0.0..=1.0).contains(&amount)
+            {
+                return Err(lua_err(usage));
+            }
+            s.borrow_mut().lighting.see_through = Some(crate::gfx::SeeThrough {
+                at: p,
+                radius: radius as f32,
+                margin: margin as f32,
+                amount: amount as f32,
+                above: above as f32,
+                near: near as f32,
+            });
+            Ok(())
+        })?,
+    )?;
     // terrain { waves = { { wavelength = 400, direction = 30, height = 6, phase = 0 }, ... } }: hills. The ground's height is the sum of up to eight
     // sine waves (`wavelength` metres from crest to crest, `direction` degrees on the ground, 0 along +x and 90 along +z, `height` the metres from the
     // middle to a crest); every model drawn near the ground is lifted by the height under each of its vertices. nova.terrain() makes it flat again.

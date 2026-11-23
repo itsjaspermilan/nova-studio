@@ -18,7 +18,7 @@
     { "wait": 3, "capture": "the postmaster at the wheel, close" },
     { "lua": "CAM.pinned = nil; local v = nova.named('van'); v:teleport(-40, -78, 1.75); CAM.reset(1.75); T.drive('hazel')" },
     { "wait": 120, "capture": "the chase camera: the driver through the back windows" },
-    { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.25 and math.abs(nova.named('van').speed) > 6", "max": 1500, "capture": "the chase camera in a bend" },
+    { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.18 and math.abs(nova.named('van').speed) > 5", "max": 2500, "capture": "the chase camera in a bend" },
     { "lua": "FOLLOW = function() SEAT(3.2, 1.6, 1.7, 30) end" },
     { "wait": 2, "capture": "steering into the bend from beside: the hands, the wheel, the head" },
     { "lua": "nova.named('van').autopilot = nil; FOLLOW = nil" },
