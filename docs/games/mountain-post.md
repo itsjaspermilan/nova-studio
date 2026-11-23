@@ -493,3 +493,16 @@ These replace the matching lines above where they differ (the UI theme, the musi
   crawl is still about 10 m (the test keeps it at 9 to 10.5). Both slice orders still complete with the test driver.
 - **Not checked on the Retroid:** the letters were read off the device on 2026-11-12 for the Android build; on its Linux side (Armada
   or Zaviya, gilrs) the face buttons are named by position, which may put X and Y (and A and B) the other way round there.
+
+## The owner's fifth play on the Retroid (2026-11-22)
+
+- "The key prompts all seem perfect!" (the letters on screen match the engraved buttons on the Linux side).
+- **Music:** "The piano sounds kinda twangy and annoying still."
+- **Character movement:** "We need to rethink the character movement and animations. We're getting close but how do we perfect
+  it a bit? Make it more seamless and actually match up to make sure it doesn't look like the character is a stiff person
+  sliding while walking."
+- **Paper map:** "How can we spruce up the map? Maybe build a proper generator?"
+- **Minimap:** "The direction should move when rotated to follow the players camera direction. There should be a North marker on
+  the map too."
+- **Road signs:** "hard to see from far away. Some of the lines don't show up almost like a rendering issue?"
+- **Van:** "the turning radius while slow isn't as tight as I would hope it to be."
