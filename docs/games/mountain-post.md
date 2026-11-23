@@ -917,3 +917,11 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
   floor and what is low on it show through (the view looks down about 35 degrees and a little to the right), and the hatch's top
   reaches the picture's top edge.
 - **The counter's tiles** are raised bevelled plates (1.6 cm, 10 cm of the darker top between them) instead of flat paint, under 4x MSAA.
+
+- **Near-camera fade** (the owner's note after the circle pictures: a big crown next to the camera filled the screen with green).
+  `nova.see_through` gained `near_from` and `near_amount` (documented in `docs/project-format.md` and `nova-api.json`, GPU-tested in
+  `see_through_gpu.rs`): scenery within 2 m of the eye is wholly gone, all there beyond 4 m (`camera.NEAR_FADE`, in the open, in the
+  van, and out of the post office's door, where the porch fades out the same way out to 6 m), independent of the small circle. The
+  circle now counts only blockers beyond that near range. An eye that would sit in or within 3 m of a tree's crown is drawn in toward
+  the postmaster (`camera.PULL`: down to 0.55 of the boom, eased, held 0.5 s). Buildings are not pulled from: they fade. Test:
+  `scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_crown`.
