@@ -73,7 +73,7 @@ pub struct MeshData {
     pub texture: Option<Arc<Image>>,
     /// How `texture` repeats across u and v (glTF's repeat unless the file says otherwise; meshes made in code clamp).
     pub wrap: [Wrap; 2],
-    /// `texture` is filtered smoothly (the glTF sampler's magFilter is LINEAR), with mipmaps when its sides are powers of two;
+    /// `texture` is filtered smoothly (the glTF sampler's magFilter is LINEAR), with its whole chain of mipmaps at any size;
     /// otherwise its texels stay sharp (nearest), as a palette of flat colours needs.
     pub smooth: bool,
     /// Features present in the file that this importer does not support.

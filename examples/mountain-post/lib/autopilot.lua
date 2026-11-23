@@ -112,7 +112,8 @@ function autopilot.to(place, opts)
       local s = self.way
       -- (each leg, standing, the wheel goes over to full lock first, as a driver does: the van's steering is slow and heavy, and a
       -- leg driven while it swings over turns the van hardly at all)
-      local lock = self.phase == "back" and s or -s
+      -- (in the van's shares of lock: past 1 standing, where the crawl's extra lock is on)
+      local lock = (self.phase == "back" and s or -s) * van.lock_share(van.speed)
       local swinging = math.abs(van.steer - lock) > 0.2 and math.abs(van.speed) < 0.5
       if swinging then self.phase_t = math.min(self.phase_t, 0.3) end
       if self.phase == "back" then

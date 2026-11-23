@@ -52,6 +52,7 @@ starting `worktree:`, what they took from it. They never write into it.
 | get sound fast | `sfx_write { "purpose": "hit" }` (27 purposes, each built in layers like a produced sound), `song_make { "mood": "synthwave" }` | the `sound_report`, free of warnings and of advice |
 | draw or change a sprite by hand | `sprite_write` | the sheet magnified, frames numbered, a strip per animation |
 | smooth art: a logo, a UI panel or button, an icon, a glow, store art | `image_make` (shapes with anti-aliasing, gradients, strokes, shadows and glows, cut-outs, text in the game's fonts, other pictures placed and scaled; several sizes at once). Never write a PNG rasteriser of your own | the picture as `sprite_preview` shows it |
+| a paper map of a 3D town for a map button (roads with their names along them, water, trees, buildings, hills, a compass and a scale) | `map_make`, from the scene and its terrain; it writes only the words you give it (no house numbers, nothing marking the player) | the map; which roads it lettered and how often, every word on it |
 | look at any sprite again | `sprite_preview` (`frame: n` for one frame close up) | the same; a frame with every pixel a numbered square, and as rows of text to edit |
 | lay out a level | `scene_write` (tile rows as characters with a `legend`) | the level as a map |
 | look at any level again | `scene_preview` | the map, and the layers as text to edit and give back |

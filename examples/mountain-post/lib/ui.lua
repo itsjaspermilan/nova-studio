@@ -295,19 +295,36 @@ function ui.picker(list, i, w, h, a)
   text(w / 2 - tw / 2 + s(42), by + s(19) - F.hint * 0.62, words.hint.take, { size = F.hint, color = alpha(C.ink, a), bold = true })
 end
 
--- The minimap: a small disc in the bottom-left corner with the roads right round you (about 90 m each way) and you in the middle,
--- north up, like the paper map. Nothing else: no houses, no numbers, nowhere to go.
-local MM = { r = 64, scale = 64 / 85 }
-function ui.minimap(px, pz, heading, w, h)
+-- The minimap: a small disc in the bottom-left corner with the roads right round you (about 90 m each way) and you in the middle.
+-- Nothing else: no houses, no numbers, nowhere to go. It turns with the camera (the owner's fifth play: "The direction should move
+-- when rotated to follow the players camera direction. There should be a North marker on the map too."): up on the disc is always the
+-- way the camera looks, the roads turn under you, your mark shows which way you (or the van) face against that, and a red "N" tab rides
+-- the rim where north is. `yaw` is the camera's (0 looks north, +z; it turns towards +x, the west, as it grows). The roads are drawn in
+-- the paper map's colours and casing (tools/map.mjs), on the kit's wooden frame (tools/art.mjs).
+local MM = { r = 64, scale = 64 / 85, north_r = 65.5 }
+local ROAD_COLOURS = {
+  road = { fill = { 251, 244, 226 }, edge = { 90, 70, 52, 230 }, w = 6 },
+  gravel = { fill = { 239, 223, 186 }, edge = { 109, 86, 64, 230 }, w = 4.5 },
+}
+function ui.minimap(px, pz, heading, w, h, yaw)
+  yaw = yaw or 0
   local cx, cy = 24 + MM.r + 4, h - 24 - MM.r - 4
   nova.ui.sprite("ui/minimap_disc", cx, cy, { w = (MM.r + 8) * 2, h = (MM.r + 8) * 2 })
   local r, k = MM.r - 4, MM.scale
-  -- (screen x is east = -x; screen y is south = -z)
-  local function to(x, z) return cx + (px - x) * k, cy + (pz - z) * k end
+  -- (seen from above with the camera's look up the screen: its right is (-cos yaw, sin yaw) in x, z and its look (sin yaw, cos yaw);
+  -- at yaw 0 screen x is east = -x and screen y is south = -z, as on the paper map)
+  local fs, fc = math.sin(yaw), math.cos(yaw)
+  local function to(x, z)
+    local dx, dz = x - px, z - pz
+    return cx + (dz * fs - dx * fc) * k, cy - (dx * fs + dz * fc) * k
+  end
+  MM.to, MM.yaw = to, yaw -- (for the tests: where a point of the ground is on the disc)
+  for pass = 1, 2 do
   for _, road in ipairs(world.roads) do
     local pts = road.points
-    local lw = road.surface == "road" and 6 or 4.5
-    local col = road.surface == "road" and { 255, 251, 240 } or { 244, 230, 196 }
+    local style = ROAD_COLOURS[road.surface] or ROAD_COLOURS.gravel
+    local lw = pass == 1 and style.w + 3 or style.w
+    local col = pass == 1 and style.edge or style.fill
     for i = 1, #pts - 1 do
       local ax, ay = to(pts[i][1], pts[i][2])
       local bx, by = to(pts[i + 1][1], pts[i + 1][2])
@@ -321,16 +338,18 @@ function ui.minimap(px, pz, heading, w, h)
         if disc > 0 then
           local s = math.sqrt(disc)
           local t0, t1 = math.max(0, (-b - s) / (2 * a)), math.min(1, (-b + s) / (2 * a))
-          if t1 > t0 then
-            nova.ui.line(ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1, lw + 3, { 70, 58, 44, 200 })
-            nova.ui.line(ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1, lw, col)
-          end
+          if t1 > t0 then nova.ui.line(ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1, lw, col) end
         end
       end
     end
   end
-  -- you: pointing the way you face (heading 0 faces north; a heading towards +x, the west, turns it left)
-  nova.ui.sprite("ui/you", cx, cy, { w = 24, h = 24, rotation = -heading })
+  end -- (the casing of every road first, then every fill: where two roads meet they join)
+  -- north: a red tab on the rim, its letter upright, going round as the camera turns
+  nova.ui.sprite("ui/minimap_north", cx + fs * MM.north_r, cy - 1.4 - fc * MM.north_r, { w = 21, h = 21 })
+  -- you: pointing the way you face against the way the camera looks (heading 0 faces north; a heading towards +x, the west, turns it
+  -- left; the same heading as the camera's yaw points straight up)
+  MM.you = yaw - heading
+  nova.ui.sprite("ui/you", cx, cy, { w = 24, h = 24, rotation = MM.you })
 end
 ui.MINIMAP = MM
 

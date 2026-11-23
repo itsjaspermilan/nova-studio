@@ -1201,27 +1201,58 @@ pub struct Gfx {
     fx2d: fx2d::Fx2dGpu,
 }
 
-/// The picture and its smaller copies, one after another (each half the size, averaged with see-through texels counting
-/// for less), for `levels` levels. A tile 16 pixels wide stays whole down to level 4, so blocks in an atlas do not
-/// bleed into each other.
+/// How many mip levels a smoothly filtered picture (a billboard's, a glTF texture with linear filtering) gets: the whole chain,
+/// down to one texel on its longer side, whatever its size. (Until 2026-11-22 a picture whose sides were not both powers of two
+/// got no smaller copies unless anisotropy was asked for, so a sign's lettering, 640 x 110, was read from the full-size picture
+/// at every distance: thin strokes fell between the samples and broke up or vanished, and shimmered as the camera moved.)
+pub fn smooth_levels(width: u32, height: u32) -> u32 {
+    32 - width.max(height).max(1).leading_zeros()
+}
+
+/// The picture and its smaller copies, one after another (each half the size, rounded down as the GPU's levels are, averaged
+/// with see-through texels counting for less), for `levels` levels. Each smaller texel is the average of the area of the larger
+/// level it covers, so a side of odd length (a picture of any size) loses no row or column on the way down and a thin stroke of
+/// lettering fades as it shrinks instead of dropping out of a level; a side of even length halves exactly as before. A tile 16
+/// pixels wide stays whole down to level 4, so blocks in an atlas do not bleed into each other.
 pub fn mip_chain(image: &Image, levels: u32) -> Vec<u8> {
+    // (for each texel of the smaller side, the larger texels it covers and the share of each: two halves when the side is even)
+    fn spans(from: usize, to: usize) -> Vec<Vec<(usize, f32)>> {
+        let k = from as f64 / to as f64;
+        (0..to)
+            .map(|i| {
+                let (a, b) = (i as f64 * k, (i + 1) as f64 * k);
+                let mut out = Vec::new();
+                let mut j = a.floor() as usize;
+                while (j as f64) < b && j < from {
+                    let cover = (b.min(j as f64 + 1.0) - a.max(j as f64)) / k;
+                    if cover > 1e-9 {
+                        out.push((j, cover as f32));
+                    }
+                    j += 1;
+                }
+                out
+            })
+            .collect()
+    }
     let mut out = image.rgba.clone();
     let (mut w, mut h) = (image.width as usize, image.height as usize);
     let mut prev = image.rgba.clone();
     for _ in 1..levels {
         let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+        let (across, down) = (spans(w, nw), spans(h, nh));
         let mut next = vec![0u8; nw * nh * 4];
-        for y in 0..nh {
-            for x in 0..nw {
+        for (y, ys) in down.iter().enumerate() {
+            for (x, xs) in across.iter().enumerate() {
                 let (mut r, mut g, mut b, mut a) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
-                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                    let (sx, sy) = ((x * 2 + dx).min(w - 1), (y * 2 + dy).min(h - 1));
-                    let i = (sy * w + sx) * 4;
-                    let al = prev[i + 3] as f32 / 255.0;
-                    r += prev[i] as f32 * al;
-                    g += prev[i + 1] as f32 * al;
-                    b += prev[i + 2] as f32 * al;
-                    a += al;
+                for &(sy, wy) in ys {
+                    for &(sx, wx) in xs {
+                        let i = (sy * w + sx) * 4;
+                        let al = prev[i + 3] as f32 / 255.0 * (wx * wy);
+                        r += prev[i] as f32 * al;
+                        g += prev[i + 1] as f32 * al;
+                        b += prev[i + 2] as f32 * al;
+                        a += al;
+                    }
                 }
                 let o = (y * nw + x) * 4;
                 if a > 0.0 {
@@ -1229,7 +1260,7 @@ pub fn mip_chain(image: &Image, levels: u32) -> Vec<u8> {
                     next[o + 1] = (g / a).round() as u8;
                     next[o + 2] = (b / a).round() as u8;
                 }
-                next[o + 3] = (a / 4.0 * 255.0).round() as u8;
+                next[o + 3] = (a * 255.0).round() as u8;
             }
         }
         out.extend_from_slice(&next);
@@ -2940,23 +2971,15 @@ impl Gfx {
                         self.textures_shared += 1;
                         group.clone()
                     } else {
-                        // a blended mesh's picture (a billboard) is filtered smoothly, with mipmaps when its sides are powers of two; a solid
-                        // model's (usually a palette of flat colours) keeps sharp texels
-                        let pow2 = image.width.is_power_of_two() && image.height.is_power_of_two();
+                        // a blended mesh's picture (a billboard) is filtered smoothly, with its whole chain of mipmaps whatever its size;
+                        // a solid model's (usually a palette of flat colours) keeps sharp texels
                         let device = &self.device;
                         let sampler = self
                             .mesh_samplers
                             .entry((smooth, mesh.wrap))
                             .or_insert_with(|| mesh_sampler(device, smooth, mesh.wrap, aniso));
                         let group = if smooth {
-                            // (with anisotropic filtering asked for, every size gets its whole chain of smaller copies)
-                            let levels = if aniso > 1 {
-                                32 - image.width.max(image.height).leading_zeros()
-                            } else if pow2 {
-                                32 - image.width.min(image.height).leading_zeros()
-                            } else {
-                                1
-                            };
+                            let levels = smooth_levels(image.width, image.height);
                             texture_group_mips(
                                 &self.device,
                                 &self.queue,
@@ -4552,5 +4575,41 @@ mod tests {
             "the left tile is still pure red"
         );
         assert_eq!(last[7], 0, "the right tile is still see-through");
+    }
+
+    #[test]
+    fn a_picture_of_any_size_gets_its_whole_mip_chain_and_thin_strokes_fade_rather_than_vanish() {
+        // a sign's lettering (640 x 110: not powers of two) gets every level down to one texel, as a square picture does
+        assert_eq!(smooth_levels(640, 110), 10);
+        assert_eq!(smooth_levels(128, 118), 8);
+        assert_eq!(smooth_levels(1024, 1024), 11);
+        assert_eq!(smooth_levels(1, 1), 1);
+        // a 5 x 3 picture, see-through but for a one-texel white stroke down its last column: halving to 2 x 1 used to read
+        // only columns 0 to 3, losing the stroke; now the stroke is still there, faded by the share of the area it covers
+        let mut rgba = vec![0u8; 5 * 3 * 4];
+        for y in 0..3 {
+            rgba[(y * 5 + 4) * 4..(y * 5 + 4) * 4 + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+        let chain = mip_chain(
+            &Image {
+                width: 5,
+                height: 3,
+                rgba,
+            },
+            3,
+        );
+        assert_eq!(chain.len(), (5 * 3 + 2 + 1) * 4);
+        let level1 = &chain[5 * 3 * 4..(5 * 3 + 2) * 4];
+        assert_eq!(level1[3], 0, "the left half has no stroke");
+        assert_eq!(
+            &level1[4..8],
+            &[255, 255, 255, 102],
+            "the right half keeps the stroke: white, 1 of its 2.5 columns covered"
+        );
+        assert_eq!(
+            &chain[(5 * 3 + 2) * 4..],
+            &[255, 255, 255, 51],
+            "and the last texel a fifth"
+        );
     }
 }

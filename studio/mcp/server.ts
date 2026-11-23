@@ -41,6 +41,7 @@ import { PURPOSE_NAMES, purposeParams } from "./makers/sound";
 import { registerMakers } from "./makers";
 import { releaseBinary } from "./binaries";
 import { IMAGE_HELP, makeImage } from "./image";
+import { MAP_COLOURS, MAP_HELP, MAP_ICONS, makeTownMap } from "./makers/townmap";
 // @ts-ignore (plain JavaScript, shared with Pine Ridge Rally's track script)
 import { heightmapFromNetwork, heightmapFromTrack } from "../../scripts/lib/heightmap.mjs";
 import { ascii as trackMap } from "../../scripts/lib/trackgen.mjs";
@@ -661,6 +662,50 @@ tool(
 );
 
 tool(
+  "map_make",
+  "Make an illustrated, hand-drawn paper map of a 3D town from its scene (the picture a game shows on its map button): `sprites/<name>.png` (\"ui/map\" when left out). " +
+    "It reads the scene's road lines (objects whose props have `points`, `width`, `label` and `surface`), its water lines, the objects of the kinds you name as trees, forest, buildings and landmarks, and the terrain's heightmap (nova.terrain's, as terrain_write makes it with a road network; found in the project's Lua), and draws: warm parchment with darker edges, fibres and folds; the hills as soft tonal bands, a light from the north-west and faint contours; water as blue ribbons with a darker bank (and a lake below `water_below`); trees as little drawn symbols; roads as cased ribbons whose width is their class's, joined where they meet; bridges; small pictorial icons; each road's name lettered along its curve (never upside down, repeated along a long road, never over another name, an icon or another road); a compass rose, a scale bar in metres, a title cartouche, a drawn border with ornaments. North is up and east right (east is -x on Nova's ground). " +
+    "It writes only the words the recipe gives (road labels, water `names`, `places` and `marks` labels, `areas`, the title): no house numbers, no residents' names, no mark for the player, no destination. The same recipe and `seed` give the same bytes. " +
+    MAP_HELP +
+    " It returns the map, and says which roads got their names and how often.",
+  {
+    name: { type: "string", description: 'The picture: sprites/<name>.png ("ui/map").' },
+    scene: { type: "string", description: "The scene to map: scenes/<scene>.scene.json." },
+    terrain: { type: ["object", "boolean"], description: "{ heightmap, x, z, size, height } as nova.terrain takes them (found in the project's Lua when left out); false: no hills." },
+    bounds: { type: "array", items: { type: "number" }, description: "[x0, z0, x1, z1] in metres: the part of the world on the sheet." },
+    size: { type: ["array", "number"], description: "[w, h] px, or a height (the width follows the bounds). 990 when left out." },
+    sizes: { type: "array", description: "Smaller copies, each the area-average: [[w, h]] or scales [0.67] (sprites/<name>_<w>x<h>.png)." },
+    title: { type: "string" },
+    subtitle: { type: "string" },
+    seed: { type: "number", description: "The hand's wobble and the paper's grain (1)." },
+    palette: { type: "object", description: `Colours by name ("#rrggbb"): ${Object.keys(MAP_COLOURS).join(", ")}.` },
+    font: { type: "string", description: 'A font of the runtime or the project ("rounded").' },
+    roads: { type: "object", description: '{ kind: "roadline", classes: { road: { width: 12 }, gravel: { width: 8.5, lane: true } } }.' },
+    water: { type: "object", description: '{ kind: "water", names: { creek: "Kettle Creek" } }.' },
+    water_below: { type: "number", description: "Metres: the terrain below this is a lake." },
+    water_areas: { type: "array", items: { type: "array", items: { type: "number" } }, description: "[[x0, z0, x1, z1], ...] in metres: open water beyond the terrain (a lake, the sea)." },
+    trees: { type: "object", description: "{ pine: [kinds], round: [kinds] }." },
+    forest: { type: "object", description: "{ kinds: [kinds], radius: 12 }: a mass of trees round each." },
+    places: { type: "object", description: `{ <kind>: { icon, label? } }; icons: ${MAP_ICONS.join(", ")}.` },
+    marks: { type: "array", items: { type: "object" }, description: "[{ at: [x, z], icon, label? }]: landmarks that are not objects of the scene." },
+    areas: { type: "array", items: { type: "object" }, description: "[{ at: [x, z], text }]: a region's name, lettered faintly." },
+    compass: { type: "boolean" },
+    scale_bar: { type: "boolean" },
+    repeat: { type: "number", description: "Px between a long road's names (380)." },
+    label_size: { type: "number", description: "Px of the road names (2.4% of the height)." },
+    wobble: { type: "number", description: "Px of the hand's wobble (0.7; 0 for ruled lines)." },
+  },
+  ["scene"],
+  (a) => {
+    const root = projectRoot(a);
+    const { files, text, picture } = makeTownMap(root, a, existsSync(novaBin) ? novaBin : null);
+    for (const [rel, bytes] of files) put(root, rel, bytes);
+    const name = files[0]![0].replace(/^sprites\//, "").replace(/\.png$/, "");
+    return { text, images: [keepPicture(`map-${name.replace(/[^A-Za-z0-9_-]/g, "_")}`, picture)] };
+  },
+);
+
+tool(
   "scene_write",
   "Write a scene layout: `scenes/<name>.scene.json` (what the studio's scene editor edits; validated and tidied). `scene` is { version: 1, background?, width?, height?, camera?: { eye, target, fov }, objects: [ { kind, name?, x, y, z?, props? } ], images?, texts?, tilemaps? }. " +
     "`kind` is an entity in entities/ (a `name` makes the entity a field of the scene, `self.<name>`, findable with nova.named(\"<name>\"), and the entity's own `self.name`). " +
@@ -981,6 +1026,7 @@ export const EXAMPLES: Record<string, Args> = {
   song_write: { name: "town", song: { version: 1, bpm: 120, stepsPerBeat: 4, length: 16, tracks: [{ name: "lead", kind: "synth", wave: "square", notes: [{ step: 0, len: 4, pitch: 60 }, { step: 8, len: 4, pitch: 64 }] }, { name: "drums", kind: "drums", notes: [{ step: 0, pitch: 36 }, { step: 4, pitch: 38 }] }] } },
   sprite_write: { name: "dot", palette: { r: "#ff0000", w: "#ffffff" }, frames: [[".rr.", "rwwr", "rwwr", ".rr."], { rows: [".r", "rw", "rw", ".r"], mirror: "x" }], animations: [{ name: "blink", from: 0, to: 1 }] },
   sprite_preview: { name: "dot", frame: 0 },
+  map_make: { scene: "valley", title: "Fernhollow", trees: { pine: ["pine"], round: ["tree"] }, places: { house: { icon: "house" }, post_office: { icon: "post_office", label: "Post Office" } }, water: { names: { creek: "Kettle Creek" } } },
   image_make: { name: "ui/badge", size: [64, 64], sizes: [1, 0.5], shapes: [{ circle: [32, 32, 26], fill: { linear: [0, 6, 0, 58], stops: [[0, "#ffd54a"], [1, "#e08a1e"]] }, stroke: { color: "#5a3510", width: 3, align: "inside" }, shadow: { offset: [0, 3], blur: 4 } }, { polygon: [[32, 16], [36, 28], [48, 28], [38, 36], [42, 48], [32, 40], [22, 48], [26, 36], [16, 28], [28, 28]], round: 1, fill: "#fffbe8" }] },
   scene_write: { name: "room", scene: { version: 1, objects: [{ kind: "hero", name: "hero", x: 96, y: 96 }], tilemaps: [{ tileset: { image: "sprites/tiles.png", tile_width: 16, tile_height: 16, scale: 3 }, legend: { g: "grass", W: "wall" }, solid: ["W"], tiles: ["WWWW", "WggW", "WWWW"] }] } },
   scene_preview: { name: "room" },
@@ -1001,7 +1047,7 @@ export const EXAMPLES: Record<string, Args> = {
 // ---- MCP over stdio ------------------------------------------------------------------------------------------------
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
-const PICTURES = new Set(["play", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art", "prop3d_make", "character3d_make", "creature3d_make", "ground3d_make", "tileset_make", "character_make", "creature_make", "items_make", "song_make"]);
+const PICTURES = new Set(["play", "map_make", "screenshot", "model_preview", "sprite_write", "sprite_preview", "scene_write", "scene_preview", "sound_report", "store_art", "prop3d_make", "character3d_make", "creature3d_make", "ground3d_make", "tileset_make", "character_make", "creature_make", "items_make", "song_make"]);
 
 /// What answers a call before the tool's own handler does. A 3D scene (one with a "camera") has no flat map: scene_preview
 /// gives its plan from above instead (plan3d.ts): every object's footprint and name, the solid ones marked, a grid in metres.

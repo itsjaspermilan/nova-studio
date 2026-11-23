@@ -326,7 +326,7 @@ function textDist(s: Args, where: string, ctx: Ctx): Dist {
 
 /// The signed distance in pixels (negative inside) of a coverage picture: exact Euclidean distances to the other side, and
 /// the coverage itself on the edge pixels (0.5 - coverage), so edges stay as smooth as the glyphs were drawn.
-function signedField(cov: Float64Array, w: number, h: number): Float64Array {
+export function signedField(cov: Float64Array, w: number, h: number): Float64Array {
   const INF = 1e20;
   const edt = (feature: (i: number) => boolean): Float64Array => {
     const f = new Float64Array(w * h);

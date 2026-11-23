@@ -74,8 +74,9 @@ export const PLACES = {
   pip: { name: "Pip Tansy", number: 7, street: "Kettle Creek Road", building: [192, 114], face: [-0.62, -0.78], door: [188.5, 109.5], gate: [177, 101], mailbox: [174, 98], resident: [186, 106], mast: [199, 104] },
 };
 
-// The signposts at each junction: where the post stands and which roads its arms name, each arm pointing along its road.
+// The signposts at each junction: where the post stands and which roads its arms name, each arm pointing along its road (the owner's
+// fifth play: one board each way a road goes, so Post Road has an arm each way at both junctions, level with each other).
 export const SIGNS = [
-  { at: [-15.5, -72], arms: [{ text: "FERN LANE", toward: [-40, -78] }, { text: "POST ROAD", toward: [-6, -110] }] },
-  { at: [5.5, 30], arms: [{ text: "KETTLE CREEK RD", toward: [44, 26] }, { text: "POST ROAD", toward: [12, 62] }] },
+  { at: [-15.5, -72], arms: [{ text: "FERN LANE", toward: [-40, -78] }, { text: "POST ROAD", toward: [-6, -110] }, { text: "POST ROAD", toward: [-4, -30] }] },
+  { at: [5.5, 30], arms: [{ text: "KETTLE CREEK RD", toward: [44, 26] }, { text: "POST ROAD", toward: [12, 62] }, { text: "POST ROAD", toward: [-2, -10] }] },
 ];
