@@ -985,9 +985,16 @@ impl ApplicationHandler for App {
                 self.input
                     .native_axis_from(device_id.android_device_id(), axis, value as f32)
             }
-            // the bars come back after a dialog or the shade: hide them again
-            #[cfg(target_os = "android")]
-            WindowEvent::Focused(true) => crate::android_ui::hide_system_bars(),
+            // (Focused: the bars come back after a dialog or the shade, so they are hidden again; and the game hears of it)
+            WindowEvent::Focused(focused) => {
+                #[cfg(target_os = "android")]
+                if focused {
+                    crate::android_ui::hide_system_bars();
+                }
+                if let Some(game) = self.content.as_ref().and_then(|c| c.game()) {
+                    game.set_focused(focused);
+                }
+            }
             WindowEvent::RedrawRequested => self.frame(event_loop),
             _ => {}
         }

@@ -3404,6 +3404,10 @@ local function step(dt)
     end
   end
   local scene = W.scene
+  -- the window lost the focus (the system overlay, another app): the scene hears of it once, and pauses if it wants to
+  local focused = nova.focused()
+  if scene and W.was_focused and not focused and scene.focus_lost then scene:focus_lost() end
+  W.was_focused = focused
   if scene and scene.update then
     local sdt = dt
     if TIME.now ~= 1 or scene.time_scale ~= nil then sdt = dt * scale_of(scene) end

@@ -7349,3 +7349,33 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
         "backing up, the needle at {kmh} for {speed} m/s"
     );
 }
+
+/// "the game should pause on focus loss": when the window loses the focus (the Steam overlay, another app), the valley and the
+/// post office open the pause menu and the world stands, as Start does; a card already open stays as it is.
+#[test]
+fn losing_the_focus_pauses_the_game() {
+    for scene in ["valley", "office"] {
+        let mut g = game();
+        play(
+            &mut g,
+            &format!(r#"{{ "start_scene": "{scene}", "steps": [ {{ "wait": 30 }} ] }}"#),
+        );
+        assert_eq!(lua(&g, "tostring(require('lib.cards').active())"), "false");
+        g.set_focused(false);
+        play(&mut g, r#"{ "steps": [ { "wait": 2 } ] }"#);
+        assert_eq!(
+            lua(&g, "tostring(require('lib.cards').active())"),
+            "true",
+            "{scene}: the pause menu opens when the focus goes"
+        );
+        let probe =
+            "(function() return table.concat({ nova.time(), nova.scene_now().t }, ',') end)()";
+        let before = lua(&g, probe);
+        play(&mut g, r#"{ "steps": [ { "wait": 30 } ] }"#);
+        assert_eq!(lua(&g, probe), before, "{scene}: the world stands");
+        // coming back does not close it by itself; losing it again does not open a second card
+        g.set_focused(true);
+        play(&mut g, r#"{ "steps": [ { "wait": 2 } ] }"#);
+        assert_eq!(lua(&g, "tostring(require('lib.cards').active())"), "true");
+    }
+}

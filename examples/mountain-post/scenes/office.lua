@@ -98,6 +98,12 @@ function Office:prompt_at(what, it)
   end
 end
 
+-- The window lost the focus (the Steam overlay, another app): the game pauses itself, as Start would (the owner, 2026-11-23:
+-- "the game should pause on focus loss"). A card already open (the pause menu, the map, a label) stays as it is.
+function Office:focus_lost()
+  if not cards.active() then cards.open("pause") end
+end
+
 function Office:leave() nova.pause(false) end
 
 -- Start and Select stop the room too (as in the valley, scenes/valley.lua): the postmaster, the shelf and the dust stand still, the

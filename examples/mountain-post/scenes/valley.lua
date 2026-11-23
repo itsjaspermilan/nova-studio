@@ -103,6 +103,12 @@ function Valley:enter()
   nova.log("valley: entered" .. (state.came_out and " from the porch" or ""))
 end
 
+-- The window lost the focus (the Steam overlay, another app): the game pauses itself, as Start would (the owner, 2026-11-23:
+-- "the game should pause on focus loss"). A card already open (the pause menu, the map, a label) stays as it is.
+function Valley:focus_lost()
+  if not cards.active() then cards.open("pause") end
+end
+
 function Valley:leave()
   nova.pause(false)
   ambience.stop()
