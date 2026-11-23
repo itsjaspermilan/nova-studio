@@ -18,21 +18,21 @@ local ui = require("lib.ui")
 
 local hud = {}
 
-local s, C, F = ui.s, ui.C, ui.F
+local s, C, F, SP = ui.s, ui.C, ui.F, ui.SP
 local ORDER = { "P", "R", "N", "D", "L" }
 hud.HINTS = { stop = "Stop to shift" }
 -- The dial: its face's radius (the rim is 8 wider), its range, its sweep (radians from straight up, clockwise positive: 0 km/h a
 -- little below the left, the top of the range a little below the right), the needle's resting peg (further round, below the 0),
--- the row of gears (how far below the hub, and the letters' spacing).
-hud.DIAL = { r = 74, top = 100, minor = 10, major = 20, from = -math.rad(105), to = math.rad(105), rest = -math.rad(126), ease = 0.18, row = 0.58, gap = 17 }
+-- the row of gears (how far below the hub; the letters are SP.xl apart).
+hud.DIAL = { r = 74, top = 100, minor = 10, major = 20, from = -math.rad(105), to = math.rad(105), rest = -math.rad(126), ease = 0.18, row = 0.58 }
 local D = hud.DIAL
 
 -- Where it sits on a screen `w` x `h` (screen units, 540 high): the dial's middle and radius, each gear's letter, the lamp.
 function hud.layout(w, h)
   local rim = D.r + 8
-  local cx, cy = w - 20 - rim, h - 20 - rim
+  local cx, cy = w - ui.EDGE - rim, h - ui.EDGE - rim
   local L = { cx = cx, cy = cy, r = D.r, rim = rim, x = cx - rim, y = cy - rim, w = rim * 2, h = rim * 2, letters = {} }
-  for i, g in ipairs(ORDER) do L.letters[g] = { cx + (i - 3) * s(D.gap), cy + D.r * D.row } end
+  for i, g in ipairs(ORDER) do L.letters[g] = { cx + (i - 3) * SP.xl, cy + D.r * D.row } end
   L.lamp = { cx, cy - D.r * 0.34 }
   L.peg = { cx + math.sin(D.rest) * (D.r - 9), cy - math.cos(D.rest) * (D.r - 9) }
   L.top = cy - rim
@@ -41,7 +41,7 @@ end
 
 -- The prompt chips' floor while driving: ui.hints given this as the screen's height puts them just above the instrument.
 function hud.hints_floor(w, h)
-  return hud.layout(w, h).top + s(22) - s(8)
+  return hud.layout(w, h).top + ui.EDGE - SP.s
 end
 
 -- A straight stroke on the dial (a tick, the needle): the minimap's soft bar, from radius r0 to r1 at angle `a`.
@@ -96,7 +96,7 @@ function hud.draw(v, w, h)
   for _, g in ipairs(ORDER) do
     local p = L.letters[g]
     if g == v.gear then
-      ui.key(p[1] - kw / 2, p[2] - kh / 2 - s(1), kw, kh, C.red)
+      ui.key(p[1] - kw / 2, p[2] - kh / 2, kw, kh, C.red)
       ui.text(p[1], p[2] - F.hint * 0.68, g, { size = F.hint, align = "center", color = C.cream, bold = true })
     else
       ui.text(p[1], p[2] - F.small * 0.66, g, { size = F.small, align = "center", color = ui.alpha(C.faint, 0.95), bold = true })
@@ -117,10 +117,12 @@ function hud.draw(v, w, h)
   if t > 0 and v.hint and hud.HINTS[v.hint] then
     local al = math.min(1, t / 0.3)
     local str = hud.HINTS[v.hint]
-    local sw, sh = ui.text_width(str, F.small) + s(28), s(30)
-    local sx, sy = L.x - sw - s(8), L.cy - sh / 2
-    ui.panel(sx, sy, sw, sh, { scale = 0.4, alpha = al })
-    ui.text(sx + s(14), sy + sh / 2 - F.small * 0.66, str, { size = F.small, color = ui.alpha(C.ink, al) })
+    -- a small slip: PAD_SMALL's across and down in the small frame, SP.s clear of the dial
+    local sw, sh, left, top = ui.box(ui.text_width(str, F.small), F.small, ui.PAD_SMALL, ui.FRAME.small)
+    local sx, sy = L.x - sw - SP.s, L.cy - sh / 2
+    ui.panel(sx, sy, sw, sh, { scale = ui.FRAME.small, alpha = al })
+    ui.text(sx + left, sy + top, str, { size = F.small, color = ui.alpha(C.ink, al) })
+    hud.slip_box = { x = sx, y = sy, w = sw, h = sh, left = left, top = top } -- (for the tests)
   end
 end
 

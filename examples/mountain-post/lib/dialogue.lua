@@ -66,10 +66,12 @@ function dialogue.update(dt)
 end
 
 -- The box's size and where the words go, from the kit's one scale (the test checks every line fits).
-local s = ui.s
+-- A panel of running text: PAD_LONG inside the big frame.
+local s, SP = ui.s, ui.SP
 function dialogue.layout(w)
   local bw = math.min(s(860), w - 80)
-  return { w = bw, h = s(142), text_w = bw - s(96), size = ui.F.body + 1, spacing = 1.15, pad_top = s(30) }
+  local I, P = ui.inset(), ui.PAD_LONG
+  return { w = bw, h = s(120), text_w = bw - 2 * (I.x + P.x), left = I.x + P.x, size = ui.F.body + 1, spacing = 1.15, pad_top = I.top + P.y }
 end
 
 function dialogue.draw(w, h)
@@ -77,15 +79,16 @@ function dialogue.draw(w, h)
   local v = VOICES[cur.who] or VOICES.hazel
   local L = dialogue.layout(w)
   local bw, bh = L.w, L.h
-  local x, y = (w - bw) / 2, h - bh - s(28)
+  local x, y = (w - bw) / 2, h - bh - ui.EDGE
   ui.panel(x, y, bw, bh)
   -- the name on a tag in the speaker's colour, over the panel's top-left corner
-  ui.tag(x + s(26), y - s(22), cur.name, v.colour)
+  local _, th = ui.tag(x + SP.xl, y - SP.xl, cur.name, v.colour)
   local text = cur.lines[cur.i]:sub(1, math.floor(cur.shown))
-  ui.text(x + s(32), y + L.pad_top, text, { size = L.size, width = L.text_w, color = ui.C.ink, line_spacing = L.spacing })
+  ui.text(x + L.left, y + L.pad_top, text, { size = L.size, width = L.text_w, color = ui.C.ink, line_spacing = L.spacing })
   if cur.shown >= #cur.lines[cur.i] then
     local bob = math.sin(nova.time() * 5) * 2
-    ui.glyph(x + bw - s(34), y + bh - s(32) + bob, "X", s(28), { down = nova.input.down("interact") })
+    local cap = s(28)
+    ui.glyph(x + bw - L.left - cap / 2, y + bh - ui.inset().bottom - ui.PAD_LONG.y - cap / 2 + bob, "X", cap, { down = nova.input.down("interact") })
   end
 end
 

@@ -47,7 +47,7 @@ function cards.update(dt)
   end
 end
 
-local C, F, s = ui.C, ui.F, ui.s
+local C, F, s, SP = ui.C, ui.F, ui.s, ui.SP
 local text = ui.text
 
 -- (cards come in with a short rise and fade: s goes 0 to 1)
@@ -57,12 +57,18 @@ local function rise(t, d) local k = math.min(1, t / (d or 0.18)); return k, 1 - 
 -- words (and the test that the letter fits uses its layout).
 function cards.letter_layout(w)
   local cw = math.min(s(720), w - 80)
-  local L = { w = cw, text_w = cw - s(88), size = F.body + 1, size2 = F.body, spacing = 1.2 }
+  local I, P = ui.inset(), ui.PAD_LONG
+  local px = I.x + P.x -- (the words' left and right, from the sheet's edge)
+  local L = { w = cw, text_w = cw - 2 * px, px = px, size = F.body + 1, size2 = F.body, spacing = 1.2 }
   local _, h1 = nova.ui.text_size(words.letter[1], { font = "rounded", size = L.size, width = L.text_w, line_spacing = L.spacing, bold = 0.55 })
   local _, h2 = nova.ui.text_size(words.letter[2], { font = "rounded", size = L.size2, width = L.text_w, line_spacing = L.spacing, bold = 0.55 })
   L.h1, L.h2 = h1, h2
-  L.top = s(78)
-  L.h = L.top + h1 + s(18) + h2 + s(34) + s(40) + s(30)
+  -- the label line and its rule, then the words; the Mayor's name under them, xl clear
+  L.label_y = I.top + P.y
+  L.rule_y = L.label_y + F.line + SP.s
+  L.top = L.rule_y + SP.xs + SP.m
+  L.sign_h = s(28) * 1.3
+  L.h = L.top + h1 + SP.l + h2 + SP.xl + L.sign_h + P.y + I.bottom
   return L
 end
 local function letter_card(w, h, t)
@@ -72,12 +78,12 @@ local function letter_card(w, h, t)
   local x, y = (w - cw) / 2, (h - ch) / 2 + (1 - e) * 40
   ui.dim(w, h, k * 0.85)
   ui.panel(x, y, cw, ch, { alpha = k })
-  text(x + s(44), y + s(28), words.labels.letter, { size = F.line, color = ui.alpha(C.faint, k), bold = true })
-  ui.rule(x + s(40), y + s(58), cw - s(80), { alpha = k })
-  text(x + s(44), y + L.top, words.letter[1], { size = L.size, width = L.text_w, color = ui.alpha(C.ink, k), line_spacing = L.spacing })
-  text(x + s(44), y + L.top + L.h1 + s(18), words.letter[2], { size = L.size2, width = L.text_w, color = ui.alpha(C.ink, k), line_spacing = L.spacing })
+  text(x + L.px, y + L.label_y, words.labels.letter, { size = F.line, color = ui.alpha(C.faint, k), bold = true })
+  ui.rule(x + L.px, y + L.rule_y, cw - 2 * L.px, { alpha = k })
+  text(x + L.px, y + L.top, words.letter[1], { size = L.size, width = L.text_w, color = ui.alpha(C.ink, k), line_spacing = L.spacing })
+  text(x + L.px, y + L.top + L.h1 + SP.l, words.letter[2], { size = L.size2, width = L.text_w, color = ui.alpha(C.ink, k), line_spacing = L.spacing })
   -- (the Mayor's name in her own hand: the one word in the script face)
-  nova.ui.text(x + cw - s(44), y + ch - s(66), words.letter_from, { font = "script", size = s(28), align = "right", color = ui.alpha({ 70, 60, 120 }, k) })
+  nova.ui.text(x + cw - L.px, y + ch - ui.inset().bottom - ui.PAD_LONG.y - L.sign_h, words.letter_from, { font = "script", size = s(28), align = "right", color = ui.alpha({ 70, 60, 120 }, k) })
 end
 
 -- The paper map in a wooden frame (a panel round it; the sheet has the town's name on it already). It is drawn by Nova's map generator
@@ -104,7 +110,9 @@ local function map_card(w, h, t)
   -- (the top-left corner on a whole pixel, rising in whole pixels)
   local x = math.floor((w * px - iw * times) / 2) / px
   local y = math.floor((h * px - ih * times) / 2 + (1 - e) * 30 * px + 0.5) / px
-  ui.panel(x - s(12), y - s(12), mw + s(24), mh + s(28), { alpha = k })
+  -- (the frame: the picture is SP.xs inside the wood all round)
+  local I = ui.inset()
+  ui.panel(x - I.x - SP.xs, y - I.top - SP.xs, mw + 2 * (I.x + SP.xs), mh + I.top + I.bottom + 2 * SP.xs, { alpha = k })
   cards.drawn_map = { name = name, x = x, y = y, w = mw, h = mh, px = px }
   nova.ui.sprite(name, x + mw / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * k) } })
 end
@@ -118,27 +126,34 @@ local function ending_card(w, h, t)
   if ta <= 0 then return end
   local fs = s(36)
   local tw = ui.text_width(words.ending, fs, true)
-  local cw, ch = tw + s(100), s(150)
-  local x, y = (w - cw) / 2, h / 2 - s(70)
+  local I, P = ui.inset(), ui.PAD_LONG
+  local strip = F.heading + 2 * SP.s -- (the title strip hangs half over the card's top edge)
+  local text_y = strip / 2 + SP.m
+  local cw, ch = tw + 2 * (I.x + P.x), text_y + fs * 1.25 + P.y + I.bottom
+  local x, y = (w - cw) / 2, h / 2 - ch / 2
   ui.panel(x, y, cw, ch, { alpha = ta })
-  ui.title_strip(w / 2, y - s(20), words.title, { alpha = ta })
-  text(w / 2, y + s(44), words.ending, { size = fs, align = "center", color = ui.alpha(C.ink, ta), bold = true })
-  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("X", words.hint.close) / 2, y + ch + s(18), "X", words.hint.close, { down = nova.input.down("interact") }) end
+  ui.title_strip(w / 2, y - strip / 2, words.title, { alpha = ta })
+  text(w / 2, y + text_y, words.ending, { size = fs, align = "center", color = ui.alpha(C.ink, ta), bold = true })
+  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("X", words.hint.close) / 2, y + ch + SP.l, "X", words.hint.close, { down = nova.input.down("interact") }) end
 end
 
 -- Paused: a small card, its two choices as keys (the chosen one red, pressed while A is held).
 local function pause_card(o, w, h)
   ui.dim(w, h, 1)
-  local cw, ch = s(360), s(230)
+  local I, P = ui.inset(), ui.PAD_LONG
+  local strip = F.heading + 2 * SP.s -- (the title strip hangs half over the card's top edge)
+  local bh = s(56)                  -- a button
+  local cw = s(360)
+  local ch = strip / 2 + SP.m + bh + SP.l + bh + P.y + I.bottom
   local x, y = (w - cw) / 2, (h - ch) / 2
   ui.panel(x, y, cw, ch)
-  ui.title_strip(w / 2, y - s(22), words.pause.title, { min_w = s(170) })
+  ui.title_strip(w / 2, y - strip / 2, words.pause.title, { min_w = s(170) })
   for i, label in ipairs({ words.pause.resume, words.pause.quit }) do
-    local yy = y + s(52) + (i - 1) * s(76)
+    local yy = y + strip / 2 + SP.m + (i - 1) * (bh + SP.l)
     local on = o.choice == i
     local down = on and nova.input.down("confirm")
-    ui.key(x + s(46), yy, cw - s(92), s(56), on and C.red or nil, { scale = 0.5 * ui.S, down = down })
-    text(w / 2, yy + s(28) - (F.button + 4) * 0.62 + (down and 3 or 0), label, { size = F.button + 4, align = "center", color = on and C.cream or C.ink, bold = on or nil })
+    ui.key(x + I.x + P.x, yy, cw - 2 * (I.x + P.x), bh, on and C.red or nil, { scale = ui.FRAME.big * ui.S, down = down })
+    text(w / 2, yy + bh / 2 - (F.button + 4) * 0.62 + (down and 3 or 0), label, { size = F.button + 4, align = "center", color = on and C.cream or C.ink, bold = on or nil })
   end
 end
 

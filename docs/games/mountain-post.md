@@ -350,8 +350,36 @@ toy palette by a gradient map (the pack's four greys become ours); the files and
 - **Sizes** (the screen's units, 540 high, before the scale): headings 26 on a 46-high strip; buttons 24 to 28 on 56-high keys;
   prompts 19 on 40-high chips with a 25 button; dialogue and names 22 to 25; small labels 15. A panel's frame is drawn at half the
   pack's double size (8 units), a chip's at 0.4.
-- **Spacing:** 18 to 22 units from the screen's edge (cards 20, 18 from the top-left; prompts 22 from the bottom-right, 10
-  apart); 18 inside a panel; a title strip sits across a panel's top edge, half over it.
+- **Spacing (one scale, after the owner's sixth play: "some padding is too tight, and some is too large"):** every gap, padding
+  and margin in `lib/ui.lua`, `cards.lua`, `dialogue.lua` and `gear_hud.lua` is one of five named steps, `ui.SP`: **xs 4, s 8,
+  m 12, l 16, xl 24** (units of the 540-line screen, times `ui.S`); a test refuses a raw `+ s(n)` added to a position in those
+  files. The rules (`ui.PAD*`, `ui.GAP`, `ui.EDGE`, `ui.FRAME`, `ui.box`, `ui.inset`):
+
+  | Rule | Value | Used by |
+  | --- | --- | --- |
+  | `PAD` (inside the frame) | m across, s down | text panels: the parcel card, the van's panel, the pickup tip, the pause menu's buttons use PAD_LONG's across |
+  | `PAD_SMALL` | s across, xs down | prompt chips, the "Stop to shift" slip |
+  | `PAD_LONG` | xl across, m down | running text: the dialogue box, the letter, the end card, the pause menu |
+  | `GAP` | s | an icon or a button to its word (chips, panels, tips); between chips s |
+  | row gaps | xs between lines of one block, s between blocks | the card's three lines, the panel's rows, the letter's rule and paragraphs (l between paragraphs, xl before the signature) |
+  | `EDGE` | xl | the screen's edge to a corner element: the parcel card, the prompt chips, the minimap, the instrument, the dialogue box |
+  | `FRAME` | big 0.5 (cards, dialogue, letter, menus, the map's frame), small 0.36 (chips, tips, the van's panel, the slip), key 0.45 (title strips, name tags) | `ui.panel`, `ui.key` |
+  | `RADIUS`, shadow | m; the shadow is xs across and s down | `ui.panel` |
+  | tags and strips | name tag: l either side, s above and below; title strip: xl either side, s above and below | `ui.tag`, `ui.title_strip` |
+  | the instrument | the gears are xl apart; the chips stand s above it; the slip is s clear of the dial | `lib/gear_hud.lua` |
+
+  The padding is measured inside the frame's wood (`ui.inset(k)`: 16, 16 and 24 pixels of the kit times the frame scale), so a
+  panel's size is `ui.box(content_w, content_h, pad, frame)` and its text is never nearer than `s` to the wood, nor short text
+  further than `xl` from it (the test `text_keeps_the_scales_distance_from_every_panels_frame` measures the drawn words of the card,
+  the van's panel, the tip and the slip). Changes against the first design: the chips were 32 high with 17 either side of a
+  text-only word and now come from the rule (a little taller, s either side of the button); the corner card grew its padding
+  from 12 to the rule and lost its fixed width (it is `ui.box` round a 180-unit text column); the van's panel and the tip were
+  hand-placed (their lines 17 and 22 apart, the tip's name 9 from its top and its word 6 from the bottom) and are now laid out
+  from the content; the slip's 14 either side is s plus the frame; the dialogue box was 142 high with its text 24 down and is now
+  120 with m down; the letter's margins went from 36 to the frame plus xl; the end card (150 high, its words 44 down) and the pause
+  menu (230 high, 52 down) shrank to their content; the map frame's picture is xs inside the wood; the instrument's gears went from
+  14 apart (keys 17 wide: they touched) to xl.
+  A title strip sits across a panel's top edge, half over it.
 - **Behaviour:** a button cap or key shows held (the flat picture, lower by its foot) while its button is down; cards rise 30 units
   and fade in over 0.2 s over a dimming of the world; the end card dims nearly to black first. The van's parcel panel is no
   card but a light overlay: it fades and slides up in 0.2 s when the postmaster comes to the open back with empty hands and
