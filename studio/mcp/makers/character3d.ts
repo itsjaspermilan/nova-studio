@@ -109,6 +109,8 @@ export function makeCharacter3d(a: Args): Character3d {
   const skirted = outfit === "robe" || (a.skirt === true && (outfit === "tunic" || outfit === "armor"));
   // (the soft hats' colour: a bucket hat's or a round cap's)
   const hatC = col(a.hat_color, "hat_color", trim);
+  // (a bucket hat's band round the crown and the rolled rims of its ear holes: `hat_band_color`, else a shade darker than the hat)
+  const hatBand = a.hat_band_color === undefined ? tone(hatC, -0.6) : col(a.hat_band_color, "hat_band_color", "brown");
   const hatPin = choice(a.hat_pin, CHARACTER3D.emblems, "hat_pin");
   const hatSize = a.hat_size === undefined ? 1 : Number(a.hat_size);
   if (!Number.isFinite(hatSize) || hatSize < 0.6 || hatSize > 1.6) throw new Error(`hat_size is a number from 0.6 to 1.6 (got ${JSON.stringify(a.hat_size)}): how big a bucket hat is against its own size`);
@@ -525,7 +527,7 @@ export function makeCharacter3d(a: Args): Character3d {
       const b = 1.42, t = 0.012 * ch;
       hatM.rings([{ y: cy + 0.012 * ch, rx: R0 + 0.006, rz: RZ0 + 0.006 }, { y: cy - 0.016 * ch, rx: R0 * b, rz: RZ0 * b }, { y: cy - 0.024 * ch, rx: R0 * b + 0.006, rz: RZ0 * b + 0.006 }, { y: cy - 0.032 * ch, rx: R0 * b, rz: RZ0 * b }, { y: cy - 0.004 * ch - t, rx: R0 - 0.004, rz: RZ0 - 0.004 }], squash ? 28 : 14, (i) => (i >= 2 ? lo : hatC), { smooth: true, caps: false });
       // a band round the crown
-      hatM.rings([{ y: cy + 0.004 * ch, rx: R0 + 0.014, rz: RZ0 + 0.014 }, { y: cy + 0.026 * ch, rx: R0 * 0.995 + 0.012, rz: RZ0 * 0.995 + 0.012 }], squash ? 28 : 14, tone(hatC, -0.6), { smooth: true, caps: false });
+      hatM.rings([{ y: cy + 0.004 * ch, rx: R0 + 0.014, rz: RZ0 + 0.014 }, { y: cy + 0.026 * ch, rx: R0 * 0.995 + 0.012, rz: RZ0 * 0.995 + 0.012 }], squash ? 28 : 14, hatBand, { smooth: true, caps: false });
     } else {
       hatM.rings([{ y: cy - 0.006, rx: R0 + 0.014, rz: RZ0 + 0.014 }, { y: cy + 0.04 * ch, rx: R0 * 1.04 + 0.012, rz: RZ0 * 1.04 + 0.012 }, { y: cy + 0.085 * ch, rx: R0 * 0.86, rz: RZ0 * 0.86 }, { y: cy + 0.108 * ch, rx: R0 * 0.45, rz: RZ0 * 0.45 }, { y: cy + 0.112 * ch, rx: 0 }], squash ? 28 : 14, (i) => (i >= 2 ? hi : hatC), { smooth: true });
       // a little button on top, and a short soft peak
@@ -576,7 +578,7 @@ export function makeCharacter3d(a: Args): Character3d {
     const RX = headR[0], RY = headR[1], RZ = headR[2], ne = 2.6;
     const k = hatSize, off = 0.02 * k, top = 0.032 * k;
     const m = new Mesh3(hatC, { bend: false });
-    const lo = tone(hatC, -0.3), band = tone(hatC, -0.6);
+    const lo = tone(hatC, -0.3), band = hatBand;
     // the crown: the head's own outline, off it by `off`, from 0.5 of the way up (just above the brows) to the top, the top raised
     const base = 0.44, rows = 18, seg = 64;
     const crown: { y: number; rx: number; rz: number }[] = [];
@@ -586,7 +588,7 @@ export function makeCharacter3d(a: Args): Character3d {
       crown.push({ y: headC + s * RY + off + top * s ** 3, rx: i === rows ? 0 : r * RX + off, rz: i === rows ? 0 : r * RZ + off });
     }
     const yb = crown[0]!.y, rb: [number, number] = [crown[0]!.rx, crown[0]!.rz];
-    m.rings(crown, seg, (i) => (i < 1 ? band : hatC), { smooth: true });
+    m.rings(crown, seg, (i) => (i < 2 ? band : hatC), { smooth: true });
     // the brim: a thick soft ring out from the crown's foot, sloping down, its edge rounded
     const B = 1.36 + 0.6 * (k - 1), t = 0.024 * k, droop = 0.036 * k;
     const ringAt = (f: number, dy: number) => ({ y: yb + dy, rx: rb[0] * f, rz: rb[1] * f });
