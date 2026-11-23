@@ -788,3 +788,13 @@ the column reads P R N D L top to bottom. The horn, displaced from X, moves to t
 - **Not checked**: nothing on the Retroid yet. A flat foot on a steep hillside still meets it at the middle of its sole (the toe
   can dip up to 3 cm into an uphill slope, the test's limit; grass hides most of it). Painted edges (the collar, the patch, the placket) show a pale
   rim at the game's distance: the decals' see-through texels bleed when the texture is minified.
+
+## Feedback for later (the owner, 2026-11-23)
+
+Given as "more feedback for later": not started yet; to pick up after the sixth-play work is merged and installed.
+
+1. "We can remove the button chips from the UI entirely. We can have a 'Controls' option in the main menu."
+2. "The package station in the post office." (To ask: what should change about it.)
+3. "Subtle feedback when shifting gears correctly/incorrectly."
+4. "Little faces next to the residents' names."
+5. "Character carrying the parcel. The parcel should move with the player's arms."
