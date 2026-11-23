@@ -2733,3 +2733,104 @@ fn the_cameras_are_lower_and_more_behind() {
         e[2]
     );
 }
+
+/// "Technically they wouldn't be square, they would go around the wheel well and have a step in them too. We can remove the
+/// passenger side door and just keep it as a window." The left (driver's) doorway's foot runs low and level from its back, then
+/// rises round the front wheel's well a constant gap clear of it; the right side has no opening below the window line (one window,
+/// the wheel wells aside); a dark step sits inside the doorway, lower than the cab floor.
+#[test]
+fn the_left_doorway_goes_round_the_wheel_well_and_the_right_side_is_a_window() {
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/mountain-post/models/van.model.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let scale = model["scale"].as_f64().unwrap();
+    let body = &model["parts"][0];
+    let cuts: Vec<&Value> = body["cubes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["modifiers"].as_array())
+        .flatten()
+        .filter(|m| m["type"] == "cutout")
+        .flat_map(|m| m["cuts"].as_array().unwrap().iter())
+        .collect();
+    let pts = |c: &Value| -> Vec<(f64, f64)> {
+        c["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p[0].as_f64().unwrap() * scale,
+                    p[1].as_f64().unwrap() * scale,
+                )
+            })
+            .collect()
+    };
+    let side_openings = |flank: &str| -> Vec<Vec<(f64, f64)>> {
+        cuts.iter()
+            .filter(|c| c["view"] == "side" && c["remove"] == Value::Bool(true))
+            .filter(|c| c["only"].is_null() || c["only"] == flank)
+            .map(|c| pts(c))
+            // (the wheel wells: round the axles, under 0.7 m)
+            .filter(|p| p.iter().any(|&(_, y)| y > 0.7))
+            .collect()
+    };
+    // the right: one opening, a window, nothing of it below 0.95 m
+    let right = side_openings("-x");
+    assert_eq!(right.len(), 1, "one window on the right, no doorway");
+    let low = right[0].iter().map(|&(_, y)| y).fold(f64::MAX, f64::min);
+    assert!(
+        low >= 0.95,
+        "the right window starts at {low} m: no opening below the window line"
+    );
+    // the left: the doorway, its foot low and behind the well, its lower front round the well a constant gap clear
+    let left = side_openings("+x");
+    assert_eq!(left.len(), 1, "one doorway on the left");
+    let door = &left[0];
+    let (axle, arch_y, arch_r) = (0.72, 0.29, 0.34);
+    let foot = door.iter().map(|&(_, y)| y).fold(f64::MAX, f64::min);
+    assert!(
+        foot < arch_y + arch_r,
+        "the doorway's foot ({foot} m) is lower than the top of the wheel well: a step inside it"
+    );
+    let round: Vec<f64> = door
+        .iter()
+        .filter(|&&(z, y)| y < 0.85 && y > foot + 0.02 && (z - axle).abs() < 0.4)
+        .map(|&(z, y)| ((z - axle).powi(2) + (y - arch_y).powi(2)).sqrt())
+        .collect();
+    assert!(
+        round.len() >= 6,
+        "the lower front follows the well: {round:?}"
+    );
+    for d in &round {
+        assert!(
+            (d - arch_r - 0.07).abs() < 0.015,
+            "a constant gap above the well's lip: {round:?}"
+        );
+    }
+    assert!(
+        door.iter()
+            .any(|&(z, y)| (z - axle).abs() < 0.05 && y > arch_y + arch_r),
+        "the doorway's foot passes over the top of the wheel"
+    );
+    // the step: dark, inside the doorway's foot, under the cab floor (0.5 m)
+    let step = body["cubes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| {
+            c["shape"] == "mesh"
+                && c["color"] == "#4d4641"
+                && c["verts"]
+                    .as_array()
+                    .is_some_and(|v| v.iter().all(|p| p[1].as_f64().unwrap() * scale < 0.45))
+        })
+        .count();
+    assert!(step >= 1, "a dark step inside the doorway");
+}

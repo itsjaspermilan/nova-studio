@@ -407,7 +407,7 @@ function Van:draw()
   end
   -- the parcels in the hold, on its floor, the first loaded furthest in
   for i, which in ipairs(state.van_load) do
-    self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.57, i == 1 and -0.5 or -0.95, i * 0.4)
+    self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.67, i == 1 and -0.5 or -0.95, i * 0.4)
   end
 end
 

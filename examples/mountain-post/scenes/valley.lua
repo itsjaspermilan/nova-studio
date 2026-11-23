@@ -254,7 +254,7 @@ function Valley:get_in()
   nova.log("in the van")
 end
 
--- Getting out: beside the left doorway at once (or the right one when the left is against something), facing the way the van faces,
+-- Getting out: beside the left doorway at once (or beside the right side, which has no door, when the left is against something), facing the way the van faces,
 -- so the camera, which was behind the van, is behind them too, out beside the van with nothing in between.
 function Valley:get_out()
   local v, p = self.van, self.p
