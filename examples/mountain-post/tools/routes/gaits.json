@@ -1,6 +1,7 @@
 {
  "size": "1280x720",
  "start_scene": "valley",
+ "lua": "local cut = nova.see_through; nova.see_through = function() cut() end",
  "view": {
   "follow": "postmaster",
   "from": "front",

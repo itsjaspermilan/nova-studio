@@ -1,8 +1,9 @@
 -- The post van. Its body rides on four springs and dampers, one at each wheel, so it leans out in a bend, dips its nose when it
 -- brakes and squats when it pulls away, and bobs over the bumps of a gravel lane. The suspension solver and the wheels' layout
 -- are taken from Pine Ridge Rally's car (examples/pine-ridge-rally/entities/car.lua, 2026-11-21: `wheel_layout`, `ride_of`,
--- `Car:suspension`, `Car:wheel_offset`), copied here and cut down to one vehicle; the driving is new and gentle: modest power,
--- a top speed of about 63 km/h, brakes that take a moment, steering that forgives, no damage, no fuel, no gears to think about.
+-- `Car:suspension`, `Car:wheel_offset`), copied here and cut down to one vehicle; the driving is new and gentle: a leisurely start,
+-- a top speed of about 38 km/h (the starting van: upgrades raise Van.TUNE), brakes that take a moment, heavy steering that forgives,
+-- no damage, no fuel, no gears to think about.
 -- The scene sets `ctl` from the pad while the postmaster is in it; empty, it stands with its handbrake on. The postmaster sits in
 -- its open cab while driving (entities/postmaster.lua draws them there); the parcels it holds ride in the hold behind, seen through
 -- the back windows and when the rear doors swing open.
@@ -12,22 +13,36 @@ local state = require("lib.state")
 
 local Van = nova.entity { model = "van", tags = { "van" }, velocity = false }
 
--- The feel, in numbers (metres, seconds). Measured over a drive (the play tool's `record`), these give: 0 to 50 km/h in about
--- 6.5 s, a top speed of 17.5 m/s on the flat, about 20 m to stop from 50 km/h, and some 4 degrees of lean in a brisk bend.
-local FEEL = {
-  power = 4.6,          -- m/s^2 pulling away; it fades as the speed climbs to `top`
-  top = 19,             -- the speed the pull fades to nothing at; with the air and the rolling it tops out near 16 m/s (58 km/h) on the flat
-  reverse = 4.5,        -- m/s at most backwards
-  brake = 5.0,          -- m/s^2 at full brake: it takes a moment to stop
-  coast = 0.55,         -- m/s^2 rolling and engine braking with nothing pressed
-  drag = 0.0045,        -- the air, per (m/s)^2
-  lock = math.rad(18),  -- the front wheels at full lock (the stubby van's 1.32 m wheelbase turns as tightly as the 1.8 m one did at 24)
-  steer_rate = 2.6,     -- how fast the wheels follow the stick (1/s): a moment, not a twitch
-  grip = 9,             -- how fast a sideways slip dies away (1/s): it holds the road
+-- The feel, in numbers (metres, seconds): the STARTING van (the owner, after the second play: "the van can be slower to start and wait
+-- for the upgrades to be faster"; "The turning is too aggressive and doesn't feel like there's actual weight to it"). Upgrades will
+-- raise `power`, `top` and `brake` (and perhaps `lock` and `grip`); everything else follows from them. Measured over a drive (the
+-- tests' record): 0 to 30 km/h in about 6 s, a top speed of about 10.5 m/s (38 km/h) on the flat.
+-- Steering with weight: the stick asks for a wheel angle, less the faster it goes; the wheels move towards it no faster than
+-- `steer_speed` (full lock a second) and ease in and out of that; the body's turning then follows what the wheels ask over `yaw_lag`
+-- seconds (a heavy van takes a moment to start and to stop turning), and asks less than the wheels as the sideways pull grows past
+-- `corner` m/s^2 (gentle understeer: a bend taken too fast runs wide rather than darting in).
+Van.TUNE = {
+  power = 2.3,          -- m/s^2 pulling away (a leisurely start); it fades as the speed climbs to `top`
+  top = 12.5,           -- the speed the pull fades to nothing at; with the air and the rolling it tops out near 10.5 m/s on the flat
+  reverse = 3.0,        -- m/s at most backwards
+  brake = 4.5,          -- m/s^2 at full brake: it takes a moment to stop
+  coast = 0.5,          -- m/s^2 rolling and engine braking with nothing pressed
+  drag = 0.004,         -- the air, per (m/s)^2
+  grass = 0.6,          -- m/s^2 more rolling on the grass (the soft ground holds it back; with the starting van's pull it still gets going)
+  gravel = 0.12,        -- and on a gravel lane
+  lock = math.rad(20),  -- the front wheels at full lock, at a crawl
+  lock_fast = 0.35,     -- the share of the lock the stick gives at the top speed (less lock the faster it goes)
+  steer_speed = 1.0,    -- the most the wheels move in a second (in shares of full lock): a flick of the stick is never a snap
+  steer_ease = 5.0,     -- how quickly the wheels' own movement starts and stops (1/s)
+  yaw_lag = 0.28,       -- seconds for the body's turning to catch up with the wheels
+  corner = 3.2,         -- m/s^2 of sideways pull past which it turns less than the wheels ask (understeer)
+  past = 0.12,          -- the share of what the wheels ask past `corner` that it still turns (small: it runs wide, gently)
+  grip = 6,             -- how fast a sideways slip dies away (1/s): it holds the road, with a little give
   pull = 0.0035,        -- radians a second the van wanders to the left with the wheel let go (the Mayor's letter; barely felt)
   hill = 5.5,           -- how much a slope pulls (m/s^2 at 100 %)
 }
-local GEARS = { 7, 12.5, 17.5 }        -- the speed at which each gear runs out (for the engine's note only)
+local FEEL = Van.TUNE
+local GEARS = { 4, 7.5, 11 }           -- the speed at which each gear runs out (for the engine's note only; the slower van's range)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
 -- The stubby van (tools/van.mjs) is 2.4 m long (2.5 with its bumpers) and 1.48 wide, from z -1.13 (the foot of its leaning back)
 -- to 1.27 (its nose).
@@ -109,6 +124,7 @@ end
 function Van:teleport(x, z, heading)
   self.x, self.z, self.heading = x, z, heading
   self.velx, self.velz, self.speed = 0, 0, 0
+  self.yaw_rate, self.steer, self.steer_v = 0, 0, 0
   self.susp.ready = false
 end
 
@@ -128,13 +144,22 @@ function Van:drive(dt)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
   local vl = self.velx * cosh - self.velz * sinh
-  -- the wheels follow the stick over a moment, and turn less the faster the van goes (it never darts)
-  local want = steer_in * (1 - 0.45 * math.min(1, math.abs(vf) / FEEL.top))
-  self.steer = self.steer + (want - self.steer) * math.min(1, dt * FEEL.steer_rate * 2)
+  -- the wheels: towards what the stick asks (less lock the faster it goes), at a limited and eased speed (it never darts)
+  local want = steer_in * (1 - (1 - FEEL.lock_fast) * math.min(1, math.abs(vf) / FEEL.top))
+  local rate = math.max(-FEEL.steer_speed, math.min(FEEL.steer_speed, (want - self.steer) * 8))
+  self.steer_v = (self.steer_v or 0) + (rate - (self.steer_v or 0)) * math.min(1, dt * FEEL.steer_ease)
+  local before = self.steer
+  self.steer = self.steer + self.steer_v * dt
+  -- (no overshoot past what the stick asks)
+  if (before - want) * (self.steer - want) < 0 then self.steer, self.steer_v = want, 0 end
   local angle = self.steer * FEEL.lock
-  -- a van turns by its speed over the radius its front wheels point at (wheelbase / tan(angle))
-  local yaw = -vf * math.tan(angle) / self.wheelbase
-  if live and math.abs(steer_in) < 0.05 and math.abs(vf) > 2 then yaw = yaw + FEEL.pull * (vf > 0 and 1 or -1) end
+  -- a van turns by its speed over the radius its front wheels point at (wheelbase / tan(angle)); past `corner` of sideways pull it
+  -- asks less (understeer); the body follows over `yaw_lag`
+  local ask = -vf * math.tan(angle) / self.wheelbase
+  local side = math.abs(ask * vf)
+  if side > FEEL.corner then ask = ask * (FEEL.corner + (side - FEEL.corner) * FEEL.past) / side end
+  if live and math.abs(steer_in) < 0.05 and math.abs(vf) > 2 then ask = ask + FEEL.pull * (vf > 0 and 1 or -1) end
+  local yaw = (self.yaw_rate or 0) + (ask - (self.yaw_rate or 0)) * math.min(1, dt / FEEL.yaw_lag)
   self.heading = self.heading + yaw * dt
   self.yaw_rate = yaw
   sinh, cosh = math.sin(self.heading), math.cos(self.heading)
@@ -151,7 +176,7 @@ function Van:drive(dt)
   end
   -- rolling, engine braking, the air, the hills
   local sign = vf >= 0 and 1 or -1
-  local coast = (go > 0 and 0.15 or FEEL.coast) + (self.surface == "grass" and 1.2 or self.surface == "gravel" and 0.15 or 0)
+  local coast = (go > 0 and 0.15 or FEEL.coast) + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
   vf = vf - sign * math.min(math.abs(vf), (coast + FEEL.drag * vf * vf) * dt)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   if not world.on_bridge(self.x, self.z) then vf = vf - (gx * sinh + gz * cosh) * FEEL.hill * dt end
@@ -240,7 +265,7 @@ function Van:suspension(dt, accel, lateral_accel)
     sp.p, sp.r = gf / self.wheelbase, 0
   end
   local want_p = math.max(-1, math.min(1, accel / (accel < 0 and FEEL.brake or FEEL.power * 1.4))) * ride.pitch
-  local want_r = math.max(-1, math.min(1, lateral_accel / 4.5)) * ride.roll
+  local want_r = math.max(-1, math.min(1, lateral_accel / 3.2)) * ride.roll -- (full lean at the sideways pull where it begins to run wide)
   local k, c, sags, bump, droop = ride.k, ride.c, ride.sags, ride.bump, ride.droop
   local kb, cb, arb = 25 * k, 3 * c, ride.arb * k
   local h = dt / 2
@@ -337,7 +362,7 @@ function Van:draw()
   -- FERNHOLLOW POST on both sides of the box, behind the doorways, just off the panel, moving with the body's lean
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.765, 1.42, -0.46)
+    local x, y, z = self:to_world(side * 0.805, 1.27, -0.46)
     SIDE.face = { cosh * side, 0, -sinh * side }
     SIDE.w, SIDE.h = 0.76, 0.259
     nova.billboard("van_side", x, y, z, 0.76, SIDE)

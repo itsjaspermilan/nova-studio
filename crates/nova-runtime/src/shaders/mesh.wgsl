@@ -25,6 +25,8 @@ struct Globals {
     cascade_info: array<vec4<f32>, 3>,  // x: where the map ends (distance along the view), y: depth bias, z: metres a texel spans, w: softness
     cascade_count: vec4<f32>,           // x: how many maps
     ground: vec4<f32>,                  // rgb: the land around as the light leaves it (its colour under the sun and the ambient light); w: 1 when the sky gave one
+    see_through: vec4<f32>,             // `nova.see_through`: xyz the point kept in view, w the radius of the hole at that point (metres)
+    see_through_opts: vec4<f32>,        // x: how far short of the point the hole stops (metres), y: how much is dropped (0: off), z: the height above its own base under which nothing is cut, w: within this many metres of the eye everything (above z) goes
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var heightmap: texture_2d<f32>;  // the heightmap (R32Float, metres); 1 x 1 when there is none
@@ -352,6 +354,43 @@ fn sun_visibility(world: vec3<f32>, normal: vec3<f32>) -> f32 {
     return visible;
 }
 
+// See-through (`nova.see_through`): what stands between the camera and a point the game keeps in view (a character under a
+// diorama camera that never moves in) is cut away by a screen-door inside a cone from the eye to a circle of `see_through.w` metres
+// round that point, stopping `opts.x` metres short of it (so the ground and the walls beside and behind the point stay), its edge
+// dithered over the outer 30%. A pixel lower than `opts.z` metres above its own model's base is never cut (the ground, a road, the
+// foot of a wall): tree crowns, roofs, the upper walls and a vehicle's body go. The shadow maps are not touched: a cut tree still
+// casts its shadow.
+fn see_through_cut(world: vec3<f32>, above_base: f32, pixel: vec2<f32>) -> bool {
+    let o = globals.see_through_opts;
+    if (o.y <= 0.0 || above_base < o.z) {
+        return false;
+    }
+    let axis = globals.see_through.xyz - globals.eye.xyz;
+    let len = length(axis);
+    if (len < 1e-3) {
+        return false;
+    }
+    let d = axis / len;
+    let rel = world - globals.eye.xyz;
+    // (anything within `opts.w` metres of the eye goes too, its edge dithered over the last fifth: a camera whose eye is in a tree's
+    // crown sees out of it, and a roof right under a high camera is no wall across the picture)
+    var drop = 0.0;
+    if (o.w > 0.0) {
+        drop = o.y * (1.0 - smoothstep(o.w * 0.8, o.w, length(rel)));
+    }
+    let along = dot(rel, d);
+    if (along > 0.0 && along <= len - o.x) {
+        let r = globals.see_through.w * along / len;
+        let off = length(rel - d * along);
+        drop = max(drop, o.y * (1.0 - smoothstep(r * 0.7, r, off)));
+    }
+    if (drop <= 0.0) {
+        return false;
+    }
+    let noise = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+    return noise < drop;
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     // a piece fading with distance (scenery between two levels of detail, or at the edge of the draw range): each pixel is
@@ -364,6 +403,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
+    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
     // (a part of a textured model whose material has no picture has its UVs far out, model.rs NO_TEXTURE_UV: it is drawn white, in
     // its own colours; sampled anyway, since a sample must be taken by every pixel alike)
     let picture = textureSample(base_texture, base_sampler, in.uv);
@@ -391,6 +431,7 @@ fn fs_detail(in: VertexOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
+    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
     let picture = textureSample(base_texture, base_sampler, in.uv);
     let grain = textureSample(detail_map, detail_sampler, in.uv * detail_params.scale.xy).rgb * 2.0;
     let plain = in.uv.x > 1.0e6;
@@ -664,6 +705,7 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
             if (noise >= in.dissolve) { discard; }
         }
     }
+    if (see_through_cut(in.world, in.local.w, in.position.xy)) { discard; }
     let picture = textureSample(base_texture, base_sampler, in.uv);
     let base = select(picture, vec4<f32>(1.0), in.uv.x > 1.0e6) * in.color;
     // (every map is sampled by every pixel alike; a part without one ignores what it read)

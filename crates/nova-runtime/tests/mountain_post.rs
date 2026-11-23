@@ -163,7 +163,7 @@ fn a_gentle_tilt_walks_a_full_push_runs_and_a_parcel_makes_it_a_trot() {
     );
     assert_eq!(lua(&g, "nova.named('postmaster').gait"), "walk");
     let walk = num(&g, "nova.named('postmaster').speed");
-    assert!((0.5..=1.0).contains(&walk), "a gentle tilt walks: {walk}");
+    assert!((0.8..=1.3).contains(&walk), "a gentle tilt walks: {walk}");
     assert_eq!(lua(&g, clip), "walk");
     play(
         &mut g,
@@ -172,8 +172,8 @@ fn a_gentle_tilt_walks_a_full_push_runs_and_a_parcel_makes_it_a_trot() {
     assert_eq!(lua(&g, "nova.named('postmaster').gait"), "run");
     let run = num(&g, "nova.named('postmaster').speed");
     assert!(
-        run > 1.75 && run < 2.2,
-        "a full push runs at about twice the walk's top (1.0): {run}"
+        run > 2.8 && run < 3.05,
+        "a full push runs at about twice the walk's top (1.6): {run}"
     );
     assert_eq!(
         lua(&g, clip),
@@ -242,8 +242,8 @@ fn a_gentle_tilt_walks_a_full_push_runs_and_a_parcel_makes_it_a_trot() {
         "the trot is between the walk and the run: {trot}"
     );
     assert!(arm(find("trot"), "arm_l").is_empty());
-    // and the van is far quicker than either (its top on the flat is about 16 m/s)
-    assert!(run * 5.0 < 16.0);
+    // and the van is far quicker than either (the starting van's top on the flat is about 10.5 m/s)
+    assert!(run * 3.0 < 10.5);
 }
 
 #[test]
@@ -898,19 +898,19 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
         &mut g,
         r#"{ "start_scene": "valley", "steps": [
             { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, -78, 1.75); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.testkit').drive('hazel')" },
-            { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.25 and math.abs(nova.named('van').speed) > 7", "max": 1500 },
+            { "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.2 and math.abs(nova.named('van').speed) > 5", "max": 2500 },
             { "lua": "nova.named('van').back_want = 1" },
-            { "until": "nova.named('van').back_open > 0.8 and math.abs(nova.named('van').roll) > 0.02", "max": 900 } ] }"#,
+            { "until": "nova.named('van').back_open > 0.8 and math.abs(nova.named('van').roll) > 0.015", "max": 1500 } ] }"#,
     );
-    // (the body's lean must be real for the check to mean anything)
+    // (the body's lean must be real for the check to mean anything; the slower starting van leans less)
     let roll = num(&g, "nova.named('van').roll").abs();
-    assert!(roll > 0.02, "the van leans in the bend: {roll}");
+    assert!(roll > 0.015, "the van leans in the bend: {roll}");
     assert_eq!(
         lua(
             &g,
             "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[#p + 1] = n end table.sort(p) return table.concat(p, ' ') end)()"
         ),
-        "body door_l door_r steering wheel_fl wheel_fr wheel_rl wheel_rr"
+        "body door_l door_l_leaf door_r door_r_leaf steering wheel_fl wheel_fr wheel_rl wheel_rr"
     );
     // each hinge as posed with the van's own parts table, against the body's turn (its roll about z, then its pitch about x, then
     // its lift) applied to the hinge at rest
@@ -1110,10 +1110,11 @@ fn going_through_the_post_office_door_is_a_short_fade_and_no_forced_walk() {
         "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.abs((p.face - (d.ry or 0) + math.pi) % (2 * math.pi) - math.pi) end)()",
     );
     assert!(away < 0.05, "facing away from the door: {away}");
-    // and straight back in: the same short fade, standing just inside, free at once
+    // and straight back in: the same short fade, standing just inside, free at once (the camera is behind them, looking out from the
+    // building: back in is towards it, down on the stick)
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["move_y=-1"], "until": "nova.current_scene() == 'office'", "max": 120 }, { "wait": 1 } ] }"#,
+        r#"{ "steps": [ { "hold": ["move_y=1"], "until": "nova.current_scene() == 'office'", "max": 120 }, { "wait": 1 } ] }"#,
     );
     let log = r.log();
     let entered = log
@@ -1330,8 +1331,10 @@ fn the_camera_is_outside_the_van_after_getting_out() {
     let inside = "(function() local e, v = require('lib.camera').state.eye, nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); \
         if e[2] > nova.terrain_height(v.x, v.z) + 2.2 then return false end; \
         for _, off in ipairs(v.BODY.offs) do if (e[1] - v.x - s * off)^2 + (e[3] - v.z - c * off)^2 < v.BODY.r^2 then return true end end; return false end)()";
-    let clear = "(function() local C, e, p = require('lib.camera'), require('lib.camera').state.eye, nova.named('postmaster'); local tx, ty, tz = p.x, require('lib.world').height(p.x, p.z) + 0.55, p.z; \
-        local dx, dy, dz = e[1] - tx, e[2] - ty, e[3] - tz; local l = math.sqrt(dx*dx + dy*dy + dz*dz); return C.clear_to(tx, ty, tz, dx / l, dy / l, dz / l, l) > l - 0.45 end)()";
+    // (since the owner's second play nothing pushes the camera in: what stands between it and the postmaster is cut away round them,
+    // so "clear" is the cut-away following the postmaster)
+    let clear = "(function() local s, p = require('lib.camera').state.see, nova.named('postmaster'); \
+        return s ~= nil and math.abs(s[1] - p.x) < 0.01 and math.abs(s[3] - p.z) < 0.01 end)()";
     for (x, z, h) in [(13.5, -170.5, 0.3), (8.0, -60.0, 0.1), (150.0, 30.0, 0.9)] {
         let plan = format!(
             r#"{{ "start_scene": "valley", "steps": [
@@ -1447,4 +1450,461 @@ fn the_valley_has_clumps_of_trees_and_forest_masses_not_thousands_of_trees() {
         "(function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind == 'groundcover' then for _, p in ipairs(o.props.plants) do n = n + p.count end end end return n end)()",
     );
     assert!(plants <= 6360.0, "{plants} ferns, grasses and flowers");
+}
+
+// ---- the owner's second play on the Retroid (2026-11-22): the van, the walk, the camera, the stutter, the prompts ----------------
+
+/// "the van can be slower to start and wait for the upgrades to be faster." The starting van's numbers are one table (Van.TUNE);
+/// at full throttle on the road (held in place, so nothing but its own pull, rolling and air count) it pulls away leisurely and
+/// tops out near 10.5 m/s, not the old 16.
+#[test]
+fn the_starting_van_is_slow_to_pull_away_and_tops_out_near_ten_and_a_half() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); v:teleport(4.5, -150, 0); v.driven = true; v.ctl.go, v.ctl.brake, v.ctl.steer = 1, 0, 0; \
+         local t30; for i = 1, 2400 do v:drive(1 / 60); v.x, v.z, v.heading = 4.5, -150, 0; if not t30 and v.speed >= 8.33 then t30 = i / 60 end end; \
+         return string.format('%.3f %.3f %s', v.speed, t30 or -1, v.surface) end)()",
+    );
+    let parts: Vec<&str> = out.split(' ').collect();
+    let (top, t30): (f64, f64) = (parts[0].parse().unwrap(), parts[1].parse().unwrap());
+    assert!((9.8..=11.2).contains(&top), "top speed {top} m/s ({out})");
+    assert!(
+        (4.0..=9.0).contains(&t30),
+        "0 to 30 km/h in {t30} s ({out})"
+    );
+    // the numbers live in one named table, for the upgrades to raise
+    for key in [
+        "power",
+        "top",
+        "brake",
+        "steer_speed",
+        "yaw_lag",
+        "lock_fast",
+        "corner",
+    ] {
+        assert!(
+            num(&g, &format!("nova.named('van').TUNE.{key}")) > 0.0,
+            "Van.TUNE.{key}"
+        );
+    }
+}
+
+/// "The turning is too aggressive and doesn't feel like there's actual weight to it." A flick of the stick moves the wheels no
+/// faster than Van.TUNE.steer_speed a second; at speed the stick gives less lock; the body's turning follows the wheels over a
+/// moment (no jump in the yaw rate); a bend taken fast runs wide (the sideways pull stays near Van.TUNE.corner) rather than darting.
+#[test]
+fn the_vans_steering_is_rate_limited_less_at_speed_and_the_body_takes_a_moment() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); local T = v.TUNE; v:teleport(4.5, -150, 0); v.driven = true; \
+         local function hold(go, steer, n) local w = { steer = 0, yaw = 0, side = 0 }; for i = 1, n do local s0, y0 = v.steer, v.yaw_rate or 0; v.ctl.go, v.ctl.brake, v.ctl.steer = go, 0, steer; v:drive(1 / 60); v.x, v.z = 4.5, -150; \
+           w.steer = math.max(w.steer, math.abs(v.steer - s0)); w.yaw = math.max(w.yaw, math.abs((v.yaw_rate or 0) - y0)); w.side = math.max(w.side, math.abs((v.yaw_rate or 0) * v.speed)) end; return w end; \
+         hold(1, 0, 1800); local fast = v.speed; local a = hold(1, -1, 240); local lock_fast = math.abs(v.steer); local b = hold(1, 1, 120); \
+         v:teleport(4.5, -150, 0); v.driven = true; hold(0.25, 0, 60); local c = hold(0.25, -1, 240); local lock_slow = math.abs(v.steer); \
+         return string.format('%.3f %.5f %.5f %.3f %.3f %.3f %.3f %.3f', fast, math.max(a.steer, b.steer, c.steer), math.max(a.yaw, b.yaw, c.yaw), lock_fast, lock_slow, a.side, T.steer_speed, T.corner) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (fast, steer_step, yaw_step, lock_fast, lock_slow, side, steer_speed, corner) =
+        (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
+    assert!(fast > 9.5, "at speed: {out}");
+    assert!(
+        steer_step <= steer_speed / 60.0 + 1e-6,
+        "the wheels move at most {steer_speed} of full lock a second: a step of {steer_step} ({out})"
+    );
+    assert!(
+        lock_fast < 0.65 && lock_slow > 0.9,
+        "less lock at speed ({lock_fast}) than at a crawl ({lock_slow})"
+    );
+    assert!(
+        yaw_step < 0.03,
+        "the body's turning eases (largest change of yaw rate in a frame {yaw_step} rad/s)"
+    );
+    assert!(
+        side < corner + 1.5,
+        "a full-lock bend at speed runs wide: sideways pull {side} m/s^2 (corner {corner})"
+    );
+}
+
+/// "The back doors look like a bunch of rectangles just stuck together, not a solid door." "It seems too tall still." Each rear
+/// door is one solid panel (one shape, with its window cut into it) on a leaf part, with a handle and hinges; the van is squat:
+/// its parts under 1.7 m, and the seated postmaster's head in the cab, under the roof.
+#[test]
+fn the_van_is_squat_and_each_rear_door_is_one_solid_panel() {
+    let model = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-post/models/van.model.json"),
+    )
+    .unwrap();
+    let model: Value = serde_json::from_str(&model).unwrap();
+    fn find<'a>(parts: &'a [Value], name: &str) -> Option<&'a Value> {
+        for p in parts {
+            if p["name"] == name {
+                return Some(p);
+            }
+            if let Some(children) = p["children"].as_array()
+                && let Some(f) = find(children, name)
+            {
+                return Some(f);
+            }
+        }
+        None
+    }
+    let parts = model["parts"].as_array().unwrap();
+    for side in ["l", "r"] {
+        let leaf = find(parts, &format!("door_{side}_leaf")).expect("a leaf");
+        let cubes = leaf["cubes"].as_array().unwrap();
+        let panels = cubes
+            .iter()
+            .filter(|c| {
+                c["shape"] == "mesh"
+                    && c["modifiers"]
+                        .as_array()
+                        .is_some_and(|m| m.iter().any(|m| m["type"] == "cutout"))
+            })
+            .count();
+        assert_eq!(panels, 1, "door_{side}: one panel with its window cut in");
+        assert!(
+            cubes.len() <= 2,
+            "door_{side}'s leaf is the panel and a handle: {} shapes",
+            cubes.len()
+        );
+    }
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let high = num(
+        &g,
+        "(function() local top = 0 for _, p in pairs(nova.model_pose('van')) do if p.y > top then top = p.y end end return top end)()",
+    );
+    assert!(high < 1.75, "the van's parts all sit under 1.75 m: {high}");
+    // the seated driver's head and cap: the top of the figure standing is as far over its head's joint as it is seated, and that is
+    // under the cab's lining (the roof 1.7 m, its lining 1.57)
+    let top = num(
+        &g,
+        "(function() local P = nova.named('postmaster'); local sit = nova.model_pose('postmaster', { clip = 'sit', time = 0 }); local rest = nova.model_pose('postmaster'); \
+         return P.SEAT[2] + sit.head.y + (1.04 - rest.head.y) end)()",
+    );
+    assert!(
+        (1.3..1.57).contains(&top),
+        "the driver's cap ({top} m) is in the cab, under the lining"
+    );
+}
+
+/// "the animation needs to slow down a bit and the player should be able to move faster." At the top of each gait the clip plays
+/// at the pace at which its feet keep to the ground (the ankles' backward speed, measured from the poses, against the speed: the
+/// same share as character3d_make's own slide-free walk), each cycle is calmer than before, and the residents walk the same way.
+#[test]
+fn the_feet_do_not_slide_at_the_new_speeds_and_the_steps_are_calmer() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -125, 0; require('lib.camera').reset(0)" } ] }"#,
+    );
+    // (character3d_make's walk, slide-free at 0.767 m/s by its answer, measures 0.629 m/s of ankle: the sole's roll is the rest)
+    let share = 0.629 / 0.767;
+    let mut seen = Vec::new();
+    for (push, carry, gait, old_cycle) in [
+        ("-0.7", false, "walk", 0.373),
+        ("-1", false, "run", 0.228),
+        ("-1", true, "trot", 0.275),
+    ] {
+        let lua_carry = if carry { "'hazel'" } else { "nil" };
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "require('lib.state').carrying = {lua_carry}" }}, {{ "hold": ["move_y={push}"], "frames": 90 }} ] }}"#
+            ),
+        );
+        assert_eq!(lua(&g, "nova.named('postmaster').gait"), gait);
+        let speed = num(&g, "nova.named('postmaster').speed");
+        let rate = num(&g, "nova.named('postmaster').anim.speed");
+        let ankle = num(
+            &g,
+            &format!("(require('lib.testkit').foot_speed('postmaster', '{gait}'))"),
+        );
+        let duration = num(
+            &g,
+            &format!("select(2, require('lib.testkit').foot_speed('postmaster', '{gait}'))"),
+        );
+        let feet = ankle / share * rate;
+        assert!(
+            (feet - speed).abs() / speed < 0.06,
+            "{gait}: the feet go back at {feet} m/s under a body going {speed}"
+        );
+        let cycle = duration / rate;
+        assert!(
+            cycle > old_cycle * 1.08,
+            "{gait}: a step cycle of {cycle} s at {speed} m/s, calmer than the old {old_cycle} s"
+        );
+        seen.push((gait, speed));
+        play(
+            &mut g,
+            r#"{ "steps": [ { "lua": "require('lib.state').carrying = nil" }, { "wait": 40 } ] }"#,
+        );
+    }
+    assert!(
+        seen[0].1 > 1.5 && seen[1].1 > 2.8 && seen[2].1 > 2.1,
+        "{seen:?}"
+    );
+    // the soles stay on the ground through each cycle (the lower foot within 2.5 cm of it: no sinking at the end of a long step)
+    for clip in ["walk", "run", "trot"] {
+        let low = num(
+            &g,
+            &format!(
+                "(function() local d; for _, k in ipairs(nova.model_clips('postmaster')) do if k.name == '{clip}' then d = k.duration end end; \
+                 local lo = 1; for i = 0, 31 do local p = nova.model_pose('postmaster', {{ clip = '{clip}', time = d * i / 32 }}); lo = math.min(lo, p.foot_l.low, p.foot_r.low) end; return lo end)()"
+            ),
+        );
+        assert!(low > -0.025, "{clip}: a sole sinks {low} m into the ground");
+    }
+    for who in ["hazel", "pip"] {
+        let ankle = num(
+            &g,
+            &format!("(require('lib.testkit').foot_speed('{who}', 'walk'))"),
+        );
+        // their walk plays at its own pace (the animator's rate 1) at their walking speed, 1.6 m/s
+        assert!(
+            ((ankle / share) - 1.6).abs() < 0.1,
+            "{who}'s walk does not slide at 1.6 m/s: {}",
+            ankle / share
+        );
+    }
+}
+
+/// The camera, one rule on foot and in the van (the owner: "the player can orbit the camera but as the player drives it'll drift
+/// back to the rear view"): it stays where the right stick put it while the postmaster stands, and for a moment after the stick is
+/// let go even while moving; then, moving, it drifts back behind the way of travel, its turn never faster than the drift's limit;
+/// a turn on the spot hardly moves it.
+#[test]
+fn the_camera_holds_where_it_was_put_then_drifts_behind_slowly_while_moving() {
+    let mut g = game();
+    let yaw = "require('lib.camera').state.yaw";
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [
+        { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, math.pi / 2; require('lib.camera').reset(math.pi / 2)" },
+        { "wait": 20 }, { "hold": ["look_x=1"], "frames": 36 }, { "wait": 30 } ] }"#,
+    );
+    let orbited = num(&g, yaw);
+    assert!(
+        (orbited - std::f64::consts::FRAC_PI_2).abs() > 1.0,
+        "the stick orbits it: {orbited}"
+    );
+    // standing: it stays put, however long
+    play(&mut g, r#"{ "steps": [ { "wait": 300 } ] }"#);
+    assert!(
+        (num(&g, yaw) - orbited).abs() < 1e-6,
+        "standing, the camera stays where it was put"
+    );
+    // a touch more of the stick, then running off along +x: for a moment it still stays put, then it comes round behind them, never
+    // faster than its limit
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["look_x=0.5"], "frames": 4 }, { "wait": 25 } ] }"#,
+    );
+    let put = num(&g, yaw);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); p.walk_pace = 2.8; p.walk_to = { p.x + 60, p.z }" }, { "wait": 40 } ] }"#,
+    );
+    assert!(
+        (num(&g, yaw) - put).abs() < 1e-6,
+        "just after the stick, moving, it waits"
+    );
+    let r = play(
+        &mut g,
+        r#"{ "each_frame": "PY = require('lib.camera').state.yaw",
+        "always": "math.abs((require('lib.camera').state.yaw - PY + math.pi) % (2 * math.pi) - math.pi) <= require('lib.camera').FOOT.rate / 60 + 1e-6",
+        "steps": [ { "wait": 600 } ] }"#,
+    );
+    assert!(
+        r.warnings().iter().all(|w| !w.contains("always")),
+        "{:?}",
+        r.warnings()
+    );
+    let behind = num(
+        &g,
+        &format!("math.abs(({yaw} - math.pi / 2 + math.pi) % (2 * math.pi) - math.pi)"),
+    );
+    assert!(
+        behind < 0.3,
+        "it came round behind the way of travel: {behind} rad off"
+    );
+    // turning on the spot leaves it nearly still
+    let before = num(&g, yaw);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); p.walk_to = nil; p.walk_path = nil" }, { "wait": 60 },
+        { "hold": ["move_y=1"], "frames": 8 }, { "hold": ["move_x=-1"], "frames": 8 }, { "hold": ["move_y=-1"], "frames": 8 }, { "wait": 60 } ] }"#,
+    );
+    let turned = (num(&g, yaw) - before).abs();
+    assert!(
+        turned < 0.08,
+        "a turn on the spot hardly moves it: {turned} rad"
+    );
+}
+
+/// Driving, the same rule, quicker: orbited round to the side, the view comes back behind the van as it drives on.
+#[test]
+fn driving_the_camera_returns_to_the_rear_view_after_orbiting() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit')", "steps": [
+        { "wait": 5, "lua": "T.board(); T.drive('hazel')" }, { "wait": 400 }, { "hold": ["look_x=1"], "frames": 45 } ] }"#,
+    );
+    let off = "math.abs((require('lib.camera').state.yaw - nova.named('van').heading + math.pi) % (2 * math.pi) - math.pi)";
+    let side = num(&g, off);
+    assert!(side > 1.0, "the stick orbits the driving view: {side} rad");
+    assert!(num(&g, "nova.named('van').speed") > 3.0);
+    play(&mut g, r#"{ "steps": [ { "wait": 360 } ] }"#);
+    let back = num(&g, off);
+    assert!(back < 0.3, "back behind the van: {back} rad off");
+}
+
+/// "If I just walk around in a circle, there is quite a bit of stutter." The cause was the camera's swing-behind: walking round, it
+/// followed the facing, stopped dead the moment the way of walking came to face it (a 0.7 s wait), then set off again at once at a
+/// fixed turn (and its boom snapped in at anything in the way). Now, walking a circle (the stick turned steadily round), without and
+/// with the right stick, the postmaster's step, the eye's step and the camera's turn each change smoothly from one frame to the next.
+#[test]
+fn walking_a_circle_moves_the_postmaster_and_the_camera_smoothly() {
+    let mut g = game();
+    let setup = r#""lua": "STICK = 0; local orig = nova.input.axis; nova.input.axis = function(n) if STICK_ON and n == 'move_x' then return math.cos(STICK) elseif STICK_ON and n == 'move_y' then return math.sin(STICK) end return orig(n) end; T = require('lib.testkit')",
+        "each_frame": "if STICK_ON then STICK = STICK + 0.03 end""#;
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", {setup}, "steps": [
+            {{ "wait": 10, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, 0; require('lib.camera').reset(0)" }},
+            {{ "wait": 20, "lua": "STICK_ON = true" }},
+            {{ "wait": 30 }},
+            {{ "always": "T.smooth_step({{ body = 0.004, eye = 0.006, yaw = 0.0012 }})", "wait": 600 }},
+            {{ "lua": "T.prev, T.step = nil, nil" }},
+            {{ "always": "T.smooth_step({{ body = 0.004, eye = 0.09, yaw = 0.006 }})", "hold": ["look_x=0.6"], "frames": 120 }},
+            {{ "always": "T.smooth_step({{ body = 0.004, eye = 0.09, yaw = 0.006 }})", "wait": 240 }} ] }}"#
+        ),
+    );
+    assert!(
+        r.warnings().iter().all(|w| !w.contains("always")),
+        "{:?} worst {}",
+        r.warnings(),
+        lua(
+            &g,
+            "string.format('%.5f %.5f %.5f', T.worst.body, T.worst.eye, T.worst.yaw)"
+        )
+    );
+    assert!(num(&g, "T.worst.yaw") > 0.0, "the camera did turn");
+}
+
+/// "If I'm close to the van trying to get the package, I only get an option to 'knock' even though 1 I'm not at a door, 2 I'm not
+/// trying to talk to the person." With the van parked right by Hazel: at its open back the prompt is the van's (load, or the panel),
+/// at its doorway it is B to get in and nothing on A; a step away, facing her, it is Talk (or Hand over with her parcel); turned
+/// away, nothing; Knock only at a front door with the resident indoors.
+#[test]
+fn at_the_van_the_vans_prompts_win_over_a_resident_near() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('postmaster').x, nova.named('postmaster').z = 150, 36" },
+        { "wait": 120 },
+        { "lua": "local h, v, s = nova.named('hazel'), nova.named('van'), nova.scene_now(); v:teleport(h.meet[1], h.meet[2] + 3.4, 0); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.BACK); p.face = math.pi; require('lib.state').carrying = 'pip'" },
+        { "wait": 60 } ] }"#,
+    );
+    let actions = "(function() local a, b, r = nova.scene_now():actions(); return tostring(a) .. ' ' .. tostring(b) .. ' ' .. (r and r.who or '-') end)()";
+    let hazel_d = num(
+        &g,
+        "math.sqrt((nova.named('hazel').x - nova.named('postmaster').x)^2 + (nova.named('hazel').z - nova.named('postmaster').z)^2)",
+    );
+    assert!(
+        hazel_d < 2.4,
+        "Hazel stands within talking reach: {hazel_d} m"
+    );
+    assert_eq!(lua(&g, actions), "load nil -", "with a parcel at the back");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = require('lib.state'); s.carrying = nil; s.van_load = { 'pip' }" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, actions), "pick nil -", "empty-handed at the back");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s, p = nova.scene_now(), nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); p.face = math.pi" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, actions), "nil get_in -", "at the doorway");
+    // a step towards her, facing her: Talk (her parcel in hand: Hand over)
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local h, p = nova.named('hazel'), nova.named('postmaster'); p.x, p.z = h.x + 1.3, h.z; p.face = math.atan(h.x - p.x, h.z - p.z)" }, { "wait": 1 } ] }"#,
+    );
+    assert_eq!(lua(&g, actions), "talk nil hazel");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "require('lib.state').carrying = 'hazel'" }, { "wait": 1 } ] }"#,
+    );
+    assert_eq!(lua(&g, actions), "give nil hazel");
+    // turned away from her, nothing to say
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "require('lib.state').carrying = nil; local p = nova.named('postmaster'); p.face = p.face + math.pi" }, { "wait": 1 } ] }"#,
+    );
+    assert_eq!(lua(&g, actions), "nil nil -");
+    // Knock: at her front door, only while she is indoors
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local d, p = nova.named('door_hazel'), nova.named('postmaster'); p.x, p.z = d.x - 0.6, d.z - 0.6" }, { "wait": 1 } ] }"#,
+    );
+    assert!(!lua(&g, actions).starts_with("knock"));
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.named('hazel').outside = false" }, { "wait": 1 } ] }"#,
+    );
+    assert!(
+        lua(&g, actions).starts_with("knock"),
+        "{}",
+        lua(&g, actions)
+    );
+}
+
+/// "they keep following me." A resident comes a couple of steps from their work towards their gate, turns to the postmaster and
+/// stays there, wherever the postmaster walks about near them.
+#[test]
+fn residents_meet_the_postmaster_at_their_gate_and_do_not_follow() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 41" }, { "wait": 150 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('hazel').mode"), "meet");
+    let at_meet = "(function() local h = nova.named('hazel'); return math.sqrt((h.x - h.meet[1])^2 + (h.z - h.meet[2])^2) end)()";
+    assert!(num(&g, at_meet) < 0.25, "she has come to her meeting place");
+    let from_home = "(function() local h = nova.named('hazel'); return math.sqrt((h.x - h.home[1])^2 + (h.z - h.home[2])^2) end)()";
+    // the postmaster wanders round her, near and further, for some 20 seconds: she stays put
+    let r = play(
+        &mut g,
+        r#"{ "always": "(function() local h = nova.named('hazel'); return math.sqrt((h.x - h.meet[1])^2 + (h.z - h.meet[2])^2) < 0.3 end)()",
+        "steps": [ { "lua": "local h, p = nova.named('hazel'), nova.named('postmaster'); p.walk_pace = 2.6; p.walk_path = { { h.x + 4, h.z - 3 }, { h.x - 4, h.z - 5 }, { h.x - 5, h.z + 2 }, { h.x + 3, h.z + 4 }, { h.x + 6, h.z }, { h.x + 1.5, h.z + 0.5 } }; p.walk_to = nil" },
+        { "until": "not require('lib.testkit').walking()", "max": 1200 }, { "wait": 60 } ] }"#,
+    );
+    assert!(
+        r.warnings().iter().all(|w| !w.contains("always")),
+        "she followed: {:?}",
+        r.warnings()
+    );
+    assert!(num(&g, from_home) < 2.1);
+    let off = num(
+        &g,
+        "(function() local h, p = nova.named('hazel'), nova.named('postmaster'); return math.abs((math.atan(p.x - h.x, p.z - h.z) - h.face + math.pi) % (2 * math.pi) - math.pi) end)()",
+    );
+    assert!(off < 0.3, "she faces the postmaster: {off} rad off");
 }

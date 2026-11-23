@@ -244,3 +244,41 @@ These replace the matching lines above where they differ.
   clumps of three to eight by the roads and the houses with open grass between, a big "hero" tree at each signpost and gate, and
   where nobody goes (the valley's sides, beyond the creek, the far bank, the edges) a few dozen soft forest masses: lumpy rows of
   big puffs in the pine greens with a scalloped top and a darker foot (tools/nature.mjs, placed by tools/scene.mjs).
+
+## The owner's second play on the Retroid (2026-11-22, the whole slice)
+
+These replace the matching lines above where they differ (the UI theme, the music and the ambience were another round's).
+
+- **The van:** "It seems too tall still ... The turning is too aggressive and doesn't feel like there's actual weight to it. The back
+  doors look like a bunch of rectangles just stuck together, not a solid door." "The van can be slower to start and wait for the
+  upgrades to be faster." Now 1.7 m high (was 2.0) and 1.56 wide (1.48), the seat lowered so the seated postmaster's cap clears the
+  cab's lining; each rear door is one rounded panel with one framed window pressed into it, a handle by the single seam, two hinges
+  (tools/van.mjs). The feel is one table, `Van.TUNE` in entities/van.lua, which upgrades will raise: a leisurely pull-away (0 to 30
+  km/h in about 6 s) and a top of about 10.5 m/s (it was 16); the wheels follow the stick at no more than full lock a second, eased,
+  with less lock the faster it goes; the body's turning catches up with the wheels over about a quarter of a second; past 3.2 m/s^2 of
+  sideways pull it turns much less than asked (it runs wide, gently), and it leans further for the pull it has.
+- **Walking:** "the animation needs to slow down a bit and the player should be able to move faster." Walk 1.6 m/s, run 3.0, trot
+  with a parcel 2.2 (were 1.15, 2.15, 1.45). The clips take longer strides (legs swing 48 degrees each way in the walk), each cycle
+  longer, played at their own pace at the top of each gait, so the feet keep to the ground (tools/strides.mjs, which patches the
+  model's clips in its .model.json and .glb alike). Steps are calmer than before: 0.46 s a walk cycle at 1.6 m/s (0.37 at 1.15), 0.26
+  s a run cycle at 3.0 (0.23 at 2.15); legs this short cannot go slower at these speeds without sliding. Hazel and Pip walk the same.
+- **The camera, on foot and driving** (asked to choose, the owner: "I do still want to have the chase camera while walking and
+  driving ... like GTA V not Forza Horizon. So the player can orbit the camera but as the player drives it'll drift back to the rear
+  view"; and "We can have the camera start behind the player while on foot and exiting a building"): one rule for both. The right stick
+  orbits (and tilts between limits) and the camera stays where it was put while the stick was used in the last moment and for as long
+  as the postmaster stands or the van is stopped; 1.2 s after the stick is let go, and only while moving, it drifts back behind the
+  way of travel, slowly on foot (at most 0.55 rad/s, less at a stroll, nothing walking straight at it), quicker in the van (growing
+  with speed), the drift's speed eased in and out. On foot it is high and steep like a village diorama game (42 degrees down, 14.5 m
+  back, a 26 degree lens: the postmaster about a sixth of the screen, a little below the middle); driving, lower and wider. Nothing
+  pushes it in: what stands between it and the postmaster or the van is cut away round them (`nova.see_through`, new in the engine).
+  It starts behind the postmaster whenever the stick becomes theirs outdoors (the valley, out of the post office's door, out of the
+  van, after a talk). The office's fixed view is unchanged.
+- **Stutter** ("If I just walk around in a circle, there is quite a bit of stutter"): the old camera's swing-behind stopped dead the
+  moment the way of walking came to face it (a 0.7 s wait), then set off again at once at a fixed turn, and its boom snapped in at
+  anything in the way; walking a circle did both again and again. The new camera's turn and position change smoothly frame to frame
+  (a test walks a circle with and without the right stick).
+- **Prompts and residents** ("I only get an option to 'knock' even though 1 I'm not at a door, 2 I'm not trying to talk to the
+  person and they keep following me"): at the van's open back and its doorway only the van's prompts show; out of doors a resident's
+  prompt is Talk (or Hand over with their parcel), only close to them and facing them; Knock only at a front door with the resident
+  indoors (nobody is, in the slice). A resident comes a couple of steps from their work towards their gate, turns to the postmaster
+  and stays there: they no longer walk after them.
