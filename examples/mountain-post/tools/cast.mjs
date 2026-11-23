@@ -6,13 +6,13 @@
 import { tool } from "./lib.mjs";
 import { CAST } from "./palette.mjs";
 
-// the postmaster: a fox in a marigold knitted cardigan over a cream shirt, denim trousers, a tomato-red bucket hat with an envelope pin,
-// a teal neckerchief, an envelope patch on the chest (the owner's sixth notes: no messenger bag, nothing like a police uniform; then
-// "the colour scheme for the player seems a little drab": of three brighter outfits pictured in the valley, by the blue van and close,
-// this one reads best: the marigold pops off the grass and the grey road and is not the fox's own orange, the denim legs read against
-// the road and the fur, the tomato hat matches the van's red band, and the teal neckerchief is one bright accent; a teal hat sank into
-// the grass at the game's distance and teal trousers did too; docs/games/mountain-post.md)
-tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: CAST.marigold, trim_color: CAST.denim, shoe_color: CAST.boot, hat: "bucket", hat_color: CAST.tomato, hat_pin: "envelope", emblem: "envelope", accessory: "scarf", accent_color: CAST.tealBright });
+// the postmaster: a fox in a marigold knitted cardigan over a cream shirt, olive-brown cord trousers, a big oatmeal bucket hat with a
+// teal band and an envelope pin, a teal neckerchief, an envelope patch on the chest. (The owner's sixth notes: no messenger bag,
+// nothing like a police uniform; then "a little drab"; then a red hat with blue near it was "too much like the Paddington colours".
+// Of four outfits pictured in the valley, close and beside the blue van, this one reads best as his own: the pale hat stands out
+// against the grass, the road and the blue van at eight metres where sage and moss hats sank into the grass and a plum one went dark,
+// the marigold is sunny and not his orange fur, and the teal band and neckerchief tie it together; docs/games/mountain-post.md)
+tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: CAST.marigold, trim_color: CAST.cord, shoe_color: CAST.boot, hat: "bucket", hat_color: CAST.oatmeal, hat_band_color: CAST.tealBright, hat_pin: "envelope", emblem: "envelope", accessory: "scarf", accent_color: CAST.tealBright });
 // Hazel Brock: a bear, retired carpenter: a warm rust work shirt, olive trousers, a canvas apron with a pencil in its pocket
 tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_scale: 1.75, outfit: "shirt", outfit_color: CAST.hazelShirt, trim_color: CAST.hazelTrousers, accessory: "apron" });
 // Pip Tansy: a young rabbit with a radio station: a sunny vest with a bolt on it, bright blue trousers, red headphones

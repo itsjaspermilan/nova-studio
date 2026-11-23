@@ -501,6 +501,8 @@ describe("character3d_make", () => {
     expect(head(pinned)).not.toBe(head(plain));
     expect(head(round)).not.toBe(head(plain));
     expect(head(pinned)).toContain("#b5503f");
+    // (a band of its own colour round the crown and the ear holes' rims)
+    expect(head(makeCharacter3d({ ...base, hat: "bucket", hat_color: "#f1e4c6", hat_band_color: "#2aa69b" }))).toContain("#2aa69b");
     // no belt over a cardigan (its buckle was a uniform's), the shirt's collar painted at the neck
     const hipsShapes = (o: string) => parsed(makeCharacter3d({ ...base, outfit: o }).model).parts[0]!.cubes.length;
     expect(hipsShapes("cardigan")).toBeLessThan(hipsShapes("tunic"));

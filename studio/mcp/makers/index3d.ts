@@ -123,6 +123,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       hat: { type: "string", description: CHARACTER3D.hats.join(", ") },
       hat_color: { type: "string", description: "A bucket hat's or a round cap's colour (the trim colour when left out)." },
       hat_size: { type: "number", description: "A bucket hat's size, 0.6 to 1.6 (1 when left out): on an animal's big head it is a slouchy oversized hat with holes for pointed ears; bigger is roomier and broader in the brim." },
+      hat_band_color: { type: "string", description: "The band round a bucket hat's crown and the rims of its ear holes (a shade darker than the hat when left out)." },
       hat_pin: { type: "string", description: `A small pin on the front of a bucket hat or a round cap: ${CHARACTER3D.emblems.join(", ")}.` },
       pack: { type: "string", description: CHARACTER3D.packs.join(", ") },
       item: { type: "string", description: CHARACTER3D.items.join(", ") },

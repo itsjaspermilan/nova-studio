@@ -1059,3 +1059,7 @@ the road." (Later the player decorates the post office and their home.) Every in
 - Tests: `every_piece_of_the_post_office_sits_on_the_grid_and_the_walks_stay_clear` (on the grid, inside, no overlap, the door reaches the
   aisle before each of the ten tiles, the letter's counter and the stool, 4 free cells at each end of the front counter, the free cells
   counted: 112 of 140 on the floor, 27 on the front counter's top, 4 on the package counter's).
+
+### "Looks too much like the Paddington colours" (2026-11-23)
+
+A big red hat on a small animal with blue near it read as that famous bear. Four outfits were pictured in the valley, close and beside the blue van (`build/gallery/own-options-*.png`, not committed), all with the marigold or coral cardigan, the big slouchy hat with its ear holes and the envelope pin: 1 an oatmeal hat with a teal band, marigold cardigan, olive-brown cord trousers, teal neckerchief; 2 a sage hat with a mustard band, coral cardigan, cream trousers; 3 a plum hat with a marigold band, marigold cardigan, sage trousers, cream scarf; 4 a moss hat with a cream band, marigold cardigan, cream trousers, plum neckerchief. **Chosen: 1.** The pale hat stands out against the grass, the road and the blue van at eight metres (the sage and moss hats sank into the grass, the plum one went dark), the marigold is sunny and clearly not his orange fur, and the teal band and neckerchief tie it together: a cheerful rambling postie, no famous red and blue. `hat_band_color` (character3d_make) colours a bucket hat's band and its ear holes' rims.
