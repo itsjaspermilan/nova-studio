@@ -5086,3 +5086,442 @@ fn valley_roads_nothing_placed_stands_on_a_road() {
         assert!(kinds.contains(k), "no {k} was checked: {kinds:?}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------------- the owner's sixth play, the
+// buildings' one look, the signposts' angles, the bridge's far half, the paper map's small print and the bass layer
+// ("Let's fix the building generator to keep a consistent look. I want it to be a little more rounded."; the rough spots).
+
+/// A model document of the game, read from its file.
+fn model_doc(kind: &str) -> Value {
+    let root = game_dir();
+    serde_json::from_str(
+        &std::fs::read_to_string(root.join(format!("models/{kind}.model.json"))).unwrap(),
+    )
+    .unwrap()
+}
+
+/// Every cube of a model (its parts and their children), in the order written.
+fn all_cubes(model: &Value) -> Vec<&Value> {
+    fn walk<'a>(p: &'a Value, out: &mut Vec<&'a Value>) {
+        for c in p["cubes"].as_array().into_iter().flatten() {
+            out.push(c);
+        }
+        for ch in p["children"].as_array().into_iter().flatten() {
+            walk(ch, out);
+        }
+    }
+    let mut out = Vec::new();
+    for p in model["parts"].as_array().unwrap() {
+        walk(p, &mut out);
+    }
+    out
+}
+
+/// A cube's box in metres: its lowest and highest corner (a mesh from its points, a box from its corner and size; turns ignored).
+fn cube_box(c: &Value, scale: f64) -> ([f64; 3], [f64; 3]) {
+    let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+    let mut take = |p: [f64; 3]| {
+        for i in 0..3 {
+            lo[i] = lo[i].min(p[i] * scale);
+            hi[i] = hi[i].max(p[i] * scale);
+        }
+    };
+    let triple = |v: &Value| {
+        [
+            v[0].as_f64().unwrap(),
+            v[1].as_f64().unwrap(),
+            v[2].as_f64().unwrap(),
+        ]
+    };
+    if c["shape"] == "mesh" {
+        for v in c["verts"].as_array().unwrap() {
+            take(triple(v));
+        }
+    } else {
+        let (f, s) = (triple(&c["from"]), triple(&c["size"]));
+        take(f);
+        take([f[0] + s[0], f[1] + s[1], f[2] + s[2]]);
+    }
+    (lo, hi)
+}
+
+/// The hue of a "#rrggbb" in degrees and its saturation (HSV).
+fn hue_sat(hex: &str) -> (f64, f64) {
+    let n = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap();
+    let (r, g, b) = (
+        ((n >> 16) & 255) as f64 / 255.0,
+        ((n >> 8) & 255) as f64 / 255.0,
+        (n & 255) as f64 / 255.0,
+    );
+    let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
+    let d = mx - mn;
+    let h = if d == 0.0 {
+        0.0
+    } else if mx == r {
+        60.0 * (((g - b) / d).rem_euclid(6.0))
+    } else if mx == g {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    (h, if mx == 0.0 { 0.0 } else { d / mx })
+}
+
+const HOUSES: [&str; 3] = ["post_office", "cabin_hazel", "cabin_pip"];
+const BUILDINGS: [&str; 10] = [
+    "post_office",
+    "cabin_hazel",
+    "cabin_pip",
+    "workshop",
+    "bridge",
+    "barrier",
+    "fence",
+    "gate_post",
+    "mast",
+    "old_bridge",
+];
+
+/// The owner's sixth play: "keep a consistent look ... a little more rounded". tools/models.mjs HOUSE holds the one construction
+/// language, and this checks what it makes: every box edge of every building is rounded by the one radius (16 cm, or 0.4 of the thin
+/// side where that is less), the three houses have the same window (1.1 x 0.95 m glass), the same door frame (1.38 x 2.29 m, 12 cm
+/// deep), a ridge cap of one radius (15 cm), a stone plinth on the ground, and every colour of every building is the palette's (a
+/// colour of the palette's hue: the shades of one).
+#[test]
+fn the_buildings_share_one_house_style_rounded_and_in_the_palette() {
+    let root = game_dir();
+    // the palette (tools/palette.mjs): every "#rrggbb" in its PAL
+    let pal_src = std::fs::read_to_string(root.join("tools/palette.mjs")).unwrap();
+    let palette: Vec<String> = pal_src
+        .split('#')
+        .skip(1)
+        .map(|s| format!("#{}", &s[..6]))
+        .filter(|s| s[1..].chars().all(|c| c.is_ascii_hexdigit()))
+        .collect();
+    assert!(palette.len() >= 28, "the palette: {}", palette.len());
+    for kind in BUILDINGS {
+        let m = model_doc(kind);
+        let scale = m["scale"].as_f64().unwrap();
+        for c in all_cubes(&m) {
+            // every edge radius: at most 16 cm
+            for md in c["modifiers"].as_array().into_iter().flatten() {
+                let w = md["width"].as_f64().unwrap() * scale;
+                assert!(
+                    w <= 0.161,
+                    "{kind}: a bevel of {w:.3} m (the house edge is 0.16 m)"
+                );
+            }
+            // every colour: the hue of a palette colour (the shades of it)
+            let hex = c["color"].as_str().unwrap();
+            let (h, s) = hue_sat(hex);
+            let near = palette.iter().any(|p| {
+                let (ph, ps) = hue_sat(p);
+                // (greys and whites carry the palette's warm hue too: compare hues where there is a colour at all)
+                let dh = ((h - ph + 540.0).rem_euclid(360.0) - 180.0).abs();
+                (s < 0.05 && ps < 0.12) || (dh <= 8.0 && (s - ps).abs() <= 0.35)
+            });
+            assert!(
+                near,
+                "{kind}: {hex} is not a palette colour or a shade of one"
+            );
+        }
+    }
+    for kind in HOUSES {
+        let m = model_doc(kind);
+        let scale = m["scale"].as_f64().unwrap();
+        let cubes = all_cubes(&m);
+        let sized = |hex: &str, want: [f64; 3], tol: f64| -> usize {
+            cubes
+                .iter()
+                .filter(|c| c["color"] == hex)
+                .filter(|c| {
+                    let (lo, hi) = cube_box(c, scale);
+                    (0..3).all(|i| (hi[i] - lo[i] - want[i]).abs() < tol)
+                })
+                .count()
+        };
+        // the wall's own corner: the house edge, exactly
+        let widest = cubes
+            .iter()
+            .flat_map(|c| c["modifiers"].as_array().into_iter().flatten())
+            .map(|md| md["width"].as_f64().unwrap() * scale)
+            .fold(0.0, f64::max);
+        assert!(
+            (widest - 0.16).abs() < 0.002,
+            "{kind}: the house edge is {widest:.3} m"
+        );
+        // windows: glass 1.1 x 0.95 m
+        let windows =
+            sized("#5a7d8f", [1.1, 0.95, 0.04], 0.012) + sized("#ffe0a0", [1.1, 0.95, 0.04], 0.012);
+        let want = if kind == "post_office" {
+            2
+        } else if kind == "cabin_hazel" {
+            2
+        } else {
+            1
+        };
+        assert_eq!(windows, want, "{kind}: windows of the house size");
+        // the door frame, cream, in the wall: 1.38 x 2.29 m, 12 cm deep
+        assert_eq!(
+            sized("#f3e6c8", [1.38, 2.29, 0.12], 0.012),
+            1,
+            "{kind}: its door frame"
+        );
+        // the ridge cap: a smooth cylinder 30 cm across along the ridge
+        assert!(
+            cubes.iter().any(|c| c["shape"] == "cylinder"
+                && ((c["size"][0].as_f64().unwrap() * scale) - 0.30).abs() < 0.004),
+            "{kind}: a ridge cap"
+        );
+        // the stone plinth: dark stone on the ground
+        assert!(
+            cubes
+                .iter()
+                .any(|c| c["color"] == "#8c8478" && cube_box(c, scale).0[1].abs() < 0.01),
+            "{kind}: a stone plinth on the ground"
+        );
+    }
+}
+
+/// "Kettle Creek's signpost from the south: the Post Road boards are seen edge-on." A board that points along its road is edge-on from
+/// that road. Every board of every signpost, from every road that comes to the post, 25 m out along it, over the road's middle, is
+/// seen at 30 degrees or more of its face (its length against the sight line to its middle: the sine at least 0.45; the arms are
+/// swung off their roads, layout.mjs SIGNS `turn`, 40 degrees at most).
+#[test]
+fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
+    let root = game_dir();
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let roads: Vec<Vec<(f64, f64)>> = objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline")
+        .map(|o| {
+            o["props"]["points"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+                .collect()
+        })
+        .collect();
+    let (mut seen, mut worst) = (0, 1.0f64);
+    for sign in objects.iter().filter(|o| o["kind"] == "signpost") {
+        let (sx, sz) = (sign["x"].as_f64().unwrap(), sign["z"].as_f64().unwrap());
+        for road in &roads {
+            let (best, bd) = road
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (i, ((p.0 - sx).powi(2) + (p.1 - sz).powi(2)).sqrt()))
+                .fold((0, f64::MAX), |m, v| if v.1 < m.1 { v } else { m });
+            if bd > 30.0 {
+                continue;
+            }
+            for dir in [1i64, -1] {
+                // the first point of the road, going out, that is 25 m from the post
+                let mut i = best as i64;
+                let mut cam = None;
+                while (0..road.len() as i64).contains(&(i + dir)) {
+                    let (a, b) = (road[i as usize], road[(i + dir) as usize]);
+                    let (da, db) = (
+                        ((a.0 - sx).powi(2) + (a.1 - sz).powi(2)).sqrt(),
+                        ((b.0 - sx).powi(2) + (b.1 - sz).powi(2)).sqrt(),
+                    );
+                    if da <= 25.0 && db >= 25.0 {
+                        let t = (25.0 - da) / (db - da);
+                        cam = Some((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+                        break;
+                    }
+                    i += dir;
+                }
+                let Some(cam) = cam else { continue };
+                for arm in sign["props"]["arms"].as_array().unwrap() {
+                    let ry = arm["ry"].as_f64().unwrap();
+                    let (ax, az) = (ry.cos(), -ry.sin());
+                    let (rx, rz) = (sx + ax * 1.8 - cam.0, sz + az * 1.8 - cam.1);
+                    let f = (ax * rz - az * rx).abs() / rx.hypot(rz);
+                    worst = worst.min(f);
+                    assert!(
+                        f >= 0.45,
+                        "{}: the {} board is seen at {:.0} degrees from the road 25 m out at {:.0}, {:.0}",
+                        sign["name"].as_str().unwrap(),
+                        arm["text"].as_str().unwrap(),
+                        f.asin().to_degrees(),
+                        cam.0,
+                        cam.1
+                    );
+                    seen += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(seen, 18, "boards checked: 3 arms from 6 approaches");
+    assert!(worst < 1.0);
+}
+
+/// "Distant forest partly hides the far half of the old bridge from the BRIDGE OUT end." From the barrier to the far ruin runs a
+/// corridor, 5 m either side at the barrier widening to 16 m at the ruin and 6 m past it (tools/scene.mjs BRIDGE_VIEW), and no
+/// forest mass stands in it: each mass is a capsule along its own x (the model's, scaled and turned as placed, its puffs reaching
+/// 1.4 times its blocking radius).
+#[test]
+fn no_forest_mass_hides_the_old_bridges_far_half_from_the_barrier() {
+    let root = game_dir();
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let find = |name: &str| {
+        objects
+            .iter()
+            .find(|o| o["name"] == name)
+            .unwrap_or_else(|| panic!("no {name}"))
+    };
+    let (barrier, far) = (find("barrier"), find("old_bridge_far"));
+    let from = (
+        barrier["x"].as_f64().unwrap(),
+        barrier["z"].as_f64().unwrap(),
+    );
+    let to = (far["x"].as_f64().unwrap(), far["z"].as_f64().unwrap());
+    let len = (to.0 - from.0).hypot(to.1 - from.1);
+    assert!(len > 40.0 && len < 70.0, "the view's length: {len}");
+    let d = ((to.0 - from.0) / len, (to.1 - from.1) / len);
+    let seg = |a: (f64, f64), b: (f64, f64), p: (f64, f64)| {
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let t =
+            (((p.0 - a.0) * dx + (p.1 - a.1) * dz) / (dx * dx + dz * dz).max(1e-9)).clamp(0.0, 1.0);
+        ((p.0 - a.0 - dx * t).powi(2) + (p.1 - a.1 - dz * t).powi(2)).sqrt()
+    };
+    let mut masses = 0;
+    for o in objects
+        .iter()
+        .filter(|o| o["kind"].as_str().is_some_and(|k| k.starts_with("forest_")))
+    {
+        masses += 1;
+        let m = model_doc(o["kind"].as_str().unwrap());
+        let scale = m["scale"].as_f64().unwrap();
+        let cap = &m["capsules"][0];
+        let sx = o["props"]["sx"].as_f64().unwrap_or(1.0);
+        let ry = o["props"]["ry"].as_f64().unwrap_or(0.0);
+        let (c, s) = (ry.cos(), ry.sin());
+        let at = |lx: f64| {
+            (
+                o["x"].as_f64().unwrap() + lx * scale * sx * c,
+                o["z"].as_f64().unwrap() - lx * scale * sx * s,
+            )
+        };
+        let (a, b) = (
+            at(cap["ax"].as_f64().unwrap()),
+            at(cap["bx"].as_f64().unwrap()),
+        );
+        let r = cap["r"].as_f64().unwrap() * scale * sx * 1.4;
+        let mut m_ = 0.0;
+        while m_ <= len + 6.0 {
+            let q = (from.0 + d.0 * m_, from.1 + d.1 * m_);
+            let width = 5.0 + 11.0 * (m_ / len).min(1.0);
+            assert!(
+                seg(a, b, q) >= r + width - 0.5,
+                "a {} at {:.0}, {:.0} stands in the view from the barrier to the far ruin ({:.1} m from the line at {m_:.0} m)",
+                o["kind"].as_str().unwrap(),
+                o["x"].as_f64().unwrap(),
+                o["z"].as_f64().unwrap(),
+                seg(a, b, q) - r
+            );
+            m_ += 2.0;
+        }
+    }
+    assert!(masses > 30, "forest masses: {masses}");
+}
+
+/// The paper map's smallest words (the owner's sixth play: 13 px on the Retroid's 720p screen): tools/map.mjs asks Nova's map_make for
+/// text_min 16 on both pictures (a word under it is grown to it, or left out, never shrunk: studio/mcp/makers/townmap.test.ts measures
+/// every word's size), and the two pictures are the sizes the game shows (650 px for 720p, 976 for 1080p).
+#[test]
+fn the_paper_map_has_no_word_under_16_px_at_720p() {
+    let root = game_dir();
+    let src = std::fs::read_to_string(root.join("tools/map.mjs")).unwrap();
+    let min: u32 = src
+        .split("TEXT_MIN = ")
+        .nth(1)
+        .and_then(|s| s.split(';').next())
+        .and_then(|s| s.trim().parse().ok())
+        .expect("TEXT_MIN in tools/map.mjs");
+    assert!(min >= 16, "the smallest word: {min} px");
+    assert!(
+        src.contains("text_min: TEXT_MIN"),
+        "both maps are made with the minimum"
+    );
+    for (file, h) in [
+        ("sprites/ui/map_720.png", 650u32),
+        ("sprites/ui/map.png", 976u32),
+    ] {
+        let png = std::fs::read(root.join(file)).unwrap();
+        let img = nova_runtime::assets::decode_png(&png).expect("a PNG");
+        assert_eq!(img.height as u32, h, "{file}'s height");
+    }
+}
+
+/// The bass layer on a small speaker (the owner's sixth play, the Retroid): the stem's low voice has its fundamental cut (a parametric
+/// EQ dip at 60 Hz) and its second voice plays the same line an octave up. The sound report (tools/music.mjs, docs/sound-for-agents.md)
+/// measured the bass stem before: 36 % of its energy under 80 Hz and 77 % under 200 Hz (6.1 dB quieter through a small speaker); after:
+/// 4 % and 44 % (2.6 dB). Nobody could listen: these are measurements of the render.
+#[test]
+fn the_bass_layer_is_voiced_for_a_small_speaker_and_the_stems_stay_in_step() {
+    let root = game_dir();
+    let song: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("music/fernhollow.song.json")).unwrap(),
+    )
+    .unwrap();
+    let tracks = song["tracks"].as_array().unwrap();
+    let track = |name: &str| {
+        tracks
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("no track {name}"))
+    };
+    let (low, up) = (track("bass"), track("bass upper"));
+    let (ln, un) = (
+        low["notes"].as_array().unwrap(),
+        up["notes"].as_array().unwrap(),
+    );
+    assert!(
+        ln.len() > 100 && ln.len() == un.len(),
+        "bass notes {} / upper {}",
+        ln.len(),
+        un.len()
+    );
+    for (a, b) in ln.iter().zip(un) {
+        assert_eq!(a["step"], b["step"]);
+        assert_eq!(
+            a["pitch"].as_i64().unwrap() + 12,
+            b["pitch"].as_i64().unwrap(),
+            "the upper voice is the line an octave up"
+        );
+    }
+    let eq = low["fx"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["type"] == "parametric")
+        .expect("the low voice's EQ");
+    assert!(
+        eq["params"]["f1"].as_f64().unwrap() <= 80.0
+            && eq["params"]["g1"].as_f64().unwrap() <= -6.0,
+        "the fundamental is cut: {eq}"
+    );
+    // every stem the game plays together is there (the sound report measured all five at 206.48 s, in step: tools/music.mjs)
+    let sizes: Vec<(String, u64)> = ["piano", "bass", "brushes", "pad", "celesta"]
+        .iter()
+        .map(|s| {
+            let f = root.join(format!("music/fernhollow_{s}.ogg"));
+            (
+                s.to_string(),
+                std::fs::metadata(&f)
+                    .unwrap_or_else(|_| panic!("{f:?}"))
+                    .len(),
+            )
+        })
+        .collect();
+    assert!(sizes.iter().all(|(_, n)| *n > 100_000), "stems: {sizes:?}");
+}

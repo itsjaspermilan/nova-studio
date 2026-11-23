@@ -28,7 +28,7 @@
             {"v":[2,6,4,0]},
             {"v":[5,7,3,1]}
           ],
-          "modifiers": [{"type":"bevel","width":0.24,"segments":1,"angle":30}]
+          "modifiers": [{"type":"bevel","width":0.32,"segments":1,"angle":30}]
         }
       ],
       "children": []

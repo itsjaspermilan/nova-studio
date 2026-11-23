@@ -688,3 +688,37 @@ straight legs swung so that the foot on the ground was the one coming forward.
 
 Decided by the coordinator where the notes left room: "up" a gear moves toward P (P R N D L, as a real column shifter reads
 top to bottom), "down" toward L; the horn, displaced from X, moves to the left stick click (L3) while driving.
+
+### What the sixth play changed: the buildings' one look, the signs, the bridge's far half, the map's small print, the bass (note 6 and rough spots)
+
+- **One house style** (`tools/models.mjs`, the `HOUSE` object and the helpers made from it: `plinth`, `walls`, `gableRoof`, `leanRoof`,
+  `windowAt`, `doorAt`, `porch`, `chimney`). Every box edge of a building is rounded by the one radius, 16 cm (0.4 of the thin side
+  where that is less; before: a quarter of it, 14 cm at most); the roofs are soft thick plates (22 cm) of one pitch (rise 0.6 of half the
+  span) overhanging 45 cm with a rounded ridge cap, porch and shed roofs are plates of the same thickness and overhang that fall 45 cm;
+  every house stands on a rounded stone plinth sticking out 15 cm, with cream corner boards 24 cm square and board lines every 32 cm
+  (the log cabin too: its wall is a painted board wall in the log colour, no longer a stack of cylinders); windows are 1.1 x 0.95 m
+  of glass in a 13 cm cream frame with a cross of 6 cm bars and a sill; doors 1.1 x 2.15 m in a 14 cm cream frame; porch posts 18 cm
+  square and cream; fence, gate and barrier posts the same 18 cm in wood; rails 10 cm; chimneys a stone stack, a cap and a dark flue.
+  The workshop is a shed on four posts on little stone footings; the mast has a plinth in small; the bridge's rails and posts are the
+  fence's. Colours only from the palette (`tools/palette.mjs`; the off-palette paper, wall and dust colours are now shades of it).
+  New buildings should be made with these helpers. Heights, doors and decks are where they were (the scene's decks, the chimneys'
+  smoke at 6.5, 5.8 and 4.9 m, the sign board and the BRIDGE OUT board), so nothing else moved. Test
+  `the_buildings_share_one_house_style_rounded_and_in_the_palette`.
+- **Signposts** (`tools/layout.mjs` SIGNS `turn`): a board pointing along its road is edge-on from that road, so each arm is swung off its
+  road's line (at most 40 degrees, chosen by a search over the turns that keeps the arms 50 degrees apart) until every board, from
+  every road that comes to the post, 25 m out, is seen at 30 degrees or more (before, Kettle Creek's Post Road boards from the south:
+  5 to 11 degrees; now at least 30). The sight-line rule for trees follows the swung arms. Test
+  `every_signpost_board_is_seen_at_a_readable_angle_from_each_approach`.
+- **The old bridge's far half** (`tools/scene.mjs` BRIDGE_VIEW): no forest mass stands in the corridor from the BRIDGE OUT barrier to the
+  far ruin (5 m either side at the barrier, 16 m at the ruin, and 6 m past it); one mass at the far rim was left out. Test
+  `no_forest_mass_hides_the_old_bridges_far_half_from_the_barrier`.
+- **The paper map's small print**: `map_make` gained `text_min` (px; the subtitle and the scale's numbers grow to it, a name that finds
+  no room is left out rather than shrunk below it, and every placed word reports its `px`); both maps are made with 16 (the subtitle and
+  the scale's numbers were 13 px on the 720p map; now 16, the place names 16, the roads 18); the names were laid out again (the
+  road names repeat sooner, "the lake side" moved west of the cartouche) so every word is still there.
+- **The bass layer on a small speaker** (`tools/music.mjs`): measured with `sound_report` on the bass stem alone, before: 36 % of its
+  energy under 80 Hz, 77 % under 200 Hz, 6.1 dB quieter through a small speaker (with the report's warning); after: 4 % under 80 Hz,
+  44 % under 200 Hz, 2.6 dB quieter, no warning (spectral centroid 150 -> 275 Hz). The low voice is still a saw, opened from 380 to 560 Hz,
+  with its fundamental cut (a parametric EQ dip at 60 Hz, 9 dB) and a lift at 250 Hz; a second voice, the same line an octave up (a saw
+  at 640 Hz), carries the 2nd and 3rd harmonics. The five stems are still the same length and in step. **Nobody has listened to it**:
+  these are numbers from the offline render and a model of a small speaker (a 200 Hz high-pass); the owner's ears on the Retroid are the test.

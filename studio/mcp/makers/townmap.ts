@@ -278,7 +278,7 @@ function findTerrain(root: string): Args | null {
 }
 
 // ---- text, through the runtime's fonts ---------------------------------------------------------------------------------------------
-interface Words { text: string; w: number; h: number; ascent: number; cap: number; field: Float64Array; k: number; pw: number; ph: number; pad: number }
+interface Words { text: string; w: number; h: number; ascent: number; cap: number; field: Float64Array; k: number; pw: number; ph: number; pad: number; size: number }
 const K = 2; // the words are drawn at twice the size and read back as a distance, so letters stay crisp along a curve
 function wordsOf(ctx: { bin: string | null; root: string; tmp: () => string; font: string }, text: string, size: number, cache: Map<string, Words>): Words {
   const key = `${size}|${text}`;
@@ -295,7 +295,7 @@ function wordsOf(ctx: { bin: string | null; root: string; tmp: () => string; fon
   const cov = new Float64Array(pw * ph);
   for (let y = 0; y < pic.h; y++) for (let x = 0; x < pic.w; x++) cov[(y + pad) * pw + x + pad] = pic.data[(y * pic.w + x) * 4 + 3]! / 255;
   // (the cap height: the rows of a capital "H" are not to hand, so the font's usual 0.7 of the size)
-  const out: Words = { text, w: pic.w / K, h: pic.h / K, ascent: m.ascent / K, cap: size * 0.7, field: signedField(cov, pw, ph), k: K, pw, ph, pad };
+  const out: Words = { text, w: pic.w / K, h: pic.h / K, ascent: m.ascent / K, cap: size * 0.7, field: signedField(cov, pw, ph), k: K, pw, ph, pad, size };
   cache.set(key, out);
   return out;
 }
@@ -309,10 +309,10 @@ function wordsDist(g: Words, u: number, v: number) {
 }
 
 /// A placed piece of writing: what it says, what it names, and the circles it covers (for the overlap rule and the tests).
-export interface MapLabel { text: string; kind: "road" | "water" | "place" | "area" | "title" | "scale" | "compass"; circles: [number, number, number][]; of?: string }
+export interface MapLabel { text: string; kind: "road" | "water" | "place" | "area" | "title" | "scale" | "compass"; circles: [number, number, number][]; of?: string; px?: number }
 
 // ---- the recipe -------------------------------------------------------------------------------------------------------------------
-const TOP_KEYS = ["name", "project", "scene", "terrain", "bounds", "size", "sizes", "title", "subtitle", "seed", "palette", "font", "roads", "water", "trees", "forest", "places", "marks", "areas", "water_below", "water_areas", "compass", "scale_bar", "repeat", "label_size", "wobble"];
+const TOP_KEYS = ["name", "project", "scene", "terrain", "bounds", "size", "sizes", "title", "subtitle", "seed", "palette", "font", "roads", "water", "trees", "forest", "places", "marks", "areas", "water_below", "water_areas", "compass", "scale_bar", "repeat", "label_size", "text_min", "wobble"];
 
 export const MAP_HELP =
   "Inputs: `scene` (scenes/<scene>.scene.json); `terrain` ({ heightmap, x, z, size, height } as nova.terrain takes them, found in the project's Lua when left out, false for none); `bounds` [x0, z0, x1, z1] in metres (the scene's roads and water and 40 m round them when left out); `size` [w, h] or a height (the width follows the bounds); `sizes` more copies, each the area-average of the first ([[w, h]] or scales [0.67]); " +
@@ -321,7 +321,7 @@ export const MAP_HELP =
   "`trees`: { pine: [kinds], round: [kinds] } (each object of those kinds is a little drawn tree, thinned to a grid); `forest`: { kinds: [...], radius: 12 } (a mass of trees round each); " +
   `\`places\`: { <kind>: { icon, label? } } (every object of that kind gets the icon, and the label if one is given; icons: ${MAP_ICONS.join(", ")}; a bridge uses the object's props a and b, a wall each object's place and turn); ` +
   "`marks`: [{ at: [x, z], icon, label? }] (landmarks not in the scene); `areas`: [{ at: [x, z], text }] (a region's name, lettered faintly); " +
-  "`title`, `subtitle` (the cartouche); `compass`, `scale_bar` (true; false leaves them out); `repeat` (px between a long road's names; 380); `label_size` (px; 2.4% of the height); `wobble` (px of the hand's wobble; 0.7); `font` (\"rounded\"); `palette` { " + Object.keys(MAP_COLOURS).join(", ") + " } (\"#rrggbb\" each); `seed`.";
+  "`title`, `subtitle` (the cartouche); `compass`, `scale_bar` (true; false leaves them out); `repeat` (px between a long road's names; 380); `label_size` (px; 2.4% of the height); `text_min` (px: no word is drawn smaller, the subtitle and the scale's numbers grow to it and a place's name that finds no room is left out rather than shrunk below it; none by default); `wobble` (px of the hand's wobble; 0.7); `font` (\"rounded\"); `palette` { " + Object.keys(MAP_COLOURS).join(", ") + " } (\"#rrggbb\" each); `seed`.";
 
 interface Placed { x: number; y: number; r: number }
 
@@ -437,6 +437,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     const icons: Icon[] = [];
     const placeCfg: Args = a.places ?? {};
     const U = H / 990; // (sizes are tuned for a picture 990 px high; a bigger map draws them bigger)
+    const textMin = Math.max(0, Math.round(Number(a.text_min ?? 0))); // (the smallest word, px: a small map's small print stays readable)
     const iconSize: Record<string, number> = { post_office: 34, house: 22, shed: 16, bridge: 0, broken_bridge: 0, barrier: 18, picnic: 16, mast: 26, wall: 0, viewpoint: 18, bench: 12 };
     for (const o of objects) {
       const cfg = placeCfg[o.kind];
@@ -515,7 +516,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     // the title
     let titleBox: [number, number, number, number] | null = null;
     const titleWords = a.title ? wordsOf(tctx, String(a.title), Math.round(56 * U), cache) : null;
-    const subWords = a.subtitle ? wordsOf(tctx, String(a.subtitle), Math.round(20 * U), cache) : null;
+    const subWords = a.subtitle ? wordsOf(tctx, String(a.subtitle), Math.max(textMin, Math.round(20 * U)), cache) : null;
     if (titleWords) {
       const tw = Math.max(titleWords.w, subWords?.w ?? 0) + 56 * U, th = titleWords.cap + (subWords ? subWords.cap + 26 * U : 0) + 50 * U;
       const [x, y] = pick(tw, th);
@@ -553,7 +554,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     }
 
     // ---- labels: where each name goes -----------------------------------------------------------------------------------------
-    const labelSize = Math.round(Number(a.label_size ?? 24 * U));
+    const labelSize = Math.max(textMin, Math.round(Number(a.label_size ?? 24 * U)));
     const halo = Math.max(2, 3.2 * U);
     type Run = { words: Words; path: P[]; off: number; color: RGB; kind: MapLabel["kind"]; of: string };
     const runs: Run[] = [];
@@ -630,7 +631,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       const take = (c: Cand) => {
         chosen.push(c);
         for (const [x, y, r] of c.circles) taken.push({ x, y, r });
-        labels.push({ text, kind, circles: c.circles, of });
+        labels.push({ text, kind, circles: c.circles, of, px: g.size });
         runs.push({ words: g, path: c.piece, off: c.off, color, kind, of });
       };
       const fits = (c: Cand) => !chosen.some((o) => Math.abs(o.s0 - c.s0) < gap) && c.circles.every(([x, y, r]) => free(x, y, r));
@@ -651,7 +652,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     /// A name beside an icon: the first of eight places round it that is clear.
     // (with no room round it at its size, a name is tried once more a size smaller)
     const beside = (text: string, x: number, y: number, r: number, color: RGB, of: string, size = labelSize * 0.86, kind: MapLabel["kind"] = "place"): boolean =>
-      besideAt(text, x, y, r, color, of, size, kind) || besideAt(text, x, y, r, color, of, size * 0.82, kind);
+      besideAt(text, x, y, r, color, of, Math.max(size, textMin), kind) || (size * 0.82 >= textMin && besideAt(text, x, y, r, color, of, size * 0.82, kind));
     const besideAt = (text: string, x: number, y: number, r: number, color: RGB, of: string, size: number, kind: MapLabel["kind"]) => {
       const g = wordsOf(tctx, text, Math.round(size), cache);
       // (above and below it, also slid a quarter or a third of its width either way, to fit between a road and a creek)
@@ -665,7 +666,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
         for (let u = -g.w / 2 + rr * 0.6; u <= g.w / 2 - rr * 0.6 + 0.1; u += rr) circles.push([cx + u, cy, rr]);
         if (!circles.every(([px, py, pr]) => inFrame(px, py, pr + 2) && free(px, py, pr) && roadField.at(px, py) > pr * 0.7 && waterField.at(px, py) > pr * 0.6)) continue;
         for (const [px, py, pr] of circles) taken.push({ x: px, y: py, r: pr });
-        labels.push({ text, kind, circles, of });
+        labels.push({ text, kind, circles, of, px: g.size });
         flat.push({ words: g, x: cx - g.w / 2, y: cy + g.cap / 2, color, kind, of, weight: 0.45, halo });
         return true;
       }
@@ -699,7 +700,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       // (a region's name is a nicety: with nowhere clear near its point, it is left out)
       if (!clear(circles)) continue;
       for (const [px, py, pr] of circles) taken.push({ x: px, y: py, r: pr });
-      labels.push({ text: ar.text, kind: "area", circles, of: `area ${i}` });
+      labels.push({ text: ar.text, kind: "area", circles, of: `area ${i}`, px: g.size });
       flat.push({ words: g, x: x - g.w / 2, y: y + g.cap / 2, color: C.faint, kind: "area", of: `area ${i}`, weight: 0.2, halo: halo * 0.8 });
     }
     const missing = named.filter((r) => !labels.some((l) => l.kind === "road" && l.of === r.key));
@@ -911,19 +912,19 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       cv.shape((px, py) => Math.abs(dBox(px, py, x + w / 2, y + h / 2, w / 2 - 6 * U, h / 2 - 6 * U, 6 * U)) - 0.6 * U, [x, y, x + w, y + h], C.ink, 0.7);
       const ty = y + 24 * U + titleWords.cap;
       drawFlat(cv, titleWords, x + (w - titleWords.w) / 2, ty, mix3(C.ink, C.wood_dark, 0.35), null, 0, 1.1);
-      labels.push({ text: String(a.title), kind: "title", circles: [], of: "title" });
+      labels.push({ text: String(a.title), kind: "title", circles: [], of: "title", px: titleWords.size });
       if (subWords) {
         const sy = ty + 18 * U + subWords.cap;
         cv.shape((px, py) => dSeg(px, py, x + w * 0.2, ty + 9 * U, x + w * 0.8, ty + 9 * U) - 0.7 * U, [x, ty + 5 * U, x + w, ty + 13 * U], C.red, 0.8);
         drawFlat(cv, subWords, x + (w - subWords.w) / 2, sy, C.faint, null, 0, 0.35);
-        labels.push({ text: String(a.subtitle), kind: "title", circles: [], of: "subtitle" });
+        labels.push({ text: String(a.subtitle), kind: "title", circles: [], of: "subtitle", px: subWords.size });
       }
     }
     if (compassAt) {
       drawCompass(cv, compassAt[0], compassAt[1], rose, U, C);
-      const g = wordsOf(tctx, "N", Math.round(24 * U), cache);
+      const g = wordsOf(tctx, "N", Math.max(textMin, Math.round(24 * U)), cache);
       drawFlat(cv, g, compassAt[0] - g.w / 2, compassAt[1] - rose - 6 * U, C.ink, C.halo, halo, 0.9);
-      labels.push({ text: "N", kind: "compass", circles: [], of: "compass" });
+      labels.push({ text: "N", kind: "compass", circles: [], of: "compass", px: g.size });
     }
     if (scaleAt) {
       const [x, y] = scaleAt, sw = scaleM * s, bh = 7 * U, parts = 4;
@@ -933,9 +934,9 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       }
       cv.shape((px, py) => Math.abs(dBox(px, py, x + sw / 2, y + 20 * U, sw / 2, bh / 2)) - 0.7 * U, [x - 3, y + 10 * U, x + sw + 3, y + 30 * U], C.ink);
       for (const [v, at] of [[0, x], [scaleM / 2, x + sw / 2], [scaleM, x + sw]] as [number, number][]) {
-        const g = wordsOf(tctx, v === scaleM ? `${v} m` : String(v), Math.round(Math.max(13, 15 * U)), cache);
+        const g = wordsOf(tctx, v === scaleM ? `${v} m` : String(v), Math.round(Math.max(13, 15 * U, textMin)), cache);
         drawFlat(cv, g, at - (v === scaleM ? g.w * 0.3 : g.w / 2), y + 10 * U, C.ink, C.halo, 2, 0.4);
-        labels.push({ text: g.text, kind: "scale", circles: [], of: "scale" });
+        labels.push({ text: g.text, kind: "scale", circles: [], of: "scale", px: g.size });
       }
     }
 

@@ -640,28 +640,28 @@
     {
       "kind": "signpost",
       "name": "sign_1",
-      "x": 18.23,
+      "x": 18.22,
       "y": 0,
-      "z": -78.27,
+      "z": -78.23,
       "props": {
         "arms": [
-          { "text": "FERN LANE", "ry": -0.01 },
-          { "text": "POST ROAD", "ry": -4.34 },
-          { "text": "POST ROAD", "ry": -1.86 }
+          { "text": "FERN LANE", "ry": -0.53 },
+          { "text": "POST ROAD", "ry": -3.73 },
+          { "text": "POST ROAD", "ry": -2.56 }
         ]
       }
     },
     {
       "kind": "signpost",
       "name": "sign_2",
-      "x": -4.93,
+      "x": -4.95,
       "y": 0,
       "z": 30.09,
       "props": {
         "arms": [
-          { "text": "KETTLE CREEK RD", "ry": -3.25 },
-          { "text": "POST ROAD", "ry": -1.79 },
-          { "text": "POST ROAD", "ry": 1.4 }
+          { "text": "KETTLE CREEK RD", "ry": -3.94 },
+          { "text": "POST ROAD", "ry": -2.4 },
+          { "text": "POST ROAD", "ry": 0.7 }
         ]
       }
     },
@@ -805,8 +805,7 @@
     { "kind": "pine2", "x": 4.79, "y": 0, "z": 46.2, "props": { "ry": 1.55, "sx": 2.54 } },
     { "kind": "pine2", "x": 7.56, "y": 0, "z": 50.3, "props": { "ry": 5.94, "sx": 2.87 } },
     { "kind": "pine2", "x": 3.14, "y": 0, "z": 41.25, "props": { "ry": 5.02, "sx": 2.16 } },
-    { "kind": "pine2", "x": -0.15, "y": 0, "z": 44.99, "props": { "ry": 5.29, "sx": 2.13 } },
-    { "kind": "pine2", "x": 10.52, "y": 0, "z": 44.86, "props": { "ry": 1.43, "sx": 2 } },
+    { "kind": "pine2", "x": 1.93, "y": 0, "z": 51.81, "props": { "ry": 3.57, "sx": 2.09 } },
     { "kind": "birch", "x": -42.56, "y": 0, "z": 43.84, "props": { "ry": 5.13, "sx": 1.59 } },
     { "kind": "birch", "x": -43.66, "y": 0, "z": 50.27, "props": { "ry": 4.24, "sx": 1.69 } },
     { "kind": "birch", "x": -38.4, "y": 0, "z": 45.79, "props": { "ry": 5.92, "sx": 1.59 } },
@@ -1134,7 +1133,7 @@
     { "kind": "pine3", "x": 137.95, "y": 0, "z": -13.54, "props": { "ry": 3, "sx": 2.24 } },
     { "kind": "larch", "x": 136.38, "y": 0, "z": -4.71, "props": { "ry": 6.18, "sx": 1.28 } },
     { "kind": "larch", "x": 133.57, "y": 0, "z": -15.01, "props": { "ry": 5.25, "sx": 1.1 } },
-    { "kind": "birch", "x": 1.45, "y": 0, "z": 36.44, "props": { "ry": 5.66, "sx": 1.88 } },
+    { "kind": "birch", "x": 1.43, "y": 0, "z": 36.44, "props": { "ry": 5.66, "sx": 1.88 } },
     { "kind": "birch", "x": 147, "y": 0, "z": 50, "props": { "ry": 2.04, "sx": 1.96 } },
     { "kind": "birch", "x": -186, "y": 0, "z": 101.01, "props": { "ry": 4.42, "sx": 1.78 } },
     { "kind": "forest_long", "x": 243.88, "y": 0, "z": -240.13, "props": { "ry": 2.64, "sx": 1.02 } },
@@ -1198,7 +1197,6 @@
     { "kind": "forest_round", "x": -250.01, "y": 0, "z": 223.74, "props": { "ry": 5.09, "sx": 1.18 } },
     { "kind": "forest_round", "x": 136.42, "y": 0, "z": 268.76, "props": { "ry": 4.58, "sx": 1.11 } },
     { "kind": "forest_tall", "x": 106.41, "y": 0, "z": 269.75, "props": { "ry": 4.63, "sx": 1.03 } },
-    { "kind": "forest_round", "x": 8.17, "y": 0, "z": 268.83, "props": { "ry": 6.01, "sx": 1.03 } },
     { "kind": "rock", "x": 28.05, "y": 0, "z": -83.59, "props": { "ry": 2.91, "sx": 0.9 } },
     { "kind": "rock", "x": 38.93, "y": 0, "z": -84.24, "props": { "ry": 3.72, "sx": 0.64 } },
     { "kind": "rock", "x": 56.23, "y": 0, "z": -70.79, "props": { "ry": 0.33, "sx": 0.77 } },

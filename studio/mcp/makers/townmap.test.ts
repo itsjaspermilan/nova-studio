@@ -134,4 +134,14 @@ describe.skipIf(!haveBin)("map_make", () => {
     const r = make({ sizes: [0.5] });
     expect(r.files.map((f) => f[0])[1]).toMatch(/^sprites\/ui\/map_\d+x350\.png$/);
   });
+
+  it("text_min: no word is drawn smaller (the subtitle and the scale's numbers grow to it, the names are not shrunk below it)", () => {
+    const small = make({ size: 400 }), asked = make({ size: 400, text_min: 16 });
+    // (at this size the subtitle and the scale's numbers are under 16 px by themselves)
+    expect(Math.min(...small.labels.map((l) => l.px ?? 99))).toBeLessThan(16);
+    expect(asked.labels.length).toBeGreaterThan(8);
+    for (const l of asked.labels) expect(l.px, l.text).toBeGreaterThanOrEqual(16);
+    expect(asked.labels.find((l) => l.of === "subtitle")?.px).toBeGreaterThanOrEqual(16);
+    expect(asked.labels.filter((l) => l.kind === "scale").every((l) => (l.px ?? 0) >= 16)).toBe(true);
+  });
 });
