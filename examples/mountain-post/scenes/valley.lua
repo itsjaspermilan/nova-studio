@@ -457,7 +457,7 @@ function Valley:draw_ui()
     if not dialogue.active() then parcels.draw(self:picker() ~= nil) end
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
-    if not dialogue.active() then ui.minimap(x, z, hd, w, h) end
+    if not dialogue.active() then ui.minimap(x, z, hd, w, h, math.atan(camera.forward())) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
     if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then ui.picker(self.pk.list, math.max(1, math.min(#self.pk.list, self.pk.i)), w, h, self.picker_a) end
   end

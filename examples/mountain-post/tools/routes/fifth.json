@@ -1,0 +1,219 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); W = require('lib.world'); IN_VAN = function(x, z, h) local v = nova.named('van'); v.autopilot = nil; v:teleport(x, z, h); local sc = nova.scene_now(); sc.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.pinned = nil; CAM.reset(h) end; ON_FOOT = function(x, z, face) local v = nova.named('van'); v.driven = false; v:teleport(x + 30, z + 30, 0); local sc = nova.scene_now(); sc.mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; p.x, p.z, p.face = x, z, face; CAM.pinned = nil; CAM.reset(face) end; ROAD = function(key) for _, r in ipairs(W.roads) do if r.id == key then return r.points end end end; APPROACH = function(sign, key, dir, cam_d) local s = nova.named(sign); local pts = ROAD(key); local bi, bd = 1, math.huge; for i, p in ipairs(pts) do local d = (p[1] - s.x) ^ 2 + (p[2] - s.z) ^ 2; if d < bd then bi, bd = i, d end end; local want = cam_d - 9.3; local i = bi; local acc = 0; while acc < want and pts[i - dir] do local a, b = pts[i], pts[i - dir]; acc = acc + math.sqrt((a[1] - b[1]) ^ 2 + (a[2] - b[2]) ^ 2); i = i - dir end; local p, q = pts[i], pts[i + dir]; IN_VAN(p[1], p[2], math.atan(q[1] - p[1], q[2] - p[2])); SIGN = s end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; TRAIL = {}",
+  "each_frame": "if TRACK then local v = nova.named(\"van\"); local x, _, z = v:to_world(0.64, 0, 0.72); TRAIL[#TRAIL + 1] = { x, z }; if #TRAIL % 12 == 0 then nova.scenery.add(\"flowers\", x, 0, z, { shapes = false }) end end",
+  "route": [
+    {
+      "wait": 20
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, 0)"
+    },
+    {
+      "wait": 40,
+      "capture": "minimap camera north"
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, 1.5708)"
+    },
+    {
+      "wait": 40,
+      "capture": "minimap camera west"
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, 3.1416)"
+    },
+    {
+      "wait": 40,
+      "capture": "minimap camera south"
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, -1.5708)"
+    },
+    {
+      "wait": 40,
+      "capture": "minimap camera east"
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, -2.3)"
+    },
+    {
+      "wait": 40,
+      "capture": "minimap camera south-east"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'post_road', 1, 10)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane signpost from the van 10 m"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'post_road', 1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane signpost from the van 25 m"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'post_road', 1, 40)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane signpost from the van 40 m"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'post_road', 1, 60)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane signpost from the van 60 m, the road lines into the distance"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'post_road', -1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane junction from the north 25 m"
+    },
+    {
+      "lua": "APPROACH('sign_1', 'fern_lane', -1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane junction from Fern Lane 25 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'post_road', 1, 10)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from the south 10 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'post_road', 1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from the south 25 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'post_road', 1, 40)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from the south 40 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'post_road', 1, 60)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from the south 60 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'post_road', -1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from the north 25 m"
+    },
+    {
+      "lua": "APPROACH('sign_2', 'kettle_creek_road', -1, 25)"
+    },
+    {
+      "wait": 50,
+      "capture": "Kettle Creek junction from Kettle Creek Road 25 m"
+    },
+    {
+      "lua": "ON_FOOT(9.5, -84, 0.1)"
+    },
+    {
+      "wait": 50,
+      "capture": "Fern Lane signpost on foot"
+    },
+    {
+      "lua": "ON_FOOT(137, 30, 0.8)"
+    },
+    {
+      "wait": 50,
+      "capture": "No. 3's mailbox on foot"
+    },
+    {
+      "lua": "ON_FOOT(141.5, 34.5, 0.8); AT(140.6, 1.25, 36.2, 144, 0.95, 38, 40)"
+    },
+    {
+      "wait": 10,
+      "capture": "No. 3's mailbox close"
+    },
+    {
+      "lua": "AT(146.6, 1.2, 35.0, 144, 0.95, 38, 40)"
+    },
+    {
+      "wait": 3,
+      "capture": "No. 3s mailbox from the lane, its door"
+    },
+    {
+      "lua": "IN_VAN(5, -150, 0); local v = nova.named('van'); v.ctl.steer = 1; AT(5, 1.3, -144.8, 5, 0.35, -149.3, 40)"
+    },
+    {
+      "capture": "the front wheels at full lock, standing, from in front",
+      "hold": [
+        "steer=1"
+      ],
+      "frames": 120
+    },
+    {
+      "lua": "AT(8.4, 0.8, -147.2, 5.6, 0.32, -149.3, 36)",
+      "hold": [
+        "steer=1"
+      ],
+      "frames": 1
+    },
+    {
+      "hold": [
+        "steer=1"
+      ],
+      "frames": 3,
+      "capture": "the front wheel in its well at full lock"
+    },
+    {
+      "lua": "IN_VAN(5, -150, 0); local v = nova.named(\"van\"); TRAIL = {}; TRACK = true; AT(5, 21, -155.5, 5, 0, -148.5, 34); v.ctl.steer = 1"
+    },
+    {
+      "hold": [
+        "go"
+      ],
+      "frames": 1,
+      "lua": "local v = nova.named('van'); v.ctl.steer = 1"
+    },
+    {
+      "until": "local v = nova.named('van'); v.ctl.go = v.speed < 1.5 and 0.6 or 0; v.ctl.brake = v.speed > 1.7 and 0.3 or 0; v.ctl.steer = 1; return #TRAIL > 60 * 14",
+      "max": 1200,
+      "may_time_out": true,
+      "capture": "the van's tightest circle at a crawl, from above"
+    },
+    {
+      "lua": "TRACK = false; local xs, zs = {}, {}; for _, p in ipairs(TRAIL) do xs[#xs + 1] = p[1]; zs[#zs + 1] = p[2] end; table.sort(xs); table.sort(zs); nova.log(string.format(\"circle of the outer front corner: %.2f m across x, %.2f m along z\", xs[#xs] - xs[1], zs[#zs] - zs[1]))"
+    },
+    {
+      "wait": 2,
+      "capture": "the van tightest circle at a crawl, its outer front corner traced"
+    },
+    {
+      "lua": "ON_FOOT(4.5, -150, 0)"
+    },
+    {
+      "wait": 20
+    },
+    {
+      "press": "map"
+    },
+    {
+      "wait": 40,
+      "capture": "the paper map open, 720p"
+    }
+  ],
+  "out": "build/fifth_run"
+}

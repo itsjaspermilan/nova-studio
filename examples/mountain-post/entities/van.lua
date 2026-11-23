@@ -40,6 +40,16 @@ Van.TUNE = {
   -- owner's fourth notes; on the old 1.31 m one it was 18.3 degrees: the same tan(lock) / wheelbase keeps the same circle)
   lock = math.rad(20.9),
   lock_fast = 0.35,     -- the share of the lock the stick gives at the top speed (less lock the faster it goes)
+  -- Crawling and parking (the owner's fifth play: "the turning radius while slow isn't as tight as I would hope"): below `crawl` m/s
+  -- the wheels go over much further, to `lock_slow`, a kerb-to-kerb circle of about 6.4 m (a U-turn on Post Road in one sweep or
+  -- one easy shunt); between `crawl` and `cruise` the extra lock eases away (smoothly: no step in the steering), so from `cruise` up
+  -- the van steers exactly as above (about 11.4 m at 4 m/s, wider still faster). The wheels also move a little quicker at a crawl
+  -- (`slow_steer` times), so full lock is not a long wait in a car park.
+  lock_slow = math.rad(31),
+  crawl = 1.8,
+  cruise = 4.0,
+  slow_steer = 1.5,
+  drawn_lock = math.rad(25), -- the most the front wheels are drawn turned (see Van:draw)
   steer_speed = 1.0,    -- the most the wheels move in a second (in shares of full lock): a flick of the stick is never a snap
   steer_ease = 5.0,     -- how quickly the wheels' own movement starts and stops (1/s)
   return_speed = 5.0,   -- the most the wheels move in a second heading back towards the middle (stick eased off or let go)
@@ -164,6 +174,19 @@ end
 
 function Van:stopped() return math.abs(self.speed) < 0.6 end
 
+-- How much of the crawl's extra lock is on at a speed: 1 up to `crawl`, easing (smoothstep) to 0 at `cruise`.
+function Van.crawl_mix(v)
+  local t = math.max(0, math.min(1, (math.abs(v) - FEEL.crawl) / (FEEL.cruise - FEEL.crawl)))
+  return 1 - t * t * (3 - 2 * t)
+end
+-- The most the stick turns the wheels at a speed, in shares of `lock`: lock_slow / lock at a crawl, then as before (less lock the
+-- faster it goes, down to lock_fast at the top speed).
+function Van.lock_share(v)
+  local fast = 1 - (1 - FEEL.lock_fast) * math.min(1, math.abs(v) / FEEL.top)
+  local k = Van.crawl_mix(v)
+  return fast + (FEEL.lock_slow / FEEL.lock - fast) * k
+end
+
 -- One step of driving. `ctl.steer` is -1 (left) to 1 (right) and turns the heading down (heading 0 faces +z, and left is +x).
 function Van:drive(dt)
   local c = self.ctl
@@ -176,9 +199,10 @@ function Van:drive(dt)
   local vl = self.velx * cosh - self.velz * sinh
   -- the wheels: towards what the stick asks (less lock the faster it goes), at a limited and eased speed (it never darts); heading
   -- back towards the middle (the stick eased off or let go) quicker and with a quicker easing than turning in
-  local want = steer_in * (1 - (1 - FEEL.lock_fast) * math.min(1, math.abs(vf) / FEEL.top))
+  -- (`steer` is in shares of `lock`: past 1 at a crawl, where the wheels go over further, up to lock_slow)
+  local want, quick = steer_in * Van.lock_share(vf), Van.crawl_mix(vf)
   local back = self.steer ~= 0 and (want - self.steer) * self.steer < 0
-  local top, ease = FEEL.steer_speed, FEEL.steer_ease
+  local top, ease = FEEL.steer_speed * (1 + (FEEL.slow_steer - 1) * quick), FEEL.steer_ease
   if back then top, ease = FEEL.return_speed, FEEL.return_ease
   else self.steer_v = math.max(-top, math.min(top, self.steer_v or 0)) end -- (past the middle, turning in again: its own pace)
   local rate = math.max(-top, math.min(top, (want - self.steer) * (back and 30 or 8)))
@@ -398,7 +422,9 @@ local PARCEL = { hazel = "parcel_hazel", pip = "parcel_pip" }
 function Van:draw()
   local pt = self.parts_table
   pt.body.rx, pt.body.rz, pt.body.y = self.pitch, self.roll, self.lift or 0
-  local sv = -self.steer * FEEL.lock
+  -- (the wheels as drawn turn no further than `drawn_lock`: at the crawl's full lock, 31 degrees, the tyre's back would push through
+  -- the round well and the doorway's step; 25 degrees keeps it inside, and nobody reads the last few degrees off a turning wheel)
+  local sv = -math.max(-FEEL.drawn_lock, math.min(FEEL.drawn_lock, self.steer * FEEL.lock))
   for i, s in ipairs(self.stations) do
     local part = pt[s.name]
     part.y = self.susp.ready and self:wheel_offset(i) or 0

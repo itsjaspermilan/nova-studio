@@ -96,13 +96,15 @@ local function letter_card(w, h, t)
   nova.ui.text(x + cw - s(44), y + ch - s(66), words.letter_from, { font = "script", size = s(28), align = "right", color = ui.alpha({ 70, 60, 120 }, k) })
 end
 
--- The paper map in a wooden frame (a panel round it; the sheet has the town's name on it already).
+-- The paper map in a wooden frame (a panel round it; the sheet has the town's name on it already). It is drawn by Nova's map generator
+-- (tools/map.mjs, map_make) and shown as large as the screen allows: nearly its whole height.
 local function map_card(w, h, t)
   local k, e = rise(t, 0.2)
   ui.dim(w, h, k)
-  local mh = (h - 74) * 0.88
-  local mw = mh * 1000 / 1100
-  local x, y = (w - mw) / 2, (h - mh) / 2 + 10 + (1 - e) * 30
+  local pw, ph = nova.image_size("ui/map")
+  local mh = h - 52
+  local mw = mh * pw / ph
+  local x, y = (w - mw) / 2, (h - mh) / 2 + (1 - e) * 30
   ui.panel(x - s(12), y - s(12), mw + s(24), mh + s(28), { alpha = k })
   nova.ui.sprite("ui/map", w / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * k) } })
 end

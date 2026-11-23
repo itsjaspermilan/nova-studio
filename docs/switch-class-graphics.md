@@ -92,9 +92,9 @@ are what the coat reflects). The layer's pictures are ignored, with a note in `n
 
 ## Textures: mipmaps, anisotropy and KTX2
 
-`anisotropy = N` gives every **smooth** model texture (a glTF sampler with linear filtering, a billboard) a full chain of mip levels
-for any size, not only powers of two, and anisotropic filtering of up to N samples; so do the normal, metallic-roughness and emission
-maps of materials. A palette texture (nearest filtering, the look of the low-poly kits) is left sharp on purpose.
+Every **smooth** model texture (a glTF sampler with linear filtering, a billboard) has a full chain of mip levels at any size (since
+2026-11-22; before, only powers of two, unless anisotropy was on); `anisotropy = N` adds filtering of up to N samples; the normal, metallic-roughness and emission
+maps of materials get the full chain with it. A palette texture (nearest filtering, the look of the low-poly kits) is left sharp on purpose.
 
 **KTX2** textures: a picture already compressed for the GPU is a quarter to an eighth of the RGBA8 size, in the APK and in memory,
 with its mip chain stored. `models/car.ktx2` beside `models/car.glb` becomes the model's base colour picture where the GPU can read

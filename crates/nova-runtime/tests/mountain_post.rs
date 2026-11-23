@@ -647,7 +647,10 @@ fn nothing_on_screen_points_at_a_destination() {
             .collect();
         for n in &in_disc {
             assert!(
-                n.contains("minimap_disc") || n.ends_with("ui/you"),
+                // (and the north tab on its rim: the fifth play's; it says where north is, not where anything is)
+                n.contains("minimap_disc")
+                    || n.ends_with("ui/you")
+                    || n.ends_with("ui/minimap_north"),
                 "{where_}: only the disc and you in the minimap: {in_disc:?}"
             );
         }
@@ -1508,6 +1511,7 @@ fn assert_ui_from_the_kit(r: &Report, where_: &str) {
                 "ui/parcel_icon",
                 "ui/map",
                 "ui/minimap_disc",
+                "ui/minimap_north",
                 "ui/you",
                 "ui/logo",
                 "ui/title_bg",
@@ -1975,9 +1979,12 @@ fn the_vans_steering_is_rate_limited_less_at_speed_and_the_body_takes_a_moment()
     let (fast, steer_step, yaw_step, lock_fast, lock_slow, side, steer_speed, corner) =
         (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
     assert!(fast > 9.5, "at speed: {out}");
+    // (at a crawl the wheels go over further since the fifth play, Van.TUNE.lock_slow, and a little quicker, `slow_steer` times, so
+    // full lock still takes about a second there)
+    let slow_steer = num(&g, "nova.named('van').TUNE.slow_steer");
     assert!(
-        steer_step <= steer_speed / 60.0 + 1e-6,
-        "the wheels move at most {steer_speed} of full lock a second: a step of {steer_step} ({out})"
+        steer_step <= steer_speed * slow_steer / 60.0 + 1e-6,
+        "the wheels move at most {steer_speed} (x {slow_steer} at a crawl) of full lock a second: a step of {steer_step} ({out})"
     );
     assert!(
         lock_fast < 0.65 && lock_slow > 0.9,
@@ -2658,7 +2665,8 @@ fn braking_lights_the_tail_lamps_and_reversing_the_reverse_lamps() {
 /// "The 'turn back to straight' when the player eases off the left stick while driving is too slow." "We can also increase the
 /// turn radius for the van." (The circle kept after the fourth notes moved the rear axle back: the lock is 20.9 degrees on the 1.51 m
 /// wheelbase, the same tan(lock) / wheelbase as 18.3 on 1.31.) Let go at 6 m/s after a full-lock turn, the van runs straight again (wheels and body) within 0.35 s,
-/// quicker than the same wheels take to turn in; the kerb-to-kerb circle at a crawl is 9 to 10.5 m (it was 9.2), and wider at speed.
+/// quicker than the same wheels take to turn in. The circles (the fifth play's: tight when crawling, unchanged from 4 m/s up): 5.8 to
+/// 6.8 m kerb to kerb at 1.5 m/s (it was about 10), 10.8 to 12.3 m at 4 m/s, wider at 6.
 #[test]
 fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
     let mut g = game();
@@ -2677,10 +2685,11 @@ fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
            for i = 1, 6000 do v.ctl.go = v.speed < spd and 0.6 or 0; v.ctl.brake = v.speed > spd + 0.2 and 0.3 or 0; v.ctl.steer = 1; v:drive(dt); \
              if i > 240 then turned = turned + math.abs(v.heading - last); local x, _, z = v:to_world(0.64, 0, 0.72); xs[#xs + 1], zs[#zs + 1] = x, z; if turned > 2 * math.pi + 0.2 then break end end; last = v.heading end; \
            local a, b = math.huge, -math.huge; for _, q in ipairs(xs) do a, b = math.min(a, q), math.max(b, q) end; return b - a end; \
-         return string.format('%.3f %.3f %.3f %.3f %.3f', speed, t_in, t_back or 9, circle(1.5), circle(4)) end)()",
+         return string.format('%.3f %.3f %.3f %.3f %.3f %.3f', speed, t_in, t_back or 9, circle(1.5), circle(4), circle(6)) end)()",
     );
     let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
-    let (speed, t_in, t_back, slow, quicker) = (v[0], v[1], v[2], v[3], v[4]);
+    let (speed, t_in, t_back, slow, quicker, fast) = (v[0], v[1], v[2], v[3], v[4], v[5]);
+    eprintln!("turning circles: {slow} m at 1.5 m/s, {quicker} m at 4, {fast} m at 6");
     assert!((5.7..6.4).contains(&speed), "at 6 m/s: {out}");
     assert!(
         t_back <= 0.35,
@@ -2690,13 +2699,19 @@ fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
         t_back < t_in,
         "back to straight ({t_back} s) quicker than turning in ({t_in} s)"
     );
+    // (the owner's fifth play: "the turning radius while slow isn't as tight as I would hope": at a crawl the wheels go over to
+    // Van.TUNE.lock_slow, about 6.3 m kerb to kerb; from 4 m/s up the circles are what they were, 11 to 12 m at 4 m/s)
     assert!(
-        (9.0..=10.5).contains(&slow),
+        (5.8..=6.8).contains(&slow),
         "kerb-to-kerb circle at a crawl: {slow} m"
     );
     assert!(
-        quicker > slow + 0.5,
-        "wider at 4 m/s: {quicker} m against {slow} m"
+        (10.8..=12.3).contains(&quicker),
+        "at 4 m/s still the wide, weighty circle: {quicker} m"
+    );
+    assert!(
+        fast > quicker + 0.5,
+        "wider at 6 m/s: {fast} m against {quicker} m"
     );
 }
 
@@ -3238,4 +3253,310 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
         "it rolls down the slope without the handbrake: {out}"
     );
     assert!(v[2] < 0.02, "held still on the handbrake: {out}");
+}
+
+// ---- the owner's fifth play on the Retroid (2026-11-22): the paper map, the minimap, the road signs, the van's tight turn ----------
+
+fn game_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post")
+}
+
+/// "How can we spruce up the map? Maybe build a proper generator?" The paper map is drawn by Nova's map generator (map_make, called by
+/// tools/map.mjs from the valley's scene and terrain), not painted by hand in tools/art.mjs any more; Select shows it nearly as tall
+/// as the screen, in the kit's frame, at its own proportions; and nothing is drawn over it: no mark for the player, no destination.
+#[test]
+fn the_paper_map_comes_from_the_generator_and_marks_neither_you_nor_where_to_go() {
+    let root = game_dir();
+    let recipe = std::fs::read_to_string(root.join("tools/map.mjs")).expect("tools/map.mjs");
+    assert!(
+        recipe.contains("tool(\"map_make\"") && recipe.contains("scene: \"valley\""),
+        "the map is the generator's, from the valley's scene"
+    );
+    for word in ["you", "player", "destination"] {
+        assert!(
+            !recipe.contains(&format!("label: \"{word}")),
+            "the map's recipe names no {word}"
+        );
+    }
+    let art = std::fs::read_to_string(root.join("tools/art.mjs")).expect("tools/art.mjs");
+    assert!(
+        !art.contains("\"ui/map\""),
+        "tools/art.mjs no longer paints the map"
+    );
+    let png = std::fs::read(root.join("sprites/ui/map.png")).expect("the map's picture");
+    let map = nova_runtime::assets::decode_png(&png).expect("a PNG");
+    assert!(
+        map.height >= 900 && map.width >= 600,
+        "big enough to stay crisp on a 1080p screen: {}x{}",
+        map.width,
+        map.height
+    );
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 10 }, { "press": "map" }, { "wait": 40 } ] }"#,
+    );
+    let sheet = r.drawn("ui_sprite", Some("ui/map"));
+    assert_eq!(sheet.len(), 1, "the paper map is open");
+    let (w, h) = (
+        sheet[0]["w"].as_f64().unwrap(),
+        sheet[0]["h"].as_f64().unwrap(),
+    );
+    assert!(
+        h >= 0.88 * 540.0,
+        "nearly as tall as the screen: {h} of 540"
+    );
+    assert!(
+        (w / h - map.width as f64 / map.height as f64).abs() < 0.01,
+        "at the picture's own proportions"
+    );
+    let (sx, sy) = (
+        sheet[0]["x"].as_f64().unwrap(),
+        sheet[0]["y"].as_f64().unwrap(),
+    );
+    for s in r.drawn("ui_sprite", None) {
+        let n = s["name"].as_str().unwrap_or("");
+        let (x, y) = (s["x"].as_f64().unwrap(), s["y"].as_f64().unwrap());
+        let over = (x - sx).abs() < w / 2.0 && (y - sy).abs() < h / 2.0;
+        assert!(
+            !over || n.ends_with("ui/map") || n.contains("ui/kit/"),
+            "{n} is drawn over the map"
+        );
+    }
+    assert!(
+        r.drawn("ui_sprite", Some("ui/you")).is_empty(),
+        "no mark for you"
+    );
+    assert!(
+        r.drawn("ui_text", None).iter().all(|t| {
+            let (x, y) = (t["x"].as_f64().unwrap(), t["y"].as_f64().unwrap());
+            (x - sx).abs() > w / 2.0 || (y - sy).abs() > h / 2.0
+        }),
+        "no words written over the map"
+    );
+}
+
+/// "The direction should move when rotated to follow the players camera direction. There should be a North marker on the map too."
+/// The minimap turns with the camera: whatever way the camera looks, a point straight ahead of it is straight up the disc; the
+/// red north tab sits on the rim where north is; the "you" mark shows the postmaster's facing against the camera's; and turning the
+/// camera through the wrap-around (south, where its yaw jumps from pi to -pi) moves everything on the disc smoothly, without a snap.
+#[test]
+fn the_minimap_turns_with_the_camera_and_its_north_tab_rides_the_rim() {
+    let mut g = game();
+    use std::f64::consts::{FRAC_PI_2, PI};
+    for yaw in [0.0f64, FRAC_PI_2, PI, -FRAC_PI_2, 2.4, -0.7] {
+        let r = play(
+            &mut g,
+            &format!(
+                r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, {face}; require('lib.camera').reset({yaw})" }}, {{ "wait": 20 }} ] }}"#,
+                face = yaw + 0.6
+            ),
+        );
+        let disc = r.drawn("ui_sprite", Some("minimap_disc"));
+        let north = r.drawn("ui_sprite", Some("minimap_north"));
+        assert_eq!(
+            (disc.len(), north.len()),
+            (1, 1),
+            "the disc and its north tab"
+        );
+        let (cx, cy) = (
+            disc[0]["x"].as_f64().unwrap(),
+            disc[0]["y"].as_f64().unwrap(),
+        );
+        let (nx, ny) = (
+            north[0]["x"].as_f64().unwrap() - cx,
+            north[0]["y"].as_f64().unwrap() - cy,
+        );
+        let at = nx.atan2(-ny);
+        let view = num(&g, "math.atan(require('lib.camera').forward())");
+        let off = (at - view + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI)
+            - std::f64::consts::PI;
+        assert!(
+            off.abs() < 0.04,
+            "camera yaw {view}: north tab at {at} rad round the disc"
+        );
+        let rim = (nx * nx + ny * ny).sqrt();
+        assert!(
+            (60.0..=72.0).contains(&rim),
+            "the tab rides the rim: {rim} from the middle"
+        );
+        // a point 40 m straight ahead of the camera is straight up the disc
+        let ahead = lua(
+            &g,
+            "(function() local u = require('lib.ui').MINIMAP; local fx, fz = require('lib.camera').forward(); local p = nova.named('postmaster'); \
+             local x, y = u.to(p.x + fx * 40, p.z + fz * 40); local x0, y0 = u.to(p.x, p.z); return string.format('%.3f %.3f', x - x0, y - y0) end)()",
+        );
+        let v: Vec<f64> = ahead.split(' ').map(|s| s.parse().unwrap()).collect();
+        assert!(
+            v[0].abs() < 0.05 && v[1] < -25.0,
+            "straight ahead is straight up: {ahead}"
+        );
+        // the "you" mark: the postmaster's facing against the camera's (0.6 rad to the left of the camera's look)
+        let you = num(&g, "require('lib.ui').MINIMAP.you");
+        let want = view - (yaw + 0.6);
+        let d = (you - want + std::f64::consts::PI).rem_euclid(2.0 * std::f64::consts::PI)
+            - std::f64::consts::PI;
+        assert!(d.abs() < 0.01, "you mark turned {you}, wanted {want}");
+    }
+    // through the wrap-around: the camera turned 0.006 rad a step from 2.9 to 3.4 (its yaw going from pi to -pi on the way), the
+    // disc drawn each step; a point 50 m north and the north tab never jump
+    let out = lua(
+        &g,
+        "(function() local ui, cam = require('lib.ui'), require('lib.camera'); local p = nova.named('postmaster'); local w, h = nova.view('exact'); \
+         local jump, last = 0, nil; for k = 0, 83 do cam.reset(2.9 + k * 0.006); ui.minimap(p.x, p.z, p.face, w, h, math.atan(cam.forward())); \
+         local x, y = ui.MINIMAP.to(p.x, p.z + 50); if last then jump = math.max(jump, math.sqrt((x - last[1]) ^ 2 + (y - last[2]) ^ 2)) end; last = { x, y } end; \
+         return jump end)()",
+    );
+    let jump: f64 = out.parse().unwrap();
+    assert!(
+        jump < 0.4,
+        "smooth through the wrap-around: the largest step {jump} units"
+    );
+}
+
+/// "The road signs are hard to see from far away. Some of the lines don't show up almost like a rendering issue?" The cause: the
+/// lettering's pictures (640 x 110, not powers of two) got no mipmaps, so from the van the renderer read the full-size picture at every
+/// distance and strokes thinner than the gap between its samples broke up or vanished. Every smooth picture now gets its whole chain
+/// (gfx::smooth_levels), each level the average of the area it covers, and the lettering has no hairlines: at the levels the van reads
+/// it at from 25 m (level 3) and 60 m (level 4) the letters still cover most of what they cover at full size, and their strongest
+/// texels are still nearly solid. The boards are bigger, one per road each way, at the chase camera's height.
+#[test]
+fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_the_van() {
+    let root = game_dir();
+    for name in ["sign_fern_lane", "sign_post_road", "sign_kettle_creek_rd"] {
+        let png = std::fs::read(root.join(format!("sprites/fx/{name}.png"))).expect("the words");
+        let img = nova_runtime::assets::decode_png(&png).expect("a PNG");
+        let levels = nova_runtime::gfx::smooth_levels(img.width, img.height);
+        assert_eq!(
+            levels,
+            32 - img.width.max(img.height).leading_zeros(),
+            "{name}: its whole mip chain"
+        );
+        let chain = nova_runtime::gfx::mip_chain(&img, levels);
+        // (each level's coverage: the summed alpha, and the strongest texel's)
+        let (mut w, mut h, mut at) = (img.width as usize, img.height as usize, 0usize);
+        let mut cover = Vec::new();
+        for _ in 0..levels {
+            let px = &chain[at..at + w * h * 4];
+            let sum: f64 = px.chunks(4).map(|p| p[3] as f64 / 255.0).sum::<f64>()
+                * (1usize << (2 * cover.len())) as f64;
+            let max = px.chunks(4).map(|p| p[3]).max().unwrap_or(0);
+            cover.push((sum, max));
+            at += w * h * 4;
+            (w, h) = ((w / 2).max(1), (h / 2).max(1));
+        }
+        for level in [3, 4] {
+            let (sum, max) = cover[level];
+            assert!(
+                sum > cover[0].0 * 0.85,
+                "{name} level {level}: the letters' strokes are still there ({sum:.0} against {:.0} at full size)",
+                cover[0].0
+            );
+            assert!(
+                max > 200,
+                "{name} level {level}: still solid at their strongest ({max})"
+            );
+        }
+        // the letters are big: 0.32 m or more of capitals at 300 texels a metre (tools/art.mjs SIGN_PPM)
+        assert!(
+            img.height as f64 / 300.0 > 0.5,
+            "{name}: the words' picture is {} m high",
+            img.height as f64 / 300.0
+        );
+    }
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    for sign in ["sign_1", "sign_2"] {
+        let out = lua(
+            &g,
+            &format!(
+                "(function() local s = nova.named('{sign}'); local t = {{}}; for _, d in ipairs(s.drawn) do t[#t + 1] = string.format('%s|%.2f|%.2f|%s', d.text, d.y, d.board.h, d.model) end; return table.concat(t, ';') end)()"
+            ),
+        );
+        let arms: Vec<Vec<String>> = out
+            .split(';')
+            .map(|a| a.split('|').map(str::to_string).collect())
+            .collect();
+        assert_eq!(arms.len(), 3, "{sign}: a board each way a road goes: {out}");
+        assert_eq!(
+            arms.iter().filter(|a| a[0] == "POST ROAD").count(),
+            2,
+            "{sign}: Post Road both ways"
+        );
+        for a in &arms {
+            let y: f64 = a[1].parse().unwrap();
+            assert!(
+                (2.0..=3.1).contains(&y),
+                "{sign}: {} at {y} m, near the chase camera's height",
+                a[0]
+            );
+            assert_eq!(
+                a[3],
+                if a[0].len() > 12 {
+                    "sign_arm_long"
+                } else {
+                    "sign_arm"
+                },
+                "{sign}: {} on a board long enough for it",
+                a[0]
+            );
+        }
+        let posts: Vec<&Vec<String>> = arms.iter().filter(|a| a[0] == "POST ROAD").collect();
+        assert_eq!(
+            posts[0][1], posts[1][1],
+            "{sign}: Post Road's two arms level"
+        );
+    }
+}
+
+/// "For the van, the turning radius while slow isn't as tight as I would hope it to be." At a crawl the wheels go over to
+/// Van.TUNE.lock_slow (31 degrees; a kerb-to-kerb circle of about 6.4 m: the circle test above), the extra lock easing away by 4
+/// m/s, where the wide, weighty turning is unchanged; the drawn wheels stop at Van.TUNE.drawn_lock (inside their wells); and the
+/// lock the stick gives never jumps as the speed changes.
+#[test]
+fn the_van_turns_tightly_at_a_crawl_and_as_before_from_four_metres_a_second() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); local T = v.TUNE; local jump, last = 0, nil; \
+         for k = 0, 120 do local s = v.lock_share(k * 0.1); if last then jump = math.max(jump, math.abs(s - last)) end; last = s end; \
+         return string.format('%.4f %.4f %.4f %.4f %.4f %.4f', math.deg(v.lock_share(0) * T.lock), math.deg(v.lock_share(1.5) * T.lock), \
+           math.deg(v.lock_share(4) * T.lock), math.deg((1 - (1 - T.lock_fast) * 4 / T.top) * T.lock), jump, math.deg(T.drawn_lock)) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!(
+        (30.0..=32.0).contains(&v[0]) && (v[0] - v[1]).abs() < 0.01,
+        "full lock at a crawl: {out}"
+    );
+    assert!(
+        (v[2] - v[3]).abs() < 0.01,
+        "at 4 m/s the lock is what it was: {out}"
+    );
+    assert!(v[4] < 0.06, "the lock eases with the speed, no step: {out}");
+    assert!(
+        v[5] < v[0] && v[5] >= 20.9,
+        "the wheels are drawn turned less than the lock, at least the old lock: {out}"
+    );
+    // standing, with the stick hard over, the drawn front wheels stop at drawn_lock
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "hold": ["steer=1"], "frames": 150 } ] }"#,
+    );
+    let drawn = num(&g, "math.abs(nova.named('van').parts_table.wheel_fl.ry)");
+    assert!(
+        (drawn - num(&g, "nova.named('van').TUNE.drawn_lock")).abs() < 1e-6,
+        "the front wheels are drawn at drawn_lock: {drawn}"
+    );
+    assert!(
+        num(&g, "math.abs(nova.named('van').steer)") > 1.4,
+        "while the van steers on to the crawl's full lock"
+    );
 }

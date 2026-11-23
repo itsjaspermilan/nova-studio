@@ -638,7 +638,8 @@
       "props": {
         "arms": [
           { "text": "FERN LANE", "ry": 0.24 },
-          { "text": "POST ROAD", "ry": -4.47 }
+          { "text": "POST ROAD", "ry": -4.47 },
+          { "text": "POST ROAD", "ry": -1.84 }
         ]
       }
     },
@@ -651,7 +652,8 @@
       "props": {
         "arms": [
           { "text": "KETTLE CREEK RD", "ry": -3.25 },
-          { "text": "POST ROAD", "ry": -1.77 }
+          { "text": "POST ROAD", "ry": -1.77 },
+          { "text": "POST ROAD", "ry": 1.39 }
         ]
       }
     },

@@ -506,3 +506,47 @@ These replace the matching lines above where they differ (the UI theme, the musi
   the map too."
 - **Road signs:** "hard to see from far away. Some of the lines don't show up almost like a rendering issue?"
 - **Van:** "the turning radius while slow isn't as tight as I would hope it to be."
+
+### What the fifth play changed: the paper map, the minimap, the road signs, the van's tight turn
+
+(The music and the characters' movement are other rounds'.)
+
+- **The paper map** ("Maybe build a proper generator?"): Nova has a map generator now, `map_make` (`studio/mcp/makers/townmap.ts`,
+  docs/mcp.md), usable by any game: from a scene's road lines, water, buildings and trees and its terrain's heightmap it draws an
+  illustrated paper map. Fernhollow's is `tools/map.mjs` (the old painted sheet in `tools/art.mjs` is gone): warm parchment with darker
+  edges, fibres and two folds; the hills in soft bands lit from the north-west with faint contours; Kettle Creek as a blue ribbon with a
+  darker bank and its name along it, the gorge, the lake beyond with "the lake side"; some 460 little drawn pines and round trees where
+  the scene has them, thinned to a grid; Post Road as a cased cream ribbon with a dashed middle, the lanes narrower and sandier; the
+  creek's bridge, the BRIDGE OUT sign and the broken lake bridge; the post office with its flag and an envelope (named), the two cabins
+  and Hazel's workshop as little houses (not named, no numbers), the picnic spot, the overlook (named), the stone wall, Pip's mast; each
+  road's name lettered along its curve (Post Road twice), never over another name, an icon or another road; a compass rose, a scale bar
+  (0, 50, 100 m) and a "Fernhollow" cartouche over the lake. 734 x 990: one texel a pixel on a 1080p screen, where Select shows it
+  nearly as tall as the screen in the kit's frame (`lib/cards.lua`), two thirds of that on the Retroid's 720p. Built for a bigger world:
+  more names on longer roads, symbols thinned by the pixel, a bigger `size` for a pan-and-zoom sheet later; for now it is one sheet.
+- **The minimap** ("The direction should move when rotated to follow the players camera direction. There should be a North marker"):
+  the disc turns with the camera: up is where the camera looks, the roads turn under the mark, which shows the postmaster's (or the
+  van's) facing against the camera's; a red "N" tab rides the wooden rim where north is (`lib/ui.lua`). It follows the camera's own
+  smooth turn (no snap through south, where the yaw wraps: a test turns it through). Restyled with the kit's wooden frame round a
+  disc of the paper map's meadow, the roads in the map's colours, every road's casing drawn before every fill so they join.
+- **The road signs** ("hard to see from far away. Some of the lines don't show up almost like a rendering issue?"): it was a rendering
+  fault. The lettering is a picture laid on each face of the board (640 x 110), and the engine gave a picture mipmaps only when both its
+  sides were powers of two (or anisotropy was on), so from the van the full-size picture was read at every distance: at 25 m its 4-texel
+  border line and the letters' thinner strokes fell between the samples and broke into dashes, and they shimmered as the van moved. Every
+  smooth picture now gets its whole chain of mipmaps at any size, each level the average of the area it covers
+  (`crates/nova-runtime/src/gfx.rs`, `smooth_levels`, `mip_chain`, with a test). The road's painted lines were checked too: they come
+  from a 1024 x 1024 picture that always had its mipmaps, and they run on unbroken into the distance (their worn patches are painted).
+  And the signs are made to be read: one board each way a road goes (Post Road has an arm each way at both junctions, level with each
+  other; the side road's arm above), 3.6 m long (4.8 for KETTLE CREEK RD) and 0.72 m high, a light wooden rim round a dark panel (the
+  quiet outline that keeps them apart from the trees), bold cream capitals 0.36 m high (0.32 on the long board) with no hairlines, the
+  point showing the way, the arms at 3.0 and 2.15 m where the chase camera sees them face on. From the van at 1280 x 720 a name reads at
+  25 m and 40 m, and at 60 m the board is plainly a sign (a hero tree hides part of Fern Lane's from Post Road there). Mailbox numbers are
+  bigger, dark on a cream plate filling the box's side.
+- **The van's turning** ("the turning radius while slow isn't as tight as I would hope"): below 1.8 m/s the wheels go over to 31 degrees
+  (`Van.TUNE.lock_slow`), a kerb-to-kerb circle of 6.4 m (it was about 10: the outer front corner's circle, measured, fits between Post
+  Road's edges, so a U-turn there is one sweep); the extra lock eases away smoothly by 4 m/s, where the circle is 11.4 m as before, wider
+  faster; the quick return to straight and the eased turn-in are unchanged, and the wheels move a little quicker at a crawl
+  (`slow_steer`), so full lock still takes about a second. The front wheels are drawn turned at most 25 degrees (`drawn_lock`): at 31 the
+  tyre's back pushed through its round well. Both slice orders still complete with the test driver, which now puts the wheel over to
+  the crawl's lock in a three-point turn.
+- **Not checked on the Retroid**: everything above is pictures from the desktop renderer at 1280 x 720 and tests. The map's lettering
+  is drawn at two thirds of its size on the device's screen; the pictures say it reads, the device has not.
