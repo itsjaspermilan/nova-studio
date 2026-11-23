@@ -686,5 +686,5 @@ straight legs swung so that the foot on the ground was the one coming forward.
 12. "Pressing start should actually pause the game."
 13. "Pressing Select for the map should actually pause the game."
 
-Corrected by the owner: "X should move towards L, A should move down to P": the gear display has L at the top and P at the
-bottom; A steps down toward P, X up toward L. Decided by the coordinator: the horn, displaced from X, moves to the left stick click (L3) while driving.
+Settled by the owner: "A towards L, X towards P". The gear column reads P R N D L top to bottom; A steps down toward L, X
+up toward P. Decided by the coordinator: the horn, displaced from X, moves to the left stick click (L3) while driving.
