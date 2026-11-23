@@ -625,18 +625,26 @@ fn nothing_on_screen_points_at_a_destination() {
             disc[0]["w"].as_f64().unwrap() / 2.0,
         );
         let inside = |x: f64, y: f64| ((x - cx).powi(2) + (y - cy).powi(2)).sqrt() <= rw + 1.0;
-        let lines = r.drawn("ui_line", None);
-        assert!(!lines.is_empty(), "{where_}: roads on the minimap");
-        for l in &lines {
-            let (x, y, dx, dy) = (
+        // (the roads are soft strokes since the fifth play's weak points: a bar for each piece and a round joint at each bend, each
+        // within the disc; a piece reaches at most half its length either side of its middle)
+        let roads: Vec<Value> = r
+            .drawn("ui_sprite", None)
+            .into_iter()
+            .filter(|s| {
+                let n = s["name"].as_str().unwrap_or("");
+                n.ends_with("minimap_road") || n.ends_with("minimap_joint")
+            })
+            .collect();
+        assert!(!roads.is_empty(), "{where_}: roads on the minimap");
+        for l in &roads {
+            let (x, y, w) = (
                 l["x"].as_f64().unwrap(),
                 l["y"].as_f64().unwrap(),
                 l["w"].as_f64().unwrap(),
-                l["h"].as_f64().unwrap(),
             );
             assert!(
-                inside(x, y) && inside(x + dx, y + dy),
-                "{where_}: a line outside the minimap's disc: {l}"
+                ((x - cx).powi(2) + (y - cy).powi(2)).sqrt() + w / 2.0 <= rw + 1.0,
+                "{where_}: a road outside the minimap's disc: {l}"
             );
         }
         let in_disc: Vec<String> = r
@@ -650,7 +658,9 @@ fn nothing_on_screen_points_at_a_destination() {
                 // (and the north tab on its rim: the fifth play's; it says where north is, not where anything is)
                 n.contains("minimap_disc")
                     || n.ends_with("ui/you")
-                    || n.ends_with("ui/minimap_north"),
+                    || n.ends_with("ui/minimap_north")
+                    || n.ends_with("ui/minimap_road")
+                    || n.ends_with("ui/minimap_joint"),
                 "{where_}: only the disc and you in the minimap: {in_disc:?}"
             );
         }
@@ -684,7 +694,9 @@ fn nothing_on_screen_points_at_a_destination() {
         .map(|s| s["name"].as_str().unwrap_or("").to_string())
         .collect();
     assert!(
-        sprites.iter().any(|s| s.ends_with("ui/map")),
+        sprites
+            .iter()
+            .any(|s| s.ends_with("ui/map") || s.ends_with("ui/map_720")),
         "the paper map is open: {sprites:?}"
     );
     assert!(
@@ -1510,8 +1522,11 @@ fn assert_ui_from_the_kit(r: &Report, where_: &str) {
             || [
                 "ui/parcel_icon",
                 "ui/map",
+                "ui/map_720",
                 "ui/minimap_disc",
                 "ui/minimap_north",
+                "ui/minimap_road",
+                "ui/minimap_joint",
                 "ui/you",
                 "ui/logo",
                 "ui/title_bg",
@@ -3283,32 +3298,59 @@ fn the_paper_map_comes_from_the_generator_and_marks_neither_you_nor_where_to_go(
         !art.contains("\"ui/map\""),
         "tools/art.mjs no longer paints the map"
     );
-    let png = std::fs::read(root.join("sprites/ui/map.png")).expect("the map's picture");
-    let map = nova_runtime::assets::decode_png(&png).expect("a PNG");
-    assert!(
-        map.height >= 900 && map.width >= 600,
-        "big enough to stay crisp on a 1080p screen: {}x{}",
-        map.width,
-        map.height
-    );
+    // (the weak point after the fifth play: drawn at two thirds on the Retroid's 720p screen, the lettering went soft. Now there is a
+    // picture for each screen, chosen by nova.view("pixels") and drawn one texel to a pixel, its corner on a whole pixel)
     let mut g = game();
-    let r = play(
-        &mut g,
-        r#"{ "start_scene": "valley", "steps": [ { "wait": 10 }, { "press": "map" }, { "wait": 40 } ] }"#,
-    );
+    let mut r = None;
+    for (screen, picture) in [(1080.0, "ui/map"), (720.0, "ui/map_720")] {
+        let png =
+            std::fs::read(root.join(format!("sprites/{picture}.png"))).expect("the map's picture");
+        let map = nova_runtime::assets::decode_png(&png).expect("a PNG");
+        g.set_pixel_scale(screen as f32 / 540.0);
+        let run = play(
+            &mut g,
+            r#"{ "start_scene": "valley", "steps": [ { "wait": 10, "lua": "local c = require('lib.cards'); if c.active() then c.close() end" }, { "wait": 5 }, { "press": "map" }, { "wait": 40 } ] }"#,
+        );
+        assert_eq!(
+            lua(&g, "table.concat({ nova.view('pixels') }, ' ')"),
+            format!("{} {}", screen as i64 * 16 / 9, screen as i64),
+            "nova.view('pixels') on a {screen}p screen"
+        );
+        let sheet = run.drawn("ui_sprite", Some("ui/map"));
+        assert_eq!(sheet.len(), 1, "the paper map is open");
+        assert_eq!(
+            sheet[0]["name"].as_str().unwrap(),
+            picture,
+            "the {screen}p picture"
+        );
+        let px = screen / 540.0;
+        let (w, h, x) = (
+            sheet[0]["w"].as_f64().unwrap() * px,
+            sheet[0]["h"].as_f64().unwrap() * px,
+            (sheet[0]["x"].as_f64().unwrap() - sheet[0]["w"].as_f64().unwrap() / 2.0) * px,
+        );
+        assert!(
+            (w - map.width as f64).abs() < 0.01 && (h - map.height as f64).abs() < 0.01,
+            "{screen}p: one texel a pixel ({w}x{h} px for a {}x{} picture)",
+            map.width,
+            map.height
+        );
+        assert!(
+            (x - x.round()).abs() < 0.01,
+            "{screen}p: on a whole pixel ({x})"
+        );
+        assert!(
+            h >= 0.88 * screen,
+            "{screen}p: nearly as tall as the screen: {h} px"
+        );
+        r = Some(run);
+    }
+    g.set_pixel_scale(1.0);
+    let r = r.unwrap();
     let sheet = r.drawn("ui_sprite", Some("ui/map"));
-    assert_eq!(sheet.len(), 1, "the paper map is open");
     let (w, h) = (
         sheet[0]["w"].as_f64().unwrap(),
         sheet[0]["h"].as_f64().unwrap(),
-    );
-    assert!(
-        h >= 0.88 * 540.0,
-        "nearly as tall as the screen: {h} of 540"
-    );
-    assert!(
-        (w / h - map.width as f64 / map.height as f64).abs() < 0.01,
-        "at the picture's own proportions"
     );
     let (sx, sy) = (
         sheet[0]["x"].as_f64().unwrap(),
@@ -3319,7 +3361,7 @@ fn the_paper_map_comes_from_the_generator_and_marks_neither_you_nor_where_to_go(
         let (x, y) = (s["x"].as_f64().unwrap(), s["y"].as_f64().unwrap());
         let over = (x - sx).abs() < w / 2.0 && (y - sy).abs() < h / 2.0;
         assert!(
-            !over || n.ends_with("ui/map") || n.contains("ui/kit/"),
+            !over || n.starts_with("ui/map") || n.contains("ui/kit/"),
             "{n} is drawn over the map"
         );
     }
@@ -3417,12 +3459,29 @@ fn the_minimap_turns_with_the_camera_and_its_north_tab_rides_the_rim() {
 /// "The road signs are hard to see from far away. Some of the lines don't show up almost like a rendering issue?" The cause: the
 /// lettering's pictures (640 x 110, not powers of two) got no mipmaps, so from the van the renderer read the full-size picture at every
 /// distance and strokes thinner than the gap between its samples broke up or vanished. Every smooth picture now gets its whole chain
-/// (gfx::smooth_levels), each level the average of the area it covers, and the lettering has no hairlines: at the levels the van reads
-/// it at from 25 m (level 3) and 60 m (level 4) the letters still cover most of what they cover at full size, and their strongest
-/// texels are still nearly solid. The boards are bigger, one per road each way, at the chase camera's height.
+/// (gfx::smooth_levels), each level the average of the area it covers. And the lettering has no thin strokes: the mip level the
+/// GPU reads from the driving camera (its own field of view, 1280 x 720, the board at 300 texels a metre; the coarser of the two
+/// levels trilinear filtering blends) keeps the letters solid. At 25 m at least three quarters of the lettering's solid area (alpha
+/// at least a half) is still solid; at 60 m the letters are still there (some texel at least 0.6). A thin stroke averages below a
+/// half as soon as it is narrower than a texel of its level, so it fails the first: the lettering before the fifth play kept 0.17 of
+/// its solid area at 25 m (and none at 60), this keeps about 0.9. The boards are one family (3.6 m), one per road each way, at the
+/// chase camera's height.
 #[test]
 fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_the_van() {
     let root = game_dir();
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    let fov = num(&g, "require('lib.camera').VAN.fov").to_radians();
+    // the coarser mip level read at a distance: texels per screen pixel, log2, rounded up
+    let level_at = |d: f64| {
+        let px_per_m = 720.0 / (2.0 * d * (fov / 2.0).tan());
+        (300.0 / px_per_m).log2().ceil() as usize
+    };
+    let (near, far) = (level_at(25.0), level_at(60.0));
+    assert_eq!((near, far), (4, 5), "the levels read at 25 m and 60 m");
     for name in ["sign_fern_lane", "sign_post_road", "sign_kettle_creek_rd"] {
         let png = std::fs::read(root.join(format!("sprites/fx/{name}.png"))).expect("the words");
         let img = nova_runtime::assets::decode_png(&png).expect("a PNG");
@@ -3433,30 +3492,28 @@ fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_
             "{name}: its whole mip chain"
         );
         let chain = nova_runtime::gfx::mip_chain(&img, levels);
-        // (each level's coverage: the summed alpha, and the strongest texel's)
+        // (each level: its solid area, in full-size texels, and its strongest texel)
         let (mut w, mut h, mut at) = (img.width as usize, img.height as usize, 0usize);
         let mut cover = Vec::new();
-        for _ in 0..levels {
+        for level in 0..levels {
             let px = &chain[at..at + w * h * 4];
-            let sum: f64 = px.chunks(4).map(|p| p[3] as f64 / 255.0).sum::<f64>()
-                * (1usize << (2 * cover.len())) as f64;
+            let solid =
+                px.chunks(4).filter(|p| p[3] >= 128).count() as f64 * (1u64 << (2 * level)) as f64;
             let max = px.chunks(4).map(|p| p[3]).max().unwrap_or(0);
-            cover.push((sum, max));
+            cover.push((solid, max));
             at += w * h * 4;
             (w, h) = ((w / 2).max(1), (h / 2).max(1));
         }
-        for level in [3, 4] {
-            let (sum, max) = cover[level];
-            assert!(
-                sum > cover[0].0 * 0.85,
-                "{name} level {level}: the letters' strokes are still there ({sum:.0} against {:.0} at full size)",
-                cover[0].0
-            );
-            assert!(
-                max > 200,
-                "{name} level {level}: still solid at their strongest ({max})"
-            );
-        }
+        let share = cover[near].0 / cover[0].0;
+        assert!(
+            share >= 0.75,
+            "{name} at 25 m (level {near}): {share:.2} of the letters still solid"
+        );
+        assert!(
+            cover[far].1 >= 153,
+            "{name} at 60 m (level {far}): the letters still there ({})",
+            cover[far].1
+        );
         // the letters are big: 0.32 m or more of capitals at 300 texels a metre (tools/art.mjs SIGN_PPM)
         assert!(
             img.height as f64 / 300.0 > 0.5,
@@ -3464,11 +3521,6 @@ fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_
             img.height as f64 / 300.0
         );
     }
-    let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
-    );
     for sign in ["sign_1", "sign_2"] {
         let out = lua(
             &g,
@@ -3489,18 +3541,25 @@ fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_
         for a in &arms {
             let y: f64 = a[1].parse().unwrap();
             assert!(
-                (2.0..=3.1).contains(&y),
+                (2.0..=3.25).contains(&y),
                 "{sign}: {} at {y} m, near the chase camera's height",
                 a[0]
             );
+            // (one family: a long name on two lines on the tall board, never a longer board)
             assert_eq!(
                 a[3],
                 if a[0].len() > 12 {
-                    "sign_arm_long"
+                    "sign_arm_tall"
                 } else {
                     "sign_arm"
                 },
-                "{sign}: {} on a board long enough for it",
+                "{sign}: {} on its board",
+                a[0]
+            );
+            let words_h: f64 = a[2].parse().unwrap();
+            assert!(
+                words_h < if a[0].len() > 12 { 1.12 } else { 0.72 },
+                "{sign}: {} fits its board's height ({words_h} m)",
                 a[0]
             );
         }
@@ -3559,4 +3618,142 @@ fn the_van_turns_tightly_at_a_crawl_and_as_before_from_four_metres_a_second() {
         num(&g, "math.abs(nova.named('van').steer)") > 1.4,
         "while the van steers on to the crawl's full lock"
     );
+}
+
+// ---- the weak points left after the fifth play (2026-11-23) ----------------------------------------------------------------------
+
+/// The widest a model reaches out from its middle on the ground (metres at scale 1): its crown, for a tree.
+fn crown_of(model: &Value) -> f64 {
+    fn walk(part: &Value, ox: f64, oz: f64, mx: &mut f64) {
+        let (ox, oz) = (
+            ox + part["origin"][0].as_f64().unwrap_or(0.0),
+            oz + part["origin"][2].as_f64().unwrap_or(0.0),
+        );
+        for c in part["cubes"].as_array().into_iter().flatten() {
+            let mut reach =
+                |x: f64, z: f64| *mx = mx.max(((x + ox).powi(2) + (z + oz).powi(2)).sqrt());
+            for v in c["verts"].as_array().into_iter().flatten() {
+                reach(v[0].as_f64().unwrap_or(0.0), v[2].as_f64().unwrap_or(0.0));
+            }
+            if let (Some(f), Some(s)) = (c["from"].as_array(), c["size"].as_array()) {
+                let (fx, fz) = (f[0].as_f64().unwrap(), f[2].as_f64().unwrap());
+                for (dx, dz) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
+                    reach(
+                        fx + dx * s[0].as_f64().unwrap(),
+                        fz + dz * s[2].as_f64().unwrap(),
+                    );
+                }
+            }
+            for q in c["profile"].as_array().into_iter().flatten() {
+                *mx = mx.max(q[0].as_f64().unwrap_or(0.0));
+            }
+        }
+        for ch in part["children"].as_array().into_iter().flatten() {
+            walk(ch, ox, oz, mx);
+        }
+    }
+    let mut mx = 0.0;
+    for p in model["parts"].as_array().into_iter().flatten() {
+        walk(p, 0.0, 0.0, &mut mx);
+    }
+    mx * model["scale"].as_f64().unwrap_or(1.0)
+}
+
+/// "At 60 m a tree hides part of the Fern Lane board from Post Road." The rule (tools/scene.mjs): from every road that comes to a
+/// signpost, along its last 70 m either way, the line from over the road (where the chase camera rides) to each of the post's boards
+/// passes no tree's crown. Checked here from the scene file itself, with each tree's crown measured from its model and its size.
+#[test]
+fn no_tree_stands_between_an_approaching_van_and_a_signpost() {
+    let root = game_dir();
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let mut crowns = std::collections::HashMap::new();
+    for kind in ["pine", "pine2", "pine3", "larch", "larch_small", "birch"] {
+        let model: Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(format!("models/{kind}.model.json"))).unwrap(),
+        )
+        .unwrap();
+        crowns.insert(kind, crown_of(&model));
+    }
+    let trees: Vec<(f64, f64, f64, String)> = objects
+        .iter()
+        .filter_map(|o| {
+            let k = o["kind"].as_str()?;
+            let c = crowns.get(k)?;
+            Some((
+                o["x"].as_f64()?,
+                o["z"].as_f64()?,
+                c * o["props"]["sx"].as_f64().unwrap_or(1.0),
+                k.to_string(),
+            ))
+        })
+        .collect();
+    assert!(trees.len() > 300, "the valley's trees: {}", trees.len());
+    let roads: Vec<Vec<(f64, f64)>> = objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline")
+        .map(|o| {
+            o["props"]["points"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+                .collect()
+        })
+        .collect();
+    let seg = |a: (f64, f64), b: (f64, f64), p: (f64, f64)| {
+        let (dx, dz) = (b.0 - a.0, b.1 - a.1);
+        let t =
+            (((p.0 - a.0) * dx + (p.1 - a.1) * dz) / (dx * dx + dz * dz).max(1e-9)).clamp(0.0, 1.0);
+        ((p.0 - a.0 - dx * t).powi(2) + (p.1 - a.1 - dz * t).powi(2)).sqrt()
+    };
+    let mut lines = 0;
+    for sign in objects.iter().filter(|o| o["kind"] == "signpost") {
+        let at = (sign["x"].as_f64().unwrap(), sign["z"].as_f64().unwrap());
+        let mut boards = vec![at];
+        for arm in sign["props"]["arms"].as_array().unwrap() {
+            let ry = arm["ry"].as_f64().unwrap();
+            boards.push((at.0 + ry.cos() * 1.75, at.1 - ry.sin() * 1.75));
+        }
+        for road in &roads {
+            let (best, bd) = road
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (i, ((p.0 - at.0).powi(2) + (p.1 - at.1).powi(2)).sqrt()))
+                .fold((0, f64::MAX), |m, v| if v.1 < m.1 { v } else { m });
+            if bd > 30.0 {
+                continue;
+            }
+            for dir in [1i64, -1] {
+                let (mut i, mut acc) = (best as i64, 0.0);
+                while acc < 70.0 && (0..road.len() as i64).contains(&(i + dir)) {
+                    let (a, b) = (road[i as usize], road[(i + dir) as usize]);
+                    acc += ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+                    i += dir;
+                    if acc < 8.0 {
+                        continue;
+                    }
+                    for &board in &boards {
+                        lines += 1;
+                        for (x, z, crown, kind) in &trees {
+                            let away = ((x - board.0).powi(2) + (z - board.1).powi(2)).sqrt();
+                            assert!(
+                                away <= 1.0 || seg(b, board, (*x, *z)) >= *crown,
+                                "{}: a {kind} at {x:.1}, {z:.1} (crown {crown:.1} m) hides the board at {:.1}, {:.1} from the road {acc:.0} m out, at {:.1}, {:.1}",
+                                sign["name"].as_str().unwrap_or("a signpost"),
+                                board.0,
+                                board.1,
+                                b.0,
+                                b.1
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(lines > 100, "sight lines checked: {lines}");
 }

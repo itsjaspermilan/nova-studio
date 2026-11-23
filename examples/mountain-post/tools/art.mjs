@@ -16,7 +16,7 @@ const doing = (section) => !want.length || want.includes(section);
 
 // ---- words in the world ------------------------------------------------------------------------------------------------------------------
 // The signposts' road names (the owner's fifth play: "The road signs are hard to see from far away"): bold cream capitals on the arms'
-// dark panels (tools/models.mjs `SIGN`), 0.36 m high on the short arm and 0.32 m on the long one, drawn at SIGN_PPM texels a metre and
+// dark panels (tools/models.mjs `SIGN`), 0.36 m high on one line, 0.29 m on the two lines of a long name, drawn at SIGN_PPM texels a metre and
 // cropped to the words, so entities/signpost.lua sizes each from its picture. Thick strokes (no hairlines): every stroke is at least
 // 4 cm, two texels of the smallest mip level the van sees it at from 60 m, so the words fade with distance and never break up.
 export const SIGN_PPM = 300;
@@ -31,16 +31,17 @@ function wordsWidth(text, size) {
 }
 if (doing("words")) {
   if (!existsSync(NOVA)) throw new Error(`the sign words are measured with the runtime: build it (${NOVA})`);
-  for (const text of ["FERN LANE", "POST ROAD", "KETTLE CREEK RD"]) {
-    const long = text.length > 12;
-    const cap = long ? 0.32 : 0.36;
+  // (a long name goes on two lines on the taller board, every board being 3.6 m long: KETTLE CREEK over ROAD, 0.29 m capitals)
+  for (const [key, lines] of [["FERN LANE", ["FERN LANE"]], ["POST ROAD", ["POST ROAD"]], ["KETTLE CREEK RD", ["KETTLE CREEK", "ROAD"]]]) {
+    const cap = lines.length > 1 ? 0.29 : 0.36;
     const size = Math.round((cap * SIGN_PPM) / 0.7); // (the rounded face's capitals are 0.7 of its size)
     const stroke = Math.round(size * 0.07);
-    const w = wordsWidth(text, size) + stroke * 2 + 24, h = Math.round(size * 1.02 + stroke * 2);
-    const name = `fx/sign_${text.toLowerCase().replace(/[^a-z]+/g, "_")}`;
-    img(name, [w, h], [
-      { text, at: [w / 2, Math.round(h / 2 + size * 0.35)], size, font: "rounded", align: "center", fill: "#f8efd8", stroke: { color: "#f8efd8", width: stroke } },
-    ]);
+    const lineH = Math.round(size * 1.02 + stroke * 2), gap = Math.round(cap * SIGN_PPM * 0.42);
+    const w = Math.max(...lines.map((t) => wordsWidth(t, size))) + stroke * 2 + 24, h = lineH * lines.length + gap * (lines.length - 1);
+    const name = `fx/sign_${key.toLowerCase().replace(/[^a-z]+/g, "_")}`;
+    img(name, [w, h], lines.map((text, i) => (
+      { text, at: [w / 2, Math.round(i * (lineH + gap) + lineH / 2 + size * 0.35)], size, font: "rounded", align: "center", fill: "#f8efd8", stroke: { color: "#f8efd8", width: stroke } }
+    )));
   }
   // The mailboxes' numbers: big and dark on a cream plate filling the box's side
   for (const n of [3, 7]) {
@@ -86,6 +87,10 @@ if (doing("minimap")) {
     { circle: [24, 23, 18], fill: PAL.red, stroke: { color: "#f3e6c8", width: 3, align: "inside" } },
     { text: "N", at: [24, 32], size: 24, font: "rounded", align: "center", fill: "#fff8ea", stroke: { color: "#fff8ea", width: 1.6 } },
   ]);
+  // the roads' strokes on the disc (lib/ui.lua tints them): a bar whose long edges are smoothed in the picture, so a road drawn at any
+  // angle has soft edges and does not shimmer as the disc turns, and a round joint for each bend; both about the size they are drawn
+  img("ui/minimap_road", [8, 16], [{ rect: [-4, 2, 16, 12], fill: "#ffffff" }]);
+  img("ui/minimap_joint", [16, 16], [{ circle: [8, 8, 6], fill: "#ffffff" }]);
   img("ui/you", [48, 48], [{ polygon: [[24, 4], [40, 42], [24, 33], [8, 42]], round: 2, fill: "#e8662e", stroke: { color: "#fffaf0", width: 4, align: "outside" } }]);
 }
 

@@ -455,7 +455,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     // (an icon that would sit on a road is moved off it, the least way that clears it: a map's symbol stands beside the road its
     // building stands by)
     for (const ic of icons) {
-      if (ic.size <= 0) continue;
+      if (ic.size <= 0 || ic.icon === "barrier") continue; // (a barrier stands across its road)
       const clearOf = (x: number, y: number) => roadField.at(x, y - ic.size * 0.3) > ic.size * 0.55 && roadField.at(x, y) > ic.size * 0.35;
       if (clearOf(ic.x, ic.y)) continue;
       search: for (let d = 2; d < ic.size * 2.5; d += 2) {
@@ -478,26 +478,26 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
 
     // ---- the furniture: in the corners with the least in them --------------------------------------------------------------------
     // (a road, a water line or an icon under it counts heavily; a lake hardly: a cartouche over open water is the old way)
-    const busy = (x0: number, y0: number, w: number, h: number) => {
+    const busy = (x0: number, y0: number, w: number, h: number, wet = 0.2) => {
       let n = 0;
       for (let y = y0; y < y0 + h; y += 4) for (let x = x0; x < x0 + w; x += 4) {
-        if (roadField.at(x, y) < 6) n += 4;
+        if (roadField.at(x, y) < 6) n += 20;
         const wd = waterField.at(x, y);
         // (a narrow line of water, a creek, counts; a wide one, a river or a gorge, is open water)
-        if (wd < 4 && waterPx[waterField.tag[Math.floor(y) * W + Math.floor(x)]!]!.half < 9 * U) n += 3;
-        else if (isWater(x, y) || wd < 0) n += 0.2;
-        if (taken.some((t) => Math.hypot(t.x - x, t.y - y) < t.r + 3)) n += 4;
+        if (wd < 4 && waterPx[waterField.tag[Math.floor(y) * W + Math.floor(x)]!]!.half < 9 * U) n += 3 + wet * 4;
+        else if (isWater(x, y) || wd < 0) n += wet;
+        if (taken.some((t) => Math.hypot(t.x - x, t.y - y) < t.r + 3)) n += 20;
       }
       return n;
     };
     const m = frame + 14 * U;
     // (the four corners first, then the middles of the four sides)
-    const corners = (w: number, h: number): P[] => [[m, m], [W - m - w, m], [m, H - m - h], [W - m - w, H - m - h], [(W - w) / 2, m], [(W - w) / 2, H - m - h], [m, (H - h) / 2], [W - m - w, (H - h) / 2]];
-    const pick = (w: number, h: number, avoid: P[] = []) => {
+    const corners = (w: number, h: number): P[] => [[m, m], [W - m - w, m], [m, H - m - h], [W - m - w, H - m - h], [(W - w) / 2, m], [(W - w) / 2, H - m - h], [m, (H - h) / 2], [W - m - w, (H - h) / 2], [(W - w) * 0.25, H - m - h], [(W - w) * 0.75, H - m - h], [(W - w) * 0.25, m], [(W - w) * 0.75, m]];
+    const pick = (w: number, h: number, avoid: P[] = [], wet = 0.2) => {
       let best: P = corners(w, h)[0]!, bv = Infinity;
       for (const c of corners(w, h)) {
         if (avoid.some(([x, y]) => Math.abs(x - c[0]) < 1 && Math.abs(y - c[1]) < 1)) continue;
-        const v = busy(c[0], c[1], w, h);
+        const v = busy(c[0], c[1], w, h, wet);
         if (v < bv) (bv = v, (best = c));
       }
       return best;
@@ -527,7 +527,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     let compassAt: P | null = null;
     const rose = 46 * U;
     if (a.compass !== false) {
-      const [x, y] = pick(rose * 2 + 10, rose * 2 + 34 * U, usedCorners);
+      const [x, y] = pick(rose * 2 + 10, rose * 2 + 34 * U, usedCorners, 2); // (the compass and the scale on land: a lake is no place for them)
       usedCorners.push([x, y]);
       compassAt = [x + rose + 5, y + rose + 30 * U];
       blockRect(x, y, rose * 2 + 10, rose * 2 + 34 * U);
@@ -536,9 +536,17 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     let scaleAt: P | null = null, scaleM = 0;
     if (a.scale_bar !== false) {
       const want = (W * 0.2) / s;
-      scaleM = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000].reduce((b, v) => (Math.abs(v - want) < Math.abs(b - want) ? v : b), 50);
-      const sw = scaleM * s, sh = 40 * U;
-      const [x, y] = pick(sw + 40 * U, sh, usedCorners);
+      const nice = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
+      const first = nice.reduce((b, v) => (Math.abs(v - want) < Math.abs(b - want) ? v : b), 50);
+      // (that length, or the next shorter one when it finds a clearer place: a scale bar never lies across a road or a creek)
+      const sh = 40 * U;
+      let best: [number, P, number] | null = null;
+      for (const len of [first, nice[Math.max(0, nice.indexOf(first) - 1)]!]) {
+        const w0 = len * s + 40 * U, at = pick(w0, sh, usedCorners, 2), v = busy(at[0], at[1], w0, sh, 2);
+        if (!best || v < best[2] - 1) best = [len, at, v];
+      }
+      scaleM = best![0];
+      const [x, y] = best![1], sw = scaleM * s;
       usedCorners.push([x, y]);
       scaleAt = [x + 12 * U, y + 12 * U];
       blockRect(x, y, sw + 40 * U, sh);
@@ -590,7 +598,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
         // never upside down: the words read left to right
         if (piece[piece.length - 1]![0] < piece[0]![0]) piece = [...piece].reverse();
         for (const side of [1, -1]) {
-          const off = side * (half + 2.1 * U + 4 + g.cap / 2 + 1);
+          const off = side * (half + 2.1 * U + 4 + 1.5 * U + g.cap / 2 + 1);
           const circles: [number, number, number][] = [];
           let ok = true, near = 0;
           for (let k = 0; k < piece.length && ok; k += Math.max(1, Math.round(rad / 2.2))) {
@@ -698,7 +706,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
 
     // ---- paint: the land -----------------------------------------------------------------------------------------------------------
     let hmin = Infinity, hmax = -Infinity;
-    const hAt = new Float32Array(W * H);
+    const hAt = new Float32Array(W * H), hCont = new Float32Array(W * H);
     if (heights) {
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const [wx, wz] = toWorld(x + 0.5, y + 0.5);
@@ -709,6 +717,24 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
     }
     const span = Math.max(1, hmax - hmin);
     const contour = span > 60 ? 10 : 5;
+    // The land is shaded from the terrain with its water channels left out: a creek's cut (and its banks) is filled in from the ground
+    // round it and the whole is smoothed a little (a weighted blur, the channel weighing nothing), so a creek is not drawn as a long dark
+    // slope beside it, and the shading and contours follow the hills, not every ripple of the heightmap.
+    if (heights) {
+      const bank = Math.max(6, 7 * s);
+      const wgt = new Float32Array(W * H), num = new Float32Array(W * H);
+      for (let i = 0; i < W * H; i++) {
+        const w0 = lake[i] ? 0 : smooth(0, bank, waterField.d[i]!);
+        wgt[i] = w0;
+        num[i] = hAt[i]! * w0;
+      }
+      const r = Math.max(3, Math.round(7 * U));
+      for (let pass = 0; pass < 3; pass++) for (const f of [num, wgt]) boxBlur(f, W, H, r);
+      for (let i = 0; i < W * H; i++) if (wgt[i]! > 1e-4) hAt[i] = num[i]! / wgt[i]!;
+      // (the contours from a smoother copy still: a bump a few metres across closes into a small ring that reads as a stray circle)
+      hCont.set(hAt);
+      for (let pass = 0; pass < 2; pass++) boxBlur(hCont, W, H, Math.max(4, Math.round(12 * U)));
+    }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
       // the paper itself: mottled, a little warmer here and paler there
@@ -732,11 +758,17 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
         const shadeK = (lit - 0.7071) * 1.6;
         if (shadeK < 0) cv.mul(i, C.contour, Math.min(0.32, -shadeK * 0.55));
         else cv.over(i, [255, 252, 240], Math.min(0.3, shadeK * 0.6));
-        const grad = Math.hypot(hx, hy);
-        if (grad > 0.01) {
-          const f = h0 / contour, dist = (Math.abs(f - Math.round(f)) * contour) / grad * s;
+        // (contours: from the smoother copy, only where the ground really slopes, faded out near the sheet's edge, where the land rising
+        // to the map's rim would draw a ruled line along the frame)
+        const c0 = hCont[i]!;
+        const cx = (hCont[y * W + Math.min(W - 1, x + 1)]! - hCont[y * W + Math.max(0, x - 1)]!) / (2 / s);
+        const cy = (hCont[Math.min(H - 1, y + 1) * W + x]! - hCont[Math.max(0, y - 1) * W + x]!) / (2 / s);
+        const grad = Math.hypot(cx, cy);
+        const edgeFade = smooth(0, 70 * U, Math.min(x - inner[0]!, y - inner[1]!, inner[2]! - x, inner[3]! - y));
+        if (grad > 0.03 && edgeFade > 0) {
+          const f = c0 / contour, dist = (Math.abs(f - Math.round(f)) * contour) / grad * s;
           const major = Math.round(f) % 5 === 0;
-          const cov = clamp((major ? 0.95 : 0.7) - dist, 0, 1) * (major ? 0.32 : 0.18);
+          const cov = clamp((major ? 0.95 : 0.7) - dist, 0, 1) * (major ? 0.32 : 0.18) * edgeFade * smooth(0.03, 0.08, grad);
           if (cov > 0) cv.over(i, C.contour, cov);
         }
       } else cv.mul(i, C.meadow, 0.35);
@@ -800,7 +832,9 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       if (!inFrame(x, y, 8)) return;
       const key = `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
       if (grid.has(key)) return;
-      if (roadField.at(x, y) < 5 * U + 3 || waterField.at(x, y) < 3 || isWater(x, y + 3) || !free(x, y, 5 * U)) return;
+      // (its trunk and its crown, about 12 px above it, both clear of the roads, the water, the names and the icons)
+      const cy = y - 6.5 * U;
+      if (roadField.at(x, y) < 3 * U + 2.5 || roadField.at(x, cy) < 6 * U + 2 || waterField.at(x, y) < 3 || waterField.at(x, cy) < 5 * U || isWater(x, y + 3) || !free(x, y, 4 * U) || !free(x, cy, 6 * U)) return;
       if (titleBox && x > titleBox[0] - 6 && x < titleBox[0] + titleBox[2] + 6 && y > titleBox[1] - 6 && y < titleBox[1] + titleBox[3] + 6) return;
       grid.set(key, true);
       trees.push({ x: x + (rnd() - 0.5) * 2, y: y + (rnd() - 0.5) * 2, pine, k: rnd() });
@@ -899,7 +933,7 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
       }
       cv.shape((px, py) => Math.abs(dBox(px, py, x + sw / 2, y + 20 * U, sw / 2, bh / 2)) - 0.7 * U, [x - 3, y + 10 * U, x + sw + 3, y + 30 * U], C.ink);
       for (const [v, at] of [[0, x], [scaleM / 2, x + sw / 2], [scaleM, x + sw]] as [number, number][]) {
-        const g = wordsOf(tctx, v === scaleM ? `${v} m` : String(v), Math.round(15 * U), cache);
+        const g = wordsOf(tctx, v === scaleM ? `${v} m` : String(v), Math.round(Math.max(13, 15 * U)), cache);
         drawFlat(cv, g, at - (v === scaleM ? g.w * 0.3 : g.w / 2), y + 10 * U, C.ink, C.halo, 2, 0.4);
         labels.push({ text: g.text, kind: "scale", circles: [], of: "scale" });
       }
@@ -957,6 +991,22 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+/// A box blur of radius r (px) along x then y, in place; the picture's edge is held.
+function boxBlur(f: Float32Array, w: number, h: number, r: number) {
+  const line = new Float32Array(Math.max(w, h));
+  const run = (n: number, get: (k: number) => number, set: (k: number, v: number) => void) => {
+    for (let k = 0; k < n; k++) line[k] = get(k);
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += line[clamp(k, 0, n - 1)]!;
+    for (let k = 0; k < n; k++) {
+      set(k, acc / (2 * r + 1));
+      acc += line[clamp(k + r + 1, 0, n - 1)]! - line[clamp(k - r, 0, n - 1)]!;
+    }
+  };
+  for (let y = 0; y < h; y++) run(w, (k) => f[y * w + k]!, (k, v) => (f[y * w + k] = v));
+  for (let x = 0; x < w; x++) run(h, (k) => f[k * w + x]!, (k, v) => (f[k * w + x] = v));
 }
 
 const mix3 = (a: RGB, b: RGB, t: number): RGB => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

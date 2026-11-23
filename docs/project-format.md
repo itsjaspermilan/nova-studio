@@ -253,7 +253,9 @@ stability boundary for hand-written games, not a hostile-code sandbox (see "Scri
 ### Drawing
 
 Coordinates are *logical units*, 540 high on any screen (the width follows the aspect
-ratio). `nova.view()` returns the current width and height as whole numbers (rounded down on screens that are not 16:9).
+ratio). `nova.view()` returns the current width and height as whole numbers (rounded down on screens that are not 16:9);
+`nova.view("exact")` the real, fractional size; `nova.view("pixels")` the screen's size in real pixels (1280, 720 on a 720p screen), so a
+picture made for that screen (a paper map, a title) can be chosen and drawn one texel to a pixel: `w = picture_width * 540 / pixel_height`.
 
 | Call | Layer | Meaning |
 | --- | --- | --- |

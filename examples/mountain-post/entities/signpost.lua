@@ -1,17 +1,22 @@
 -- A wooden signpost at a junction: the post is scenery (it blocks, it is drawn with the rest); each arm is one road, its point showing
 -- which way that road goes, with the road's name in bold cream capitals on the dark panel of both faces (sprites/fx/sign_*.png, made by
 -- tools/art.mjs with image_make). The owner's fifth play: "The road signs are hard to see from far away. Some of the lines don't show up
--- almost like a rendering issue?" The boards are bigger (3.6 m, or 4.8 m for a long name, by 0.72 m: tools/models.mjs `SIGN`), the
--- letters 0.36 m high (0.32 on the long board), and the arms hang at the chase camera's height, so a name reads from the van at about
--- 25 m and the sign is plainly a sign at 60. The lettering has no hairlines any more and is filtered with its whole chain of mipmaps
--- (the engine gave none to a picture whose sides were not powers of two: thin strokes broke up and shimmered with distance).
+-- almost like a rendering issue?" One family of boards (tools/models.mjs `SIGN`): every one 3.6 m long with letters 0.36 m high on one
+-- line, 0.72 m high; a long name on two lines on a board 1.12 m high (KETTLE CREEK over ROAD, 0.29 m). The arms hang at the chase
+-- camera's height, so a name reads from the van at about 25 m and the sign is plainly a sign at 60. The lettering has no hairlines and
+-- is filtered with its whole chain of mipmaps (the engine gave none to a picture whose sides were not powers of two: thin strokes broke
+-- up and shimmered with distance).
 local Signpost = nova.entity { tags = { "signpost" } }
 
+-- (each level's middle: the side road's board on top, higher when it is a tall one, the main road's below)
 local ARM_Y = { 3.0, 2.15 }
--- (tools/models.mjs SIGN and tools/art.mjs SIGN_PPM: the board's lengths, the panel's front, the words' texels a metre)
-local SIGN = { short = 3.6, long = 4.8, point = 0.42, front = 0.06 + 0.014, ppm = 300 }
+local TALL_Y = 3.2
+-- (tools/models.mjs SIGN and tools/art.mjs SIGN_PPM: the board's length, its point, the panel's front, the words' texels a metre)
+local SIGN = { length = 3.6, point = 0.42, front = 0.06 + 0.014, ppm = 300 }
 
 local function sprite_of(text) return "sign_" .. text:lower():gsub("[^a-z]+", "_"):gsub("_$", "") end
+-- A name too long for one line goes on the tall board, on two lines.
+function Signpost.tall(text) return #(text or "") > 12 end
 
 function Signpost:create()
   nova.scenery.add("signpost", self.x, 0, self.z, { ry = 0, lift = "upright" }) -- (upright: it stands straight on a slope)
@@ -23,8 +28,8 @@ function Signpost:create()
     local at = level[arm.text or ""]
     local ry = arm.ry or 0
     local sprite = sprite_of(arm.text or "")
-    local long = #(arm.text or "") > 12
-    local L = long and SIGN.long or SIGN.short
+    local tall = Signpost.tall(arm.text)
+    local L = SIGN.length
     -- (the arm's model points along its own +x; turned by ry, +x goes to (cos ry, -sin ry) in x, z)
     local ax, az = math.cos(ry), -math.sin(ry)
     local nx, nz = math.sin(ry), math.cos(ry) -- its face
@@ -34,9 +39,9 @@ function Signpost:create()
     local mid = (0.14 + L - SIGN.point) / 2 + 0.06
     local off = SIGN.front + 0.02
     self.drawn[i] = {
-      model = long and "sign_arm_long" or "sign_arm",
+      model = tall and "sign_arm_tall" or "sign_arm",
       opts = { ry = ry, shadow = true, lift = "origin" }, -- (level, at the height of the ground under the post)
-      y = ARM_Y[at] or (2.15 - 0.85 * (at - 2)),
+      y = (tall and at == 1) and TALL_Y or ARM_Y[at] or (2.15 - 0.85 * (at - 2)),
       sprite = sprite,
       text = arm.text,
       cx = self.x + ax * mid, cz = self.z + az * mid,

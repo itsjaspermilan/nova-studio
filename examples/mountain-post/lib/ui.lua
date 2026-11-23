@@ -319,31 +319,58 @@ function ui.minimap(px, pz, heading, w, h, yaw)
     return cx + (dz * fs - dx * fc) * k, cy - (dx * fs + dz * fc) * k
   end
   MM.to, MM.yaw = to, yaw -- (for the tests: where a point of the ground is on the disc)
-  for pass = 1, 2 do
+  -- Each road is a stroked line with round joins: every piece a soft-edged bar picture (ui/minimap_road, its long edges smoothed in the
+  -- picture, so a line at any angle has no stair-steps and does not shimmer as the disc turns), and every bend a soft disc
+  -- (ui/minimap_joint) of the same width, so the pieces meet with no notch. The casing of every road first, then every fill: where two
+  -- roads meet they join. (The roads' points within reach are found once and reused for both passes.)
+  local near = {}
   for _, road in ipairs(world.roads) do
-    local pts = road.points
-    local style = ROAD_COLOURS[road.surface] or ROAD_COLOURS.gravel
-    local lw = pass == 1 and style.w + 3 or style.w
-    local col = pass == 1 and style.edge or style.fill
-    for i = 1, #pts - 1 do
-      local ax, ay = to(pts[i][1], pts[i][2])
-      local bx, by = to(pts[i + 1][1], pts[i + 1][2])
-      -- clip the segment to the disc
-      local dx, dy = bx - ax, by - ay
-      local fx, fy = ax - cx, ay - cy
-      local a = dx * dx + dy * dy
-      if a > 1e-6 then
-        local b, c = 2 * (fx * dx + fy * dy), fx * fx + fy * fy - r * r
-        local disc = b * b - 4 * a * c
-        if disc > 0 then
-          local s = math.sqrt(disc)
-          local t0, t1 = math.max(0, (-b - s) / (2 * a)), math.min(1, (-b + s) / (2 * a))
-          if t1 > t0 then nova.ui.line(ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1, lw, col) end
+    local pts, list = road.points, {}
+    for i = 1, #pts do
+      local x, y = to(pts[i][1], pts[i][2])
+      list[i] = { x, y, (x - cx) ^ 2 + (y - cy) ^ 2 }
+    end
+    near[#near + 1] = { list = list, style = ROAD_COLOURS[road.surface] or ROAD_COLOURS.gravel }
+  end
+  local R2 = (r + 12) ^ 2
+  local PAD = 16 / 12 -- (the pictures have a soft margin round the stroke: tools/art.mjs)
+  for pass = 1, 2 do
+    for _, road in ipairs(near) do
+      local list, style = road.list, road.style
+      local lw = pass == 1 and style.w + 3 or style.w
+      local col = pass == 1 and style.edge or style.fill
+      for i = 1, #list - 1 do
+        local p, q = list[i], list[i + 1]
+        if p[3] < R2 or q[3] < R2 then
+          local ax, ay, bx, by = p[1], p[2], q[1], q[2]
+          -- clip the piece to the disc
+          local dx, dy = bx - ax, by - ay
+          local fx, fy = ax - cx, ay - cy
+          local a = dx * dx + dy * dy
+          if a > 1e-6 then
+            local b, c = 2 * (fx * dx + fy * dy), fx * fx + fy * fy - r * r
+            local disc = b * b - 4 * a * c
+            if disc > 0 then
+              local s = math.sqrt(disc)
+              local t0, t1 = math.max(0, (-b - s) / (2 * a)), math.min(1, (-b + s) / (2 * a))
+              if t1 > t0 then
+                local x0, y0, x1, y1 = ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1
+                local len = math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2)
+                nova.ui.sprite("ui/minimap_road", (x0 + x1) / 2, (y0 + y1) / 2, { w = len, h = lw * PAD, rotation = math.atan(dy, dx), color = col })
+                -- (the joint at the far end, when it is inside the disc with room for its round)
+                if i == 1 and t0 <= 0 and p[3] < (r - lw / 2) ^ 2 then
+                  nova.ui.sprite("ui/minimap_joint", ax, ay, { w = lw * PAD, h = lw * PAD, color = col }) -- (a road's start: round too)
+                end
+                if t1 >= 1 and q[3] < (r - lw / 2) ^ 2 then
+                  nova.ui.sprite("ui/minimap_joint", bx, by, { w = lw * PAD, h = lw * PAD, color = col })
+                end
+              end
+            end
+          end
         end
       end
     end
   end
-  end -- (the casing of every road first, then every fill: where two roads meet they join)
   -- north: a red tab on the rim, its letter upright, going round as the camera turns
   nova.ui.sprite("ui/minimap_north", cx + fs * MM.north_r, cy - 1.4 - fc * MM.north_r, { w = 21, h = 21 })
   -- you: pointing the way you face against the way the camera looks (heading 0 faces north; a heading towards +x, the west, turns it
