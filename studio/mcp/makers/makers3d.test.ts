@@ -408,6 +408,88 @@ describe("character3d_make", () => {
     }
   });
 
+  it("gives a chibi fox a big slouchy bucket hat with holes its ears come through, clear of them however their springs swing them", () => {
+    const made = (o: Record<string, unknown> = {}) => parsed(makeCharacter3d({ species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", hat: "bucket", hat_color: "#b5503f", hat_pin: "envelope", ...o }).model);
+    const doc = made();
+    const find = (ps: any[], n: string): any => { for (const p of ps) { if (p.name === n) return p; const f = find(p.children ?? [], n); if (f) return f; } };
+    const head = find(doc.parts, "head");
+    const hat = head.cubes.find((c: any) => c.color === "#b5503f");
+    expect(hat).toBeDefined();
+    const tris = (verts: number[][], polys: { v: number[] }[], at: number[] = [0, 0, 0]) => polys.flatMap((p) => p.v.slice(1, -1).map((_, i) => [p.v[0]!, p.v[i + 1]!, p.v[i + 2]!].map((k) => verts[k]!.map((x, d) => (x + at[d]!) / 16))));
+    const hatTris = tris(hat.verts, hat.polys);
+    // big: the brim well past the head; and `hat_size` makes it bigger still
+    const shell = head.cubes[0].verts as number[][];
+    const headW = Math.max(...shell.map((v) => Math.abs(v[0]!))) / 16, hatW = Math.max(...hat.verts.map((v: number[]) => Math.abs(v[0]!))) / 16;
+    expect(hatW).toBeGreaterThan(headW * 1.25);
+    const bigger = find(made({ hat_size: 1.3 }).parts, "head").cubes.find((c: any) => c.color === "#b5503f");
+    expect(Math.max(...bigger.verts.map((v: number[]) => Math.abs(v[0]!))) / 16).toBeGreaterThan(hatW * 1.05);
+    expect(() => makeCharacter3d({ species: "fox", build: "chibi", hat: "bucket", hat_size: 3 })).toThrow(/hat_size is a number from 0.6 to 1.6/);
+    // a segment against a triangle (Moller and Trumbore)
+    const cross = (a: number[], b: number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+    const dot = (a: number[], b: number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+    const sub = (a: number[], b: number[]) => [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!];
+    const hits = (p: number[], q: number[], t: number[][]) => {
+      const d = sub(q, p), e1 = sub(t[1]!, t[0]!), e2 = sub(t[2]!, t[0]!), h = cross(d, e2), a = dot(e1, h);
+      if (Math.abs(a) < 1e-12) return false;
+      const s = sub(p, t[0]!), u = dot(s, h) / a;
+      if (u < 0 || u > 1) return false;
+      const qv = cross(s, e1), v = dot(d, qv) / a;
+      if (v < 0 || u + v > 1) return false;
+      const k = dot(e2, qv) / a;
+      return k >= 0 && k <= 1;
+    };
+    // each ear, swung up to 0.32 rad about x and about z from its root (the game's springs swing them up to 0.25): no edge of it
+    // crosses the hat; and it stands up through the hat (its tip above the crown)
+    const hatTop = Math.max(...hat.verts.map((v: number[]) => v[1]!)) / 16;
+    const SWING = 0.32; // (EAR_SWING: the most the maker leaves room for; the game swings them up to 0.25)
+    for (const name of ["ear_l", "ear_r"]) {
+      const ear = find(head.children, name);
+      const at = ear.origin.map((x: number) => x / 16);
+      const pts = (ear.cubes as any[]).flatMap((c) => c.verts.map((v: number[]) => v.map((x) => x / 16)));
+      expect(Math.max(...pts.map((v: number[]) => v[1]!)) + at[1], name).toBeGreaterThan(hatTop);
+      for (const rx of [-SWING, 0, SWING]) for (const rz of [-SWING, 0, SWING]) {
+        const turn = (v: number[]) => {
+          let [x, y, z] = v as [number, number, number];
+          [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
+          [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+          return [x + at[0], y + at[1], z + at[2]];
+        };
+        for (const c of ear.cubes as any[]) {
+          const vs = c.verts.map((v: number[]) => turn(v.map((x) => x / 16)));
+          const edges = new Set<string>();
+          for (const p of c.polys) p.v.forEach((a: number, i: number) => { const b = p.v[(i + 1) % p.v.length]; edges.add(a < b ? `${a},${b}` : `${b},${a}`); });
+          for (const e of edges) {
+            const [a, b] = e.split(",").map(Number);
+            for (const t of hatTris) expect(hits(vs[a!], vs[b!], t), `${name} swung ${rx}, ${rz}: an edge through the hat`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("pads the painted picture: every see-through texel beside paint holds that paint's colour, the blocks 16 texels apart", () => {
+    for (const species of ["fox", "bear", "rabbit"]) {
+      const made = makeCharacter3d({ species, build: "chibi", head_scale: 1.75, outfit: species === "fox" ? "cardigan" : "vest", emblem: "envelope", accessory: species === "bear" ? "apron" : "none" });
+      const r = made.picture!;
+      let edges = 0, bad = 0;
+      for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+        const i = (y * r.w + x) * 4;
+        if (r.data[i + 3] !== 0) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const X = x + dx!, Y = y + dy!;
+          if (X < 0 || Y < 0 || X >= r.w || Y >= r.h) continue;
+          const j = (Y * r.w + X) * 4;
+          if (r.data[j + 3]! < 200) continue;
+          edges++;
+          if (Math.max(...[0, 1, 2].map((k) => Math.abs(r.data[i + k]! - r.data[j + k]!))) > 90) bad++;
+        }
+      }
+      expect(edges, species).toBeGreaterThan(100);
+      expect(bad / edges, species).toBeLessThan(0.01);
+      for (const c of walkCubes(parsed(made.model))) if (c.texture) { expect(c.texture.at[0] % 16, species).toBe(8); expect(c.texture.at[1] % 16, species).toBe(8); }
+    }
+  });
+
   it("makes soft hats and a cardigan for a village postie: a bucket hat or a round cap with a pin, a collar, buttons, no belt", () => {
     const base = { species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: "#e2b04a", emblem: "envelope" };
     const plain = makeCharacter3d({ ...base, hat: "bucket" });

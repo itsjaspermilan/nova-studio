@@ -256,6 +256,22 @@ export function dilate(r: Raster, passes: number): void {
   const { w, h, data } = r;
   const known = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) if (data[i * 4 + 3]! > 0 || data[i * 4]! + data[i * 4 + 1]! + data[i * 4 + 2]! > 0) known[i] = 1;
+  // (first, a see-through texel right beside paint takes that paint's colour, whatever ink it was nearest)
+  const touch: [number, number, number, number][] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (data[i * 4 + 3]! > 0) continue;
+    let rr = 0, gg = 0, bb = 0, n = 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const X = x + dx, Y = y + dy;
+      if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+      const j = (Y * w + X) * 4;
+      if (data[j + 3]! < 128) continue;
+      rr += data[j]!; gg += data[j + 1]!; bb += data[j + 2]!; n++;
+    }
+    if (n) touch.push([i, rr / n, gg / n, bb / n]);
+  }
+  for (const [i, rr, gg, bb] of touch) { data[i * 4] = Math.round(rr); data[i * 4 + 1] = Math.round(gg); data[i * 4 + 2] = Math.round(bb); known[i] = 1; }
   for (let pass = 0; pass < passes; pass++) {
     const add: [number, number, number, number][] = [];
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
