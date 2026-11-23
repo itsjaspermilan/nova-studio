@@ -146,7 +146,35 @@
   {
    "wait": 3,
    "capture": "pip_end driving main"
+  },
+  {
+   "lua": "CAM.pinned = { -85, nova.terrain_height(-85, 47) + 3.5, 47, -105, nova.terrain_height(-105, 55) + -1, 55, 50 }"
+  },
+  {
+   "wait": 3,
+   "capture": "bridge_from_the_bank"
+  },
+  {
+   "lua": "CAM.pinned = { -96, nova.terrain_height(-96, -40) + 6, -40, -101, nova.terrain_height(-101, -5) + -2, -5, 50 }"
+  },
+  {
+   "wait": 3,
+   "capture": "creek_upstream"
+  },
+  {
+   "lua": "CAM.pinned = { 20, nova.terrain_height(20, 290) + 5, 290, 20, nova.terrain_height(20, 232), 232, 50 }"
+  },
+  {
+   "wait": 3,
+   "capture": "old_bridge_from_across_the_gorge"
+  },
+  {
+   "lua": "CAM.pinned = { 45, nova.terrain_height(45, 245) + 20, 245, 20, nova.terrain_height(20, 235) + 18, 235, 50 }"
+  },
+  {
+   "wait": 3,
+   "capture": "old_bridge_from_the_side"
   }
  ],
- "out": "build/gallery/roads_after"
+ "out": "build/gallery/roads"
 }

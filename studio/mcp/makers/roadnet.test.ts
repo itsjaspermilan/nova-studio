@@ -2,7 +2,7 @@
 // has no hole inside its outline, no two triangles over one another, every inside edge shared by exactly two triangles with the same
 // end points, one height at each place, and a transition wherever two surfaces meet.
 import { describe, expect, it } from "vitest";
-import { buildNetwork, checkSurface, networkGlb, surfaceOf } from "../../../scripts/lib/roadnet.mjs";
+import { buildNetwork, checkSurface, networkGlb, surfaceIndex, surfaceOf } from "../../../scripts/lib/roadnet.mjs";
 
 type Spec = Record<string, unknown>;
 const T = "road_asphalt", G = "road_gravel";
@@ -44,6 +44,26 @@ describe("road networks: one surface, joined", () => {
       expect(net.junctions[0].mouth).toBeGreaterThan(deg === 20 ? 25 : 5);
     });
   }
+
+  it("a very shallow Y (8 degrees): the gore ends in a rounded nose of at least 0.6 m, not a point", () => {
+    const { net } = sound({ roads: [{ ...main, control: [[0, -70], [0, 120]] }, { id: "lane", control: [[0, 0], at(8, 60), at(8, 120)], road: G, width: 7.2 }] });
+    expect(Math.min(...net.junctions[0].corners)).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it("says where its surface is: clearance from the outline (negative on it), the way off it, and each apron's outline", () => {
+    const { net } = sound({ roads: [main, { id: "lane", control: [[0, 0], [60, 0]], road: G, width: 7.2 }] });
+    const s = surfaceIndex(net.mesh);
+    expect(s.clearance(0, -40)).toBeLessThan(-4); // (the middle of the main road, 4.6 m from its edges)
+    expect(s.clearance(20, -40)).toBeCloseTo(20 - 4.6, 0);
+    // (in the corner by the junction, just outside the fillet, and inside it)
+    expect(s.clearance(8, -8)).toBeGreaterThan(0);
+    expect(s.clearance(5.5, -5.5)).toBeLessThan(0);
+    const [ax] = s.away(20, -40);
+    expect(ax).toBeGreaterThan(0.9);
+    const j = net.junctions[0];
+    expect(j.apron.length).toBeGreaterThan(4);
+    expect(j.paved).toBeGreaterThan(j.mouth);
+  });
 
   it("a crossroads (at a slant), the crossing road split in two arms", () => {
     const { net } = sound({ roads: [main, { id: "cross", control: [[-60, 12], [60, -12]], road: T, width: 7.2 }] });

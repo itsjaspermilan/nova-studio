@@ -30,6 +30,7 @@ const SHOULDER = [0.33, 0.29, 0.23];
 const THRESHOLD = [0.3, 0.22, 0.15]; // a bridge's threshold strip: dark weathered timber
 const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
 const RANK = { road_asphalt: 3, road_gravel: 2, road_dirt: 1, road_sand: 1, road_snow: 1 };
+export const MIN_NOSE = 0.6; // (metres: the smallest corner radius, the nose of a shallow Y's gore)
 export const KERB = { road_asphalt: 6, road_gravel: 4.5, road_dirt: 4, road_sand: 4, road_snow: 4 };
 export const NETWORK_DEFAULTS = { transition: "feather", apron: 3, feather: 1.6, ends: "round", rows: 2, kerb: KERB };
 
@@ -168,7 +169,7 @@ function routeOf(r, k) {
   const line = lineOf(r.control);
   const zones = (r.zones ?? []).map((z) => ({ ...z }));
   const route = {
-    id: r.id ?? r.name ?? `road${k + 1}`, index: k, line, kind, width, zones,
+    id: r.id ?? r.name ?? `road${k + 1}`, index: k, line, kind, width, zones, vShift: 0,
     // (the half-width scale: a road `width` w scales the 12 m cross-section; a zone's width eases in and out over 15 m)
     sigma(s) {
       let w = width;
@@ -332,10 +333,11 @@ export function buildNetwork(spec) {
   const row = (route, s, kind, cutSide = 0, inner = null) => {
     const key = `${route.index}:${s.toFixed(6)}:${kind}`;
     let full = rowCache.get(key);
+    route.rowsMade = true;
     if (!full) {
       const f = route.line.at(s), sg = route.sigma(s), offs = sec(kind).offs;
       const signed = [...offs.slice().reverse().map((x) => -x), ...offs].filter((x, i, a) => i === 0 || Math.abs(x - a[i - 1]) > 1e-9);
-      full = { s, kind, sigma: sg, f, pts: signed.map((u) => ({ o: u, v: mesh.v(f.x + f.nx * u * sg, f.z + f.nz * u * sg, yAt(kind, u)) })) };
+      full = { s, vs: vAlong(s + route.vShift), kind, sigma: sg, f, pts: signed.map((u) => ({ o: u, v: mesh.v(f.x + f.nx * u * sg, f.z + f.nz * u * sg, yAt(kind, u)) })) };
       rowCache.set(key, full);
     }
     if (!cutSide) return full;
@@ -343,7 +345,6 @@ export function buildNetwork(spec) {
     const c = inner ?? sec(kind).inner, sides = [cutSide].flat();
     return { ...full, pts: full.pts.filter((p) => sides.every((sd) => (sd > 0 ? p.o <= c + 1e-9 : p.o >= -c - 1e-9))) };
   };
-  const vNear = (route, s) => vAlong(s);
 
   // ---- triangles between two rows (or any two polylines across a road) ------------------------------------------------------------------
   // A and B go across from one side to the other with keys (offsets) that grow; the strip between them is zipped by key, so rows with
@@ -365,8 +366,8 @@ export function buildNetwork(spec) {
       const a0 = A.pts[k], a1 = A.pts[k + 1], b0 = byO.get(a0.o.toFixed(6)), b1 = byO.get(a1.o.toFixed(6));
       if (!b0 || !b1) continue;
       const [l0, l1] = bandLook(kind, a0.o, a1.o, style);
-      const la0 = { col: l0.col, uv: [l0.u, vNear(null, A.s)] }, la1 = { col: l1.col, uv: [l1.u, vNear(null, A.s)] };
-      const lb0 = { col: l0.col, uv: [l0.u, vNear(null, B.s)] }, lb1 = { col: l1.col, uv: [l1.u, vNear(null, B.s)] };
+      const la0 = { col: l0.col, uv: [l0.u, A.vs] }, la1 = { col: l1.col, uv: [l1.u, A.vs] };
+      const lb0 = { col: l0.col, uv: [l0.u, B.vs] }, lb1 = { col: l1.col, uv: [l1.u, B.vs] };
       mesh.tri(a0.v, a1.v, b1.v, la0, la1, lb1, kind, piece);
       mesh.tri(a0.v, b1.v, b0.v, la0, lb1, lb0, kind, piece);
     }
@@ -376,24 +377,25 @@ export function buildNetwork(spec) {
   // ---- the kerb strip round a corner: the bands beyond the carriageway carried along a curve ------------------------------------------
   // samples: [{ x, z (the outer edge), nx, nz (inward), sigma }], the first and last replaced by the exact vertices of the rows they
   // meet (`first`, `last`: lists of row points from the outer edge inward). Returns the strip's inner line (vertices).
-  const kerbStrip = (samples, first, last, kind, sStart, piece) => {
+  // (its texture's v runs from `v0` at its first row to `v1` at its last, by the distance round, so it meets both roads' strips)
+  const kerbStrip = (samples, first, last, kind, v0, v1, piece) => {
     const s = sec(kind), offs = s.offs.filter((x) => x >= s.inner - 1e-9).slice().reverse(); // outer edge first
     const rows = samples.map((q, k) => {
       if (k === 0 && first) return first;
       if (k === samples.length - 1 && last) return last;
       return offs.map((b) => ({ o: b, v: mesh.v(q.x + q.nx * q.sigma * (6 - b), q.z + q.nz * q.sigma * (6 - b), yAt(kind, b)) }));
     });
-    let along = sStart;
+    const cum = [0];
+    for (let k = 1; k < samples.length; k++) cum.push(cum[k - 1] + Math.hypot(samples[k].x - samples[k - 1].x, samples[k].z - samples[k - 1].z));
+    const vAt = (k) => (v1 === undefined ? v0 + cum[k] / S.metres : v0 + ((v1 - v0) * cum[k]) / (cum.at(-1) || 1));
     for (let k = 0; k + 1 < rows.length; k++) {
       const A = rows[k], B = rows[k + 1];
-      const step = Math.hypot(samples[k + 1].x - samples[k].x, samples[k + 1].z - samples[k].z);
       for (let b = 0; b + 1 < offs.length; b++) {
         const [l0, l1] = bandLook(kind, offs[b + 1], offs[b]); // (inner, outer)
-        const look = (l, v) => ({ col: l.col, uv: [l.u, vAlong(v)] });
-        mesh.tri(A[b].v, A[b + 1].v, B[b + 1].v, look(l1, along), look(l0, along), look(l0, along + step), kind, piece);
-        mesh.tri(A[b].v, B[b + 1].v, B[b].v, look(l1, along), look(l0, along + step), look(l1, along + step), kind, piece);
+        const look = (l, v) => ({ col: l.col, uv: [l.u, v] });
+        mesh.tri(A[b].v, A[b + 1].v, B[b + 1].v, look(l1, vAt(k)), look(l0, vAt(k)), look(l0, vAt(k + 1)), kind, piece);
+        mesh.tri(A[b].v, B[b + 1].v, B[b].v, look(l1, vAt(k)), look(l0, vAt(k + 1)), look(l1, vAt(k + 1)), kind, piece);
       }
-      along += step;
     }
     const inner = rows.map((r) => r[r.length - 1].v);
     inner.outer = rows.map((r) => r[0].v);
@@ -428,12 +430,13 @@ export function buildNetwork(spec) {
   };
 
   // ---- the patch: one polygon of shared vertices, triangulated and refined -------------------------------------------------------------
-  const patch = (poly, kind, frame, piece) => {
+  const patch = (poly, kind, frame, piece, uvOf = null) => {
     const pts = poly.filter((v, i) => v !== poly[(i + 1) % poly.length]);
     const tris = triangulate(pts, 2.0, (x, z) => mesh.v(x, z, TOP));
     const sx = sec(kind).inner;
     for (const [a, b, c] of tris) {
       const look = (v) => {
+        if (uvOf) return { col: sec(kind).road, uv: uvOf(v) };
         // (the through road's texture carried on: across by the offset from its middle, folded back inside its carriageway)
         const dx = v.x - frame.x, dz = v.z - frame.z;
         let off = Math.abs(dx * frame.nx + dz * frame.nz);
@@ -452,6 +455,8 @@ export function buildNetwork(spec) {
     const M = sa.through, Sr = sa.route, sN = sa.sN;
     const fM = M.line.at(sN), kind = M.kindAt(sN);
     const arm = { route: Sr, s: sa.s, dir: sa.dir };
+    // (the joining road's picture starts where the through road's is at the node, so the junction's blend between them is short)
+    if (!Sr.rowsMade && !Sr.shifted) { Sr.vShift = sN + M.vShift - sa.s; Sr.shifted = true; }
     // which side of M the arm leaves on, and which of its edges faces M's forward direction
     const f6 = armAt(arm, Math.min(8, Sr.line.length * 0.5));
     const side = Math.sign((f6.x - fM.x) * fM.nx + (f6.z - fM.z) * fM.nz) || 1;
@@ -475,7 +480,9 @@ export function buildNetwork(spec) {
       const fx = M.line.at(hit.s), awayM = [fx.tx * away, fx.tz * away], fa = armAt(arm, hit.d), awayS = [fa.tx, fa.tz];
       const phi = Math.acos(Math.max(-1, Math.min(1, awayM[0] * awayS[0] + awayM[1] * awayS[1])));
       const half = Math.max(0.05, Math.min(Math.PI / 2 - 0.01, phi / 2));
-      const R = Math.min(o.kerb[kind] ?? 4, 12 * Math.tan(half));
+      // (the radius by the surface, smaller in a sharp corner so its tangents stay within 12 m, but never under MIN_NOSE: a shallow
+      // Y's gore ends in a small rounded nose, not a point)
+      const R = Math.max(MIN_NOSE, Math.min(o.kerb[kind] ?? 4, 12 * Math.tan(half)));
       const L = R / Math.tan(half);
       return { e, away, sT: hit.s + away * L, dT: hit.d + L, R, phi };
     };
@@ -510,7 +517,7 @@ export function buildNetwork(spec) {
         samples.push({ x, z, nx: -f.nx * c.e, nz: -f.nz * c.e, sigma: Sr.sigma(f.s) });
       }
       if (m - c.dT < 1e-6) samples.pop();
-      return kerbStrip(samples, mOuterM(c.sT), mOuter(c.e), kind, c.sT, "kerb");
+      return kerbStrip(samples, mOuterM(c.sT), mOuter(c.e), kind, vAlong(c.sT + M.vShift), mouth.vs, "kerb");
     };
     later.push(() => {
     const innerF = strip(cf), innerB = strip(cb);
@@ -523,7 +530,21 @@ export function buildNetwork(spec) {
     const eAt1 = fwdFirst ? cf.e : cb.e;
     const across = mouthArm.filter((p) => Math.abs(p.o) <= sec(mouthKind).inner + 1e-9).sort((a, b) => (b.o - a.o) * eAt1).map((p) => p.v);
     const poly = [...edgeLine, ...atS1.slice(1), ...across.slice(1), ...atS0.slice().reverse().slice(1, -1)];
-    patch(poly, kind, { x: fM.x, z: fM.z, nx: fM.nx, nz: fM.nz, tx: fM.tx, tz: fM.tz, s: sN }, "junction");
+    // (its picture: the through road's strip carried on across its cut-back edge, blending into the joining road's own toward its
+    // mouth, so it meets both with no seam; each clamped to its carriageway, never folded, so no repair patch or crack repeats)
+    const cM = sec(kind).inner, cS = sec(mouthKind).inner, clampU = (o, c) => Math.max(-c, Math.min(c, o));
+    const uvOf = (v) => {
+      const nm = M.line.nearest(v.x, v.z), fm = M.line.at(nm.s), om = ((v.x - fm.x) * fm.nx + (v.z - fm.z) * fm.nz) / M.sigma(nm.s);
+      const ns = Sr.line.nearest(v.x, v.z), fs = Sr.line.at(ns.s), os = ((v.x - fs.x) * fs.nx + (v.z - fs.z) * fs.nz) / Sr.sigma(ns.s);
+      const uM = uRoad(kind, clampU(om, cM)), vM = vAlong(nm.s + M.vShift), uS = uRoad(kind, clampU(os, cS)), vS = vAlong(ns.s + Sr.vShift);
+      const dEdge = Math.max(0, (Math.abs(om) - cM) * M.sigma(nm.s)), dMouth = Math.max(0, m - Math.abs(ns.s - arm.s));
+      // (v blends first, while u still reads the plain tarmac at the carriageway's edge, then u: so the blend never sweeps across a
+      // repair patch or a crack of the picture and smears it)
+      const t = dEdge / (dEdge + dMouth || 1), sm = (x) => x * x * (3 - 2 * x);
+      const wv = sm(Math.min(1, 2 * t)), wu = sm(Math.max(0, 2 * t - 1));
+      return [uM + (uS - uM) * wu, vM + (vS - vM) * wv];
+    };
+    patch(poly, kind, { x: fM.x, z: fM.z, nx: fM.nx, nz: fM.nz, tx: fM.tx, tz: fM.tz, s: sN }, "junction", uvOf);
     // (the junction's ground for a game: from the through road's middle at one corner, round both corners' outer edges, back along
     // its middle; and how far up the joining road the junction's surface runs)
     const c0 = M.line.at(s0), c1 = M.line.at(s1);
@@ -532,6 +553,11 @@ export function buildNetwork(spec) {
     const record = { kind: sa.node.kind, through: M.id, road: Sr.id, at: [fM.x, fM.z], angle: Math.round((Math.acos(Math.max(-1, Math.min(1, fA.tx * fM.tx + fA.tz * fM.tz))) * 180) / Math.PI), surface: kind, joining: Sr.kindAt(sMouth), transition: lead ? o.transition : null, mouth: m, corners: [cb, cf].map((c) => Math.round(c.R * 10) / 10),
       // (metres from the node up the joining road that are the junction's surface: its mouth, and its apron and half the band)
       paved: lead ? m + (o.transition === "hard" ? 0 : o.apron) + (o.transition === "feather" ? o.feather / 2 : 0) : m, end: arm.dir > 0 ? "start" : "end", s: sa.s };
+    // (the apron, the junction's surface carried up the joining road: its outline, edge to edge, from the mouth to `paved`)
+    if (record.paved > m) {
+      const n = Math.max(1, Math.ceil((record.paved - m) / 1.5)), ds = Array.from({ length: n + 1 }, (_, k) => m + ((record.paved - m) * k) / n);
+      record.apron = [...ds.map((d) => armEdge(arm, d, 1)), ...ds.slice().reverse().map((d) => armEdge(arm, d, -1))];
+    }
     junctions.push(record);
   }
 
@@ -561,7 +587,7 @@ export function buildNetwork(spec) {
         const f = padAt(pad, h.u), awayP = [f.tx * dirU, f.tz * dirU], fa = armAt(arm, h.d), awayS = [fa.tx, fa.tz];
         const phi = Math.acos(Math.max(-1, Math.min(1, awayP[0] * awayS[0] + awayP[1] * awayS[1])));
         const half = Math.max(0.05, Math.min(Math.PI / 2 - 0.01, phi / 2));
-        const R = Math.min((o.kerb[kind] ?? 4) * 0.7, 8 * Math.tan(half)), L = R / Math.tan(half);
+        const R = Math.max(MIN_NOSE, Math.min((o.kerb[kind] ?? 4) * 0.7, 8 * Math.tan(half))), L = R / Math.tan(half);
         return { e, uT: h.u + dirU * L, dT: h.d + L, R, dirU };
       };
       const cLo = fin(lo, -1, loE), cHi = fin(hi, 1, -loE);
@@ -570,9 +596,9 @@ export function buildNetwork(spec) {
       const lead = r.kindAt(sMouth) === kind ? null : kind;
       cuts.get(r).push(arm.dir > 0 ? { from: -1e9, to: sMouth, endAt: "to", kind: "mouth", lead } : { from: sMouth, to: 1e9, endAt: "from", kind: "mouth", lead });
       const mouthKind = lead ?? r.kindAt(sMouth);
-      const mouthArm = row(r, sMouth, mouthKind).pts.map((p) => ({ o: p.o * arm.dir, v: p.v }));
+      const mouthRow = row(r, sMouth, mouthKind), mouthArm = mouthRow.pts.map((p) => ({ o: p.o * arm.dir, v: p.v }));
       junctions.push({ kind: "pad", through: pad.id, road: r.id, at: pad.at, surface: kind, joining: r.kindAt(sMouth), transition: lead ? o.transition : null, mouth: m });
-      return { arm, cLo, cHi, m, mouthArm, mouthKind, start: ((cLo.uT % P) + P) % P };
+      return { arm, cLo, cHi, m, mouthArm, mouthKind, mouthVs: mouthRow.vs, start: ((cLo.uT % P) + P) % P };
     }).sort((x, y) => x.start - y.start);
     const s = sec(kind);
     const outerOf = (op, e) => op.mouthArm.filter((p) => p.o * e >= sec(op.mouthKind).inner - 1e-9).sort((a, b) => Math.abs(b.o) - Math.abs(a.o));
@@ -609,7 +635,7 @@ export function buildNetwork(spec) {
       // a pad on its own: a ring strip all round (its last row is its first)
       const smp = outlineSamples(0, P);
       const firstRow = s.offs.filter((x) => x >= s.inner - 1e-9).slice().reverse().map((b) => ({ o: b, v: mesh.v(smp[0].x + smp[0].nx * pad.sigma * (6 - b), smp[0].z + smp[0].nz * pad.sigma * (6 - b), yAt(kind, b)) }));
-      const inner = kerbStrip(smp, firstRow, firstRow, kind, 0, "kerb");
+      const inner = kerbStrip(smp, firstRow, firstRow, kind, 0, undefined, "kerb");
       poly.push(...inner.slice(0, -1));
     }
     openings.forEach((op, k) => {
@@ -620,7 +646,7 @@ export function buildNetwork(spec) {
       while (u1 <= u0) u1 += P;
       const line = outlineSamples(u0, u1), f2 = filletSamples(next, next.cLo, false), b = armSamples(next, next.cLo, true);
       const samples = [...a, ...f1.slice(1), ...line.slice(1), ...f2.slice(1), ...b.slice(1)];
-      const inner = kerbStrip(samples, outerOf(op, op.cHi.e), outerOf(next, next.cLo.e), kind, 0, "kerb");
+      const inner = kerbStrip(samples, outerOf(op, op.cHi.e), outerOf(next, next.cLo.e), kind, op.mouthVs, next.mouthVs, "kerb");
       // then across the next opening's mouth
       const across = next.mouthArm.filter((p) => Math.abs(p.o) <= sec(next.mouthKind).inner + 1e-9).sort((x, y) => (y.o - x.o) * next.cLo.e).map((p) => p.v);
       poly.push(...inner.slice(0, -1), ...across.slice(0, -1));
@@ -739,7 +765,7 @@ export function buildNetwork(spec) {
     }
   }
   function zipRows(A, B, a, b, piece) {
-    const look = (p, row, kind, style) => { const s = sec(kind); const [l] = bandLook(kind, p.o, p.o + (p.o >= 0 ? 0.001 : -0.001), style); return { col: Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), vAlong(row.s)] }; };
+    const look = (p, row, kind, style) => { const s = sec(kind); const [l] = bandLook(kind, p.o, p.o + (p.o >= 0 ? 0.001 : -0.001), style); return { col: Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), row.vs] }; };
     zip(A.pts, B.pts, (p0, p1, q0) => [look(p0, A, a.kind, a.style), look(p1, A, a.kind, a.style), look(q0, B, b.kind, b.style)], (p0, q1, q0) => [look(p0, A, a.kind, a.style), look(q1, B, b.kind, b.style), look(q0, B, b.kind, b.style)], b.kind, piece);
   }
   // a ragged line across the road between two surfaces: the first surface's broken edge, dust of the second on its last metres
@@ -765,7 +791,7 @@ export function buildNetwork(spec) {
     const lookAt = (p, kind, style, rs, tint) => {
       const s = sec(kind), inner = Math.abs(p.o) <= s.drop;
       const [l] = bandLook(kind, p.o, p.o + (p.o >= 0 ? 0.001 : -0.001), style);
-      return { col: tint && inner ? tint : Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), vAlong(rs ?? p.s)] };
+      return { col: tint && inner ? tint : Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), vAlong((rs ?? p.s) + r.vShift)] };
     };
     // first surface up to the ragged line (dusted toward it), then the second from it
     // (row, then a row of the band's own offsets just inside it, zipped; then quad by quad to the ragged line, which keeps every
@@ -793,7 +819,7 @@ export function buildNetwork(spec) {
       // the verge runs on across the end: one more row, every point dropped into the ground
       const d = (6 - sc.drop) * sg;
       const edge = R.pts.map((p) => ({ o: p.o, v: mesh.v(p.v.x + tx * d, p.v.z + tz * d, SKIRT) }));
-      const look = (p, rs) => ({ col: sc.bands.at(-1).col[1], uv: [uRoad(kind, p.o), vAlong(rs)] });
+      const look = (p, rs) => ({ col: sc.bands.at(-1).col[1], uv: [uRoad(kind, p.o), vAlong(rs + r.vShift)] });
       zip(R.pts, edge, (a, b, c) => [look(a, s), look(b, s), look(c, s + d * dirOut)], (a, b, c) => [look(a, s), look(b, s + d * dirOut), look(c, s + d * dirOut)], kind, "cap");
       return;
     }
@@ -811,7 +837,7 @@ export function buildNetwork(spec) {
     const rings = offs.map((b) => b === 0 ? Array(N + 1).fill(pos[0].v) : ring(b, pos.find((p) => Math.abs(p.o - b) < 1e-9).v, neg.find((p) => Math.abs(p.o + b) < 1e-9).v));
     // (the picture runs round the cap as if the road bent round on the spot: v by the distance round each ring, u by its radius)
     const lookAt = (k, b, j) => {
-      const v = vAlong(s + ((j * Math.PI) / N) * b * sg);
+      const v = vAlong(s + r.vShift + ((j * Math.PI) / N) * b * sg);
       if (k === 0) return { col: sc.road, uv: [uRoad(kind, b), v] };
       const [l0, l1] = bandLook(kind, offs[k - 1], offs[k]);
       return b === offs[k] ? { col: l1.col, uv: [l1.u, v] } : { col: l0.col, uv: [l0.u, v] };
@@ -1119,6 +1145,57 @@ export function checkSurface(tris, { step = 0.2 } = {}) {
     if (t1.kind && t2.kind && t1.kind !== t2.kind && !(t1.piece === "feather" || t2.piece === "feather" || t1.piece === "transition" || t2.piece === "transition")) problems.push(`${t1.kind} meets ${t2.kind} with no transition at ${k3(e.p)}`);
   }
   return { triangles: tris.length, area, coveredArea: covered * step * step, holes, overlaps, loops, outlineEdges: outline.length, problems };
+}
+
+/// Where the road surface is, for placing things beside it: `clearance(x, z)` is the distance from (x, z) to the surface's outline
+/// (its outer edge, the verge included), negative on the surface; `away(x, z)` is the unit direction off it there (out of the
+/// surface, or further from it). From the mesh itself, so junction patches, fillets, aprons, caps and pads count.
+export function surfaceIndex(mesh) {
+  const CELL = 4;
+  const k3 = (p) => `${p.x},${p.z}`;
+  const count = new Map();
+  for (const t of mesh.tris) for (let e = 0; e < 3; e++) {
+    const a = t.v[e], b = t.v[(e + 1) % 3], ka = k3(a), kb = k3(b), key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    const c = count.get(key);
+    if (c) c.n++; else count.set(key, { n: 1, a, b });
+  }
+  const bins = new Map();
+  const bin = (i, j) => { const k = `${i},${j}`; if (!bins.has(k)) bins.set(k, { edges: [], tris: [] }); return bins.get(k); };
+  const span = (xs, zs, fn) => {
+    for (let i = Math.floor(Math.min(...xs) / CELL); i <= Math.floor(Math.max(...xs) / CELL); i++) for (let j = Math.floor(Math.min(...zs) / CELL); j <= Math.floor(Math.max(...zs) / CELL); j++) fn(bin(i, j));
+  };
+  for (const e of count.values()) if (e.n === 1) span([e.a.x, e.b.x], [e.a.z, e.b.z], (b) => b.edges.push(e));
+  for (const t of mesh.tris) span(t.v.map((p) => p.x), t.v.map((p) => p.z), (b) => b.tris.push(t));
+  const onSurface = (x, z) => {
+    const b = bins.get(`${Math.floor(x / CELL)},${Math.floor(z / CELL)}`);
+    if (!b) return false;
+    return b.tris.some(({ v: [a, p, c] }) => {
+      const d = (p.x - a.x) * (c.z - a.z) - (p.z - a.z) * (c.x - a.x);
+      if (Math.abs(d) < 1e-12) return false;
+      const w0 = ((p.x - x) * (c.z - z) - (p.z - z) * (c.x - x)) / d, w1 = ((c.x - x) * (a.z - z) - (c.z - z) * (a.x - x)) / d;
+      return w0 >= 0 && w1 >= 0 && w0 + w1 <= 1;
+    });
+  };
+  const edgeDist = (x, z) => {
+    let best = Infinity;
+    for (let r = 0; r <= 6 && best > (r - 1) * CELL; r++) {
+      const i0 = Math.floor(x / CELL), j0 = Math.floor(z / CELL);
+      for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) {
+        if (Math.max(Math.abs(i - i0), Math.abs(j - j0)) !== r) continue;
+        for (const e of bins.get(`${i},${j}`)?.edges ?? []) {
+          const dx = e.b.x - e.a.x, dz = e.b.z - e.a.z, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - e.a.x) * dx + (z - e.a.z) * dz) / l2));
+          best = Math.min(best, Math.hypot(x - e.a.x - dx * t, z - e.a.z - dz * t));
+        }
+      }
+    }
+    return best;
+  };
+  const clearance = (x, z) => (onSurface(x, z) ? -edgeDist(x, z) : edgeDist(x, z));
+  const away = (x, z) => {
+    const h = 0.05, gx = clearance(x + h, z) - clearance(x - h, z), gz = clearance(x, z + h) - clearance(x, z - h), l = Math.hypot(gx, gz) || 1;
+    return [gx / l, gz / l];
+  };
+  return { clearance, away, onSurface };
 }
 
 /// The network's triangles as plain arrays, for checkSurface.

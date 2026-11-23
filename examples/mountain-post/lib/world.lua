@@ -14,6 +14,8 @@ end
 world.clear()
 
 local CELL = 20
+-- (metres a water surface runs on past its width into the banks; the ground's squares are lowered that far round it)
+world.WATER_EDGE = 1.0
 local function key(cx, cz) return cx * 100003 + cz end
 
 -- A road's line: points { x, z } every few metres, its name and surface.
@@ -118,9 +120,7 @@ function world.junction_surface(x, z)
   for _, j in ipairs(JUNCTIONS) do
     local dx, dz = x - j.at[1], z - j.at[2]
     if dx * dx + dz * dz < (j.paved + 14) ^ 2 then
-      if inside(j.area, x, z) then return j.surface end
-      local r, d, px, pz = world.nearest("road", x, z)
-      if r and r.id == j.road and d < r.width / 2 + 0.3 and (px - j.at[1]) ^ 2 + (pz - j.at[2]) ^ 2 < j.paved ^ 2 then return j.surface end
+      if inside(j.area, x, z) or (#j.apron > 0 and inside(j.apron, x, z)) then return j.surface end
     end
   end
   return nil

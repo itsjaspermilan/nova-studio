@@ -143,7 +143,13 @@ turning circle of its own surface) and a gap where a bridge's deck carries the r
 Free ends get a rounded cap (`ends`: "round", "square", "flat"). Where two surfaces meet, `transition` "feather" (the default) runs the
 junction's surface 3 m into the lane (its apron, without a centre line; markings end with the tarmac) and then meets the other surface
 along a ragged broken edge with dust over the last metre and a half; "apron" makes that edge straight; "hard" cuts at the mouth.
-`checkSurface` in the same file is the proof the tests use: every inner edge shared by exactly two triangles, no point covered twice, no
+A sharp Y's gore ends in a rounded nose of at least 0.6 m (`MIN_NOSE`). The junction patch's picture is the through road's strip
+carried on across its cut-back edge, blending into the joining road's own toward its mouth (each clamped to its carriageway, so no
+repair patch or crack repeats and there is no seam against either road). `surfaceIndex(mesh)` says where the surface is
+(`clearance(x, z)` from its outline, negative on it, and `away(x, z)`), and each junction record carries its `area` and its apron's
+outline (`apron`), so a game can keep its props off the road and know the surface under a wheel exactly (Fernhollow's
+`tools/roads.mjs` and `tools/footprint.mjs`: every placed thing's ground footprint, from its model, 0.4 m clear, a signpost a metre
+off in its corner, a mailbox 0.6 m). `checkSurface` in the same file is the proof the tests use: every inner edge shared by exactly two triangles, no point covered twice, no
 point inside the outline left open, one height at each place. The renderer lifts the road by the hills, so make the ground under the
 network with terrain_write's `roads` (a lane is exactly the main road's level on its level ground, the first road's level wins where
 two overlap, so a junction is one level with no step) and keep a game's own ground mesh a little under the road (its squares are flat

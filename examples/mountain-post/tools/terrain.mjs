@@ -2,9 +2,9 @@
 // `roads`), the roads as one network with proper junctions (road_make with `roads`: models/road_valley.glb), and the textured ground under
 // them (land_make). Prints the nova.terrain line that
 // scenes/valley.lua uses.
-import { BOUNDS_EN, CREEK, DECK_ENDS, GORGE, LAKE, PADS, ROADS, xz } from "./layout.mjs";
+import { BOUNDS_EN, CREEK, GORGE, LAKE, PADS, ROADS, xz } from "./layout.mjs";
 import { put, tool } from "./lib.mjs";
-import { buildNetwork } from "../../../scripts/lib/roadnet.mjs";
+import { NETWORK, roads } from "./roads.mjs";
 
 const B = BOUNDS_EN;
 const answer = tool("terrain_write", {
@@ -30,21 +30,14 @@ put("lib/terrain_line.lua", `-- Made by tools/terrain.mjs (terrain_write): the v
 // The roads: one network (road_make with `roads`), models/road_valley.glb: Fern Lane and Kettle Creek Road join Post Road at proper
 // junctions (filleted corners, a tarmac apron and a ragged edge into the gravel), the free ends rounded, and Kettle Creek Road stops
 // square with a threshold strip at each end of the bridge's deck (the creek is cut through the ground under it).
-// (road_make's cross-section is 12 m with its verges; the surface itself is about two thirds of it, so the width is scaled up)
-const whole = (r) => Math.round((r.width * 12) / (r.surface === "road_asphalt" ? 8.3 : 7.6) * 10) / 10;
-// (the road stops where the deck's planks start: layout.mjs DECK_ENDS)
-const network = {
-  roads: ROADS.map((r) => ({ id: r.id, control: r.control.map(xz), road: r.surface, width: whole(r) })),
-  gaps: [{ road: "kettle_creek_road", from: xz(DECK_ENDS.a), to: xz(DECK_ENDS.b) }],
-};
-console.log(tool("road_make", { name: "valley", ...network, preview: false }, { quiet: true }));
+console.log(tool("road_make", { name: "valley", ...NETWORK, preview: false }, { quiet: true }));
 // The junctions' ground for the game (lib/world.lua: the surface under a wheel, where ferns may grow): each junction's area and how far
 // up the lane its tarmac runs, from the same builder road_make used (the same numbers give the same junctions).
 {
   const r2 = (v) => Math.round(v * 100) / 100;
   const word = (k) => (k === "road_asphalt" ? "road" : "gravel");
-  const rows = buildNetwork(network).junctions.filter((j) => j.area).map((j) =>
-    `  { through = "${j.through}", road = "${j.road}", from = "${j.end}", surface = "${word(j.surface)}", paved = ${r2(j.paved)}, at = { ${j.at.map(r2).join(", ")} },\n    area = { ${j.area.flat().map(r2).join(", ")} } },`);
-  put("lib/road_junctions.lua", `-- Made by tools/terrain.mjs (the road builder's junctions, scripts/lib/roadnet.mjs). Do not edit; run the recipe again.\n-- Each: the road through it and the road that joins it (at its start or end), the junction's surface, how many metres up the joining\n-- road that surface runs, the node, and the area (x, z pairs) its patch and corners cover on the joining road's side.\nreturn {\n${rows.join("\n")}\n}\n`);
+  const rows = roads().net.junctions.filter((j) => j.area).map((j) =>
+    `  { through = "${j.through}", road = "${j.road}", from = "${j.end}", surface = "${word(j.surface)}", paved = ${r2(j.paved)}, at = { ${j.at.map(r2).join(", ")} },\n    area = { ${j.area.flat().map(r2).join(", ")} },\n    apron = { ${(j.apron ?? []).flat().map(r2).join(", ")} } },`);
+  put("lib/road_junctions.lua", `-- Made by tools/terrain.mjs (the road builder's junctions, scripts/lib/roadnet.mjs). Do not edit; run the recipe again.\n-- Each: the road through it and the road that joins it (at its start or end), the junction's surface, how many metres up the joining\n-- road that surface runs, the node, the area (x, z pairs) its patch and corners cover on the joining road's side, and the apron's outline.\nreturn {\n${rows.join("\n")}\n}\n`);
 }
 tool("land_make", { name: "land", ground: "grass", cells: 60, cell: 8, tile: 32, repeat: 8, color: "#8fae5a", preview: false });

@@ -380,16 +380,19 @@ def("barrier", () => {
   c.push(box([0, 1.85, -0.44], [2.2, 0.8, 0.06], PAL.paper, { rot: [0, 0, -2] }));
   return one(c, { boxes: [{ x: 0, z: 0, hw: 2.8, hl: 0.25, turn: 0 }] });
 });
+// What is left of the lake bridge, in two pieces, one on each rim of the gorge (each drawn rigid, `lift = "origin"`: on the rim's level
+// ground where it stands, its stone pier (24 m) reaching down into the cliff, never sheared down the slope).
 def("old_bridge", () => {
-  // what is left of the lake bridge: a stone pier on each bank, the deck's broken ends, a lamp post leaning
-  const c = [];
-  for (const z of [0, 34]) {
-    c.push(box([0, -6, z], [5.4, 12, 3], C.stone));
-    c.push(box([0, 0.1, z + (z ? -1.0 : 1.0)], [5.0, 0.3, 4.5], C.plankDark));
-  }
-  c.push(box([0, 0.0, 4.0], [4.6, 0.25, 2.5], C.plankDark, { rot: [-22, 0, 4] }));
-  c.push(box([0, 0.0, 30.5], [4.6, 0.25, 2.0], C.plankDark, { rot: [18, 0, -6] }));
-  for (const s of [1, -1]) c.push(box([s * 2.3, 0.6, 2.5], [0.12, 1.0, 4.0], C.wood));
+  // the near rim, at the end of Post Road: just past the road's end (z from 1 m on), the pier, the deck's broken end, the railings
+  const c = [box([0, -12, 2.6], [5.4, 24, 3], C.stone), box([0, 0.1, 3.6], [5.0, 0.3, 4.5], C.plankDark)];
+  c.push(box([0, 0.0, 6.6], [4.6, 0.25, 2.5], C.plankDark, { rot: [-22, 0, 4] }));
+  for (const s of [1, -1]) c.push(box([s * 2.3, 0.6, 5.1], [0.12, 1.0, 4.0], C.wood));
+  return one(c);
+});
+def("old_bridge_far", () => {
+  // the far rim: its pier and the deck's other broken end, reaching back (-z) over the gorge
+  const c = [box([0, -12, 0], [5.4, 24, 3], C.stone), box([0, 0.1, -1.0], [5.0, 0.3, 4.5], C.plankDark)];
+  c.push(box([0, 0.0, -3.5], [4.6, 0.25, 2.0], C.plankDark, { rot: [18, 0, -6] }));
   return one(c);
 });
 def("picnic_table", () => {
