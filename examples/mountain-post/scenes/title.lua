@@ -17,7 +17,7 @@ function Title:update(dt)
     if self.leaving > 0.6 then nova.goto_scene("office") end
     return
   end
-  if self.t > 0.4 and (nova.input.pressed("act") or nova.input.pressed("pause")) then
+  if self.t > 0.4 and (nova.input.pressed("confirm") or nova.input.pressed("pause")) then
     self.leaving = 0
     nova.sound.play("bell", { volume = 0.5 })
   end
@@ -34,7 +34,7 @@ function Title:draw_ui()
     -- A to start, on a prompt chip of the kit (the A button's cap and the word), rising and settling once as it appears
     local e = math.min(1, (self.t - 1.0) / 0.3)
     local word = words.press
-    ui.chip(w / 2 - ui.chip_width("A", word) / 2, h * 0.79 + (1 - e) * 10, "A", word, { alpha = e, down = nova.input.down("act") })
+    ui.chip(w / 2 - ui.chip_width("A", word) / 2, h * 0.79 + (1 - e) * 10, "A", word, { alpha = e, down = nova.input.down("confirm") })
   end
   ui.fade(self.leaving and self.leaving / 0.6 or math.max(0, 1 - self.t / 0.8), w, h)
 end

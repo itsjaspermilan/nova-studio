@@ -45,59 +45,59 @@
    "wait": 90
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "hazel line 1"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "hazel line 2"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "hazel line 3"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "hazel line 4"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
@@ -108,7 +108,7 @@
    "until": "S.delivered.hazel",
    "steps": [
     {
-     "press": "act"
+     "press": "interact"
     },
     {
      "wait": 20
@@ -157,59 +157,59 @@
    "wait": 90
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "pip line 1"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "pip line 2"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "pip line 3"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
    "capture": "pip line 4"
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 12
   },
   {
-   "press": "act"
+   "press": "interact"
   },
   {
    "wait": 50,
@@ -220,7 +220,7 @@
    "until": "S.delivered.pip",
    "steps": [
     {
-     "press": "act"
+     "press": "interact"
     },
     {
      "wait": 20

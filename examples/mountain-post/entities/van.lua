@@ -36,7 +36,9 @@ Van.TUNE = {
   drag = 0.004,         -- the air, per (m/s)^2
   grass = 0.6,          -- m/s^2 more rolling on the grass (the soft ground holds it back; with the starting van's pull it still gets going)
   gravel = 0.12,        -- and on a gravel lane
-  lock = math.rad(18.3), -- the front wheels at full lock, at a crawl: a 10 m kerb-to-kerb circle on the 1.31 m wheelbase (it was 9.2)
+  -- the front wheels at full lock, at a crawl: a 10 m kerb-to-kerb circle on the 1.51 m wheelbase (the rear axle moved back in the
+  -- owner's fourth notes; on the old 1.31 m one it was 18.3 degrees: the same tan(lock) / wheelbase keeps the same circle)
+  lock = math.rad(20.9),
   lock_fast = 0.35,     -- the share of the lock the stick gives at the top speed (less lock the faster it goes)
   steer_speed = 1.0,    -- the most the wheels move in a second (in shares of full lock): a flick of the stick is never a snap
   steer_ease = 5.0,     -- how quickly the wheels' own movement starts and stops (1/s)
@@ -49,11 +51,22 @@ Van.TUNE = {
   grip = 6,             -- how fast a sideways slip dies away (1/s): it holds the road, with a little give
   pull = 0.0035,        -- radians a second the van wanders to the left with the wheel let go (the Mayor's letter; barely felt)
   hill = 5.5,           -- how much a slope pulls (m/s^2 at 100 %)
+  -- The handbrake (B held; the owner's fourth notes: "hold for handbrake while driving"): the rear wheels lock, it slows firmly
+  -- (more than the pedal can pull against), and turning at some speed the tail steps out a little: the rear tyres hold the road less,
+  -- so the body turns more than the wheels ask and the van slides a little sideways, gently, and comes back into line the moment it
+  -- is let go. Stopped, it holds the van still on a slope.
+  handbrake = 4.0,      -- m/s^2 it slows by
+  hb_from = 3.0,        -- m/s: from this speed up the tail begins to step out ...
+  hb_full = 7.0,        -- ... fully from this one
+  hb_yaw = 0.7,         -- how much more the body turns than the wheels ask, fully (the tail stepping out)
+  hb_grip = 0.3,        -- the share of the sideways grip left at the back (the slip dies away slower: a gentle slide)
+  hb_corner = 1.5,      -- and how much more sideways pull it takes before it runs wide
+  hb_slip = math.rad(7), -- the slide (between the way it points and the way it goes) past which the tail stops stepping further out
 }
 local FEEL = Van.TUNE
 local GEARS = { 4, 7.5, 11 }           -- the speed at which each gear runs out (for the engine's note only; the slower van's range)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
--- The van (tools/van.mjs) is 2.97 m long over its bumpers (z -1.48 to 1.49) and 1.34 wide.
+-- The van (tools/van.mjs) is 2.97 m long over its bumpers (z -1.48 to 1.49) and 1.34 wide; its axles at z 0.72 and -0.79.
 Van.BODY = { offs = { 0.83, 0, -0.83 }, r = 0.66 }
 -- The lamps (tools/van.mjs makes each its own part): the headlamps glow softly while `head` is on; the tail lamps glow bright while
 -- braking and the reverse lamps light while reversing (by themselves). `beams` casts real light from the headlamps (two spot lights,
@@ -106,7 +119,8 @@ function Van:create()
   self.heading = self.ry or 0
   self.velx, self.velz, self.speed = 0, 0, 0
   self.steer = 0
-  self.ctl = { go = 0, brake = 0, steer = 0 }
+  self.ctl = { go = 0, brake = 0, steer = 0, handbrake = 0 }
+  self.handbrake = false
   self.driven = false
   self.spin = 0
   self.gear = 1
@@ -155,6 +169,8 @@ function Van:drive(dt)
   local c = self.ctl
   local live = self.driven
   local go, brake, steer_in = live and c.go or 0, live and c.brake or 0, live and c.steer or 0
+  local hb = live and (c.handbrake or 0) > 0.5
+  self.handbrake = hb
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local vf = self.velx * sinh + self.velz * cosh
   local vl = self.velx * cosh - self.velz * sinh
@@ -175,8 +191,14 @@ function Van:drive(dt)
   -- a van turns by its speed over the radius its front wheels point at (wheelbase / tan(angle)); past `corner` of sideways pull it
   -- asks less (understeer); the body follows over `yaw_lag`
   local ask = -vf * math.tan(angle) / self.wheelbase
+  -- (the handbrake at speed: the locked rear lets the tail step out, the body turning more than the wheels ask)
+  local slide = hb and math.max(0, math.min(1, (math.abs(vf) - FEEL.hb_from) / (FEEL.hb_full - FEEL.hb_from))) or 0
+  -- (and never a wild drift: past hb_slip of sliding it eases off, so the tail settles a little way out, catchable)
+  slide = slide * math.max(0, math.min(1, (FEEL.hb_slip * 2 - math.atan(math.abs(vl), math.abs(vf) + 0.1)) / FEEL.hb_slip))
+  ask = ask * (1 + FEEL.hb_yaw * slide)
+  local corner = FEEL.corner * (1 + (FEEL.hb_corner - 1) * slide)
   local side = math.abs(ask * vf)
-  if side > FEEL.corner then ask = ask * (FEEL.corner + (side - FEEL.corner) * FEEL.past) / side end
+  if side > corner then ask = ask * (corner + (side - corner) * FEEL.past) / side end
   if live and math.abs(steer_in) < 0.05 and math.abs(vf) > 2 then ask = ask + FEEL.pull * (vf > 0 and 1 or -1) end
   local was = self.yaw_rate or 0
   local lag = (math.abs(ask) < math.abs(was) or ask * was < 0) and FEEL.unwind_lag or FEEL.yaw_lag
@@ -198,15 +220,20 @@ function Van:drive(dt)
     elseif go <= 0 then vf = math.max(-FEEL.reverse, vf - FEEL.power * 0.7 * brake * dt); self.reversing = brake > 0.05 end
   end
   if live and vf < -0.15 then self.reversing = true end
+  -- the handbrake: the rear wheels locked drag it down firmly, whatever the pedals do; the brake lamps light with it
+  if hb then
+    vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.handbrake * dt)
+    self.braking, self.reversing = true, false
+  end
   -- rolling, engine braking, the air, the hills
   local sign = vf >= 0 and 1 or -1
   local coast = (go > 0 and 0.15 or FEEL.coast) + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
   vf = vf - sign * math.min(math.abs(vf), (coast + FEEL.drag * vf * vf) * dt)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   if not world.on_bridge(self.x, self.z) then vf = vf - (gx * sinh + gz * cosh) * FEEL.hill * dt end
-  if not live and math.abs(vf) < 0.4 then vf = 0 end -- (the handbrake: an empty van does not creep down a slope)
-  -- the slip sideways dies away quickly: the van holds its line
-  vl = vl * math.exp(-FEEL.grip * dt)
+  if (not live or hb) and math.abs(vf) < 0.4 then vf = 0 end -- (the handbrake: an empty van, or one held on it, does not creep down a slope)
+  -- the slip sideways dies away quickly: the van holds its line (less quickly with the rear wheels locked: the tail slides a little)
+  vl = vl * math.exp(-FEEL.grip * (1 - (1 - FEEL.hb_grip) * slide) * dt)
   self.speed = vf
   self.velx, self.velz = vf * sinh + vl * cosh, vf * cosh - vl * sinh
   -- moving: three circles along the van (Van.BODY) against the scenery, the water and the map's edges
@@ -249,6 +276,7 @@ function Van:drive(dt)
   self:suspension(dt, (vf - self.last_vf) / dt, (self.yaw_rate or 0) * vf)
   self.last_vf = vf
   self.spin = self.spin + vf / self.wheel_r * dt
+  if not hb then self.spin_rear = (self.spin_rear or 0) + vf / self.wheel_r * dt end -- (locked while the handbrake is on)
   -- the rear doors swing open and shut
   self.back_open = self.back_open + ((self.back_want or 0) - self.back_open) * math.min(1, dt * 6)
   self:sound(dt, go)
@@ -374,7 +402,7 @@ function Van:draw()
   for i, s in ipairs(self.stations) do
     local part = pt[s.name]
     part.y = self.susp.ready and self:wheel_offset(i) or 0
-    part.rx = self.spin
+    part.rx = s.front and self.spin or (self.spin_rear or 0)
     if s.front then part.ry = sv end
   end
   -- the rear doors open outwards about their hinges (on the van's back corners); they are the body's children in the model, so the
@@ -417,7 +445,7 @@ local LIT = {}
 function Van:lamps()
   LIT.head = Van.LIGHTS.head and true or false
   LIT.beams = LIT.head and Van.LIGHTS.beams and true or false
-  LIT.brake = self.driven and self.braking or false
+  LIT.brake = self.driven and self.braking or false -- (the pedal, or the handbrake)
   LIT.reverse = self.driven and self.reversing or false
   return LIT
 end
