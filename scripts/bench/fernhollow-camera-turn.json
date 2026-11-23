@@ -1,0 +1,5 @@
+[
+  { "at": 240,  "for": 480, "hold": { "axis:right_x": 1 } },
+  { "at": 840,  "for": 480, "hold": { "axis:right_x": -0.5 } },
+  { "at": 1440, "for": 480, "hold": { "axis:left_y": -1, "axis:left_x": 0.6 } }
+]

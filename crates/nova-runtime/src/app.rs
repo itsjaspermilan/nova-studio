@@ -528,6 +528,8 @@ struct App {
     last_frame: Instant,
     /// Makes the steps given to the game even (see `pacing`).
     pacer: crate::pacing::Pacer,
+    /// One line a frame when NOVA_FRAME_LOG names a file: for measuring frame pacing on a device (docs/play-on-linux-handheld.md).
+    frame_log: Option<std::io::BufWriter<std::fs::File>>,
     started: Instant,
     audio: Option<AudioOut>,
     audio_error: Option<String>,
@@ -546,6 +548,10 @@ impl App {
     /// stopped, the GPU surface and the window are dropped, and the loop ends (status 0). A watchdog ends the process if
     /// any of that hangs (`shutdown.rs`).
     fn shut_down(&mut self, event_loop: &ActiveEventLoop, why: &str) {
+        if let Some(w) = self.frame_log.as_mut() {
+            use std::io::Write;
+            let _ = w.flush();
+        }
         if self.finished {
             return;
         }
@@ -739,6 +745,7 @@ impl App {
         }
 
         let surface = self.surface.as_ref().expect("surface checked above");
+        let acquire_started = Instant::now();
         let texture = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -755,7 +762,23 @@ impl App {
         self.perf.stats = gfx.render(&view, size, &content.frame_input(self.opts.world_height));
         content.frame_done();
         self.perf.times.render_ms = render_started.elapsed().as_secs_f32() * 1000.0;
+        let present_started = Instant::now();
         gfx.queue.present(texture);
+        if let Some(w) = self.frame_log.as_mut() {
+            use std::io::Write;
+            let _ = writeln!(
+                w,
+                "{} {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} {:.3}",
+                self.frames_done,
+                measured * 1000.0,
+                dt * 1000.0,
+                build_ms,
+                lua_ms,
+                (render_started - acquire_started).as_secs_f32() * 1000.0,
+                self.perf.times.render_ms,
+                present_started.elapsed().as_secs_f32() * 1000.0
+            );
+        }
         self.perf.times.update_ms = build_ms;
         self.perf.times.lua_ms = lua_ms;
         self.perf.record(measured * 1000.0);
@@ -763,6 +786,10 @@ impl App {
         self.frames_done += 1;
         if self.opts.frames.is_some_and(|n| self.frames_done >= n) {
             self.finished = true;
+            if let Some(w) = self.frame_log.as_mut() {
+                use std::io::Write;
+                let _ = w.flush();
+            }
             print_summary("windowed", &self.perf);
             event_loop.exit();
         }
@@ -835,7 +862,18 @@ impl ApplicationHandler for App {
         if self.content.is_none() {
             let gfx = self.gfx.as_mut().expect("graphics were created above");
             match Content::load(&self.opts, gfx) {
-                Ok(content) => self.content = Some(content),
+                Ok(content) => {
+                    // (a benchmark on a device starts where it measures: `--start-scene valley`)
+                    if let (Some(scene), Some(game)) =
+                        (self.opts.start_scene.as_deref(), content.game())
+                        && let Err(e) = game.start_in_scene(scene)
+                    {
+                        self.failed = Some(format!("--start-scene {scene}: {e}"));
+                        event_loop.exit();
+                        return;
+                    }
+                    self.content = Some(content);
+                }
                 Err(e) => {
                     self.failed = Some(e);
                     event_loop.exit();
@@ -1017,6 +1055,16 @@ pub fn run_windowed(
         perf: Perf::default(),
         last_frame: Instant::now(),
         pacer: Default::default(),
+        frame_log: std::env::var_os("NOVA_FRAME_LOG").and_then(|p| {
+            use std::io::Write;
+            let mut w = std::io::BufWriter::new(std::fs::File::create(p).ok()?);
+            writeln!(
+                w,
+                "frame measured_ms given_ms update_ms lua_ms acquire_ms render_ms present_ms"
+            )
+            .ok()?;
+            Some(w)
+        }),
         started: Instant::now(),
         audio: None,
         audio_error: None,

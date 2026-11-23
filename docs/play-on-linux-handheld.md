@@ -59,3 +59,16 @@ The icon is not in `grid/`: it is a path in the entry's `icon` field. `node scri
 (touches no file; give the exe exactly as it is in the list, without quotes), and
 `node scripts/steam-shortcut-add.mjs --set-icon <in> <out> "<name>" <path to icon.png>` writes a copy of the list with that entry's icon set (same exact-roundtrip check as
 the add mode). Keep a copy of the old list, copy the pictures in, and restart Steam. Not yet tried on the device.
+
+## Measuring frame pacing on the handheld
+
+`scripts/handheld-bench.sh` builds the game, copies the program beside the installed game as `<id>_bench` (the installed game
+is not touched), runs it on the handheld's screen over SSH with a scripted input route (`--start-scene` and `--input` work in
+windowed runs too), and summarises the per-frame log that `NOVA_FRAME_LOG=<file>` makes the runtime write. Close the game in
+Steam first. The line to read is "frames whose given step differs from the previous by >2 ms".
+
+Found 2026-11-23 on the Retroid Pocket 6 (Turnip Adreno 740, gamescope, Fifo): the panel shows a picture every 16.7 ms, but a
+quarter of the frames start 25 ms after the last and the next 8 ms after that. The engine used to hand those steps to the game
+as they were, so a turning camera jumped; `pacing.rs` now gives each frame whole display periods (23.5% uneven frames before,
+0.3-0.5% after, on `scripts/bench/fernhollow-camera-turn.json`). The valley costs about 3.5 ms of Lua (p95 6.7 ms), 1.2 ms of
+render recording and 5.3 ms of GPU a frame there, so the rest of a frame is spent waiting for the display.
