@@ -977,3 +977,6 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
   `outline = { color, width }` (documented in `project-format.md` and `nova-api.json`, GPU test `outline_gpu.rs`): an inverted hull in
   `outline.wgsl`, 2.5 px wide at any distance, not cut by the see-through, one more draw of the mesh. Pictures:
   `build/gallery/pick_*`. Tests: `a_parcel_shows_a_tip_near_and_is_taken_without_a_popup_...`, `only_the_nearest_parcel_gets_the_tip_...`.
+9. "The colour scheme for the player seems a little drab."
+10. "We should have some limits on how much padding UI elements get to contribute to our overall theme. I feel some padding is
+    too tight, and some is too large."
