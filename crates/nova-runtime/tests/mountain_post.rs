@@ -547,7 +547,7 @@ fn getting_in_and_out_works_only_where_it_should() {
     // moving, Y does not get out (into D first: the brake held, A three times from P)
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 10 }, { "hold": ["brake"], "press": "confirm", "frames": 10 }, { "hold": ["brake"], "press": "confirm", "frames": 10 },
+        r#"{ "steps": [ { "hold": ["brake"], "press": "interact", "frames": 10 }, { "hold": ["brake"], "press": "interact", "frames": 10 }, { "hold": ["brake"], "press": "interact", "frames": 10 },
         { "hold": ["go"], "frames": 150 }, { "hold": ["go"], "press": "van", "frames": 10 } ] }"#,
     );
     assert!(num(&g, "nova.named('van').speed") > 3.0);
@@ -994,7 +994,7 @@ fn the_vans_rear_doors_ride_with_the_body_through_a_turn() {
             &g,
             "(function() local p = {} for _, n in ipairs(nova.model_parts('van')) do p[#p + 1] = n end table.sort(p) return table.concat(p, ' ') end)()"
         ),
-        "body door_l door_l_leaf door_r door_r_leaf lamp_brake lamp_head lamp_indicator_back lamp_indicator_front lamp_reverse lamp_reverse_off lamp_tail steering wheel_fl wheel_fr wheel_rl wheel_rr"
+        "body door_l door_l_leaf door_r door_r_leaf lamp_brake lamp_head lamp_indicator_back lamp_indicator_front lamp_reverse lamp_reverse_off lamp_tail steering tailpipe wheel_fl wheel_fr wheel_rl wheel_rr"
     );
     // each hinge as posed with the van's own parts table, against the body's turn (its roll about z, then its pitch about x, then
     // its lift) applied to the hinge at rest
@@ -5704,8 +5704,8 @@ fn the_hold_floor_is_one_closed_board_and_the_roof_has_no_slab() {
     );
 }
 
-/// The lever (the owner's sixth play: "a real automatic with PRNDL gear selection"; on the buttons: A towards L, X towards P; then
-/// "We can remove the brake requirement honestly"). Getting in, it is in P; A steps P, R, N, D with no pedal, X steps back, each
+/// The lever (the owner's sixth play: "a real automatic with PRNDL gear selection"; on the buttons, swapped by the owner on 2026-11-23: X towards L, A towards P; and
+/// "We can remove the brake requirement honestly"). Getting in, it is in P; X steps P, R, N, D with no pedal, A steps back, each
 /// at once with its clunk; D to L and back at speed; the one guard: never into P, nor into R, while going forwards faster than about
 /// 1 m/s (refused with a soft click and "Stop to shift"); getting out leaves it in P; the next time in, P again.
 #[test]
@@ -5714,7 +5714,7 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 10, "lua": "GEAR0 = nova.named('van').gear" }, { "press": "confirm" }, { "wait": 5 } ] }"#,
+        { "wait": 10, "lua": "GEAR0 = nova.named('van').gear" }, { "press": "interact" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "GEAR0"), "P", "in P on getting in");
     assert_eq!(
@@ -5732,28 +5732,28 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     for _ in 0..2 {
         play(
             &mut g,
-            r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
+            r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
         );
         seen.push(lua(&g, "nova.named('van').gear"));
     }
     assert_eq!(seen, ["N", "D"]);
-    // X steps back up towards P, then A down again
+    // A steps back towards P, then X on again
     play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "N");
     play(
         &mut g,
-        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     // rolling at speed: D to L and back with no brake
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "hold": ["go"], "press": "confirm", "frames": 6 },
+        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "hold": ["go"], "press": "interact", "frames": 6 },
         { "hold": ["go"], "frames": 4, "lua": "IN_L = nova.named('van').gear .. ' ' .. nova.named('van').speed" },
-        { "press": "interact" }, { "wait": 4 } ] }"#,
+        { "press": "confirm" }, { "wait": 4 } ] }"#,
     );
     let in_l = lua(&g, "IN_L");
     assert!(in_l.starts_with("L "), "D to L on the move: {in_l}");
@@ -5878,7 +5878,7 @@ fn the_reversing_beeper_sounds_only_in_r() {
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 200 }, { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
+        { "wait": 200 }, { "hold": ["brake"], "press": "interact", "frames": 8 } ] }"#,
     );
     assert_eq!(beeps(&r), 0, "none in P");
     assert_eq!(lua(&g, "nova.named('van').gear"), "R");
@@ -5900,12 +5900,12 @@ fn the_reversing_beeper_sounds_only_in_r() {
     assert!(vol <= 0.3, "quiet: played at {vol} (the horn at 0.7)");
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.2", "max": 200 }, { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.2", "max": 200 }, { "hold": ["brake"], "press": "interact", "frames": 8 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "N");
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "wait": 300 }, { "hold": ["brake"], "press": "confirm", "frames": 8 }, { "hold": ["go"], "frames": 300 } ] }"#,
+        r#"{ "steps": [ { "wait": 300 }, { "hold": ["brake"], "press": "interact", "frames": 8 }, { "hold": ["go"], "frames": 300 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     assert_eq!(beeps(&r), 0, "none in N or D");
@@ -6005,7 +6005,7 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
         );
         play(
             &mut g,
-            r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 8 }, { "wait": 2 } ] }"#,
+            r#"{ "steps": [ { "hold": ["brake"], "press": "interact", "frames": 8 }, { "wait": 2 } ] }"#,
         );
         assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "R");
     }
@@ -7302,7 +7302,7 @@ fn a_creeping_van_is_not_stopped_until_braked_or_in_p() {
     play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 150 }, { "press": "van" }, { "wait": 5 } ] }"#,
+        { "press": "interact" }, { "wait": 3 }, { "press": "interact" }, { "wait": 3 }, { "press": "interact" }, { "wait": 150 }, { "press": "van" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     assert!(num(&g, "nova.named('van').speed") > 1.0, "creeping in D");
@@ -7338,7 +7338,7 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
     assert!(num(&g, "require('lib.gear_hud').kmh") < 0.01, "0 standing");
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" },
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
         { "hold": ["go"], "frames": 360, "record": "string.format('%.3f', require('lib.gear_hud').kmh)" } ] }"#,
     );
     let (kmh, speed) = (
@@ -7359,7 +7359,7 @@ fn the_speedometer_needle_follows_the_speed_smoothly() {
     assert!(step < 0.6, "eased: at most {step} km/h a frame");
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" },
         { "hold": ["go"], "frames": 200 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "R");
@@ -7418,7 +7418,7 @@ fn the_instruments_needle_rests_clear_of_the_numbers_and_the_lamp_does_not_crowd
          local function off_needle(px, py) local dx, dy = math.sin(a), -math.cos(a); local t = math.max(0, math.min(L.r - 9, (px - L.cx) * dx + (py - L.cy) * dy)); \
            return math.sqrt((px - L.cx - dx * t) ^ 2 + (py - L.cy - dy * t) ^ 2) end; \
          local near_num, near_gear, lamp = 1e9, 1e9, 1e9; \
-         for k = 0, D.top, 10 do local ka = D.from + (D.to - D.from) * k / D.top; local nx, ny = L.cx + math.sin(ka) * (D.r - 25), L.cy - math.cos(ka) * (D.r - 25); \
+         for k = 0, D.top, D.major do local ka = D.from + (D.to - D.from) * k / D.top; local nx, ny = L.cx + math.sin(ka) * (D.r - 25), L.cy - math.cos(ka) * (D.r - 25); \
            near_num = math.min(near_num, off_needle(nx, ny)); lamp = math.min(lamp, math.sqrt((nx - L.lamp[1]) ^ 2 + (ny - L.lamp[2]) ^ 2)) end; \
          for _, p in pairs(L.letters) do near_gear = math.min(near_gear, off_needle(p[1], p[2])) end; \
          return string.format('%.4f %.4f %.2f %.2f %.2f %.2f', a, D.rest, near_num, near_gear, lamp, math.deg(D.from - D.rest)) end)()",
@@ -7630,7 +7630,7 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
         r#"{ "steps": [ { "lua": "PUT(-19.72, -229.2)" }, { "wait": 120 }, { "lua": "local e = CAM.state.eye; INSIDE = OCC.inside(e[1], e[2], e[3]) and 1 or 0" } ] }"#,
     );
     let (pull, inside) = (num(&g, "CAM.state.pull"), num(&g, "INSIDE"));
-    assert!(pull < 1.0 && pull >= 0.55, "the boom came in: {pull}");
+    assert!((0.55..1.0).contains(&pull), "the boom came in: {pull}");
     let _ = inside;
     // the room: nothing
     play(
@@ -8055,5 +8055,116 @@ fn only_the_nearest_parcel_gets_the_tip_and_the_outline_and_it_fades_when_you_wa
     assert!(
         num(&g, "nova.scene_now().tip_a") < 0.01,
         "the tip has faded out"
+    );
+}
+
+/// "We should add a tailpipe with exhaust for the truck." and "Also let's make the van blue with a red stripe." The van has a
+/// tailpipe part low at its back on the driver's side; puffs come from it only while the engine runs (from getting in until getting
+/// out), never more than Van.EXHAUST.max alive, more often while pulling away; the body is the palette's mail blue, the band red.
+#[test]
+fn the_blue_van_has_a_tailpipe_that_puffs_only_while_the_engine_runs() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 120 } ] }"#,
+    );
+    // (the part's own origin is the body's; its shapes are what sit at the back: read from the model file)
+    let model = van_model();
+    let mut shapes = Vec::new();
+    van_shapes(&model["parts"][0], &mut shapes);
+    let pts: Vec<[f64; 3]> = shapes
+        .iter()
+        .filter(|(n, _)| n == "tailpipe")
+        .flat_map(|(_, c)| mesh_points(c))
+        .collect();
+    assert!(!pts.is_empty(), "the tailpipe has shapes");
+    let zmin = pts.iter().map(|p| p[2]).fold(f64::MAX, f64::min);
+    let ymax = pts.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
+    let xmid = pts.iter().map(|p| p[0]).sum::<f64>() / pts.len() as f64;
+    assert!(
+        zmin < -1.45 && ymax < 0.42 && xmid > 0.2,
+        "low at the back, on the driver's (+x) side: z {zmin}, top {ymax}, x {xmid}"
+    );
+    assert_eq!(
+        num(&g, "nova.named('van'):puff_count()"),
+        0.0,
+        "parked, the engine off: no exhaust"
+    );
+    // in, the engine runs: a trickle at idle
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "wait": 120, "record": "nova.named('van'):puff_count()" } ] }"#,
+    );
+    let idle = num(&g, "nova.named('van'):puff_count()");
+    assert!(
+        (2.0..=6.0).contains(&idle),
+        "a trickle at idle: {idle} puffs"
+    );
+    // pulling away: more, never past the cap
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
+        { "hold": ["go"], "frames": 120, "record": "nova.named('van'):puff_count()" } ] }"#,
+    );
+    let most = r
+        .record("nova.named('van'):puff_count()")
+        .iter()
+        .map(|(_, _, v)| v.parse::<f64>().unwrap())
+        .fold(0.0, f64::max);
+    let cap = num(&g, "nova.named('van').EXHAUST.max");
+    assert!(
+        most > idle && most <= cap,
+        "pulling away, more ({most}) but never more than {cap}"
+    );
+    // out: the engine stops and the last puffs fade away
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "hold": ["brake"], "press": "van", "frames": 6 }, { "wait": 90 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
+    assert_eq!(
+        num(&g, "nova.named('van'):puff_count()"),
+        0.0,
+        "the engine off: the exhaust stops"
+    );
+    // the colours: the body the palette's mail blue, the band red, the lower body the deeper blue
+    let skin = &shapes.iter().find(|(n, _)| n == "body").unwrap().1;
+    assert_eq!(skin["color"], "#6f8fd0", "the body is the mail blue");
+    let cuts = skin["modifiers"][0]["cuts"].as_array().unwrap();
+    let colours: Vec<&str> = cuts.iter().filter_map(|c| c["color"].as_str()).collect();
+    assert!(colours.contains(&"#c94a3b"), "the red band: {colours:?}");
+    assert!(
+        colours.contains(&"#56719f"),
+        "the deeper blue below: {colours:?}"
+    );
+}
+
+/// "the speedo should go to 100 km/h but the van caps out at 40 since there are no upgrades yet": the dial reads 0 to 100; held
+/// down on the flat in D the van settles at 40 km/h (Van.TUNE.cap), and in L at about 58 % of it.
+#[test]
+fn the_dial_reads_to_100_and_the_van_is_held_at_40_in_d() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    assert_eq!(num(&g, "require('lib.gear_hud').DIAL.top"), 100.0);
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); local function run(gear) v:teleport(4.5, -150, 0); v.driven = true; v.gear = gear; \
+         local most = 0; for i = 1, 3000 do v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 1, 0, 0, 0; v:drive(1 / 60); v.x, v.z, v.heading = 4.5, -150, 0; most = math.max(most, v.speed) end; \
+         return v.speed, most end; local d, dm = run('D'); local l = run('L'); return string.format('%.3f %.3f %.3f %.3f', d * 3.6, dm * 3.6, l * 3.6, v.TUNE.cap * 3.6) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    assert!((v[3] - 40.0).abs() < 1e-6, "the cap is 40 km/h ({out})");
+    assert!(
+        (39.4..=40.0).contains(&v[0]) && v[1] <= 40.05,
+        "D settles at 40 km/h and never passes it ({out})"
+    );
+    let share = v[2] / v[0];
+    assert!(
+        (0.55..=0.62).contains(&share),
+        "L at {share:.2} of D ({out})"
     );
 }

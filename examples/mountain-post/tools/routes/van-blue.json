@@ -1,0 +1,17 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "out": "build/van-blue",
+  "lua": "CAM = require('lib.camera'); W = require('lib.world'); LOOK = function(lx, ly, lz, ty, fov, tx, tz) local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local g = W.height(v.x, v.z); local ax, _, az = v:to_world(tx or 0, 0, tz or 0); CAM.pinned = { v.x + s * lz + c * lx, g + ly, v.z + c * lz - s * lx, ax, g + (ty or 0.85), az, fov or 30 } end; nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()",
+  "route": [
+    { "wait": 30, "lua": "LOOK(7.5, 1.3, 0.3, 0.85, 26, 0, 0)" },
+    { "wait": 5, "capture": "side: the left side, the driver seated, on the road" },
+    { "lua": "LOOK(3.0, 1.35, -4.6, 0.6, 30, 0.2, -0.8)" },
+    { "wait": 70, "capture": "rear-34-idle: three-quarter rear, the tailpipe puffing at idle" },
+    { "press": "interact" }, { "wait": 3 }, { "press": "interact" }, { "wait": 3 }, { "press": "interact" },
+    { "hold": ["go"], "frames": 30, "lua": "FOLLOW = true" },
+    { "hold": ["go"], "frames": 1, "capture": "pulling-away: R2 from a standstill, more and darker puffs" },
+    { "lua": "CAM.pinned = nil; CAM.reset(nova.named('van').heading)" },
+    { "hold": ["go"], "frames": 120, "capture": "the chase camera, driving: the van on the road" }
+  ]
+}

@@ -4,7 +4,7 @@
 -- `Car:suspension`, `Car:wheel_offset`), copied here and cut down to one vehicle; the driving is new and gentle: a leisurely start,
 -- a top speed of about 38 km/h (the starting van: upgrades raise Van.TUNE), brakes that take a moment, heavy steering that forgives,
 -- no damage, no fuel. It is an automatic with a PRNDL lever (the owner's sixth play: "Let's make the truck function like a real
--- automatic with PRNDL gear selection"): it starts in P each time someone gets in; A steps the lever one gear towards L, X one
+-- automatic with PRNDL gear selection"): it starts in P each time someone gets in; X steps the lever one gear towards L, A one
 -- towards P (a column P R N D L, top to bottom: lib/gear_hud.lua shows it), at once, with no pedal; only never into P on the
 -- move, nor into R going forwards (a soft click and "Stop to shift"). P holds the wheels; R backs up on R2; N rolls free (down a
 -- slope too); D drives; L pulls harder, brakes on the engine and tops out lower (for the steep lanes). D, L and R creep at idle
@@ -34,7 +34,7 @@ local Van = nova.entity { model = "van", tags = { "van" }, velocity = false }
 -- understeer past `corner`).
 Van.TUNE = {
   power = 2.3,          -- m/s^2 pulling away (a leisurely start); it fades as the speed climbs to `top`
-  top = 12.5,           -- the speed the pull fades to nothing at; with the air and the rolling it tops out near 10.5 m/s on the flat
+  top = 12.5,           -- the speed the steering is measured against (less lock towards it); the pull: Van.TUNE.cap, pull_top below
   reverse = 3.0,        -- m/s at most backwards
   brake = 4.5,          -- m/s^2 at full brake: it takes a moment to stop
   coast = 0.5,          -- m/s^2 rolling and engine braking with nothing pressed
@@ -80,7 +80,12 @@ Van.TUNE = {
 }
 -- The lever's gears (the owner's sixth play). L: more pull, engine braking, a lower top speed (about 58% of D's), a higher note.
 Van.TUNE.low_power = 1.4  -- times D's pull, in L
-Van.TUNE.low_top = 0.52   -- times D's `top`, in L (it tops out near 6 m/s on the flat, about 58 % of D's 10.3)
+-- The top speed in D: a governor holds the van at `cap` on the flat (the owner: "the van caps out at 40 since there are no upgrades
+-- yet"; the speedometer reads to 100): upgrades raise it. `pull_top` is where the pull would fade to nothing without it.
+Van.TUNE.cap = 40 / 3.6       -- m/s: 40 km/h
+Van.TUNE.pull_top = 16         -- m/s
+Van.TUNE.cap_band = 0.12       -- m/s: the governor eases the pull out over the last of this below the cap
+Van.TUNE.low_top = 0.58        -- times the cap, in L (about 6.4 m/s, 23 km/h)
 Van.TUNE.low_brake = 1.3  -- m/s^2 more engine braking in L with the pedal up (and more past its top: a shift down at speed slows it)
 Van.TUNE.roll = 0.22      -- m/s^2 of rolling alone in N (no engine braking: it coasts, and rolls down a slope)
 Van.TUNE.park = 8         -- m/s^2 the parking pawl stops it with, in P (it is only put in P all but stopped)
@@ -205,7 +210,7 @@ end
 
 function Van:stopped() return math.abs(self.speed) < 0.6 end
 
--- The lever one gear along Van.ORDER (P R N D L): `dir` 1 towards L (A), -1 towards P (X). It moves at once, with no pedal (the
+-- The lever one gear along Van.ORDER (P R N D L): `dir` 1 towards L (X), -1 towards P (A; swapped by the owner, 2026-11-23). It moves at once, with no pedal (the
 -- owner: "We can remove the brake requirement honestly"; it needed L2 held among P, R, N and D). One guard against nonsense: not into
 -- P while moving faster than Van.SHIFT.speed either way, nor into R while going forwards faster than that; refused, it stays, with
 -- a soft click, and the gear display says "Stop to shift" for a moment (`hint` "stop"). Says whether it moved.
@@ -297,10 +302,14 @@ function Van:drive(dt)
   -- only revs the engine
   local gear = self.gear
   local low = gear == "L"
-  local low_top = FEEL.top * FEEL.low_top
+  local low_top = FEEL.cap * FEEL.low_top
   if go > 0 and (gear == "D" or low) then
-    local share = math.max(0, vf) / (low and low_top or FEEL.top)
-    vf = vf + FEEL.power * (low and FEEL.low_power or 1) * go * math.max(0, 1 - share * share) * dt
+    -- (the pull fades as the speed climbs towards `pull_top`, and the governor takes the last of it away over the last `cap_band`
+    -- m/s before the cap: in D it settles at the cap on the flat, in L at its share of it)
+    local limit = low and low_top or FEEL.cap
+    local share = math.max(0, vf) / (low and limit * 1.3 or FEEL.pull_top)
+    local governor = math.max(0, math.min(1, (limit - vf) / FEEL.cap_band))
+    vf = vf + FEEL.power * (low and FEEL.low_power or 1) * go * math.max(0, 1 - share * share) * governor * dt
   elseif go > 0 and gear == "R" then
     local share = math.max(0, -vf) / FEEL.reverse
     vf = vf - FEEL.power * 0.7 * go * math.max(0, 1 - share * share) * dt
@@ -345,6 +354,9 @@ function Van:drive(dt)
   vf = vf - sign * math.min(math.abs(vf), (coast + FEEL.drag * vf * vf) * dt)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   if not world.on_bridge(self.x, self.z) then vf = vf - (gx * sinh + gz * cosh) * FEEL.hill * dt end
+  -- (how hard the engine works, for the exhaust: the pedal, or L pulling up a climb)
+  local climb = (gx * sinh + gz * cosh) * (vf >= 0 and 1 or -1)
+  self.work = math.max(go, (low and climb > 0.04 and vf > 0.3) and 0.7 or 0)
   -- (an empty van, one held on the handbrake, on the brake pedal or in P, does not creep down a slope)
   -- (and any touch of the brake holds a van that has all but stopped: no creeping, no shudder)
   if ((not live or hb or gear == "P" or brake > 0.3) and math.abs(vf) < 0.4) or (brake >= FEEL.creep_brake and math.abs(vf) < 0.15) then vf = 0 end
@@ -531,9 +543,49 @@ function Van:update(dt)
   if not self.susp.ready or self.driven or math.abs(self.speed) > 0.01 or self.back_open > 0.01 or self.back_want > 0 or math.abs(self.susp.vr) > 1e-3 or math.abs(self.susp.vy) > 1e-3 then
     self:drive(dt)
   end
+  self:exhaust(dt)
 end
 
+-- The exhaust (the owner: "We should add a tailpipe with exhaust for the truck"): soft round puffs from the tailpipe's tip
+-- (tools/van.mjs TAILPIPE), light grey-white and see-through, growing and fading over about a second as they drift up and back with
+-- the wind; a gentle trickle at idle, more and a little darker pulling away or climbing in L (`work`); only while the engine runs
+-- (from getting in until getting out). At most Van.EXHAUST.max alive; the oldest gives way.
+Van.EXHAUST = { tip = { 0.4, 0.31, -1.5 }, max = 12, idle = 0.28, busy = 0.11, life = 1.1, size = 0.26, grow = 0.85,
+  wind = { 0.35, 0.2 } }
+function Van:exhaust(dt)
+  local E = Van.EXHAUST
+  self.puffs = self.puffs or {}
+  local puffs = self.puffs
+  for i = #puffs, 1, -1 do
+    local p = puffs[i]
+    p.age = p.age + dt
+    if p.age >= E.life then table.remove(puffs, i)
+    else
+      p.x, p.y, p.z = p.x + p.vx * dt, p.y + p.vy * dt, p.z + p.vz * dt
+      p.vx, p.vz = p.vx * (1 - 1.5 * dt), p.vz * (1 - 1.5 * dt)
+    end
+  end
+  if not self.engine_on then self.puff_t = 0; return end
+  local work = self.work or 0
+  self.puff_t = (self.puff_t or 0) - dt
+  if self.puff_t > 0 then return end
+  self.puff_t = E.idle + (E.busy - E.idle) * math.min(1, work)
+  if #puffs >= E.max then table.remove(puffs, 1) end
+  local x, y, z = self:to_world(E.tip[1], E.tip[2], E.tip[3])
+  local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
+  local back = 0.5 + 0.6 * work
+  self.puff_n = (self.puff_n or 0) + 1
+  local j = math.sin(self.puff_n * 12.9898) * 0.075 -- (a little sideways scatter, without touching math.random)
+  -- (billboards are lifted by the ground under them, as the van is by the ground under its middle: y stays the height above it)
+  puffs[#puffs + 1] = { age = 0, x = x, y = y, z = z,
+    vx = self.velx * 0.3 - sinh * back + cosh * j + E.wind[1], vy = 0.6 + 0.25 * work, vz = self.velz * 0.3 - cosh * back - sinh * j + E.wind[2],
+    dark = math.min(1, work), spin = self.puff_n * 2.4 }
+end
+-- (for the tests: how many puffs are alive)
+function Van:puff_count() return #(self.puffs or {}) end
+
 local SIDE = { color = { 255, 255, 255, 255 } }
+local PUFF = { color = { 236, 236, 240, 0 }, rot = 0 }
 local BEAM = { radius = 16, color = { 255, 236, 200 }, dir = { 0, -0.12, 1 }, angle = 46 }
 local PARCEL = { hazel = "parcel_hazel", pip = "parcel_pip" }
 function Van:draw()
@@ -568,6 +620,16 @@ function Van:draw()
       BEAM.dir[1], BEAM.dir[2], BEAM.dir[3] = sinh, -0.12, cosh
       nova.point_light(x, y + nova.terrain_height(self.x, self.z), z, BEAM)
     end
+  end
+  -- the exhaust's puffs: fading in quickly, growing as they rise, gone by the end of their life; a little darker while it works
+  local E = Van.EXHAUST
+  for _, p in ipairs(self.puffs or {}) do
+    local t = p.age / E.life
+    local grey = 232 - 46 * p.dark
+    PUFF.color[1], PUFF.color[2], PUFF.color[3] = grey, grey, grey + 4
+    PUFF.color[4] = math.floor((160 + 40 * p.dark) * math.min(1, t * 5) * (1 - t) ^ 1.4)
+    PUFF.rot = p.spin + t * 0.8
+    nova.billboard("puff", p.x, p.y, p.z, E.size * (1 + E.grow * 3 * t), PUFF)
   end
   -- FERNHOLLOW POST on both sides of the cargo box, on its upper half behind the doorways, just off the panel, moving with the lean
   for _, side in ipairs({ 1, -1 }) do

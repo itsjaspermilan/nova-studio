@@ -10,6 +10,8 @@ export const PAL = {
   // paint and paper
   cream: "#f3e6c8", paper: "#f6eedb", white: "#f4eee2", red: "#c94a3b", redDark: "#a23c31", mustard: "#e2b04a", rose: "#d98b78",
   lilac: "#b8a6d4", sky: "#8fb6c9", teal: "#5f9a92",
+  // the post van's soft mail blue (a friendly periwinkle, not a navy) and its deeper tone
+  mailBlue: "#6f8fd0", mailBlueDeep: "#56719f",
   // glass: a window by day is a soft blue-grey; a lit one is warm
   glass: "#5a7d8f", lit: "#ffe0a0",
   // wood, logs and stone

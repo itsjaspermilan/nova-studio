@@ -3,13 +3,13 @@
 -- separate shapes."; "We don't need the button chips there either."), drawn by the valley whenever the van is driven, never on foot
 -- nor during a conversation. ONE round instrument in the bottom right, on the minimap's own painted disc (cream face, wooden rim:
 -- the two bottom corners match), with the gear indicator inside the speedometer as a real car's cluster has it:
---   - the speed scale round the top: 0 to 40 km/h (the starting van tops out near 37), bold dark ticks every 5, numbers every 10,
+--   - the speed scale round the top: 0 to 100 km/h (the starting van is held at 40: Van.TUNE.cap), bold dark ticks every 10, numbers every 20,
 --     swept from just below the left to just below the right; a soft red needle on a small hub, eased so it never jitters. At a
 --     standstill it rests on a small peg below the 0 (clear of the 0 and of the gears), and leaves it for the 0 mark as the van
 --     moves. Backing up it shows the speed it backs at;
 --   - the gears in the dial's foot, one row P R N D L, the one the lever is in on the kit's raised red key;
 --   - the handbrake's warning light, a small circled "(P)" over the hub, lit red while B holds the handbrake; "km/h" under it.
--- No button glyphs (the owner: the prompts say what the buttons do; the lever is A towards L, X towards P). A refused shift (into P
+-- No button glyphs (the owner: the prompts say what the buttons do; the lever is X towards L, A towards P). A refused shift (into P
 -- or R on the move) says why for a moment on a slip beside the dial ("Stop to shift"). The prompt chips sit above the instrument while
 -- driving (hud.hints_floor). Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures.
 -- (Three layouts were tried in pictures: an arc of gears round the foot, this row, and a strip set into the rim's left side; the
@@ -24,7 +24,7 @@ hud.HINTS = { stop = "Stop to shift" }
 -- The dial: its face's radius (the rim is 8 wider), its range, its sweep (radians from straight up, clockwise positive: 0 km/h a
 -- little below the left, the top of the range a little below the right), the needle's resting peg (further round, below the 0),
 -- the row of gears (how far below the hub, and the letters' spacing).
-hud.DIAL = { r = 74, top = 40, from = -math.rad(105), to = math.rad(105), rest = -math.rad(126), ease = 0.18, row = 0.58, gap = 17 }
+hud.DIAL = { r = 74, top = 100, minor = 10, major = 20, from = -math.rad(105), to = math.rad(105), rest = -math.rad(126), ease = 0.18, row = 0.58, gap = 17 }
 local D = hud.DIAL
 
 -- Where it sits on a screen `w` x `h` (screen units, 540 high): the dial's middle and radius, each gear's letter, the lamp.
@@ -71,9 +71,9 @@ function hud.draw(v, w, h)
   hud.last = L
   nova.ui.sprite("ui/minimap_disc", L.cx, L.cy, { w = L.rim * 2, h = L.rim * 2 })
   -- the scale: bold dark ticks, the numbers just inside them
-  for k = 0, D.top, 5 do
+  for k = 0, D.top, D.minor do
     local a = angle_of(k)
-    local major = k % 10 == 0
+    local major = k % D.major == 0
     stroke(L, a, D.r - (major and 14 or 9), D.r - 3, major and 4.2 or 2.8, TICK)
     if major then
       local nr = D.r - 25
