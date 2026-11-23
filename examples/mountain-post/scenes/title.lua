@@ -29,7 +29,7 @@ function Title:draw_ui()
   local a = math.min(1, self.t / 1.2)
   -- (a soft shade behind the name, so the cream letters stand out of the bright sky)
   ui.band(h * 0.36, w, a)
-  nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = 660, h = 192, color = { 255, 255, 255, math.floor(255 * a) } })
+  nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = ui.s(660), h = ui.s(192), color = { 255, 255, 255, math.floor(255 * a) } })
   if self.t > 1.0 then
     -- A to start, on a prompt chip of the kit (the A button's cap and the word), rising and settling once as it appears
     local e = math.min(1, (self.t - 1.0) / 0.3)

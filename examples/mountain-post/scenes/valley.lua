@@ -302,6 +302,7 @@ function Valley:update(dt)
     return
   end
   self:back_doors()
+  self:fade_picker(dt)
   -- what is open over the game first: a card, then a conversation
   if cards.active() then
     cards.update(dt)
@@ -377,6 +378,18 @@ function Valley:hints()
   return list
 end
 
+-- The panel at the van's back is a light overlay, not a mode: it fades and slides up over PICKER_FADE seconds while the zone wants it
+-- (empty hands, parcels in the van, standing at the open back, nothing else open) and fades away when they walk off. Nothing waits
+-- for it: no lock on the stick or the camera, no pause, the world runs on. `picker_a` is how far up it is (0 to 1); the parcels it
+-- shows are kept while it fades out, so the last one taken does not vanish at once.
+local PICKER_FADE = 0.2
+function Valley:fade_picker(dt)
+  local want = not cards.active() and not dialogue.active() and not self.leaving and self:picker() ~= nil
+  if want then self.pk = { list = { table.unpack(state.van_load) }, i = self.pick_i } end
+  local a = self.picker_a or 0
+  self.picker_a = want and math.min(1, a + dt / PICKER_FADE) or math.max(0, a - dt / PICKER_FADE)
+end
+
 -- (what the panel at the van's back shows now, for the tests: nil when it is not open)
 function Valley:picker()
   local a = self:actions()
@@ -436,7 +449,7 @@ function Valley:draw_ui()
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h) end
     if not dialogue.active() then ui.hints(self.hint, w, h) end
-    if not dialogue.active() and self:picker() then ui.picker(state.van_load, math.max(1, math.min(#state.van_load, self.pick_i)), w, h) end
+    if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then ui.picker(self.pk.list, math.max(1, math.min(#self.pk.list, self.pk.i)), w, h, self.picker_a) end
   end
   dialogue.draw(w, h)
   cards.draw(w, h)

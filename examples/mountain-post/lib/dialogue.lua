@@ -65,19 +65,27 @@ function dialogue.update(dt)
   end
 end
 
+-- The box's size and where the words go, from the kit's one scale (the test checks every line fits).
+local s = ui.s
+function dialogue.layout(w)
+  local bw = math.min(s(860), w - 80)
+  return { w = bw, h = s(142), text_w = bw - s(96), size = ui.F.body + 1, spacing = 1.15, pad_top = s(30) }
+end
+
 function dialogue.draw(w, h)
   if not cur then return end
   local v = VOICES[cur.who] or VOICES.hazel
-  local bw = math.min(860, w - 80)
-  local x, y, bh = (w - bw) / 2, h - 170, 142
+  local L = dialogue.layout(w)
+  local bw, bh = L.w, L.h
+  local x, y = (w - bw) / 2, h - bh - s(28)
   ui.panel(x, y, bw, bh)
   -- the name on a tag in the speaker's colour, over the panel's top-left corner
-  ui.tag(x + 26, y - 22, cur.name, v.colour)
+  ui.tag(x + s(26), y - s(22), cur.name, v.colour)
   local text = cur.lines[cur.i]:sub(1, math.floor(cur.shown))
-  nova.ui.text(x + 32, y + 30, text, { font = "serif", size = ui.F.body + 1, width = bw - 96, color = ui.C.ink, line_spacing = 1.15 })
+  ui.text(x + s(32), y + L.pad_top, text, { size = L.size, width = L.text_w, color = ui.C.ink, line_spacing = L.spacing })
   if cur.shown >= #cur.lines[cur.i] then
     local bob = math.sin(nova.time() * 5) * 2
-    ui.glyph(x + bw - 34, y + bh - 32 + bob, "A", 28, { down = nova.input.down("act") })
+    ui.glyph(x + bw - s(34), y + bh - s(32) + bob, "A", s(28), { down = nova.input.down("act") })
   end
 end
 

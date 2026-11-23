@@ -303,16 +303,25 @@ toy palette by a gradient map (the pack's four greys become ours); the files and
 - **Colours:** paper #f3e6c8, ink #3e3631 (text), faint #7a6550 (second lines), wood #9a6a44, post red #c94a3b (title strips, the
   chosen button, "in the van"), postal blue #4f78ad ("carrying"), mustard #e2b04a, green #6f9f52, slate #706660 (shoulder keys),
   cream #fff8ea (text on red and on keys). Speakers' tags: Hazel #86583c, Pip #d29634.
-- **Fonts:** the game's own: `rounded` (Fredoka) for headings, buttons, prompts and small labels; `serif` (Lora) for what is read
-  (names and streets, lines of dialogue, the letter); `script` for the Mayor's name. The pack's Kenney Future was left out: it is
-  a hard geometric face that fights the soft toys.
-- **Sizes** (the screen's units, 540 high): headings 26 on a 46-high strip; buttons 24 to 28 on 56-high keys; prompts 19 on
-  40-high chips with a 25 button; dialogue and names 22 to 25; small labels 15. A panel's frame is drawn at half the pack's
-  double size (8 units), a chip's at 0.4.
+- **Fonts (after the owner's third play: "Seems too generic Word document"):** one face for every word, `rounded` (Fredoka,
+  the one bundled with the engine), in two weights: regular (the face a little thickened, `bold` 0.55: its own is light for
+  small paper text) and heavy (`bold` 1.3: names, headings, buttons, button letters). All of it goes through `ui.text`, which
+  forces the face. The serif (Lora) is used by no game file (a test scans for it). The only other face is the Mayor's name at
+  the foot of the letter, in `script` (Pacifico); the baked art (title, map, signs) is rounded too. The pack's Kenney Future
+  was left out: a hard geometric face that fights the soft toys.
+- **Scale (the same notes: "we can make the UI elements a little smaller"):** every length and size in `lib/ui.lua`, `cards.lua`
+  and `dialogue.lua` goes through one scale, `ui.S = 0.82` (`ui.s(n)`), with floors in the screen's units (1.33 px each at
+  720p): body 15 = 20 px, small lines and hints 13 = 17 px. Sizes below are the first design's, times `ui.S`; the minimap went
+  from radius 74 to 64 and the map sheet to 88% to match.
+- **Sizes** (the screen's units, 540 high, before the scale): headings 26 on a 46-high strip; buttons 24 to 28 on 56-high keys;
+  prompts 19 on 40-high chips with a 25 button; dialogue and names 22 to 25; small labels 15. A panel's frame is drawn at half the
+  pack's double size (8 units), a chip's at 0.4.
 - **Spacing:** 18 to 22 units from the screen's edge (cards 20, 18 from the top-left; prompts 22 from the bottom-right, 10
   apart); 18 inside a panel; a title strip sits across a panel's top edge, half over it.
 - **Behaviour:** a button cap or key shows held (the flat picture, lower by its foot) while its button is down; cards rise 30 units
-  and fade in over 0.2 s over a dimming of the world; the end card dims nearly to black first.
+  and fade in over 0.2 s over a dimming of the world; the end card dims nearly to black first. The van's parcel panel is no
+  card but a light overlay: it fades and slides up in 0.2 s when the postmaster comes to the open back with empty hands and
+  parcels inside, fades away when they walk off, and never takes the stick, the camera or the clock (Valley:fade_picker).
 
 ### The music: "Fernhollow" for felt piano
 
@@ -391,7 +400,8 @@ These replace the matching lines above where they differ (the UI theme, the musi
 
 - **Van menu:** "The game shouldn't pause when dealing with the van storage, just have the menu fade up and the user can select
   what they need. Also we can make the UI elements a little smaller. Also can we pick a different font for everything? Seems too
-  generic Word document."
+  generic Word document." Done: see "UI theme" (a light overlay;
+  one scale, 18% smaller; one rounded face).
 - **Camera:** "I don't like that the van dithers away to make way for the player." "I think we can tilt the camera down a bit
   while walking out and driving" (asked: lower and more behind, more level, with the road and horizon ahead; not more top-down).
 - **Steering:** "The 'turn back to straight' when the player eases off the left stick while driving is too slow." "We can also
