@@ -108,6 +108,8 @@ export function makeCharacter3d(a: Args): Character3d {
   // (the soft hats' colour: a bucket hat's or a round cap's)
   const hatC = col(a.hat_color, "hat_color", trim);
   const hatPin = choice(a.hat_pin, CHARACTER3D.emblems, "hat_pin");
+  const hatSize = a.hat_size === undefined ? 1 : Number(a.hat_size);
+  if (!Number.isFinite(hatSize) || hatSize < 0.6 || hatSize > 1.6) throw new Error(`hat_size is a number from 0.6 to 1.6 (got ${JSON.stringify(a.hat_size)}): how big a bucket hat is against its own size`);
 
   // ---- the measures (metres)
   // (squat: short and broad, a badger's or a bear's build)
@@ -346,6 +348,8 @@ export function makeCharacter3d(a: Args): Character3d {
   const faceParts: Args[] = [];
   // (an animal's ears, each a part of the head with its pivot at the ear's root, so a game can let them follow the body's motion)
   const earParts: Args[] = [];
+  // (the pointed ears' places and shapes, for the holes a hat leaves for them: root, half width and depth at the root, height, lean)
+  const earSpecs: { k: number; at: V3; w: number; d: number; h: number; lean: number }[] = [];
   // (an animal's: the height of the top of its head over x, z; where its face is; the head's painted decal)
   let headTop = (_x: number, _z: number) => headC + headR[1];
   let headFront = (_x: number, _y: number) => headR[2];
@@ -419,6 +423,7 @@ export function makeCharacter3d(a: Args): Character3d {
     const ear = (k: number, xf: number, h: number, w: number, d: number, lean: number, tipC: string, inner?: string) => {
       const at: V3 = [k * xf * RX, headTop(k * xf * RX, -0.06 * RZ) - 0.03 * RY, -0.06 * RZ];
       const shape = (sc: number) => [{ y: 0, rx: w * sc, rz: d * sc }, { y: h * 0.42, rx: w * 1.04 * sc, rz: d * sc, cx: k * h * 0.42 * lean }, { y: h * 0.8, rx: w * 0.6 * sc, rz: d * 0.8 * sc, cx: k * h * 0.8 * lean }, { y: h, rx: 0, cx: k * h * lean }];
+      earSpecs.push({ k, at, w, d, h, lean });
       const m = new Mesh3(skin, { bend: false });
       m.rings(shape(1), 12, (i) => (i >= 2 ? tipC : skin), { smooth: true });
       if (inner) m.rings(shape(0.6).map((r) => ({ ...r, y: r.y * 0.88 })), 12, inner, { at: [k * 0.004, 0.012, d * 0.5], smooth: true });
@@ -506,7 +511,9 @@ export function makeCharacter3d(a: Args): Character3d {
     const R0 = headR[0] * (squash ? 0.62 : animal ? 0.86 : 1.02), RZ0 = headR[2] * (squash ? 0.68 : animal ? 0.9 : 1.02);
     const cy = squash ? headTop(0, 0) - headR[1] * 0.24 : crownY - 0.01, ch = squash ? headR[1] * 0.42 / 0.118 : hs;
     const lo = tone(hatC, -0.25), hi = tone(hatC, 0.2);
-    if (hat === "bucket") {
+    if (hat === "bucket" && squash) {
+      bigBucket();
+    } else if (hat === "bucket") {
       hatM.rings([{ y: cy, rx: R0 + 0.01, rz: RZ0 + 0.01 }, { y: cy + 0.06 * ch, rx: R0 * 0.97, rz: RZ0 * 0.97 }, { y: cy + 0.095 * ch, rx: R0 * 0.82, rz: RZ0 * 0.82 }, { y: cy + 0.11 * ch, rx: R0 * 0.5, rz: RZ0 * 0.5 }, { y: cy + 0.114 * ch, rx: 0 }], squash ? 28 : 14, (i) => (i >= 2 ? hi : hatC), { smooth: true });
       // the brim: a thick soft ring sloping down and out, its edge rounded
       const b = 1.42, t = 0.012 * ch;
@@ -519,7 +526,7 @@ export function makeCharacter3d(a: Args): Character3d {
       ellipsoid(hatM, [0, cy + 0.112 * ch, 0], [0.012 * ch, 0.008 * ch, 0.012 * ch], lo, 10, 6);
       hatM.rings([{ y: -0.007 * ch, rx: R0 * 0.62, rz: 0.05 * ch }, { y: 0.0, rx: R0 * 0.64, rz: 0.052 * ch }, { y: 0.007 * ch, rx: R0 * 0.6, rz: 0.048 * ch }], 20, lo, { at: [0, cy + 0.004 * ch, RZ0 - 0.008 * ch], smooth: true });
     }
-    if (hatPin !== "none") {
+    if (hatPin !== "none" && !(hat === "bucket" && squash)) {
       // a small enamel pin on the front of the crown
       const pz = (hat === "bucket" ? RZ0 * 0.99 : RZ0 * 1.04) + 0.012, py = cy + 0.045 * ch, e = 0.016 * ch;
       if (hatPin === "envelope") {
@@ -553,6 +560,79 @@ export function makeCharacter3d(a: Args): Character3d {
     hatM.rings([{ y: headC + headR[1] + 0.02, rx: 0 }, { y: headC + headR[1] * 0.75, rx: headR[0] * 0.75 }, { y: headC + headR[1] * 0.2, rx: headR[0] + 0.02, rz: headR[2] + 0.02 }, { y: headC - headR[1] * 0.05, rx: headR[0] + 0.024, rz: headR[2] * 0.92, cz: -0.02 }, { y: headC - headR[1] * 0.5, rx: headR[0] + 0.02, rz: headR[2] * 0.6, cz: -0.06 }], 10, (i) => tone(steel, i < 2 ? 0.5 : -0.1), { smooth: true });
     hatM.box([0, headC + 0.01, headR[2] + 0.012], [0.026, 0.1, 0.02], tone(steel, -0.5), { flat: true });
     hatM.rings([{ y: headC + headR[1] * 0.16, rx: headR[0] + 0.03, rz: headR[2] + 0.03 }, { y: headC + headR[1] * 0.28, rx: headR[0] + 0.026, rz: headR[2] + 0.026 }], 10, tone(steel, -0.7), { caps: false });
+  }
+
+  // A big soft bucket hat for a squashed animal head (the chibi style: oversized and slouchy): a crown that follows the head a little
+  // off it, down to just above the brows, its top rising in a soft dome; a broad thick brim that droops gently all round with a
+  // rounded edge; the whole hat tipped back a touch so the brim's front clears the eyes; a hole for each pointed ear, a little bigger
+  // than the ear and the swing its spring gives it, with a rolled rim round it; the pin on the front. `hat_size` scales it.
+  function bigBucket(): void {
+    const RX = headR[0], RY = headR[1], RZ = headR[2], ne = 2.6;
+    const k = hatSize, off = 0.022 * k, top = 0.05 * k;
+    const m = new Mesh3(hatC, { bend: false });
+    const lo = tone(hatC, -0.3), band = tone(hatC, -0.6);
+    // the crown: the head's own outline, off it by `off`, from 0.5 of the way up (just above the brows) to the top, the top raised
+    const base = 0.44, rows = 14, seg = 40;
+    const crown: { y: number; rx: number; rz: number }[] = [];
+    for (let i = 0; i <= rows; i++) {
+      const s = base + (1 - base) * (i / rows);  // (the height on the head, 0 its middle, 1 its top)
+      const r = Math.max(0, 1 - s ** ne) ** (1 / ne);
+      crown.push({ y: headC + s * RY + off + top * s ** 3, rx: i === rows ? 0 : r * RX + off, rz: i === rows ? 0 : r * RZ + off });
+    }
+    const yb = crown[0]!.y, rb: [number, number] = [crown[0]!.rx, crown[0]!.rz];
+    m.rings(crown, seg, (i) => (i < 1 ? band : hatC), { smooth: true });
+    // the brim: a thick soft ring out from the crown's foot, sloping down, its edge rounded
+    const B = 1.36 + 0.1 * (k - 1), t = 0.024 * k, droop = 0.036 * k;
+    const ringAt = (f: number, dy: number) => ({ y: yb + dy, rx: rb[0] * f, rz: rb[1] * f });
+    m.rings([ringAt(0.98, 0.004), ringAt((1 + B) / 2, -droop * 0.45), ringAt(B, -droop), ringAt(B + 0.035, -droop - t * 0.5), ringAt(B, -droop - t), ringAt((1 + B) / 2, -droop * 0.45 - t), ringAt(0.97, -t)], seg,
+      (i) => (i >= 3 ? lo : hatC), { smooth: true, caps: false });
+    // tipped back about the crown's foot so the front of the brim rises over the eyes
+    const tip = (12 * Math.PI) / 180, ca = Math.cos(tip), sa = Math.sin(tip);
+    m.verts = m.verts.map(([x, y, z]) => [x, yb + (y - yb) * ca + z * sa, z * ca - (y - yb) * sa] as V3);
+    // the holes for the ears: every face of the crown that the ear (swung as far as its spring lets it, with room) would cross
+    const holes = earSpecs.map((e) => ({ ...e, W: e.w * 1.04 + 0.016 * k + 0.012, D: e.d + 0.016 * k + 0.012 }));
+    const inHole = (p: V3) => holes.find((e) => {
+      const up = p[1] - e.at[1];
+      if (up < -0.01) return false;
+      const ex = e.at[0] + e.k * e.lean * up;
+      return ((p[0] - ex) / e.W) ** 2 + ((p[2] - e.at[2]) / e.D) ** 2 < 1;
+    });
+    m.polys = m.polys.filter((poly) => {
+      const c: V3 = [0, 0, 0];
+      for (const i of poly.v) for (let q = 0; q < 3; q++) c[q]! += m.verts[i]![q]! / poly.v.length;
+      return !inHole(c);
+    });
+    hatM.add(m);
+    // a rolled rim round each hole, on the crown's surface
+    for (const e of holes) {
+      const loop: V3[] = [];
+      for (let i = 0; i <= 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        const x0 = Math.cos(a) * e.W, z0 = e.at[2] + Math.sin(a) * e.D;
+        // (the height of the crown there: its nearest point)
+        let best = Infinity, y = yb;
+        for (const v of m.verts) {
+          const up = v[1] - e.at[1], ex = e.at[0] + e.k * e.lean * up;
+          const dd = (v[0] - ex - x0) ** 2 + (v[2] - z0) ** 2;
+          if (up > 0 && dd < best) { best = dd; y = v[1]; }
+        }
+        loop.push([e.at[0] + e.k * e.lean * (y - e.at[1]) + x0, y + 0.002, z0]);
+      }
+      hatM.tube(loop, 0.008 * k, 8, band, { smooth: true });
+    }
+    // the pin: a bigger enamel envelope (or a disc) on the front of the crown, over the band
+    if (hatPin !== "none") {
+      const s0 = base + 0.12, r0 = Math.max(0, 1 - s0 ** ne) ** (1 / ne);
+      const py0 = headC + s0 * RY + off, pz0 = r0 * RZ + off + 0.004;
+      const py = yb + (py0 - yb) * ca + pz0 * sa, pz = pz0 * ca - (py0 - yb) * sa, e2 = 0.03 * k;
+      if (hatPin === "envelope") {
+        hatM.box([0, py, pz], [e2 * 2.1, e2 * 1.45, 0.01], "#f6efe0", { flat: true, rx: -12 });
+        for (const q of [-1, 1]) hatM.box([q * e2 * 0.48, py + e2 * 0.24, pz + 0.006], [e2 * 1.2, 0.005, 0.003], "#a23c31", { rz: q * 30, rx: -12, flat: true });
+      } else {
+        const pinC = hatPin === "leaf" ? "#7fb35a" : hatPin === "heart" ? "#e8606a" : "#ffd45c";
+        ellipsoid(hatM, [0, py, pz], [e2, e2, 0.007], pinC, 12, 6);
+      }
+    }
   }
 
   // ---- what is carried

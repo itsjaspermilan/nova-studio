@@ -1259,6 +1259,25 @@ pub fn mip_chain(image: &Image, levels: u32) -> Vec<u8> {
                     next[o] = (r / a).round() as u8;
                     next[o + 1] = (g / a).round() as u8;
                     next[o + 2] = (b / a).round() as u8;
+                } else {
+                    // (all see-through: the plain average of their colours, not black, so the GPU's blend between two texels or
+                    // two sizes, which does not weigh by cover, never darkens a painted edge; a picture padded with its edge
+                    // colours, character3d_make's, keeps them)
+                    let (mut r, mut g, mut b, mut n) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                    for &(sy, wy) in ys {
+                        for &(sx, wx) in xs {
+                            let i = (sy * w + sx) * 4;
+                            r += prev[i] as f32 * wx * wy;
+                            g += prev[i + 1] as f32 * wx * wy;
+                            b += prev[i + 2] as f32 * wx * wy;
+                            n += wx * wy;
+                        }
+                    }
+                    if n > 0.0 {
+                        next[o] = (r / n).round() as u8;
+                        next[o + 1] = (g / n).round() as u8;
+                        next[o + 2] = (b / n).round() as u8;
+                    }
                 }
                 next[o + 3] = (a * 255.0).round() as u8;
             }

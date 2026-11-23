@@ -122,6 +122,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       skirt: { type: "boolean", description: "true: a tunic or armour gets a skirt over the legs. Everyone wears trousers unless this is given (a robe is always a long dress)." },
       hat: { type: "string", description: CHARACTER3D.hats.join(", ") },
       hat_color: { type: "string", description: "A bucket hat's or a round cap's colour (the trim colour when left out)." },
+      hat_size: { type: "number", description: "A bucket hat's size, 0.6 to 1.6 (1 when left out): on an animal's big head it is a slouchy oversized hat with holes for pointed ears; bigger is roomier and broader in the brim." },
       hat_pin: { type: "string", description: `A small pin on the front of a bucket hat or a round cap: ${CHARACTER3D.emblems.join(", ")}.` },
       pack: { type: "string", description: CHARACTER3D.packs.join(", ") },
       item: { type: "string", description: CHARACTER3D.items.join(", ") },
