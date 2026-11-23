@@ -11,6 +11,7 @@ local cards = require("lib.cards")
 local ui = require("lib.ui")
 local words = require("lib.words")
 local parcels = require("lib.parcels")
+local music = require("lib.music")
 
 local Office = nova.scene {}
 
@@ -39,7 +40,7 @@ function Office:enter()
     self.p.x, self.p.z, self.p.face = d.x, d.z - 0.75, math.pi
   end
   camera.room(0)
-  nova.music.play("fernhollow", { volume = 0.3, fade = 1.0 })
+  music.start("indoors")
   nova.sound.play("door", { volume = state.came_out and 0.5 or 0, vary = 0.05 })
   self.ending_at = (state.all_delivered() and not state.ended) and 1.4 or nil
   nova.log("office: entered" .. (state.came_out and " from the porch" or ""))
@@ -70,6 +71,7 @@ end
 
 function Office:update(dt)
   self.t = self.t + dt
+  music.update(dt, { quiet = cards.active() and not state.ended })
   self.fade_in = math.max(0, self.fade_in - dt / FADE)
   local p = self.p
   if cards.active() then
@@ -91,7 +93,7 @@ function Office:update(dt)
         state.ended = true
         nova.log("the end card")
         cards.open("ending")
-        nova.music.play("fernhollow", { volume = 0.42, fade = 2 })
+        music.start("ending")
       end
     end
     local what, it = self:action()

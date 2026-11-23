@@ -31,7 +31,7 @@ import { previewSprite, writeSprite } from "./sprites";
 import { PRESETS, DEFAULTS, MAX_LAYERED_VOLUME, RANGES, RICH_KEYS, WAVES, cleanArpNotes, cleanRich, fromJson as sfxFromJson, parseSfx, render, toJson, type SfxParams } from "../src/lib/sfx";
 import { FINISH_RANGES, LAYER_FILTERS, LAYER_RANGES, LAYER_WAVES, nearest as nearestKey } from "../src/lib/sfx-layers";
 import { decodeWav, encodeWav, type Sound } from "../src/lib/wav";
-import { drumTrack, parseSong, renderSong, serializeSong, songSeconds, stepTime, synthTrack } from "../src/lib/song";
+import { barStarts, drumTrack, parseSong, renderSong, renderStems, serializeSong, songSeconds, stepTime, synthTrack, type Song, type StemSpec } from "../src/lib/song";
 import { analyse, describe, heardLevel, mixTable, spectrogram, stack, type Source } from "./sound";
 import { parseScene, serializeScene, tilemaps } from "../src/lib/scene-model";
 import { drawScene, expandTileLayers, previewScene, roomWarning } from "./scenes";
@@ -541,14 +541,57 @@ tool(
   },
 );
 
+/// song_write with `stems`: one Ogg per stem (renderStems), each with the song's loop points and bar lines.
+function writeStems(root: string, name: string, song: Song, given: unknown): string {
+  if (!Array.isArray(given) || given.length < 2 || given.length > 8) throw new Error("stems is a list of 2 to 8 { \"name\", \"tracks\": [track names] }");
+  const names = new Set(song.tracks.map((t) => t.name));
+  const used = new Set<string>();
+  const specs: StemSpec[] = given.map((g: any, i: number) => {
+    if (!g || typeof g.name !== "string" || !Array.isArray(g.tracks) || !g.tracks.length) throw new Error(`stems[${i}] needs a "name" and a list of "tracks"`);
+    for (const t of g.tracks) {
+      if (!names.has(t)) throw new Error(`stems[${i}] ("${g.name}") names the track "${t}", which the song does not have (its tracks: ${[...names].join(", ")})`);
+      if (used.has(t)) throw new Error(`the track "${t}" is in two stems: each track goes in one stem at most`);
+      used.add(t);
+    }
+    return { name: safeName(g.name, "Stem"), tracks: g.tracks };
+  });
+  const files = specs.map((st) => `${name}_${st.name}`);
+  if (new Set(files).size !== files.length) throw new Error("two stems have the same name");
+  const { stems, gain } = renderStems(song, specs);
+  const rate = stems[0]!.sound.rate;
+  const loop = song.loop ? { start: Math.round(stepTime(song, song.loop.from) * rate), end: Math.round(stepTime(song, song.loop.to) * rate) } : undefined;
+  const bars = barStarts(song).map((b) => Math.round(stepTime(song, b) * rate));
+  put(root, `music/${name}.song.json`, serializeSong(song));
+  const lines: string[] = [];
+  for (const [i, st] of stems.entries()) {
+    const wav = encodeWav(st.sound, loop, bars);
+    if (!existsSync(oggBin)) {
+      put(root, `music/${files[i]}.wav`, wav);
+      lines.push(`music/${files[i]}.wav (nova-ogg is not built, so a WAV for now, with no bar lines: cargo build --release -p nova-studio --bin nova-ogg)`);
+      continue;
+    }
+    const tmp = mkdtempSync(join(tmpdir(), "nova-ogg-"));
+    try {
+      writeFileSync(join(tmp, "in.wav"), wav);
+      const r = run(oggBin, [join(tmp, "in.wav"), inside(root, `music/${files[i]}.ogg`)]);
+      if (r.code !== 0) throw new Error(`encoding failed: ${r.out}`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+    lines.push(`music/${files[i]}.ogg (${statSync(inside(root, `music/${files[i]}.ogg`)).size} bytes): ${specs[i]!.tracks.join(", ")}`);
+  }
+  return `${stems.length} stems of ${songSeconds(song).toFixed(1)} s, in step, ${bars.length} bar lines, one gain for all (${(20 * Math.log10(gain)).toFixed(1)} dB):\n${lines.join("\n")}\nIn Lua: nova.music.layers({ ${files.map((f) => JSON.stringify(f)).join(", ")} }, { levels = { 1${", 0".repeat(files.length - 1)} } })`;
+}
+
 tool(
   "song_write",
   "Write a song: `music/<name>.song.json` (the music editor's step sequencer) and the `music/<name>.ogg` the game streams. `song`: " +
     '{ "version": 1, "bpm": 40-240, "stepsPerBeat": 1-8, "length": steps (a bar is stepsPerBeat*4), "tracks": [ { "name", "kind": "synth"|"drums", "wave": "square|saw|triangle|sine|noise", "duty", "attack", "decay", "sustain", "release", "volume": 0-1, "pan": -1..1, "mute": false, "notes": [ { "step", "len", "pitch": midi (60 = middle C), "vel": 0-1 } ] } ] }. ' +
     "What each kind of track needs: a **synth** track needs `name`, `kind` and `notes` (wave defaults to square; attack, decay, sustain, release, volume, pan have the editor's defaults); a **drums** track needs only `name`, `kind` and `notes`: it has no wave, and a note's pitch picks the drum: 36 kick, 38 snare, 39 clap, 42 closed hat, 46 open hat, 45 tom, 49 crash (its length does not matter). A note needs `step` and `pitch`; `len` defaults to 1 step and `vel` to 0.8. " +
     "A synth track's \"wave\" may be an instrument: \"piano\" (struck strings; \"brightness\" 0 a felt-muted upright to 1 an open grand, a harder vel brighter; give it \"sustain\": 1 and a \"release\" for the damper), \"pluck\", \"organ\", \"fm\". Synth tracks can take a fuller voice (leave these out for the plain chip sound): \"unison\" 1-7 detuned oscillators spread \"detune\" cents (0-60) across the stereo field, \"cutoff\" Hz low-pass with \"resonance\" 0-0.9 and \"sweep\" 0-1 (the note's envelope opens the filter by up to three octaves: plucks, bass), \"sub\" 0-1 (a sine an octave down), \"vibrato\" 0-0.5 semitones, and \"reverb\" 0-1 (the share sent to the song's room). Drum tracks can set \"kit\": \"studio\" (a kick with a click and weight, a snare with a tone and rattle, metallic hats) or \"punch\" (big layered drums: a beater click on a falling kick, a snare with a clap and a gated room, ring-modulated hats; the synthwave sound) instead of the chip kit, and a \"reverb\" send. Any track can \"duck\" 0-1 under the kick (it dips on every kick, pitch 36, and swells back over half a beat: side-chain pumping). The song can have \"master\": { \"volume\": 1, \"fx\": [{ \"type\": \"compressor\", \"params\": { \"threshold\": -16, \"ratio\": 2.5 } }], \"limit\": -1, \"lufs\": -16 } (a chain on the mix, a peak ceiling in dB, a loudness target). The plain chip voice and the chip kit are what makes a song sound like an old console: sound_report says which tracks still use them. The song can have \"room\": { \"size\": 0-1, \"damping\": 0-1, \"mix\": 0-2 } for the reverb (default 0.55, 0.4, 1). " +
-    "The song loops without a gap. A `loop` region { \"from\": steps, \"to\": steps } is written into the .ogg as loop points (LOOPSTART, LOOPLENGTH): the game plays from the top once and then loops between them, so an intro plays once; with `to` at the song's end, the tails of the last notes, echoes and the room wrap onto the loop's start. A loop shorter than about 45 s is warned about (it repeats too often under a long fight). In Lua: nova.music.play(\"<name>\").",
-  { name: { type: "string" }, song: { type: ["object", "string"] } },
+    "The song loops without a gap. A `loop` region { \"from\": steps, \"to\": steps } is written into the .ogg as loop points (LOOPSTART, LOOPLENGTH): the game plays from the top once and then loops between them, so an intro plays once; with `to` at the song's end, the tails of the last notes, echoes and the room wrap onto the loop's start. A loop shorter than about 45 s is warned about (it repeats too often under a long fight). In Lua: nova.music.play(\"<name>\"). " +
+    "LAYERED (adaptive) music: give `stems`, a list of { \"name\", \"tracks\": [track names] } (2 to 8, each track in one stem at most), and instead of music/<name>.ogg it writes one music/<name>_<stem>.ogg per stem: each the whole song with only its tracks heard, all the same length with the same loop points, the room shared out, one gain for all (the master's lufs and limit met by their sum; its effects are left out), and the song's bar lines (tempo changes and all) written in as the Ogg's BARS comment. In Lua: nova.music.layers({ \"<name>_piano\", \"<name>_bass\" }, { levels = { 1, 0 } }) starts them together, sample-locked; nova.music.layer(\"<name>_bass\", 1, { fade = 3, at = \"bar\" }) fades one in on the next bar line. Every stem is decoded all the time (that keeps them in step): each costs about one track's decoding and its compressed bytes in memory.",
+  { name: { type: "string" }, song: { type: ["object", "string"] }, stems: { type: "array", items: { type: "object" }, description: "Layered music: [{ \"name\": \"piano\", \"tracks\": [\"right hand\", \"left hand\"] }, ...]: one Ogg per stem instead of one for the song." } },
   ["name", "song"],
   (a) => {
     const root = projectRoot(a);
@@ -571,6 +614,7 @@ tool(
     const parsed = parseSong(JSON.stringify(given));
     if (!parsed.ok) throw new Error(`the song is not valid: ${parsed.error}. A small song: { "version": 1, "bpm": 120, "stepsPerBeat": 4, "length": 16, "tracks": [ { "name": "lead", "kind": "synth", "wave": "square", "notes": [ { "step": 0, "len": 4, "pitch": 60 } ] }, { "name": "drums", "kind": "drums", "notes": [ { "step": 0, "pitch": 36 }, { "step": 4, "pitch": 38 } ] } ] }`);
     // (a loop region becomes the loop points the game follows: the WAV's smpl chunk, which nova-ogg writes as LOOPSTART and LOOPLENGTH)
+    if (a.stems !== undefined) return writeStems(root, name, parsed.song, a.stems);
     const rendered = renderSong(parsed.song);
     const loop = parsed.song.loop;
     const wav = encodeWav(rendered, loop ? { start: Math.round(stepTime(parsed.song, loop.from) * rendered.rate), end: Math.round(stepTime(parsed.song, loop.to) * rendered.rate) } : undefined);

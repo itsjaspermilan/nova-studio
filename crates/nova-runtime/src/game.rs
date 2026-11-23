@@ -3415,12 +3415,28 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 (None, Some(bpm)) => return Err(lua_err(format!("bpm must be from 20 to 400, not {bpm}"))),
                 (None, None) => 0.0,
             };
+            // the piece's own bar lines: `bars` (seconds into the file), or those the first stem's file carries (the studio
+            // writes them for a song, tempo changes and all); a steady `bpm` or `bar` is used when neither is there
+            let mut bars: Vec<f64> = Vec::new();
+            if let Some(list) = opts.as_ref().map(|t| t.get::<Option<Table>>("bars")).transpose()?.flatten() {
+                for b in list.sequence_values::<f64>() {
+                    let b = b.map_err(|_| lua_err("bars is a list of times in seconds"))?;
+                    if !b.is_finite() || b < 0.0 {
+                        return Err(lua_err(format!("a bar line is a time in seconds from 0, not {b}")));
+                    }
+                    bars.push(b);
+                }
+            }
             let mut plays = Vec::new();
             let mut ids = Vec::new();
             let mut length: Option<f64> = None;
             for i in 1..=count {
                 let name: String = names.get(i).map_err(|_| lua_err("nova.music.layers: every stem is a name (text)"))?;
                 let streamed = find_stream(&sh.streams, &name).cloned();
+                if i == 1 && bars.is_empty() && bar <= 0.0
+                    && let Some(src) = &streamed {
+                        bars = src.bars.iter().map(|&f| f as f64 / src.rate.max(1) as f64).collect();
+                    }
                 let sample = match &streamed {
                     Some(src) => Arc::new(Sample { rate: src.rate, frames: Vec::new() }),
                     None => find_sound(&sh.sounds, &name)
@@ -3474,7 +3490,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 let line = format!("music layers {}", stems.join(" + "));
                 sh.sound_log.push(line);
             }
-            sh.audio.push(mixer::Command::PlayLayers { layers: plays, bar_seconds: bar });
+            sh.audio.push(mixer::Command::PlayLayers { layers: plays, bar_seconds: bar, bars });
             Ok(())
         })?,
     )?;

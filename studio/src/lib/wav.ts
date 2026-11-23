@@ -51,10 +51,13 @@ export function decodeWav(bytes: Uint8Array): Sound {
 
 /// 16-bit PCM, interleaved. Values outside -1..1 are clipped.
 /// 16-bit WAV bytes of a sound. With `loop` (start and end frames) a `smpl` chunk marks the loop, which the studio's Ogg encoder turns into the loop points the game reads.
-export function encodeWav(s: Sound, loop?: { start: number; end: number }): Uint8Array {
+export function encodeWav(s: Sound, loop?: { start: number; end: number }, cues: number[] = []): Uint8Array {
   const n = frames(s);
   const ch = s.channels.length;
-  const extra = loop && loop.end > loop.start ? 68 : 0;
+  const smpl = loop && loop.end > loop.start ? 68 : 0;
+  // cue points (frames): a song's bar lines, which nova-ogg keeps as the Ogg's BARS comment (layered music waits for them)
+  const marks = cues.map((c) => Math.max(0, Math.round(c))).filter((c) => c <= n);
+  const extra = smpl + (marks.length ? 12 + 24 * marks.length : 0);
   const out = new Uint8Array(44 + n * ch * 2 + extra);
   const v = new DataView(out.buffer);
   const put = (at: number, str: string) => [...str].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
@@ -77,7 +80,7 @@ export function encodeWav(s: Sound, loop?: { start: number; end: number }): Uint
       v.setInt16(44 + (i * ch + c) * 2, Math.round(x < 0 ? x * 32768 : x * 32767), true);
     }
   }
-  if (extra && loop) {
+  if (smpl && loop) {
     const at = 44 + n * ch * 2;
     put(at, "smpl");
     v.setUint32(at + 4, 60, true);
@@ -86,6 +89,19 @@ export function encodeWav(s: Sound, loop?: { start: number; end: number }): Uint
     v.setUint32(at + 8 + 28, 1, true); // one loop
     v.setUint32(at + 8 + 36 + 8, Math.max(0, Math.round(loop.start)), true);
     v.setUint32(at + 8 + 36 + 12, Math.max(0, Math.round(loop.end)), true);
+  }
+  if (marks.length) {
+    const at = 44 + n * ch * 2 + smpl;
+    put(at, "cue ");
+    v.setUint32(at + 4, 4 + 24 * marks.length, true);
+    v.setUint32(at + 8, marks.length, true);
+    marks.forEach((m, i) => {
+      const p = at + 12 + i * 24;
+      v.setUint32(p, i + 1, true); // its id
+      v.setUint32(p + 4, m, true); // where it is played
+      put(p + 8, "data");
+      v.setUint32(p + 20, m, true); // its frame in the data
+    });
   }
   return out;
 }

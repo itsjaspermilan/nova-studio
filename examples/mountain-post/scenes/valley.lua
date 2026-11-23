@@ -17,6 +17,7 @@ local ambience = require("lib.ambience")
 local ui = require("lib.ui")
 local words = require("lib.words")
 local parcels = require("lib.parcels")
+local music = require("lib.music")
 
 local Valley = nova.scene {}
 
@@ -71,7 +72,7 @@ function Valley:enter()
     camera.reset(self.p.face)
   end
   ambience.start(nova.named("mast"))
-  nova.music.play("fernhollow", { volume = 0.3, fade = 1.0 })
+  music.start("outdoors")
   nova.sound.play("door", { volume = state.came_out and 0.5 or 0, vary = 0.05 })
   self.chimneys = {}
   for _, name in ipairs({ "post_office", "cabin_hazel", "cabin_pip" }) do
@@ -367,7 +368,8 @@ function Valley:update(dt)
   else camera.foot(p, dt) end
   local e = camera.state.eye
   ambience.update(dt, e[1], e[3], self.mode == "van")
-  nova.music.volume(self.mode == "van" and 0.72 or 1)
+  -- the music: the piano alone on foot; layers join as the van is driven and thin out as it slows (lib/music.lua)
+  music.update(dt, { driving = self.mode == "van", speed = v.speed, quiet = cards.active() or dialogue.active() })
   self.hint = self:hints()
 end
 

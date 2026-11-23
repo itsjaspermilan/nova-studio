@@ -52,6 +52,7 @@ fn layers_start_together_with_their_levels_and_a_bar_length() {
         Command::PlayLayers {
             layers,
             bar_seconds,
+            ..
         } => {
             assert!(
                 (bar_seconds - 1.5).abs() < 1e-9,
@@ -84,6 +85,7 @@ nova.music.layer("song_lead", 0)
         Command::PlayLayers {
             layers,
             bar_seconds,
+            ..
         } => {
             assert_eq!(*bar_seconds, 2.0);
             layers.iter().map(|(p, _)| p.id).collect()

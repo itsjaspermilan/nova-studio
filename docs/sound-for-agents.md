@@ -346,6 +346,37 @@ mellowing, the rounded start and the damper's fall. The piece itself (whole song
 -8.7 → -12.4 dB and 2.5 to 5 kHz -19.2 → -29.5 dB of the whole. **Nobody has listened to it**: the numbers say it is softer and steadier,
 not that it pleases.
 
+## Layered music that follows the game (Fernhollow, 2026-11-23)
+
+The owner: "pretty simple when not in the vehicle, then as the player drives more and more layers can come on", and then "for stopping,
+the layers should start to fade as the speed slows". Nova already had `nova.music.layers` / `nova.music.layer` (stems started together,
+a level per stem, changes on a steady bar grid). What was missing, and is now there:
+
+- **Making the stems.** `song_write` takes `stems` and writes one Ogg per stem (`renderStems` in song.ts): each the song with only its
+  tracks heard, the same length and loop points, the room shared out exactly (the reverb is linear, so the stems' rooms add up to the
+  song's), and **one gain for all**, from their sum: the master's `lufs` and `limit` are met by the stack, not by each stem (the
+  studio's Stems export brought every stem up to the target on its own, so a soft bass came out as loud as the tune). The master's
+  effects, the soft clip of fuller songs and the peak guard act on a whole mix and would not add up, so stems leave them out
+  (`renderSong(song, rate, { linear: true })`; a test checks that the stems add up to the song).
+- **The piece's own bar lines.** A song whose tempo eases has no steady bar, so a fixed `bpm` drifts off its bar lines within a few
+  sections. `song_write` writes the bar lines into each Ogg (the WAV's `cue ` points, which `nova-ogg` keeps as the comment `BARS`), and
+  `nova.music.layers` uses the first stem's: `at = "bar"` lands on the piece's next bar line, round the loop too.
+- **Sample-locked stems.** Before, a stem whose decoder fell behind played silence and stood still while the others ran on: it came back
+  late and stayed late. Now if any stem has not got the next block decoded, all of them wait (the music is silent for that moment and it is
+  counted as underruns), so they cannot drift. And `nova.music.position` now wraps at a file's loop points (it wrapped only at the end).
+- **The latest request wins:** a level change asked for `now` drops one of the same stem still waiting for a bar line (so a layer that
+  was about to come in does not jump back up after the van has slowed).
+
+The cost on a handheld: every stem is decoded all the time, heard or not; five stems are five decoder threads, five rings of 1.5 s of
+decoded audio (256 KB each) and the compressed files in memory (Fernhollow: about 11 MB for five 206 s stems; the noisy brushes stem is
+the biggest, 3.8 MB). Decoding Vorbis is a small share of one core per stem; it has not been measured on the Retroid.
+
+The game's side (`examples/mountain-post/lib/music.lua`) is a small rule, `music.step`, the same one the audition clip uses (it runs
+in the game through `music.simulate`). It earns layers with steady driving and lets them in on bar lines, but on the way down it follows
+the speed at once (no bar lines: the owner wanted them to thin as the van slows), eased over a second and moved only in steps of 0.05,
+so cruising wobbles do not make it pump. Measured offline (whole piece, LUFS): piano -18.0, +bass -17.4, +brushes -16.9, +pad -16.4,
++celesta -16.3; no clicks in any stage or in the drive clip. **Nobody has listened to it.**
+
 ## Not done, and why
 
 - **No listening test.** Measurements are not a listening test; the owner should play the game and say.

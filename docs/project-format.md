@@ -1487,12 +1487,25 @@ nova.music.stop(0.5)                 -- optional fade-out
 nova.music.volume(0.5)               -- master volume for music (0 to 2)
 nova.sound.room { size = 0.5, damping = 0.4, mix = 1 }   -- one shared reverb room; nova.sound.room() takes it away
 nova.sound.play("hit", { reverb = 0.3 })                  -- how much of a sound goes to the room (0 to 1; nova.sound.set changes it)
-nova.music.layers({ "song_lead", "song_bass", "song_drums" }, { levels = { 1, 0, 0 }, bpm = 120, beats = 4, fade = 1 })
-                                     -- adaptive music: stems of one piece (the studio's Stems export) played in step, each at a level 0 to 1
-nova.music.layer("song_drums", 1, { fade = 2, at = "bar" })   -- fade one stem in; at = "bar" waits for the next bar line (needs bpm or bar)
+nova.music.layers({ "song_lead", "song_bass", "song_drums" }, { levels = { 1, 0, 0 }, fade = 1 })
+                                     -- adaptive music: stems of one piece (song_write with stems) played sample-locked, each at a level 0 to 1
+nova.music.layer("song_drums", 1, { fade = 2, at = "bar" })   -- fade one stem in; at = "bar" waits for the piece's next bar line
 nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
 nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```
+
+**Layered (adaptive) music.** `song_write` with `stems` (a list of { name, tracks }) writes one `music/<song>_<stem>.ogg` per stem
+instead of one file: each is the whole song with only its tracks heard, all the same length with the same `LOOPSTART`/`LOOPLENGTH`,
+the room shared out exactly and one gain for all of them (the master's `lufs` and `limit` are met by their sum; the master's
+effects, the soft clip and the peak guard act on a whole mix, so stems leave them out). The song's bar lines, which follow its tempo
+changes, are written into each file as the Vorbis comment `BARS` (frames, separated by commas; the WAV's `cue ` points on the way).
+`nova.music.layers` starts the stems on one frame and keeps them sample-locked: they loop together, and if one stem's decoder falls
+behind, all of them wait for it (the music is silent for that moment and counted as underruns) rather than one drifting out of step.
+`at = "bar"` waits for the piece's own next bar line, read from the first stem (or give `bars`, a list of seconds into the file, or a
+steady `bpm` and `beats`); a change asked for `now` drops one of the same stem that was still waiting. **Cost:** every stem is decoded
+all the time, silent or not (that is what keeps them in step): one decoder thread each (Ogg Vorbis at 44.1 kHz stereo, about what
+one music track costs), a ring of 1.5 s of decoded frames each (256 KB), and each file's compressed bytes in memory. Five stems of a
+3.5 minute piece are about 11 MB of Ogg.
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
 (2 is an octave up; it also changes speed). `vary` (0 to 0.5) changes each play a little: the pitch by up to that share either way
