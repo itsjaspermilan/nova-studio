@@ -899,7 +899,7 @@ fn hazel_is_a_bear_and_nothing_says_badger() {
     );
     assert!(
         line("postmaster").contains("species: \"fox\"")
-            && line("postmaster").contains("hat: \"peaked\"")
+            && line("postmaster").contains("hat: \"bucket\"")
     );
     assert!(
         line("pip").contains("species: \"rabbit\"")
@@ -5084,5 +5084,425 @@ fn valley_roads_nothing_placed_stands_on_a_road() {
         "old_bridge",
     ] {
         assert!(kinds.contains(k), "no {k} was checked: {kinds:?}");
+    }
+}
+
+// ---- the owner's sixth play (2026-11-23): the cast's bodies, the postmaster's outfit, the faces, slopes and steps ----------------
+// "Let's remove the messenger bag ... by default let's have the character wear pants not a skirt. Can we also attach the arms and legs
+// to the characters. They still look like separate pieces." "The character's outfit looks like a police officer with the blue outfit
+// and the badge." The cast is made by tools/cast.mjs (character3d_make); these read the model files it wrote and play the game.
+
+/// A cast member's model file: (its parts by name, with each part's origin in its parent and its shapes' points in metres in the part's
+/// own space, and its first shape's colour; the metres a model unit is).
+struct CastPart {
+    origin: [f64; 3],
+    parent: String,
+    points: Vec<[f64; 3]>,
+    color: String,
+}
+
+fn cast_model(name: &str) -> std::collections::HashMap<String, CastPart> {
+    let file = game_dir().join(format!("models/{name}.model.json"));
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    let k = doc["scale"].as_f64().unwrap();
+    let mut out = std::collections::HashMap::new();
+    fn visit(
+        parts: &Value,
+        parent: &str,
+        k: f64,
+        out: &mut std::collections::HashMap<String, CastPart>,
+    ) {
+        for p in parts.as_array().unwrap() {
+            let o = &p["origin"];
+            let name = p["name"].as_str().unwrap().to_string();
+            let cubes = p["cubes"].as_array().unwrap();
+            let points = cubes
+                .first()
+                .and_then(|c| c["verts"].as_array())
+                .map(|v| {
+                    v.iter()
+                        .map(|q| {
+                            let f = |i: usize| q[i].as_f64().unwrap() * k;
+                            [f(0), f(1), f(2)]
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let color = cubes
+                .first()
+                .map(|c| c["color"].as_str().unwrap().to_string())
+                .unwrap_or_default();
+            let f = |i: usize| o[i].as_f64().unwrap() * k;
+            out.insert(
+                name.clone(),
+                CastPart {
+                    origin: [f(0), f(1), f(2)],
+                    parent: parent.to_string(),
+                    points,
+                    color,
+                },
+            );
+            visit(&p["children"], &name, k, out);
+        }
+    }
+    visit(&doc["parts"], "", k, &mut out);
+    out
+}
+
+/// No bag; trousers for everyone, by default (the hips' own shapes narrow to a crotch between the legs, no skirt flares out over
+/// them, and the legs are the colour of the seat of the trousers); and the postmaster dressed as a village postie, not a policeman: a
+/// warm-coloured knitted cardigan rather than a navy uniform, a soft bucket hat rather than a peaked cap, an envelope patch, no badge.
+#[test]
+fn the_cast_wears_trousers_and_the_postmaster_no_bag_and_no_uniform() {
+    for who in ["postmaster", "hazel", "pip"] {
+        let m = cast_model(who);
+        assert!(!m.contains_key("bag"), "{who}: no bag");
+        let hips = &m["hips"];
+        let leg = &m["leg_l"];
+        // (below the legs' tops, the seat of the trousers: never wider than 13 cm from the middle; a skirt was 19 cm)
+        let below = leg.origin[1] - 0.03;
+        let widest = hips
+            .points
+            .iter()
+            .filter(|p| p[1] < below)
+            .map(|p| p[0].abs())
+            .fold(0.0, f64::max);
+        assert!(
+            widest > 0.03 && widest < 0.13,
+            "{who}: the hips narrow to a crotch below the legs' tops (widest {widest:.3} m)"
+        );
+        // (no other shape of the hips reaches down over the legs)
+        assert_eq!(
+            leg.color, hips.color,
+            "{who}: the legs are the trousers' colour"
+        );
+    }
+    let pm = cast_model("postmaster");
+    let jacket = &pm["spine"].color;
+    let rgb = |h: &str| {
+        let v = u32::from_str_radix(&h[1..], 16).unwrap();
+        ((v >> 16) as f64, ((v >> 8) & 255) as f64, (v & 255) as f64)
+    };
+    let (r, _, b) = rgb(jacket);
+    assert!(
+        r > b + 80.0,
+        "the postmaster's jacket is a warm colour, not a uniform's navy: {jacket}"
+    );
+    assert_ne!(
+        jacket, &pm["leg_l"].color,
+        "a jacket over trousers of another colour"
+    );
+    let recipe = std::fs::read_to_string(game_dir().join("tools/cast.mjs")).unwrap();
+    let line = recipe
+        .lines()
+        .find(|l| l.contains("name: \"postmaster\""))
+        .unwrap();
+    for gone in ["satchel", "peaked", "#2f5fa6"] {
+        assert!(
+            !line.contains(gone),
+            "the postmaster's recipe has no {gone}"
+        );
+    }
+    for wanted in [
+        "cardigan",
+        "bucket",
+        "hat_pin: \"envelope\"",
+        "emblem: \"envelope\"",
+    ] {
+        assert!(line.contains(wanted), "the postmaster wears {wanted}");
+    }
+    // the game no longer hangs a bag on a spring
+    let pm_lua = std::fs::read_to_string(game_dir().join("entities/postmaster.lua")).unwrap();
+    assert!(!pm_lua.contains("part = \"bag\""), "no bag's spring");
+}
+
+/// The arms and legs are part of one soft body: the top of each is a ball round its own pivot (so whichever way the limb turns, the
+/// ball stays where it is), sunk into the body (the torso round a shoulder, the seat of the trousers round a hip), and the sleeve or
+/// the trouser leg runs on out of that ball. Then in every clip (idle, walk, run with the arms out, trot, carry, talk, work, sit,
+/// wave) and every pose the gait draws while walking, running, trotting with a parcel and sitting in the van, each limb's pivot stays
+/// where it is on the body: no limb is ever moved off it, only turned (and a leg made a little longer or shorter from its top), so
+/// nothing opens between a limb and the body.
+#[test]
+fn arms_and_legs_stay_attached_to_the_body_in_every_pose() {
+    for who in ["postmaster", "hazel", "pip"] {
+        let m = cast_model(who);
+        for limb in ["arm_l", "arm_r", "leg_l", "leg_r"] {
+            let p = &m[limb];
+            // the ball: every point of the limb's shape above its pivot is the same distance from it
+            let top: Vec<f64> = p
+                .points
+                .iter()
+                .filter(|q| q[1] > 0.002)
+                .map(|q| (q[0] * q[0] + q[1] * q[1] + q[2] * q[2]).sqrt())
+                .collect();
+            assert!(top.len() > 20, "{who} {limb}: a round top");
+            let r = top.iter().cloned().fold(0.0, f64::max);
+            let lo = top.iter().cloned().fold(f64::MAX, f64::min);
+            assert!(
+                r > 0.045,
+                "{who} {limb}: a ball as wide as the limb ({r:.3} m)"
+            );
+            // (its points above the pivot lie on the ball, rounded to the ring where it meets the tube)
+            let rim = p
+                .points
+                .iter()
+                .filter(|q| q[1] > 0.002)
+                .filter(|q| ((q[0] * q[0] + q[1] * q[1] + q[2] * q[2]).sqrt() - r).abs() > 0.004)
+                .count();
+            assert_eq!(
+                rim, 0,
+                "{who} {limb}: its top is a ball about its pivot ({lo:.3} to {r:.3} m)"
+            );
+            // sunk into the body: the body's surface at the pivot's height, out to the side the limb is on
+            let body = &m[&p.parent];
+            let side = p.origin[0].signum();
+            // (straight between the rings of the body's outline just below and just above the pivot, on its side)
+            let outline: Vec<[f64; 2]> = body
+                .points
+                .iter()
+                .filter(|q| q[2].abs() < 0.01 && q[0] * side > 0.0)
+                .map(|q| [q[1], q[0].abs()])
+                .collect();
+            let near = |below: bool| {
+                outline
+                    .iter()
+                    .filter(|q| {
+                        (q[1] > 0.0)
+                            && if below {
+                                q[0] <= p.origin[1]
+                            } else {
+                                q[0] > p.origin[1]
+                            }
+                    })
+                    .min_by(|a, b| {
+                        (a[0] - p.origin[1])
+                            .abs()
+                            .partial_cmp(&(b[0] - p.origin[1]).abs())
+                            .unwrap()
+                    })
+                    .copied()
+            };
+            let surface = match (near(true), near(false)) {
+                (Some(a), Some(b)) => a[1] + (b[1] - a[1]) * (p.origin[1] - a[0]) / (b[0] - a[0]),
+                _ => 0.0,
+            };
+            let inner = p.origin[0].abs() - r;
+            assert!(
+                surface > 0.05 && inner < surface - 0.015,
+                "{who} {limb}: the ball reaches at least 1.5 cm into the body ({:.3} m into it at the pivot, the body {surface:.3} m out)",
+                surface - inner
+            );
+        }
+    }
+    // the pivots never move on the body, in any clip or the gait's poses
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let check = r#"(function(name, pose, rest)
+        local pairs_ = { { 'arm_l', 'spine' }, { 'arm_l', 'head' }, { 'arm_r', 'spine' }, { 'arm_r', 'head' },
+          { 'leg_l', 'hips' }, { 'leg_l', 'spine' }, { 'leg_r', 'hips' }, { 'leg_r', 'spine' } }
+        local worst = 0
+        for _, q in ipairs(pairs_) do
+          local a, b, ra, rb = pose[q[1]], pose[q[2]], rest[q[1]], rest[q[2]]
+          local d = math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2)
+          local d0 = math.sqrt((ra.x - rb.x) ^ 2 + (ra.y - rb.y) ^ 2 + (ra.z - rb.z) ^ 2)
+          worst = math.max(worst, math.abs(d - d0))
+        end
+        return worst end)"#
+        .replace('\n', " ");
+    assert_eq!(
+        lua(
+            &g,
+            &format!("(function() LIMBS = {check}; return 'ok' end)()")
+        ),
+        "ok"
+    );
+    for who in ["postmaster", "hazel", "pip"] {
+        let worst = num(
+            &g,
+            &format!(
+                "(function() local rest = nova.model_pose('{who}', {{}}); local worst, n = 0, 0; \
+                 for _, c in ipairs({{ 'idle', 'walk', 'run', 'trot', 'carry', 'talk', 'work', 'sit', 'wave' }}) do \
+                   for i = 0, 11 do n = n + 1; worst = math.max(worst, LIMBS('{who}', nova.model_pose('{who}', {{ clip = c, time = i * 0.09 }}), rest)) end end; \
+                 return n >= 100 and worst or 99 end)()"
+            ),
+        );
+        assert!(
+            worst < 0.001,
+            "{who}: a limb's pivot moved on the body in a clip by {worst} m"
+        );
+    }
+    // the gait's poses: walking, running (B held: the arms out), trotting with a parcel, and sitting at the wheel
+    assert_eq!(
+        lua(
+            &g,
+            "(function() GW = { worst = 0, n = 0, moved = false, scale = { 9, 0 } }; local rest = nova.model_pose('postmaster', {}); \
+             function GW_STEP() local p = nova.named('postmaster'); local layers = p.anim:layers(); \
+               for _, l in ipairs(p.walker:extra(p.carry_w and p.carry_w > 0.01 and p.carry_layer or nil)) do layers[#layers + 1] = l end; \
+               local parts = p.seated and {} or p.walker:parts({}); \
+               for _, k in ipairs({ 'arm_l', 'arm_r', 'leg_l', 'leg_r' }) do local q = parts[k]; \
+                 if q and (q.x or q.y or q.z) then GW.moved = true end; \
+                 if q and q.scale then GW.scale[1] = math.min(GW.scale[1], q.scale); GW.scale[2] = math.max(GW.scale[2], q.scale) end end; \
+               GW.n = GW.n + 1; GW.worst = math.max(GW.worst, LIMBS('postmaster', nova.model_pose('postmaster', { layers = layers, parts = parts }), rest)) end; \
+             return 'ok' end)()"
+        ),
+        "ok"
+    );
+    play(
+        &mut g,
+        r#"{ "each_frame": "GW_STEP()", "steps": [
+            { "hold": ["move_y=-0.6"], "frames": 50 },
+            { "hold": ["move_y=-1"], "frames": 50 },
+            { "hold": ["move_y=-1", "run"], "frames": 70 },
+            { "hold": ["move_x=1", "run"], "frames": 40 },
+            { "wait": 30, "lua": "require('lib.state').carrying = 'hazel'" },
+            { "hold": ["move_y=-1", "run"], "frames": 70 },
+            { "wait": 30, "lua": "require('lib.state').carrying = nil; local v = nova.named('van'); v:teleport(6, -100, 0); nova.scene_now().mode = 'van'; v.driven = true; nova.named('postmaster').seated = true" },
+            { "wait": 40 }
+        ] }"#,
+    );
+    let n = num(&g, "GW.n");
+    let worst = num(&g, "GW.worst");
+    assert!(n > 350.0, "frames measured: {n}");
+    assert!(
+        worst < 0.001,
+        "the gait moved a limb's pivot on the body by {worst} m"
+    );
+    assert_eq!(
+        lua(&g, "tostring(GW.moved)"),
+        "false",
+        "the gait only turns and stretches the limbs"
+    );
+    let (lo, hi) = (num(&g, "GW.scale[1]"), num(&g, "GW.scale[2]"));
+    assert!(
+        lo >= 0.83 && hi <= 1.13,
+        "a leg is stretched or squashed only a little from its top: {lo} to {hi}"
+    );
+}
+
+/// The sole of each foot, toe to heel, against the ground under each point of it, every frame: what pokes into the ground (a toe
+/// into the riser of the next step up the porch, a heel into the one behind going down). `SP.tags[tag]` is the most (metres).
+const SOLE_PROBE: &str = r#"
+SP = { tags = {}, tag = "", info = {} }
+local SOLE = { ankle = 0.044, forward = 0.025, half = 0.082, round = 0.034 }
+function SP_STEP(name)
+  local p = nova.named(name)
+  local W = require("lib.world")
+  local layers = p.anim:layers()
+  for _, l in ipairs(p.walker:extra(p.carry_w and p.carry_w > 0.01 and p.carry_layer or nil)) do layers[#layers + 1] = l end
+  local pose = nova.model_pose(p.model or name, { layers = layers, parts = p.walker:parts({}) })
+  local feet = p.walker:feet()
+  local c, s = math.cos(p.face), math.sin(p.face)
+  local most = SP.tags[SP.tag] or 0
+  for i, fname in ipairs({ "foot_l", "foot_r" }) do
+    local f = pose[fname]
+    local ax, az, ay = p.x + f.x * c + f.z * s, p.z - f.x * s + f.z * c, (p.y or 0) + f.y
+    local ca, sa = math.cos(feet[i].pitch), math.sin(feet[i].pitch)
+    for j = 0, 32 do
+      local t = math.pi + math.pi * j / 32
+      local z, y = SOLE.forward + SOLE.half * math.cos(t), -(SOLE.ankle - SOLE.round) + SOLE.round * math.sin(t)
+      local zz, yy = z * ca + y * sa, -z * sa + y * ca
+      local wx, wz = ax + zz * math.sin(feet[i].yaw), az + zz * math.cos(feet[i].yaw)
+      local g = W.height(wx, wz) - nova.terrain_height(p.x, p.z)
+      if g - (ay + yy) > most then
+        most = g - (ay + yy)
+        local L = p.walker.legs[i]
+        SP.info[SP.tag] = string.format("foot %d %s (%s), %.3f m along the sole, the ankle %.3f up over ground %.3f, the body %.2f up at %.2f m/s; the gait's ankle %.3f up, the leg scaled %.3f", i, feet[i].planted and "down" or "in the air", tostring(feet[i].pivot), zz, ay, W.height(ax, az) - nova.terrain_height(p.x, p.z), p.y or 0, p.speed or 0, L.ay or 0, L.scale or 0)
+      end
+    end
+  end
+  SP.tags[SP.tag] = most
+end
+"#;
+
+/// Up and down the post office's porch steps, at a walk and at a run: no toe pokes into the riser of the step above and no heel into
+/// the one behind (the gait lands each sole wholly on one tread, and a foot swinging up a step clears the riser with its toe, not
+/// only its ankle). On the steepest open hillside near the road the cast is drawn upright, lifted as one by the ground under it (the
+/// renderer's lift point by point sheared the body with the slope), the feet standing on the hillside where the gait puts them; so
+/// are Hazel and Pip.
+#[test]
+fn no_toe_goes_into_a_step_and_the_cast_stands_upright_on_a_hillside() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    let probe: Vec<&str> = SOLE_PROBE
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("--"))
+        .collect();
+    assert_eq!(
+        lua(
+            &g,
+            &format!("(function() {} return 'ok' end)()", probe.join(" "))
+        ),
+        "ok"
+    );
+    let porch = |g: &mut Game, tag: &str, pace: f64| {
+        play(
+            g,
+            r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.x, p.z = d.x + fx * 6, d.z + fz * 6; p.face = math.atan(-fx, -fz); p.walk_to, p.walk_path = nil, nil" }, { "wait": 20 } ] }"#,
+        );
+        play(
+            g,
+            &format!(
+                r#"{{ "each_frame": "SP_STEP('postmaster')", "steps": [ {{ "lua": "SP.tag = '{tag} up'; local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.walk_path = {{ {{ d.x + fx * 1.4, d.z + fz * 1.4 }} }}; p.walk_pace = {pace}" }}, {{ "wait": 240 }},
+                   {{ "lua": "SP.tag = '{tag} down'; local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.walk_path = {{ {{ d.x + fx * 6, d.z + fz * 6 }} }}; p.walk_pace = {pace}" }}, {{ "wait": 240 }} ] }}"#
+            ),
+        )
+    };
+    porch(&mut g, "walk", 1.6);
+    porch(&mut g, "run", 2.8);
+    for tag in ["walk up", "walk down", "run up", "run down"] {
+        let poke = num(&g, &format!("SP.tags['{tag}'] or -1"));
+        assert!(
+            (0.0..0.012).contains(&poke.max(0.0)) && poke > -1.0,
+            "{tag} the porch steps: a sole went {poke} m into a step ({})",
+            lua(&g, &format!("SP.info['{tag}']"))
+        );
+    }
+    // the steepest open grass within 40 m of the road south of the post office: drawn upright, the feet on the hillside
+    let spot = lua(
+        &g,
+        "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
+           local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
+    );
+    let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (x, z, gx, gz) = (v[0], v[1], v[2], v[3]);
+    let s = gx.hypot(gz);
+    assert!(s > 0.2, "a steep hillside: {spot}");
+    let (ux, uz) = (-gz / s, gx / s);
+    play(
+        &mut g,
+        &format!(
+            r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = {}, {}, math.atan({ux}, {uz}); p.walk_to, p.walk_path = nil, nil" }}, {{ "wait": 20 }},
+               {{ "lua": "SP.tag = 'hillside'; nova.named('postmaster').walk_path = {{ {{ {}, {} }} }}" }} ] }}"#,
+            x - ux * 2.5,
+            z - uz * 2.5,
+            x + ux * 2.5,
+            z + uz * 2.5
+        ),
+    );
+    play(
+        &mut g,
+        r#"{ "each_frame": "SP_STEP('postmaster')", "steps": [ { "wait": 60 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(nova.named('postmaster').draw_opts.lift)"),
+        "origin",
+        "drawn upright on the hillside"
+    );
+    let hill = num(&g, "SP.tags['hillside'] or -1");
+    assert!(
+        hill > -1.0 && hill < 0.03,
+        "on a {s:.2} hillside a sole goes {hill} m into the ground"
+    );
+    for who in ["hazel", "pip"] {
+        assert_eq!(
+            lua(&g, &format!("tostring(nova.named('{who}').draw_opts.lift)")),
+            "origin",
+            "{who} is drawn upright too"
+        );
     }
 }

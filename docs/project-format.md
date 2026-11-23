@@ -804,7 +804,12 @@ beside the other, and the cycle then holds with both feet down; turning on the s
 looks round now and then or shifts its weight onto one foot (`idle = false` leaves that out; `entity.look`, radians from where it
 faces, turns the head first into a turn). Numbers may be one value or points by speed. `ground(x, z)` is the height of the ground
 under a point: the hills of `nova.terrain` are the renderer's (it lifts each vertex by the ground under it), so give only what
-stands on them, a porch or a bridge. The legs are found by name (`leg_l`/`foot_l`, `leg_r`/`foot_r`; `legs = { { hip, foot,
+stands on them, a porch or a bridge. On a steep hillside that lift shears a tall body with the slope; to keep it upright draw it with
+`lift = "origin"` and give the whole ground from the body's own place: `ground = function(x, z, e) return nova.terrain_height(x, z) +
+porch(x, z) - nova.terrain_height(e.x, e.z) end` (the third argument is the walker; Fernhollow Post's cast does this). On a stair
+(a jump in the ground, not a slope) each foot lands wholly on one tread, a foot in the air keeps its whole sole over the ground
+under it, and a straight leg too short to lift its foot onto the step above swings it forward (or, going down, on the way it is)
+until it can; a standing foot the leg cannot reach any more is swung back clear of the riser in front of it. The legs are found by name (`leg_l`/`foot_l`, `leg_r`/`foot_r`; `legs = { { hip, foot,
 phase } }` names others), the sole is the lower half of an ellipse (`sole = { forward, half, round }`: character3d_make's by
 default).
 

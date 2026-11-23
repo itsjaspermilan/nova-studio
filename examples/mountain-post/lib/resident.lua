@@ -41,9 +41,11 @@ return function(who, spec)
     self.carry_layer = { { clip = "carry", time = 0, weight = 1, mask = { "arm_l", "arm_r" } } }
     self.parcel_opts = { ry = 0 }
     self.mood = face.new(who == "hazel" and 3 or 7, spec.rest)
-    self.draw_opts = { ry = 0, parts = nil }
+    self.draw_opts = { ry = 0, parts = nil, lift = "origin" }
+    self.on_deck = true -- (drawn as one by the ground under them: what a measure of their feet takes the ground to be)
     -- the feet, the hips and the springs (each resident's own manner: spec.gait)
-    local style = { ground = function(x, z) return world.lift(x, z) end }
+    -- (drawn upright, lifted as one by the ground under them, like the postmaster: the feet stand on the ground's own heights)
+    local style = { ground = function(x, z, e) e = e or self; return world.height(x, z) - nova.terrain_height(e.x, e.z) end }
     for k, v in pairs(spec.gait or {}) do style[k] = v end
     self.walker = nova.gait(who, style)
     self.walk_parts = {}

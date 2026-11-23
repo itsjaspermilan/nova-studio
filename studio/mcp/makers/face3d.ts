@@ -42,17 +42,21 @@ export interface FaceLayout {
 
 /// Where the face goes on a head of half sizes RX (across), RY (up) about the middle at y = c.
 export function faceLayout(species: string, RX: number, RY: number, c: number): FaceLayout {
-  const ex = 0.4 * RX, ey = c - 0.06 * RY, ew = 0.088 * RX, eh = 0.155 * RY;
-  const by = ey + 0.33 * RY, bw = 0.1 * RX;
+  // (big, a little like a cartoon's but not huge: taller ovals than they are wide, set a touch higher and further apart so they stay
+  // clear of a snout or a muzzle; the brows ride above them)
+  const ex = 0.42 * RX, ey = c - 0.04 * RY, ew = 0.108 * RX, eh = 0.2 * RY;
+  // (a badger's eyes have a light rim round them in its stripes: its brows sit higher still)
+  const rim = species === "badger";
+  const by = ey + (rim ? 0.48 : 0.42) * RY, bw = 0.11 * RX;
   const ny = c + ({ fox: -0.27, badger: -0.27, bear: -0.21, rabbit: -0.27, cat: -0.27 } as Record<string, number>)[species]! * RY;
   const my = c + ({ fox: -0.47, badger: -0.47, bear: -0.43, rabbit: -0.43, cat: -0.43 } as Record<string, number>)[species]! * RY;
-  const mw = 0.13 * RX;
+  const mw = 0.156 * RX;
   const side = ex + ew * 2.2;
   return {
     ex, ey, ew, eh, by, bw, ny, my, mw,
     boxes: {
-      eyes: [-side, side, ey - eh * 1.6, ey + eh * 1.5],
-      brows: [-side, side, ey + eh * 1.5, by + 0.22 * RY],
+      eyes: [-side, side, ey - eh * 1.6, ey + eh * (rim ? 1.55 : 1.3)],
+      brows: [-side, side, ey + eh * (rim ? 1.55 : 1.3), by + 0.22 * RY],
       mouth: [-mw * 2.4, mw * 2.4, my - 0.24 * RY, ny - 0.04 * RY],
       paint: [-0.86 * RX, 0.86 * RX, c - 0.92 * RY, c + 0.75 * RY],
     },
@@ -79,8 +83,8 @@ export function faceInks(name: string, L: FaceLayout, k: FaceColours, species: s
         if (rim) out.push({ color: rgbOf(k.fur2), d: sd.ellipse(cx, ey, ew * k2 * 1.35, eh * k2 * 1.25) });
         out.push({ color: ink, d: sd.ellipse(cx, ey, ew * k2, eh * k2) });
         // a glint up and to the viewer's right, and a little one low on the other side
-        out.push({ color: white, d: sd.ellipse(cx - ew * 0.3 * k2, ey + eh * 0.36 * k2, ew * 0.36 * k2, eh * 0.28 * k2) });
-        out.push({ color: white, d: sd.circle(cx + ew * 0.38 * k2, ey - eh * 0.45 * k2, ew * (name === "eye_wide" ? 0.2 : 0.15)) });
+        out.push({ color: white, d: sd.ellipse(cx - ew * 0.28 * k2, ey + eh * 0.36 * k2, ew * 0.42 * k2, eh * 0.3 * k2) });
+        out.push({ color: white, d: sd.circle(cx + ew * 0.36 * k2, ey - eh * 0.44 * k2, ew * (name === "eye_wide" ? 0.25 : 0.2)) });
       } else if (name === "eye_happy") {
         // closed upward arcs (^ ^)
         out.push({ color: ink, d: sd.stroke(sd.curve(P(cx - ew * 1.1, ey - eh * 0.25), P(cx, ey + eh * 1.05), P(cx + ew * 1.1, ey - eh * 0.25)), ew * 0.28) });
@@ -112,7 +116,8 @@ export function faceInks(name: string, L: FaceLayout, k: FaceColours, species: s
         out.push({ color: browC, d: sd.stroke(sd.curve(a, mid, b), bw * 0.24, bw * 0.3) });
       };
       if (name === "brow_flat") brow(0, 0, bw * 0.2);
-      else if (name === "brow_frown") brow(-eh * 0.32, -bw * 0.55, 0);
+      // (its inner end comes down towards the eye, no further than the brows' own patch: it was cut off there before)
+      else if (name === "brow_frown") brow(-eh * 0.25, -bw * 0.42, 0);
       else if (name === "brow_up") brow(eh * 0.35, bw * 0.12, bw * 0.35);
       else if (name === "brow_sad") brow(eh * 0.1, bw * 0.5, -bw * 0.05);
     });
