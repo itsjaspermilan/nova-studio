@@ -1,0 +1,20 @@
+{
+  "start_scene": "office",
+  "lua": "T = require('lib.testkit'); S = require('lib.state'); C = require('lib.camera'); GO = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil end",
+  "route": [
+    { "wait": 5 },
+    { "lua": "GO(0.2, 1.4)" },
+    { "wait": 40, "capture": "pick_0_room_no_conveyor_far_from_anything" },
+    { "lua": "GO(0.75, 0.3)" },
+    { "wait": 40, "capture": "pick_1_letter_tip_and_outline" },
+    { "lua": "GO(-3.0, -1.44)" },
+    { "wait": 40, "capture": "pick_2_parcel_tip_and_outline" },
+    { "lua": "GO(-2.7, -1.44)" },
+    { "wait": 40, "capture": "pick_3_between_two_only_nearest_outlined" },
+    { "lua": "GO(-2.8, -1.44)" },
+    { "wait": 40, "capture": "pick_4_a_step_closer_to_the_first" },
+    { "press": "interact" },
+    { "wait": 40, "capture": "pick_5_after_taking_no_popup" }
+  ],
+  "out": "build/gallery"
+}

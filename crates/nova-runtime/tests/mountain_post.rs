@@ -373,9 +373,10 @@ fn the_labels_and_every_line_are_exactly_the_specs_words() {
     );
 }
 
-/// The label held up when a parcel is taken shows the name and the street, and the letter reads the Mayor's words on screen.
+/// Near a parcel a small tip floats over it with its name and street (and X Take); taking it opens no popup, the parcel just goes into the
+/// arms; and the letter reads the Mayor's words on screen.
 #[test]
-fn taking_a_parcel_shows_its_label_and_the_letter_reads_at_the_counter() {
+fn a_parcel_shows_a_tip_near_and_is_taken_without_a_popup_and_the_letter_reads_at_the_counter() {
     let mut g = game();
     let r = play(
         &mut g,
@@ -405,19 +406,27 @@ fn taking_a_parcel_shows_its_label_and_the_letter_reads_at_the_counter() {
         &mut g,
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [
         { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('pip')" }, { "until": "not T.walking()", "max": 400 },
-        { "press": "interact" }, { "wait": 30 } ] }"#,
+        { "wait": 40 } ] }"#,
     );
-    let texts: Vec<String> = r
-        .drawn("ui_text", None)
-        .iter()
-        .filter_map(|d| d["name"].as_str().map(String::from))
-        .collect();
+    let texts = |r: &nova_runtime::testing::Report| -> Vec<String> {
+        r.drawn("ui_text", None)
+            .iter()
+            .filter_map(|d| d["name"].as_str().map(String::from))
+            .collect()
+    };
+    let t = texts(&r);
     assert!(
-        texts.contains(&"Pip Tansy".to_string())
-            && texts.contains(&"7 Kettle Creek Road".to_string()),
-        "the label, big: {texts:?}"
+        t.contains(&"Pip Tansy".to_string())
+            && t.contains(&"7 Kettle Creek Road".to_string())
+            && t.contains(&"Take".to_string()),
+        "the tip over the parcel, near it: {t:?}"
     );
+    assert_eq!(lua(&g, "tostring(require('lib.state').carrying)"), "nil");
+    assert_eq!(lua(&g, "nova.scene_now().pick.item"), "pip", "the parcel about to be picked up is the one outlined");
+    let r = play(&mut g, r#"{ "steps": [ { "press": "interact" }, { "wait": 30 } ] }"#);
     assert_eq!(lua(&g, "require('lib.state').carrying"), "pip");
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "nil", "no popup when a parcel is taken");
+    assert!(!texts(&r).iter().any(|t| t == "To:"), "no label card");
 }
 
 /// One parcel at a time: carrying one, X at the other's place on the shelf does not take it (it puts back the one carried).
@@ -428,7 +437,7 @@ fn one_parcel_at_a_time() {
         &mut g,
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [
         { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('hazel')" }, { "until": "not T.walking()", "max": 400 },
-        { "press": "interact" }, { "wait": 30 }, { "press": "interact" }, { "wait": 20 },
+        { "press": "interact" }, { "wait": 30 },
         { "lua": "nova.named('postmaster').walk_to = T.shelf_spot('pip')" }, { "until": "not T.walking()", "max": 400 },
         { "wait": 5, "lua": "OFFER = nova.scene_now():action()" } ] }"#,
     );
@@ -1611,7 +1620,7 @@ fn every_piece_of_ui_is_drawn_from_the_one_kit() {
         assert_eq!(r.drawn_count("ui_text", Some(name)), 1, "{who}'s name tag");
         assert!(r.drawn_count("ui_sprite", Some("ui/kit/raised")) >= 1);
     }
-    // the office: the letter, a label, the end card
+    // the office: the letter, the tip over a parcel, the end card
     let mut g = game();
     let r = play(
         &mut g,
@@ -1624,10 +1633,10 @@ fn every_piece_of_ui_is_drawn_from_the_one_kit() {
         &mut g,
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [
         { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('pip')" }, { "until": "not T.walking()", "max": 400 },
-        { "press": "interact" }, { "wait": 30 } ] }"#,
+        { "wait": 40 } ] }"#,
     );
-    assert_ui_from_the_kit(&r, "the label");
-    assert!(r.drawn_count("ui_sprite", Some("ui/kit/slip")) >= 1);
+    assert_ui_from_the_kit(&r, "the parcel's tip");
+    assert_eq!(r.drawn_count("ui_text", Some("Pip Tansy")), 1, "the tip's name");
     let mut g = game();
     let r = play(
         &mut g,
@@ -7026,7 +7035,7 @@ fn taking_a_parcel_empties_its_tile_and_putting_it_back_fills_the_first_free_one
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit'); S = require('lib.state')", "route": [
         { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('hazel')" }, { "until": "not T.walking()", "max": 600 },
         { "wait": 5, "lua": "OFFER = nova.scene_now():action()" },
-        { "press": "interact" }, { "wait": 30 }, { "press": "interact" }, { "wait": 20 } ] }"#,
+        { "press": "interact" }, { "wait": 30 } ] }"#,
     );
     assert_eq!(lua(&g, "OFFER"), "take");
     assert_eq!(lua(&g, "S.carrying"), "hazel");
@@ -7602,4 +7611,25 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
     // the room: nothing
     play(&mut g, r#"{ "steps": [ { "lua": "nova.goto_scene('office')" }, { "wait": 30 } ] }"#);
     assert_eq!(lua(&g, "tostring(LAST)"), "nil", "no near fade indoors");
+}
+
+/// Only the nearest parcel (or the letter) is the one about to be picked up: it alone gets the tip and the white outline; walking off
+/// fades the tip out.
+#[test]
+fn only_the_nearest_parcel_gets_the_tip_and_the_outline_and_it_fades_when_you_walk_away() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "GO = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil end; REC = {}; local orig = nova.model; nova.model = function(id, x, y, z, o) if o and o.outline then REC[#REC + 1] = id end; return orig(id, x, y, z, o) end",
+        "steps": [ { "wait": 5 }, { "lua": "GO(-2.8, -1.44)" }, { "wait": 40 }, { "lua": "REC = {}" }, { "wait": 2 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().pick.item"), "hazel", "nearer the first tile");
+    assert_eq!(lua(&g, "table.concat(REC, ',')"), "parcel_hazel,parcel_hazel", "only that parcel is drawn outlined");
+    assert!(num(&g, "nova.scene_now().tip_a") > 0.99, "the tip is up");
+    play(&mut g, r#"{ "steps": [ { "lua": "GO(-2.55, -1.44)" }, { "wait": 60 }, { "lua": "REC = {}" }, { "wait": 1 } ] }"#);
+    assert_eq!(lua(&g, "nova.scene_now().pick.item"), "pip", "a step on, the second tile's parcel is the nearest");
+    assert_eq!(lua(&g, "table.concat(REC, ',')"), "parcel_pip");
+    play(&mut g, r#"{ "steps": [ { "lua": "GO(0.9, 1.8)" }, { "wait": 40 } ] }"#);
+    assert_eq!(lua(&g, "tostring(nova.scene_now().pick)"), "nil");
+    assert!(num(&g, "nova.scene_now().tip_a") < 0.01, "the tip has faded out");
 }

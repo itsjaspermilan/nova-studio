@@ -1,6 +1,6 @@
 -- The post office's room (scenes/office.scene.json): dusty, half the pigeonholes empty, the Mayor's letter on the front counter's desk
 -- mat and the day's parcels on the tiles of the package counter along the back wall (one parcel to a tile; the picture frame above it says
--- how many are still to deliver; a belt comes in through a hatch from the backroom). X reads the letter, takes a parcel from its tile
+-- how many are still to deliver). X reads the letter, takes a parcel from its tile
 -- (one at a time; its label is held up to read) or puts it back on the first free tile; the doorway leads out to the porch (a short fade, and they stand outside, free at once). Coming back in with both
 -- delivered, the slice ends on its quiet card. The room is seen from one fixed view high over its cut-away front wall, like a
 -- diorama ("when in a building, we should just have a simple top down view like Animal Crossing"); the stick moves the postmaster
@@ -20,10 +20,9 @@ local LETTER_AT = { 0.75, -0.45 }
 local FADE = 0.3
 local REACH = 1.1 -- how far from a tile's middle X still reaches it (the postmaster stands in the aisle between the counters)
 
--- The picture frame on the back wall (tools/office-layout.mjs FRAME) and the conveyor window's belt (WINDOW, the belt in models.mjs):
--- the numerals are pictures lying on the frame's plate, the belt's slats are drawn moving.
+-- The picture frame on the back wall (tools/office-layout.mjs FRAME):
+-- the numerals are pictures lying on the frame's plate.
 local FRAME = { x = 0, y = 1.8, z = -2.6 + 0.065 }
-local BELT = { x = 3.0, y = 0.868, z0 = -2.6 - 4.0, z1 = -2.6 + 0.55, pitch = 0.14, speed = 0.05 }
 local COMPUTER = { x = -1.15, y = 0.8, z = -0.75 } -- (the old computer on the front counter: its screen glows, nothing more yet)
 
 function Office:enter()
@@ -124,6 +123,7 @@ function Office:update(dt)
   end
   self.t = self.t + dt
   music.update(dt, { quiet = cards.active() and not state.ended })
+  self.dt = dt
   self.fade_in = math.max(0, self.fade_in - dt / FADE)
   local p = self.p
   if cards.active() then
@@ -160,8 +160,8 @@ function Office:update(dt)
         p:face_to(it.x, it.z)
         nova.log("took " .. it.item)
         nova.sound.play("parcel_up", { volume = 0.55, vary = 0.05 })
-        parcels.show(it.item)
-        cards.open("label", { which = it.item })
+        nova.sound.play("paper", { volume = 0.35, vary = 0.06 })
+        parcels.show(it.item) -- (no popup: the corner card shows it in the arms)
       elseif what == "put_back" then
         nova.log("put back " .. state.carrying)
         state.on_shelf[state.carrying] = true
@@ -186,16 +186,30 @@ function Office:update(dt)
   end
   camera.room(dt)
   self.hint = self:hints()
+  -- the tip fades out when what it is over is no longer the one to pick up, then comes up over the new one
+  local want = self.pick
+  if self.tip_for ~= want then
+    self.tip_a = math.max(0, (self.tip_a or 0) - dt / 0.12)
+    if self.tip_a <= 0.01 then self.tip_for, self.tip_a = want, 0 end
+  elseif want then
+    self.tip_a = math.min(1, (self.tip_a or 0) + dt / 0.18)
+  end
 end
 
 function Office:hints()
   self.target = nil
+  self.pick = nil
   if cards.active() or self.leaving then return nil end
   local what, it = self:action()
   local list = {}
   self.target = nil
   local tx, ty, tz = self:prompt_at(what, it)
-  if tx then self.target = { tx, ty, tz } end
+  -- the tip and the outline are for what is about to be picked up (a parcel to take, the letter to read); a free tile to put back on
+  -- keeps its marker and button
+  if what == "take" then self.pick = it
+  elseif what == "read" then
+    for _, i in ipairs(nova.all("item")) do if i.item == "letter" then self.pick = i end end
+  elseif tx then self.target = { tx, ty, tz } end
   if what == "read" then list[#list + 1] = { "X", words.hint.read }
   elseif what == "take" then list[#list + 1] = { "X", words.hint.take }
   elseif what == "put_back" then list[#list + 1] = { "X", words.hint.put_back } end
@@ -225,30 +239,14 @@ function Office:draw_tally()
   nova.billboard("tally_caption", FRAME.x, FRAME.y - 0.31, FRAME.z, 0.9, CAPTION)
 end
 
--- The belt through the hatch: slats creeping in from the backroom, round the end roller (they shrink out of sight there).
-local SLAT = { sx = 1 }
-function Office:draw_belt()
-  local len = BELT.z1 - BELT.z0
-  local n = math.floor(len / BELT.pitch)
-  for i = 0, n - 1 do
-    local z = BELT.z0 + (i * BELT.pitch + self.t * BELT.speed) % len
-    local over = math.max(0, z - (BELT.z1 - 0.06)) / 0.06
-    nova.model("belt_slat", BELT.x, BELT.y - 0.05 * over, z, { scale = 1 - 0.5 * over })
-  end
-end
-
 function Office:draw()
   camera.apply(self.paused and 0 or 1 / 60)
   nova.point_light(-2.6, 1.8, 0, { radius = 6, color = { 255, 214, 160 } })
   nova.point_light(0.9, 1.8, 2.0, { radius = 4, color = { 255, 226, 180 } })
-  -- the backroom's lamp (the standing lamp by the hatch, tools/models.mjs): a warm light behind the wall, over the belt and the rack
-  nova.point_light(BELT.x + 0.7, 1.2, -2.6 - 1.5, { radius = 2.6, color = { 255, 196, 120 } })
-  -- the old computer's faint green glow, and the words on its screen
   nova.point_light(COMPUTER.x, COMPUTER.y + 0.45, COMPUTER.z + 0.5, { radius = 1.4, color = { 70, 150, 90 } })
   nova.billboard("crt_screen", COMPUTER.x, COMPUTER.y + 0.35, COMPUTER.z + 0.19, 0.44, SCREEN)
   self:draw_tally()
-  self:draw_belt()
-  if self.target then nova.quad3(self.target[1], self.target[2] + 0.004, self.target[3], 0, 1, 0, 0.5, READY) end
+  if self.target then nova.quad3(self.target[1], self.target[2] + 0.004, self.target[3], 0, 1, 0, 0.5, READY) end -- (a free tile to put the parcel back on)
   for i = 1, 26 do
     local ph = (i * 0.618) % 1
     local t = self.t * 0.05 + ph
@@ -270,6 +268,17 @@ function Office:draw_ui()
     if t and not self.leaving then
       local sx, sy = camera.project(t[1], t[2] + 0.5 + 0.03 * math.sin(self.t * 4), t[3], w, h)
       if sx then ui.glyph(sx, sy, "X", ui.s(26)) end
+    end
+    -- the floating tip over the parcel (or the letter) about to be picked up
+    local it = self.tip_for
+    if it and (self.tip_a or 0) > 0.01 and not self.leaving then
+      local sx, sy = camera.project(it.x, it.y + (it.item == "letter" and 0.2 or 0.34), it.z, w, h)
+      if sx then
+        local letter = it.item == "letter"
+        local name, street
+        if letter then name = words.tip.letter else name, street = ui.label_lines(it.item) end
+        ui.tip({ id = it, ax = sx, ay = sy, name = name, street = street, key = "X", word = letter and words.hint.read or words.hint.take, a = self.tip_a }, w, h, self.dt)
+      end
     end
   end
   cards.draw(w, h)

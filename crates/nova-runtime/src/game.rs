@@ -1855,6 +1855,23 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     Some(sway) if sway != 0.0 => instance.swaying(sway as f32),
                     _ => instance,
                 };
+                // `outline = { color = { r, g, b }, width = 2.5 }`: a flat outline round the model, `width` pixels wide on the screen
+                // (docs/project-format.md; gfx::OutlineDraw, outline.wgsl). A plain model only: not a posed one, nor one a hill lifts.
+                if let Some(o) = opts.as_ref().map(|o| o.get::<Option<Table>>("outline")).transpose()?.flatten() {
+                    let c = color_option(&Some(o.clone()), "color", [255, 255, 255, 255])?;
+                    let width = o.get::<Option<f64>>("width")?.unwrap_or(2.5);
+                    if !(width.is_finite() && (0.0..=16.0).contains(&width)) {
+                        return Err(lua_err("outline takes width in pixels, 0 to 16: outline = { color = { 255, 255, 255 }, width = 2.5 }"));
+                    }
+                    if width > 0.0 {
+                        sh.lighting.outlines.push(crate::gfx::OutlineDraw {
+                            mesh,
+                            matrix: matrix.to_cols_array_2d(),
+                            color: [c[0], c[1], c[2]].map(|v| f32::from(v) / 255.0),
+                            width: width as f32,
+                        });
+                    }
+                }
                 shader_api::push_model(&mut sh, ModelDraw {
                     casts,
                     mesh,
@@ -5126,6 +5143,7 @@ impl Game {
             sky.time = (sh.time % 100_000.0) as f32;
         }
         self.lighting.wind.time = (sh.time % 100_000.0) as f32;
+        sh.lighting.outlines.clear(); // outlines last one frame too
         sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();

@@ -937,3 +937,16 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
    about to pickup."
 5. "Let's angle the fox tail a little higher."
 6. "Also let's make the van blue with a red stripe."
+
+**Done for these notes (the conveyor, and picking up, 2026-11-23).**
+- **No conveyor belt.** The hatch, flaps, belt, slats, backroom and its light are gone (the models `conveyor_window` and `belt_slat`, their
+  entity and scene object, the belt code); the back wall is plain right across, and the package counter is just its ten tiles.
+- **Picking up has no popup.** Near a parcel on a tile a small tip floats over it (`ui.tip`, the van panel's style: paper panel, a tail
+  down to a point over the item through `camera.project`, eased, clamped on the screen): the recipient's name over the street, and the X
+  button with "Take". The Mayor's letter has the same tip ("Letter from the Mayor", X "Read") before the card you read. X on a parcel
+  puts it in the arms (a soft paper sound; the corner card shows it); the big label card is gone. The tip fades out when you walk away or
+  another parcel becomes the nearest, then comes up over that one.
+- **A white outline** on the one about to be picked up (the nearest takeable parcel, or the letter): new in the engine, `nova.model`'s
+  `outline = { color, width }` (documented in `project-format.md` and `nova-api.json`, GPU test `outline_gpu.rs`): an inverted hull in
+  `outline.wgsl`, 2.5 px wide at any distance, not cut by the see-through, one more draw of the mesh. Pictures:
+  `build/gallery/pick_*`. Tests: `a_parcel_shows_a_tip_near_and_is_taken_without_a_popup_...`, `only_the_nearest_parcel_gets_the_tip_...`.

@@ -4,11 +4,9 @@ export const ROOM = { X: 3.5, Z: 2.6 };
 // The package counter along the back wall: its depth, top height, and its tiles (square, about 0.6 m, one parcel on each).
 export const BACK = { depth: 0.62, top: 0.8, x0: -3.45, x1: 3.45 };
 export const TILE = 0.6;
-export const TILES = 10; // for parcels, from the left; the eleventh tile's place is the belt's end
+export const TILES = 10; // for parcels, from the left
 export const tileX = (i) => -3.0 + (i - 1) * TILE; // i from 1
 export const TILE_Z = -ROOM.Z + BACK.depth / 2;
-// The conveyor window: in the back wall at the counter's right-hand end, over the eleventh tile.
-export const WINDOW = { x: tileX(11), w: 0.9, y0: 0.84, y1: 2.3 };
 // The picture frame, centred on the back wall.
 export const FRAME = { x: 0, y: 1.8, w: 1.5, h: 1.05 };
 // The front counter across the middle of the room (its top's middle and length): the walks round both ends are 1.85 m wide.

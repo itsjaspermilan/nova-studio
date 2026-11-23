@@ -64,6 +64,8 @@ words.hint = {
   map = "Map", close = "Close", next = "Next", put_back = "Put back", go_in = "Go in", go_out = "Go out",
   load = "Load package", load_at_back = "Load it at the back", choose = "Choose",
 }
+-- the small tip floating over a parcel (or the letter) that can be taken (lib/ui.lua ui.tip)
+words.tip = { letter = "Letter from the Mayor" }
 -- the panel floating over the van's open back doors (lib/ui.lua ui.van_panel)
 words.van = { tag = "Van", empty = "The van is empty", full = "The van is full" }
 words.pause = { title = "Paused", resume = "Resume", quit = "Quit" }

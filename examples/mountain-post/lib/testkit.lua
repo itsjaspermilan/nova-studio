@@ -3,7 +3,7 @@
 -- Nothing in the game uses them.
 local testkit = {}
 
--- In the office: take a parcel from the shelf (walk to it, X, close the label with X).
+-- In the office: take a parcel from the shelf (walk to it, X: it goes into the arms, no popup).
 function testkit.shelf_spot(item)
   local it = nova.named("parcel_" .. item) or nova.named("postmaster")
   return { it.x, it.z + 0.85 } -- (in the aisle in front of its tile)

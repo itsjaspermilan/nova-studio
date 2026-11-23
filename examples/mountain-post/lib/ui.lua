@@ -344,6 +344,47 @@ function ui.van_panel(d, w, h, dt)
   ui.van_panel_box = { x = x, y = y, w = cw, h = ch, tail_x = f.x, anchor_y = f.y } -- (for the tests: where the panel is)
 end
 
+-- A small tip floating over what can be picked up (the owner, 2026-11-23: "a similar floating tooltip when the player is near the package
+-- that shows a trimmed version of that popup"): the van panel's style (paper panel, a tail down to the point), a name over a street (the
+-- parcel's label, trimmed) or one line (the Mayor's letter), and the button's cap with its word, small. `d`: id (what it is over: a new id
+-- starts at the new anchor), ax, ay (the point on the screen), name, street (or nil), key and word (the button and what it does), a (0 to 1).
+-- The anchor eases, so the tip does not jitter; it stays on the screen.
+ui.tip_f = nil
+ui.tip_id = nil
+function ui.tip_reset() ui.tip_f, ui.tip_id = nil, nil end
+function ui.tip(d, w, h, dt)
+  local a = d.a or 1
+  if a <= 0 then return end
+  local f = ui.tip_f
+  if not f or ui.tip_id ~= d.id then f = { x = d.ax, y = d.ay }; ui.tip_f, ui.tip_id = f, d.id
+  else
+    local k = 1 - math.exp(-(dt or 1 / 60) * 16)
+    f.x, f.y = f.x + (d.ax - f.x) * k, f.y + (d.ay - f.y) * k
+  end
+  local two = d.street ~= nil
+  local nw = text_width(d.name, F.name, true)
+  local sw = two and text_width(d.street, F.line) or 0
+  local cw = math.max(s(150), math.max(nw, sw) + (two and s(78) or s(24)))
+  local ch = two and s(78) or s(60)
+  local pad = s(10)
+  local x = math.max(pad, math.min(w - pad - cw, f.x - cw / 2))
+  local y = math.max(s(26), math.min(h - pad - ch - TAIL, f.y - TAIL - ch)) + (1 - a) * s(8)
+  ui.panel(x, y, cw, ch, { alpha = a, scale = 0.3 })
+  tail(math.max(x + s(16), math.min(x + cw - s(16), f.x)), y + ch - s(3), s(6), TAIL + s(3), a)
+  local tx = x + (two and s(62) or s(14))
+  if two then
+    nova.ui.sprite("ui/parcel_icon", x + s(32), y + s(28), { w = s(40), h = s(33), color = { 255, 255, 255, math.floor(255 * a) } })
+    text(tx, y + s(10), d.name, { size = F.name, color = alpha(C.ink, a), bold = true })
+    text(tx, y + s(34), d.street, { size = F.line, color = alpha(C.faint, a) })
+  else
+    text(tx, y + s(9), d.name, { size = F.name, color = alpha(C.ink, a), bold = true })
+  end
+  local by = y + ch - s(15)
+  ui.glyph(x + s(22), by, d.key, s(17), { down = held(d.key), alpha = a })
+  text(x + s(38), by - F.small * 0.62, d.word, { size = F.small, color = alpha(C.ink, a), bold = true })
+  ui.tip_box = { x = x, y = y, w = cw, h = ch, tail_x = f.x, anchor_y = f.y } -- (for the tests)
+end
+
 -- The minimap: a small disc in the bottom-left corner with the roads right round you (about 90 m each way) and you in the middle.
 -- Nothing else: no houses, no numbers, nowhere to go. It turns with the camera (the owner's fifth play: "The direction should move
 -- when rotated to follow the players camera direction. There should be a North marker on the map too."): up on the disc is always the

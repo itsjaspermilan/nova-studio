@@ -9,7 +9,7 @@ import { rng } from "./geo.mjs";
 import { put, tool } from "./lib.mjs";
 import { placedFootprint } from "./footprint.mjs";
 import { roads } from "./roads.mjs";
-import { ROOM, BACK, TILES, TILE_Z, WINDOW, tileX } from "./office-layout.mjs";
+import { ROOM, BACK, TILES, TILE_Z, tileX } from "./office-layout.mjs";
 
 // ---- nothing stands on a road ------------------------------------------------------------------------------------------------------
 // The road surface is the network road_make builds (tools/roads.mjs: its real outline, junction patches, fillets, aprons and rounded
@@ -397,14 +397,13 @@ ring.forEach(([e, n, s], i) => obj("far_mountain", [e, n], { ry: r2(i * 1.7), sx
 console.log(`valley: ${objects.length} objects, ${trees} trees, ${masses} forest masses, ${rocks} rocks`);
 tool("scene_write", { name: "valley", scene: { version: 1, background: [196, 222, 236], camera: { eye: [10, 30, -200], target: [20, 15, -170], fov: 60 }, objects } }, { quiet: true });
 
-// ---- the office: one room, the package counter's tiles (a parcel on each), the picture frame, the conveyor window, the door out ---------
+// ---- the office: one room, the package counter's tiles (a parcel on each), the picture frame, the door out ---------
 // The tiles are objects of the scene (kind "tile", props.slot 1..), where lib/state.lua's waiting parcels lie in order; the parcels' items start
 // on the first tiles (scenes/office.lua puts each where its tile is).
 const office = [
   { kind: "office_room", name: "room", x: 0, y: 0, z: 0 },
   { kind: "package_counter", name: "package_counter", x: 0, y: 0, z: TILE_Z },
   { kind: "tally_frame", name: "tally_frame", x: 0, y: 0, z: -ROOM.Z },
-  { kind: "conveyor_window", name: "conveyor_window", x: WINDOW.x, y: 0, z: -ROOM.Z },
   { kind: "crt_computer", name: "old_computer", x: -1.15, y: BACK.top, z: -0.75 },
   { kind: "desk_set", name: "desk_set", x: 0.7, y: BACK.top, z: -0.55 },
   { kind: "postmaster", name: "postmaster", x: 0.3, y: 0, z: 0.55, props: { ry: 3.14 } },
@@ -424,7 +423,7 @@ const UP = ', lift = "upright"';
 const RIGID = ', lift = "origin"'; // (drawn whole, lifted by the ground under its origin: a ruin standing on a rim)
 const statics = {
   post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "", stone_wall: "", gate_post: "",
-  picnic_table: "", bench: "", old_bridge: RIGID, old_bridge_far: RIGID, barrier: "", office_room: "", package_counter: "", tally_frame: "", conveyor_window: "", crt_computer: "", desk_set: "", mast: UP,
+  picnic_table: "", bench: "", old_bridge: RIGID, old_bridge_far: RIGID, barrier: "", office_room: "", package_counter: "", tally_frame: "", crt_computer: "", desk_set: "", mast: UP,
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
   forest_long: ", max_distance = 1500", forest_tall: ", max_distance = 1500", forest_round: ", max_distance = 1500",
