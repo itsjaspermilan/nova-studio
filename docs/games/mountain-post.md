@@ -854,3 +854,15 @@ a birch and a pine close up, trees at 20 and 50 m, the forest masses, the creek 
 
 **Not checked:** how it looks and feels on the Retroid's screen in motion (strokes crawling or not as the camera turns, the water's
 speed); the owner should look at the grass from the walking camera and at the creek from the bridge.
+
+## The post office room (the owner, 2026-11-23)
+
+"There should be a full width counter at the back of the office where the packages will be. Only one package per square
+'tile' of countertop. Obv to start there are only two packages, but when we code the actual game, there will be a backlog to
+deliver. We can have a 'picture frame' at the back wall above all the packages that has the total number of packages to
+deliver. I'm imagining that eventually there will be more packages than just the ones that are on the package counter. We can
+have a small conveyor belt 'window' to show that there is a potential 'backroom'.
+
+In front of the package counter, we should keep the existing counter that's already there. We can put a little desk mat,
+stamp, some envelopes, and an old computer where the user can perform upgrades. We don't have to make the PC interactable just
+yet."
