@@ -761,3 +761,30 @@ the column reads P R N D L top to bottom. The horn, displaced from X, moves to t
   with its fundamental cut (a parametric EQ dip at 60 Hz, 9 dB) and a lift at 250 Hz; a second voice, the same line an octave up (a saw
   at 640 Hz), carries the 2nd and 3rd harmonics. The five stems are still the same length and in step. **Nobody has listened to it**:
   these are numbers from the offline render and a model of a small speaker (a 200 Hz high-pass); the owner's ears on the Retroid are the test.
+### What the sixth play changed: the cast (notes 7, 8 and 9, and the rough spots of the walk)
+
+- **No bag** on the postmaster (its part, its spring and its strap are gone; the parcel is still carried at the chest).
+- **Trousers by default** (character3d_make, every character): the seat of the trousers and two short legs with a turn-up, in the
+  trouser colour; a skirt only with `skirt: true` (a robe is a dress). Hazel's apron is painted over her green trousers.
+- **Limbs joined to the body**: the top of each arm and leg is a ball round its own pivot, sunk 2 to 5 cm into the body (rounder
+  shoulders on the torso take the arms' balls), so a turn of the limb never opens a gap, the sleeve runs out of the shoulder and
+  the trouser leg out of the seat. Tested in every clip and every gait pose (walk, run with the arms out, trot with a parcel, sitting
+  in the van, the legs stretched and squashed): the pivots never move on the body.
+- **The outfit** (note 8): three options pictured in the valley at the game's camera (`build/gallery/outfit-options-*.png`, made by
+  the agent, not committed): A a moss-green cardigan with no hat, B a mustard cardigan with a rust bucket hat, C a rust cardigan with
+  a moss round cap; all with a cream shirt collar, an envelope patch, wooden buttons, brown or khaki trousers, no belt, no badge.
+  **Chosen: B.** Mustard stands out against the grass, the road and the fox's own orange at eight metres (the moss green sank into
+  the grass, the rust into the fur), and the soft hat with its envelope pin says "the post" where no hat said only "a fox"; the ears
+  still stand up beside it. Nothing of it reads as a uniform: knitted, warm-coloured, a floppy brim.
+- **Bigger faces** (note 9): the eyes are about a quarter wider and a third taller (taller ovals), set a little higher and further
+  apart to stay clear of a snout or a muzzle, with a bigger glint and a second small one; the mouths a fifth bigger; the brows ride
+  higher (the frown's inner end had been cut off by the eyes' patch before).
+- **Upright on slopes**: the cast is drawn lifted as one by the ground under its own place (`lift = "origin"`), the gait given the
+  whole ground from there, so a hillside no longer shears the body; the feet stand on the slope where the gait puts them.
+- **The porch steps**: each foot lands wholly on one tread (with room for the toe roll), a foot in the air keeps its whole sole over
+  the ground, a straight leg too short to lift its foot onto the step above swings it forward (going down, on the way it is), and a
+  standing foot the leg can no longer reach is swung back clear of the riser. Measured over every point of both soles every frame,
+  up and down at a walk and a run: under 1.2 cm into any step (it was 15 cm, a whole riser, at a run).
+- **Not checked**: nothing on the Retroid yet. A flat foot on a steep hillside still meets it at the middle of its sole (the toe
+  can dip up to 3 cm into an uphill slope, the test's limit; grass hides most of it). Painted edges (the collar, the patch, the placket) show a pale
+  rim at the game's distance: the decals' see-through texels bleed when the texture is minified.

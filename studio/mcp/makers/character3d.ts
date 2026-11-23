@@ -15,8 +15,8 @@ export const CHARACTER3D = {
   builds: ["average", "slim", "stocky", "child", "squat", "chibi"] as const,
   skins: ["light", "tan", "brown", "dark", "pale", "green"] as const,
   hairs: ["short", "long", "bun", "ponytail", "spiky", "bald"] as const,
-  outfits: ["tunic", "shirt", "robe", "armor", "vest"] as const,
-  hats: ["none", "cap", "hood", "wizard", "straw", "helmet", "peaked"] as const,
+  outfits: ["tunic", "shirt", "robe", "armor", "vest", "cardigan"] as const,
+  hats: ["none", "cap", "hood", "wizard", "straw", "helmet", "peaked", "bucket", "round"] as const,
   packs: ["none", "backpack", "quiver", "cape"] as const,
   items: ["none", "sword", "staff", "lantern", "axe", "torch"] as const,
   species: ["human", "fox", "badger", "rabbit", "bear", "cat"] as const,
@@ -101,7 +101,13 @@ export function makeCharacter3d(a: Args): Character3d {
   const main = col(a.outfit_color, "outfit_color", outfit === "armor" ? "silver" : outfit === "robe" ? "purple" : "teal");
   const trim = col(a.trim_color, "trim_color", outfit === "robe" ? "gold" : "brown");
   const shoe = col(a.shoe_color, "shoe_color", "#4a3628");
-  const cloth = "#efe6d2";
+  const cloth = col(a.shirt_color, "shirt_color", "#efe6d2");
+  // trousers unless a skirt is asked for (a robe is a long dress whatever is asked)
+  if (a.skirt !== undefined && typeof a.skirt !== "boolean") throw new Error(`skirt is true or false (got ${JSON.stringify(a.skirt)}): true gives a tunic or armour a skirt over the legs instead of trousers`);
+  const skirted = outfit === "robe" || (a.skirt === true && (outfit === "tunic" || outfit === "armor"));
+  // (the soft hats' colour: a bucket hat's or a round cap's)
+  const hatC = col(a.hat_color, "hat_color", trim);
+  const hatPin = choice(a.hat_pin, CHARACTER3D.emblems, "hat_pin");
 
   // ---- the measures (metres)
   // (squat: short and broad, a badger's or a bear's build)
@@ -117,7 +123,9 @@ export function makeCharacter3d(a: Args): Character3d {
   const spineUp = chibi ? 0.02 : 0.07 * tall, neckUp = chibi ? 0.25 : 0.42 * tall;
   const upper = chibi ? 0.12 : 0.24 * tall, fore = chibi ? 0.09 : 0.22 * tall;
   const shoulder = chibi ? 0.16 * wide : 0.205 * wide * (build === "child" ? 0.95 : 1), legX = chibi ? 0.075 * wide : 0.092 * wide;
-  const cy = chibi ? 0.55 : 1; // (the hips' own shapes, pelvis, jacket hem and belt, squeezed to the short body)
+  // (a chibi's shoulder and hip balls: the round tops of its arms and legs, sunk into the body)
+  const shoulderR = 0.058 * wide, hipR = 0.062 * wide;
+  const cy = chibi ? 0.55 : 1; //(the hips' own shapes, pelvis, jacket hem and belt, squeezed to the short body)
   // (a chibi animal's head is squashed: clearly wider than tall, a little less deep than wide)
   const squash = chibi && animal;
   const headR: V3 = squash ? [0.16 * headK, 0.118 * headK, 0.135 * headK] : [0.125 * headK, 0.148 * headK, 0.13 * headK];
@@ -171,18 +179,28 @@ export function makeCharacter3d(a: Args): Character3d {
   // chibi limbs: a stubby rounded piece each, rigid in its part (it swings from the shoulder or the hip as a whole); the mitten and the
   // round foot sit at its end in their own parts, which the chibi clips never bend away
   // (smooth and round, like a soft toy's: a short tapered sleeve, a round mitten, a short leg, a round foot)
+  // (the top of each limb is a ball round its own pivot, sunk into the body: whichever way the limb turns, the ball stays where it
+  // is, so the shoulder and the hip never open a gap, and the sleeve or the trouser leg runs out of the body in one smooth piece)
+  const ballTop = (r: number, rows = 6) => Array.from({ length: rows }, (_, i) => {
+    const t = (Math.PI / 2) * (1 - i / rows);
+    return { y: Math.sin(t) * r, rx: Math.cos(t) * r };
+  });
   const chibiArm = () => {
     const m = new Mesh3(sleeveC, { bend: false });
-    const len = upper + fore;
-    m.rings([{ y: 0.035, rx: 0.026 }, { y: 0.022, rx: 0.046 * wide }, { y: 0.0, rx: 0.054 * wide }, { y: -len * 0.45, rx: 0.05 * wide }, { y: -len + 0.012, rx: 0.044 * wide }, { y: -len, rx: 0.036 * wide }], 16,
-      (i) => (i >= 4 && sleeves === "short" ? skin : i === 4 ? tone(sleeveC, -0.4) : sleeveC), { smooth: true });
+    const len = upper + fore, rs = shoulderR;
+    const top = ballTop(rs);
+    m.rings([...top, { y: 0.0, rx: rs }, { y: -rs * 0.7, rx: 0.056 * wide }, { y: -len * 0.5, rx: 0.051 * wide }, { y: -len + 0.022, rx: 0.046 * wide }, { y: -len + 0.012, rx: 0.047 * wide }, { y: -len + 0.002, rx: 0.044 * wide }, { y: -len - 0.006, rx: 0.036 * wide }], 16,
+      (i) => (i - top.length >= 3 ? (sleeves === "short" ? skin : tone(sleeveC, -0.35)) : sleeveC), { smooth: true });
     return m;
   };
   const chibiMitten = () => ellipsoid(new Mesh3(paw, { bend: false }), [0, -0.026, 0.004], [0.044 * wide, 0.046, 0.044], paw, 16, 10);
+  // (a trouser leg: its ball top inside the seat of the trousers, a short leg, a turn-up at the hem over the shoe)
   const chibiLeg = () => {
     const m = new Mesh3(legC, { bend: false });
-    const len = thigh + shin;
-    m.rings([{ y: 0.03, rx: 0.062 * wide, rz: 0.062 }, { y: -len * 0.5, rx: 0.058 * wide, rz: 0.058 }, { y: -len, rx: 0.052 * wide, rz: 0.052 }], 16, legC, { smooth: true });
+    const len = thigh + shin, rh = hipR;
+    const top = ballTop(rh);
+    m.rings([...top, { y: 0, rx: rh }, { y: -len * 0.5, rx: 0.058 * wide }, { y: -len + 0.03, rx: 0.055 * wide }, { y: -len + 0.026, rx: 0.059 * wide }, { y: -len + 0.004, rx: 0.059 * wide }, { y: -len - 0.002, rx: 0.05 * wide }], 16,
+      (i) => (i - top.length >= 3 ? tone(legC, -0.3) : legC), { smooth: true });
     return m;
   };
   const chibiFoot = () => ellipsoid(new Mesh3(shoe, { bend: false }), [0, -ankle + 0.035, 0.025], [0.06 * wide, 0.042, 0.082], shoe, 16, 10, 0.8);
@@ -199,7 +217,7 @@ export function makeCharacter3d(a: Args): Character3d {
   const pelvis = new Mesh3(legC, { bend: false });
   pelvis.rings([{ y: -0.11 * cy, rx: 0.1 * wide, rz: 0.085 }, { y: -0.05 * cy, rx: 0.158 * wide, rz: 0.115 }, { y: 0.04 * cy, rx: 0.16 * wide, rz: 0.112 }, { y: 0.1 * cy, rx: 0.145 * wide, rz: 0.1 }], bseg, legC, { smooth: true });
   const skirt = new Mesh3(torsoC, { bend: false });
-  if (outfit === "tunic" || outfit === "robe" || outfit === "armor") {
+  if (skirted) {
     const down = outfit === "robe" ? -(thigh + shin * 0.35) : chibi ? -0.07 : -0.2 * tall, flare = outfit === "robe" ? 1.5 : 1.22;
     const c = outfit === "armor" ? tone(main, -0.3) : torsoC;
     skirt.rings([{ y: 0.09 * cy, rx: 0.165 * wide, rz: 0.118 }, { y: 0.0, rx: 0.178 * wide, rz: 0.13 }, { y: down, rx: 0.17 * wide * flare, rz: 0.13 * flare }], bseg, (i) => (i === 1 ? tone(c, -0.25) : c), { smooth: true, caps: false });
@@ -209,15 +227,16 @@ export function makeCharacter3d(a: Args): Character3d {
   }
   const belt = new Mesh3(trim, { bend: false });
   // (an apron is tied over the waist instead of a belt)
-  if (outfit !== "robe" && !(chibi && accessory === "apron")) {
+  // (a cardigan is buttoned over a shirt with no belt; a chibi's shirt hangs loose)
+  if (outfit !== "robe" && outfit !== "cardigan" && !(chibi && (accessory === "apron" || outfit === "shirt"))) {
     belt.rings([{ y: 0.065 * cy, rx: (chibi ? 0.195 : 0.172) * wide, rz: chibi ? 0.155 : 0.124 }, { y: 0.105 * cy, rx: (chibi ? 0.195 : 0.172) * wide, rz: chibi ? 0.155 : 0.124 }], bseg, tone(trim, -0.5));
     belt.box([0, 0.085 * cy, chibi ? 0.157 : 0.125], [0.05, 0.05 * cy, 0.02], pal.gold!, { flat: true });
   } else if (outfit === "robe") belt.rings([{ y: 0.07, rx: 0.172 * wide, rz: 0.124 }, { y: 0.1, rx: 0.172 * wide, rz: 0.124 }], bseg, trim);
 
   const torso = new Mesh3(torsoC, { bend: false, ...(metal ? { metallic: 0.55, roughness: 0.5 } : {}) });
   const tc = metal ? "#b4bac6" : torsoC;
-  // (chibi: a pear, widest at the bottom, round in the middle, a small neck)
-  if (chibi) torso.rings([{ y: -0.05, rx: 0.165 * wide, rz: 0.13 }, { y: neckUp * 0.12, rx: 0.178 * wide, rz: 0.14 }, { y: neckUp * 0.4, rx: 0.17 * wide, rz: 0.134 }, { y: neckUp * 0.68, rx: 0.14 * wide, rz: 0.112 }, { y: neckUp * 0.9, rx: 0.095 * wide, rz: 0.08 }, { y: neckUp, rx: 0.055, rz: 0.05 }], 24, tc, { smooth: true });
+  // (chibi: a pear, widest at the bottom, round in the middle, soft round shoulders that the arms' balls sink into, a small neck)
+  if (chibi) torso.rings([{ y: -0.05, rx: 0.165 * wide, rz: 0.13 }, { y: neckUp * 0.12, rx: 0.178 * wide, rz: 0.14 }, { y: neckUp * 0.4, rx: 0.17 * wide, rz: 0.134 }, { y: neckUp * 0.68, rx: 0.15 * wide, rz: 0.114 }, { y: neckUp * 0.84, rx: 0.122 * wide, rz: 0.094 }, { y: neckUp * 0.94, rx: 0.08 * wide, rz: 0.07 }, { y: neckUp, rx: 0.055, rz: 0.05 }], 24, tc, { smooth: true });
   else torso.rings(
     [
       { y: -0.02, rx: 0.15 * wide, rz: 0.105 }, { y: neckUp * 0.3, rx: 0.165 * wide, rz: 0.115 }, { y: neckUp * 0.66, rx: 0.19 * wide, rz: 0.125 },
@@ -227,6 +246,8 @@ export function makeCharacter3d(a: Args): Character3d {
   );
   const extras = new Mesh3(trim, { bend: false });
   if (outfit === "tunic" || outfit === "shirt") extras.rings([{ y: neckUp * 0.9, rx: 0.115 * wide, rz: 0.092 }, { y: neckUp * 0.985, rx: 0.07, rz: 0.066 }], 10, tone(main, -0.55), { caps: false, smooth: true }); // a neckband
+  // (a cardigan's ribbed hem, a soft band a shade darker round the bottom of the body)
+  if (outfit === "cardigan" && chibi) extras.rings([{ y: -0.056, rx: 0.162 * wide, rz: 0.128 }, { y: -0.05, rx: 0.171 * wide, rz: 0.136 }, { y: -0.02, rx: 0.176 * wide, rz: 0.14 }, { y: -0.012, rx: 0.172 * wide, rz: 0.137 }], bseg, tone(main, -0.3), { caps: false, smooth: true });
   if (outfit === "vest" && !chibi) {
     for (const k of [-1, 1]) extras.box([k * 0.03, neckUp * 0.45, 0.118], [0.012, neckUp * 0.8, 0.012], tone(main, -0.9), { flat: true });
     for (let i = 0; i < 3; i++) extras.box([0, neckUp * (0.2 + i * 0.22), 0.124], [0.022, 0.022, 0.012], pal.gold!, { flat: true });
@@ -255,6 +276,21 @@ export function makeCharacter3d(a: Args): Character3d {
       // open down the front over a shirt
       torsoInks.push({ color: rgbOf(cloth), d: sd.shape([[-0.05, n * 0.95], [0.05, n * 0.95], [0, n * 0.3]]) });
       for (const y of [0.24, 0.06]) button(0, n * y);
+    } else if (outfit === "cardigan") {
+      // a soft knitted cardigan buttoned over a shirt: a deep V at the neck, the shirt's collar folded out over it, wooden buttons
+      // down the front edge (the ribbed hem is a band of its own)
+      const edge = rgbOf(tone(main, -0.75)), shirtEdge = rgbOf(tone(cloth, -1.0));
+      const vee = sd.shape([[-0.056, n * 1.0], [0.056, n * 1.0], [0, n * 0.44]]);
+      torsoInks.push({ color: edge, d: (x, y) => vee(x, y) - 0.0045 });
+      torsoInks.push({ color: rgbOf(cloth), d: vee });
+      torsoInks.push({ color: edge, d: sd.stroke([[0, n * 0.44], [0, -0.06]], 0.0045) });
+      for (const k of [-1, 1]) {
+        const wing = sd.shape([[k * 0.006, n * 0.9], [k * 0.062, n * 1.0], [k * 0.05, n * 0.72]]);
+        torsoInks.push({ color: shirtEdge, d: (x, y) => wing(x, y) - 0.0035 });
+        torsoInks.push({ color: rgbOf(cloth), d: wing });
+      }
+      // (no pockets: every painted edge shows as a pale line at the game's distance, and the front is busy enough)
+      for (const y of [0.36, 0.2, 0.04]) button(0, n * y, "#b98a58");
     }
     const emblem = choice(a.emblem, CHARACTER3D.emblems, "emblem");
     if (emblem !== "none") {
@@ -395,7 +431,7 @@ export function makeCharacter3d(a: Args): Character3d {
       ellipsoid(m, [0, r * 0.02, r * 0.32], [r * 0.6, r * 0.6, r * 0.22], inner);
       earParts.push(part(k > 0 ? "ear_l" : "ear_r", at, [m]));
     };
-    const hatted = hat === "cap" || hat === "peaked" || hat === "straw" || hat === "wizard";
+    const hatted = hat === "cap" || hat === "peaked" || hat === "straw" || hat === "wizard" || hat === "bucket" || hat === "round";
     for (const k of [-1, 1]) {
       if (species === "fox") ear(k, hatted ? 0.66 : 0.5, 0.52 * RX, 0.22 * RX, 0.09 * RX, hatted ? 0.42 : 0.24, furDark, fur2);
       else if (species === "cat") ear(k, hatted ? 0.62 : 0.52, 0.4 * RX, 0.22 * RX, 0.08 * RX, hatted ? 0.4 : 0.2, skin, "#e9b9b6");
@@ -464,6 +500,36 @@ export function makeCharacter3d(a: Args): Character3d {
     hatM.rings([{ y: cy - 0.01, rx: R0 * 0.98 + 0.012, rz: RZ0 * 0.98 + 0.012 }, { y: cy + 0.05 * ch, rx: R0 + 0.02, rz: RZ0 + 0.02 }, { y: cy + 0.1 * ch, rx: R0 * 1.12 + 0.02, rz: RZ0 * 1.1 + 0.02, cz: 0.01 }, { y: cy + 0.115 * ch, rx: R0 * 1.05, rz: RZ0 * 1.03, cz: 0.01 }, { y: cy + 0.118 * ch, rx: 0, cz: 0.01 }], squash ? 28 : 12, (i) => (i === 0 ? tone(main, -0.9) : tone(main, i >= 3 ? 0.3 : 0)), { smooth: true });
     hatM.box([0, cy + 0.0, RZ0 + 0.04 * ch], [R0 * 1.25, 0.016, 0.09 * ch], "#1f2128", { taper: [0.75, 0.6], rx: 14 });
     hatM.box([0, cy + 0.055 * ch, RZ0 + 0.025], [0.05 * ch, 0.045 * ch, 0.012], pal.gold!, { flat: true });
+  } else if (hat === "bucket" || hat === "round") {
+    // soft hats for a village: a bucket hat (a round soft crown, a brim turned down all round) or a round cap (a soft dome with a
+    // short rounded peak); `hat_pin` is pinned on the front. On a squashed animal head it sits on the top between the ears.
+    const R0 = headR[0] * (squash ? 0.62 : animal ? 0.86 : 1.02), RZ0 = headR[2] * (squash ? 0.68 : animal ? 0.9 : 1.02);
+    const cy = squash ? headTop(0, 0) - headR[1] * 0.24 : crownY - 0.01, ch = squash ? headR[1] * 0.42 / 0.118 : hs;
+    const lo = tone(hatC, -0.25), hi = tone(hatC, 0.2);
+    if (hat === "bucket") {
+      hatM.rings([{ y: cy, rx: R0 + 0.01, rz: RZ0 + 0.01 }, { y: cy + 0.06 * ch, rx: R0 * 0.97, rz: RZ0 * 0.97 }, { y: cy + 0.095 * ch, rx: R0 * 0.82, rz: RZ0 * 0.82 }, { y: cy + 0.11 * ch, rx: R0 * 0.5, rz: RZ0 * 0.5 }, { y: cy + 0.114 * ch, rx: 0 }], squash ? 28 : 14, (i) => (i >= 2 ? hi : hatC), { smooth: true });
+      // the brim: a thick soft ring sloping down and out, its edge rounded
+      const b = 1.42, t = 0.012 * ch;
+      hatM.rings([{ y: cy + 0.012 * ch, rx: R0 + 0.006, rz: RZ0 + 0.006 }, { y: cy - 0.016 * ch, rx: R0 * b, rz: RZ0 * b }, { y: cy - 0.024 * ch, rx: R0 * b + 0.006, rz: RZ0 * b + 0.006 }, { y: cy - 0.032 * ch, rx: R0 * b, rz: RZ0 * b }, { y: cy - 0.004 * ch - t, rx: R0 - 0.004, rz: RZ0 - 0.004 }], squash ? 28 : 14, (i) => (i >= 2 ? lo : hatC), { smooth: true, caps: false });
+      // a band round the crown
+      hatM.rings([{ y: cy + 0.004 * ch, rx: R0 + 0.014, rz: RZ0 + 0.014 }, { y: cy + 0.026 * ch, rx: R0 * 0.995 + 0.012, rz: RZ0 * 0.995 + 0.012 }], squash ? 28 : 14, tone(hatC, -0.6), { smooth: true, caps: false });
+    } else {
+      hatM.rings([{ y: cy - 0.006, rx: R0 + 0.014, rz: RZ0 + 0.014 }, { y: cy + 0.04 * ch, rx: R0 * 1.04 + 0.012, rz: RZ0 * 1.04 + 0.012 }, { y: cy + 0.085 * ch, rx: R0 * 0.86, rz: RZ0 * 0.86 }, { y: cy + 0.108 * ch, rx: R0 * 0.45, rz: RZ0 * 0.45 }, { y: cy + 0.112 * ch, rx: 0 }], squash ? 28 : 14, (i) => (i >= 2 ? hi : hatC), { smooth: true });
+      // a little button on top, and a short soft peak
+      ellipsoid(hatM, [0, cy + 0.112 * ch, 0], [0.012 * ch, 0.008 * ch, 0.012 * ch], lo, 10, 6);
+      hatM.rings([{ y: -0.007 * ch, rx: R0 * 0.62, rz: 0.05 * ch }, { y: 0.0, rx: R0 * 0.64, rz: 0.052 * ch }, { y: 0.007 * ch, rx: R0 * 0.6, rz: 0.048 * ch }], 20, lo, { at: [0, cy + 0.004 * ch, RZ0 - 0.008 * ch], smooth: true });
+    }
+    if (hatPin !== "none") {
+      // a small enamel pin on the front of the crown
+      const pz = (hat === "bucket" ? RZ0 * 0.99 : RZ0 * 1.04) + 0.012, py = cy + 0.045 * ch, e = 0.016 * ch;
+      if (hatPin === "envelope") {
+        hatM.box([0, py, pz], [e * 2.2, e * 1.5, 0.008], "#f6efe0", { flat: true });
+        for (const k of [-1, 1]) hatM.box([k * e * 0.5, py + e * 0.25, pz + 0.0045], [e * 1.25, 0.0035, 0.002], "#a23c31", { rz: k * 30, flat: true });
+      } else {
+        const pinC = hatPin === "leaf" ? "#7fb35a" : hatPin === "heart" ? "#e8606a" : "#ffd45c";
+        ellipsoid(hatM, [0, py, pz], [e, e, 0.005], pinC, 12, 6);
+      }
+    }
   } else if (hat === "wizard") {
     hatM.rings([{ y: crownY - 0.01, rx: 0.27 }, { y: crownY + 0.02, rx: 0.26 }], 12, (_, j) => tone(main, -0.4 + Math.cos((j / 12) * 6.283) * 0.3));
     hatM.rings([{ y: crownY + 0.01, rx: headR[0] + 0.03 }, { y: crownY + 0.2, rx: 0.08, cz: -0.02 }, { y: crownY + 0.4, rx: 0, cx: 0.02, cz: -0.09 }], 10, (i) => tone(main, i ? 0.25 : -0.1), { smooth: true });
@@ -861,7 +927,7 @@ export function makeCharacter3d(a: Args): Character3d {
   const speeds = chibiSpeeds ?? { walk: r3(walkStride / (0.6 * walkD)), run: r3(runStride / (0.36 * runD)), trot: r3(trotStride / (0.45 * trotD)) };
   const height = r3(hipsY + spineUp + neckUp + headC + headR[1] + (hat === "wizard" ? 0.3 : hair === "spiky" ? 0.1 : 0.02));
   const capsule = { radius: r3(Math.max(0.24, 0.3 * wide * (build === "child" ? 0.8 : 1))), height: r3(Math.max(1, hipsY + spineUp + neckUp + headC + headR[1])) };
-  const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat === "peaked" ? "peaked cap" : hat}` : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `${item === "axe" ? "an" : "a"} ${item} in the right hand` : ""].filter(Boolean).join(", ");
+  const wears = [outfit === "armor" ? "armour" : `a ${outfit}`, hat !== "none" ? `a ${hat === "wizard" ? "wizard's hat" : hat === "straw" ? "straw hat" : hat === "peaked" ? "peaked cap" : hat === "bucket" ? "bucket hat" : hat === "round" ? "round cap" : hat}` : "", skirted && outfit !== "robe" ? "a skirt" : outfit !== "robe" ? "trousers" : "", pack !== "none" ? `a ${pack}` : "", item !== "none" ? `${item === "axe" ? "an" : "a"} ${item} in the right hand` : ""].filter(Boolean).join(", ");
   return {
     model,
     parts: ["hips", "spine", "head", "arm_l", "fore_l", "hand_l", "arm_r", "fore_r", "hand_r", "leg_l", "shin_l", "foot_l", "leg_r", "shin_r", "foot_r", ...(hasTail ? ["tail"] : []), ...earParts.map((p) => p.name as string), ...(bagAt ? ["bag"] : [])],

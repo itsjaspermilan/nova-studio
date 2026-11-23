@@ -8,6 +8,7 @@ import { parseModel } from "../../src/lib/model-doc";
 import { expandModel } from "../modelkit";
 import { call } from "../server";
 import { CHARACTER3D, EXPRESSIONS, FACE_SETS, makeCharacter3d, TALK } from "./character3d";
+import { faceInks, faceLayout, type FaceColours } from "./face3d";
 import { unwrap } from "../../src/lib/model-uv";
 import type { Cube } from "../../src/lib/model-doc";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
@@ -144,8 +145,8 @@ describe("character3d_make", () => {
     }
     // (every choice but the one of each part that the base has already)
     // (the apron is a chibi's, painted on its clothes: on this figure it changes nothing)
-    expect(seen.size).toBe(1 + 5 + 5 + 4 + 6 + 3 + 5 + 5 + 4);
-    expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet, peaked/);
+    expect(seen.size).toBe(1 + 5 + 5 + 5 + 8 + 3 + 5 + 5 + 4);
+    expect(() => makeCharacter3d({ hat: "crown" })).toThrow(/hat is one of none, cap, hood, wizard, straw, helmet, peaked, bucket, round/);
     expect(() => makeCharacter3d({ species: "dragon" })).toThrow(/species is one of human, fox, badger, rabbit, bear, cat/);
     expect(() => makeCharacter3d({ species: "fox", head_scale: 3 })).toThrow(/head_scale is a number from 0.8 to 2.2/);
     expect(() => makeCharacter3d({ outfit_color: "blurple" })).toThrow(/outfit_color: 'blurple' is not a colour/);
@@ -156,7 +157,7 @@ describe("character3d_make", () => {
     const human = makeCharacter3d({});
     expect(fox.parts).toContain("tail");
     expect(human.parts).not.toContain("tail");
-    expect(fox.says).toMatch(/fox figure .* \(its head 1\.55 times a person's\) with fur, wearing a tunic, a peaked cap and a satchel/);
+    expect(fox.says).toMatch(/fox figure .* \(its head 1\.55 times a person's\) with fur, wearing a tunic, a peaked cap, trousers and a satchel/);
     const doc = parsed(fox.model);
     const tailTracks = doc.clips!.filter((c) => (c.tracks ?? []).some((t: any) => t.part.join("/") === "hips/tail")).map((c) => c.name);
     expect(tailTracks).toEqual(expect.arrayContaining(["idle", "walk", "run", "talk", "work"]));
@@ -291,6 +292,106 @@ describe("character3d_make", () => {
     expect(walkCubes(bear).some((c) => c.name === "body_paint")).toBe(true);
     expect(walkCubes(bear).some((c) => c.name === "hips_paint")).toBe(true);
     expect(() => makeCharacter3d({ species: "fox", build: "chibi", emblem: "anchor" })).toThrow(/emblem is one of none, envelope, star, leaf, heart, bolt/);
+  });
+
+  it("dresses everyone in trousers unless a skirt is asked for", () => {
+    // the hips' own shapes: how wide they reach below the tops of the legs (a skirt flares out over the legs; trousers narrow to a crotch)
+    const below = (made: ReturnType<typeof makeCharacter3d>) => {
+      const doc = parsed(made.model);
+      const hips = doc.parts[0]!, leg = hips.children.find((p) => p.name === "leg_l")!;
+      let widest = 0;
+      for (const c of hips.cubes) for (const v of c.verts ?? []) if (v[1] < leg.origin[1] - 0.5) widest = Math.max(widest, Math.abs(v[0]));
+      return widest / 16;
+    };
+    for (const build of ["chibi", "average"]) for (const outfit of ["tunic", "shirt", "vest", "armor", "cardigan"]) {
+      const a = { species: build === "chibi" ? "fox" : "human", build, outfit };
+      const trousers = makeCharacter3d(a);
+      expect(trousers.says, `${build} ${outfit}`).toMatch(/trousers/);
+      expect(below(trousers), `${build} ${outfit}`).toBeLessThan(0.15);
+      if (outfit === "tunic" || outfit === "armor") {
+        const skirted = makeCharacter3d({ ...a, skirt: true });
+        expect(skirted.says).toMatch(/a skirt/);
+        expect(below(skirted), `${build} ${outfit} skirt`).toBeGreaterThan(below(trousers) + 0.03);
+      }
+    }
+    // a robe is a long dress whatever is asked
+    expect(makeCharacter3d({ outfit: "robe" }).says).not.toMatch(/trousers/);
+    expect(() => makeCharacter3d({ skirt: "yes" })).toThrow(/skirt is true or false/);
+  });
+
+  it("joins a chibi's arms and legs to its body: each limb's top a ball round its pivot, sunk into the body", () => {
+    for (const species of ["fox", "bear", "rabbit"]) {
+      const doc = parsed(makeCharacter3d({ species, build: "chibi", head_scale: 1.75, outfit: "cardigan" }).model);
+      const find = (ps: any[], n: string): any => { for (const p of ps) { if (p.name === n) return p; const f = find(p.children ?? [], n); if (f) return f; } };
+      for (const [limb, body] of [["arm_l", "spine"], ["arm_r", "spine"], ["leg_l", "hips"], ["leg_r", "hips"]] as const) {
+        const p = find(doc.parts, limb), b = find(doc.parts, body);
+        const top = (p.cubes[0].verts as number[][]).filter((v) => v[1] > 0.03).map((v) => Math.hypot(v[0]!, v[1]!, v[2]!) / 16);
+        const r = Math.max(...top);
+        // (every point of the top lies on the ball: a turn of the limb about its pivot leaves it where it was)
+        for (const d of top) expect(Math.abs(d - r), `${species} ${limb}`).toBeLessThan(0.004);
+        // (the body's outline at the pivot's height, on the limb's side, reaches past the ball's inner edge)
+        const side = Math.sign(p.origin[0]);
+        const outline = (b.cubes[0].verts as number[][]).filter((v) => Math.abs(v[2]!) < 0.1 && v[0]! * side > 0.01).map((v) => [v[1]! / 16, Math.abs(v[0]!) / 16] as const).sort((x, y) => x[0] - y[0]);
+        const y = p.origin[1] / 16;
+        const lo = outline.filter((q) => q[0] <= y).at(-1)!, hi = outline.find((q) => q[0] > y)!;
+        const surface = lo[1] + ((hi[1] - lo[1]) * (y - lo[0])) / (hi[0] - lo[0]);
+        expect(Math.abs(p.origin[0] / 16) - r, `${species} ${limb}`).toBeLessThan(surface - 0.015);
+      }
+    }
+  });
+
+  it("paints big eyes and mouths, a little like a cartoon's, that stay on the face", () => {
+    for (const species of ["fox", "bear", "rabbit", "cat", "badger"]) {
+      const RX = 0.28, RY = 0.2, c = 0.2;
+      const L = faceLayout(species, RX, RY, c);
+      // (about a quarter bigger than before 2026-11-23: the eyes were 0.088 x 0.155 of the head's half sizes, the mouth 0.13)
+      expect(L.ew / RX).toBeGreaterThan(0.088 * 1.2);
+      expect(L.eh / RY).toBeGreaterThan(0.155 * 1.25);
+      expect(L.eh / RY / (L.ew / RX)).toBeGreaterThan(1.6); // (taller ovals)
+      expect(L.mw / RX).toBeGreaterThan(0.13 * 1.18);
+      const colours: FaceColours = { ink: "#2a2027", brow: "#3a2a20", fur: "#d9692b", fur2: "#f7efe2", dark: "#3b2620", mouth: "#5a2228", tongue: "#e8838a", blush: "#f4a3a8", nose: "#2e2226" };
+      // every drawing's paint, sampled: on the face (inside the head's outline, within its box), the eyes clear of a snout or a
+      // muzzle and above the nose, the mouths under it
+      const snout = species === "fox" || species === "badger" ? { y: c - 0.3 * RY, a: 0.28 * RX, b: 0.24 * RY } : species === "bear" ? { y: c - 0.34 * RY, a: 0.34 * RX, b: 0.27 * RY } : undefined;
+      for (const set of ["eyes", "brows", "mouth"] as const) for (const name of FACE_SETS[set]) {
+        const inks = faceInks(name, L, colours, species);
+        const box = L.boxes[set];
+        let painted = 0;
+        for (let x = -RX; x <= RX; x += 0.002) for (let y = c - RY; y <= c + RY; y += 0.002) {
+          if (!inks.some((k) => k.d(x, y) < 0)) continue;
+          painted++;
+          expect((x / RX) ** 2 + ((y - c) / RY) ** 2, `${species} ${name} on the head`).toBeLessThan(0.85);
+          expect(x >= box[0] && x <= box[1] && y >= box[2] && y <= box[3], `${species} ${name} inside its own box: ${x.toFixed(3)}, ${y.toFixed(3)} in ${box.map((v) => v.toFixed(3))}`).toBe(true);
+          if (set === "eyes") {
+            // (the wide-open eyes of a surprise reach down about level with the nose, out at the sides)
+            if (!snout) expect(y, `${species} ${name} above the nose`).toBeGreaterThan(L.ny - 0.04 * RY);
+            if (snout) expect((x / snout.a) ** 2 + ((y - snout.y) / snout.b) ** 2, `${species} ${name} clear of the snout`).toBeGreaterThan(0.97);
+          }
+          if (set === "mouth") expect(y, `${species} ${name} under the nose`).toBeLessThan(L.ny);
+        }
+        expect(painted, `${species} ${name}`).toBeGreaterThan(10);
+      }
+      // (the eye boxes and the brow boxes do not overlap: a brow is never cut off by the eyes' decal)
+      expect(L.boxes.brows[2]).toBeGreaterThanOrEqual(L.boxes.eyes[3]);
+    }
+  });
+
+  it("makes soft hats and a cardigan for a village postie: a bucket hat or a round cap with a pin, a collar, buttons, no belt", () => {
+    const base = { species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: "#e2b04a", emblem: "envelope" };
+    const plain = makeCharacter3d({ ...base, hat: "bucket" });
+    expect(plain.says).toMatch(/wearing a cardigan, a bucket hat, trousers/);
+    const pinned = makeCharacter3d({ ...base, hat: "bucket", hat_pin: "envelope", hat_color: "#b5503f" });
+    const round = makeCharacter3d({ ...base, hat: "round", hat_pin: "star" });
+    expect(round.says).toMatch(/a round cap/);
+    const head = (m: ReturnType<typeof makeCharacter3d>) => JSON.stringify(parsed(m.model).parts[0]!.children.find((p) => p.name === "spine")!.children.find((p) => p.name === "head")!.cubes);
+    expect(head(pinned)).not.toBe(head(plain));
+    expect(head(round)).not.toBe(head(plain));
+    expect(head(pinned)).toContain("#b5503f");
+    // no belt over a cardigan (its buckle was a uniform's), the shirt's collar painted at the neck
+    const hipsShapes = (o: string) => parsed(makeCharacter3d({ ...base, outfit: o }).model).parts[0]!.cubes.length;
+    expect(hipsShapes("cardigan")).toBeLessThan(hipsShapes("tunic"));
+    expect(walkCubes(parsed(plain.model)).some((c) => c.name === "body_paint")).toBe(true);
+    expect(() => makeCharacter3d({ ...base, hat_pin: "anchor" })).toThrow(/hat_pin is one of none, envelope, star, leaf, heart, bolt/);
   });
 
   it("swaps a face with expressions by name, and talks with each mouth's partner", () => {

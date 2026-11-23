@@ -53,8 +53,6 @@ local GAIT = {
     { part = "ear_r", stiffness = 160, damping = 0.35, max = 0.4, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = 0.003 } },
     -- the brush: swings out of a turn, bounces with the steps
     { part = "tail", stiffness = 45, damping = 0.3, max = 0.6, ry = { turn = 0.12, side = 0.02 }, rx = { up = -0.006, fwd = 0.01 } },
-    -- the satchel swings at the hip
-    { part = "bag", stiffness = 40, damping = 0.25, max = 0.5, rx = { fwd = 0.02 }, rz = { side = -0.025, cycle = 0.06 } },
     -- the mittens follow through at the end of each swing of the arms (and the arms out in the run flutter with the bob)
     { part = "hand_l", stiffness = 120, damping = 0.4, max = 0.35, swing = { "arm_l", "hand_l" }, rx = { swing = 0.03 } },
     { part = "hand_r", stiffness = 120, damping = 0.4, max = 0.35, swing = { "arm_r", "hand_r" }, rx = { swing = 0.03 } },
@@ -98,9 +96,10 @@ function Postmaster:create()
   self.look = 0                  -- where the head looks first, from where the body faces (radians)
   self.walker = nova.gait("postmaster", {
     bounce = GAIT.bounce, lift = GAIT.lift, lean = GAIT.lean, follow = GAIT.follow,
-    ground = function(x, z)
+    ground = function(x, z, e)
       if self.indoors then return 0 end
-      if self.on_deck then return world.height(x, z) - nova.terrain_height(self.x, self.z) end
+      e = e or self
+      if self.on_deck then return world.height(x, z) - nova.terrain_height(e.x, e.z) end
       return world.lift(x, z)
     end,
   })
@@ -206,9 +205,10 @@ function Postmaster:update(dt)
   end
   self:keep_clear()
   self.y = self.indoors and 0 or world.lift(self.x, self.z)
-  -- (on a deck, the bridge or a porch, it is drawn lifted as one by the ground under it, not each point by the hills under the deck:
-  -- the creek's bank under the bridge would bend it; its feet then stand on the deck's own heights)
-  self.on_deck = not self.indoors and self.y > 0
+  -- (outdoors it is drawn lifted as one by the ground under it, upright, not each point by the hills under it: on a hillside the
+  -- renderer's lift point by point sheared the body with the slope, and on the bridge the creek's bank under the deck bent it; its
+  -- feet then stand on the ground's own heights, the hillside's, the deck's or the porch's, where the gait puts them)
+  self.on_deck = not self.indoors
   self.carry_w = self.carry_w + ((state.carrying and 1 or 0) - self.carry_w) * math.min(1, dt * 8)
   local laden = state.carrying ~= nil
   self.gait = self.speed < 0.08 and "still" or self.speed <= STROLL + 0.05 and "walk" or laden and "trot" or "run"

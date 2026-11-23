@@ -248,19 +248,27 @@ function M.new(model, opts)
   return g
 end
 
--- The ground's height under a world point, in the model's own space (the body's own y is 0).
+-- The ground's height under a world point, in the model's own space (the body's own y is 0). The walker it is for is the
+-- function's third argument (a body drawn lifted as one by the ground under its own place measures from there).
 local function ground_w(g, x, z)
   local f = g.o.ground
-  return f and f(x, z) or 0
+  return f and f(x, z, g.e) or 0
+end
+-- Whether the ground rises by a step (a jump, not a slope) between a world point and `d` metres along (fx, fz) from it: the end is
+-- higher, and the ground bends sharply between the middle and the ends (a stair's riser, the edge of a porch).
+local function riser(g, x, z, fx, fz, d)
+  local g0, g1, g2 = ground_w(g, x, z), ground_w(g, x + fx * d * 0.5, z + fz * d * 0.5), ground_w(g, x + fx * d, z + fz * d)
+  return g2 > g0 + 0.015 and math.abs((g2 - g1) - (g1 - g0)) > 0.015
 end
 local function ground_at(g, e, x, z)
   local f = g.o.ground
-  if f then return f(x, z) - (e.y or 0) end
+  if f then return f(x, z, e) - (e.y or 0) end
   return 0
 end
 
 --- Puts both feet down under the hips where the body stands now (after a jump to another place, getting out of a seat).
 function Gait:reset(e)
+  self.e = e
   local face = e.face or e.ry or 0
   local c, s = cos(face), sin(face)
   for _, L in ipairs(self.legs) do
@@ -279,6 +287,7 @@ end
 --- updated; `extra_layers` are the layers drawn over its own (a carry over the arms), so the springs see the pose that is drawn.
 function Gait:update(dt, e, anim, extra)
   local o = self.o
+  self.e = e
   if not self.ready then self:reset(e) end
   local face = e.face or e.ry or 0
   local dx, dz = e.x - self.px, e.z - self.pz
@@ -360,6 +369,7 @@ function Gait:update(dt, e, anim, extra)
         L.steps = L.steps + 1
         L.landed = true
         L.land_roll = min(0, L.pitch or 0) -- (it lands heel first and rolls down onto the sole)
+        L.step_up = false
         L.age = 0
       end
       L.u = nil
@@ -382,6 +392,17 @@ function Gait:update(dt, e, anim, extra)
       fwd = min(fwd, 0.92 * ((r2 > 0 and sqrt(r2) or 0) - ha))
       local tx = e.x + mvx * (ahead + fwd) + L.hip_x * fc
       local tz = e.z + mvz * (ahead + fwd) - L.hip_x * fs
+      -- (on a stair the whole sole lands on one tread: a toe that would reach into the riser of the step above, or a heel that
+      -- would hang into the riser of the step behind, moves the landing back or forward, a little at a time, until it is clear)
+      if o.ground then
+        -- (with room for the toe as the foot rolls up onto it before it lifts: the ankle goes forward over the toe)
+        local toe, heel = L.sole.forward + L.sole.half + 0.04, L.sole.half - L.sole.forward
+        for _ = 1, 10 do
+          if riser(self, tx, tz, fs, fc, toe) then tx, tz = tx - fs * 0.02, tz - fc * 0.02
+          elseif riser(self, tx, tz, fs, fc, -heel) then tx, tz = tx + fs * 0.02, tz + fc * 0.02
+          else break end
+        end
+      end
       local su = smooth(u)
       L.sx, L.sz = L.fx + (tx - L.fx) * su, L.fz + (tz - L.fz) * su
       L.syaw = L.fyaw + wrap(face - L.fyaw) * su
@@ -389,8 +410,18 @@ function Gait:update(dt, e, anim, extra)
       -- (the ground it swings over, in the world: from where it lifted to where it lands, and never below the ground under it, so
       -- a foot goes up a step with the lift of its swing rather than jumping onto it)
       local g0, g1 = L.g0 or ground_w(self, L.fx, L.fz), ground_w(self, tx, tz)
+      L.step_up = g1 > g0 + 0.03
       L.clear = L.clear or M.spring { stiffness = 900, damping = 1, value = g0 }
-      L.swing_gw = max(g0 + (g1 - g0) * su, L.clear:update(ground_w(self, L.sx, L.sz), dt))
+      -- (the ground under the whole sole, toe to heel, so the toe of a foot swinging up a stair clears the riser ahead of it)
+      -- (only where the ground jumps, a step: on a slope the ground under the ankle is the one to follow)
+      local sfx, sfz = sin(L.syaw), cos(L.syaw)
+      local reach_t, reach_h = L.sole.forward + L.sole.half, L.sole.half - L.sole.forward
+      local under = ground_w(self, L.sx, L.sz)
+      if o.ground then
+        if riser(self, L.sx, L.sz, sfx, sfz, reach_t) then under = max(under, ground_w(self, L.sx + sfx * reach_t, L.sz + sfz * reach_t)) end
+        if riser(self, L.sx, L.sz, sfx, sfz, -reach_h) then under = max(under, ground_w(self, L.sx - sfx * reach_h, L.sz - sfz * reach_h)) end
+      end
+      L.swing_gw = max(g0 + (g1 - g0) * su, L.clear:update(under, dt))
     end
   end
 
@@ -449,6 +480,22 @@ function Gait:update(dt, e, anim, extra)
   -- the sockets where the hips put them (in the model's own space), and each foot's place in it
   local c, s = fc, fs
   local function to_model(wx, wz) local px, pz = wx - e.x, wz - e.z; return px * c - pz * s, px * s + pz * c end
+  -- (the sole, the lower half of an ellipse turned with the foot: how high the ankle, at (ax, az) in the model's space, must be for
+  -- no point of the sole to be under the ground there)
+  local function sole_floor(L, ax_, az_, pitch)
+    local S = L.sole
+    local fx, fz = sin(L.myaw), cos(L.myaw)
+    local ca, sa = cos(pitch), sin(pitch)
+    local low = -math.huge
+    for j = 0, 8 do
+      local t = pi + pi * j / 8
+      local z, y = S.forward + S.half * cos(t), -(S.ankle - S.round) + S.round * sin(t)
+      local zz, yy = z * ca + y * sa, -z * sa + y * ca
+      local px, pz = ax_ + fx * zz, az_ + fz * zz
+      low = max(low, ground_at(self, e, e.x + px * c + pz * s, e.z - px * s + pz * c) - yy)
+    end
+    return low
+  end
   for _, L in ipairs(self.legs) do
     local S = pose[L.hip]
     local lx, ly, lz = qrot(qconj(qa), S.x - H0.x, S.y - H0.y, S.z - H0.z)
@@ -545,10 +592,64 @@ function Gait:update(dt, e, anim, extra)
       L.pitch, L.pivot = (L.fpitch or 0) * (1 - smooth(u)) + land * smooth(u), "air"
       axx, axy, axz = ankle(L, L.pitch)
       axy = axy + (L.lift or 0)
+      -- (going up a step: a foot under the body cannot be lifted onto the tread above by a straight leg, however short it is made,
+      -- and would hang into the riser; the leg kicks it forward instead, the way a short straight leg goes up a stair, until it is
+      -- long enough to hold the foot that high)
+      -- (and a foot in the air keeps its whole sole over the ground under it, toe to heel: over the edge of a step it is lifted
+      -- clear of the tread above, not dragged through the riser)
+      if o.ground then
+        local fx, fz = sin(L.myaw), cos(L.myaw)
+        for _ = 1, 3 do
+          local floor = sole_floor(L, axx, axz, L.pitch)
+          local low = floor + 0.004
+          local changed = false
+          if axy < low - 0.004 then axy, changed = low, true end
+          -- (going down, a foot still over the step behind is held up there the same way: swung on the way it is from the hip; on
+          -- level ground a foot passing under the body is left as it is)
+          local hx, hy, hz = axx - sx, axy - sy, axz - sz
+          local back = not L.step_up and (hx * fx + hz * fz) < 0
+          if L.step_up or floor - L.sole.ankle > 0.03 then
+            local gx, gz = fx, fz
+            if back then gx, gz = -fx, -fz end
+            local along = hx * gx + hz * gz
+            local rest2 = hx * hx + hy * hy + hz * hz - along * along
+            local short = L.length * o.squash * 1.01
+            local want = sqrt(max(0, short * short - rest2))
+            if want > along + 1e-4 then axx, axz, changed = axx + gx * (want - along), axz + gz * (want - along), true end
+          end
+          if not changed then break end
+        end
+      end
     end
     L.ax, L.ay, L.az = axx, axy, axz
     local nx, ny, nz, len = norm(axx - sx, axy - sy, axz - sz)
     local kx = max(o.squash, min(o.stretch, len / L.length))
+    -- (a standing foot the leg cannot reach, left behind on the step below as the body goes up onto the next, hangs short of its
+    -- place, and its toe would go into the riser in front of it: the leg swings it back and up instead, pushing off, as little as
+    -- it must for the whole sole to be clear of the ground, until its step comes)
+    -- (the same for a foot just lifted from the step behind, going down: out of reach up there, it is swung back clear of it)
+    if o.ground and len > L.length * o.stretch + 0.004 then
+      local r = L.length * o.stretch
+      local pitch = max(-0.2, min(0.75, L.pitch))
+      if sole_floor(L, sx + nx * r, sz + nz * r, pitch) > sy + ny * r + 0.004 then
+        local bx, bz = -sin(L.myaw), -cos(L.myaw)
+        local nb, nu = nx * bx + nz * bz, ny
+        local lx_, lz_ = nx - nb * bx, nz - nb * bz
+        local m, a0 = sqrt(nb * nb + nu * nu), math.atan(nu, nb)
+        for k = 1, 14 do
+          local a = a0 + k * 0.08
+          local qx, qy, qz = lx_ + m * cos(a) * bx, m * sin(a), lz_ + m * cos(a) * bz
+          local px, py, pz = sx + qx * r, sy + qy * r, sz + qz * r
+          if k == 14 or sole_floor(L, px, pz, pitch) <= py + 0.004 then
+            axx, axy, axz = px, py, pz
+            nx, ny, nz, len = norm(axx - sx, axy - sy, axz - sz)
+            L.pitch, L.pivot = pitch, "air"
+            L.ax, L.ay, L.az = axx, axy, axz
+            break
+          end
+        end
+      end
+    end
     L.scale = kx
     local hx, hy, hz = qrot(qhc, nx, ny, nz)
     local ql = qarc(0, -1, 0, hx, hy, hz)

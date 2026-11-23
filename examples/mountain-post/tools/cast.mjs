@@ -1,11 +1,15 @@
 // The cast, from character3d_make's chibi animal people: a squashed round head with the face painted on it (the expressions are
-// painted drawings the game swaps: lib/face.lua), a small round body, stubby limbs, in the game's flat warm colours, each with one
-// thing that says what they do. Clips: idle, walk, run, trot, carry (laid over the arms while a parcel is held), talk (a gesture
-// with each phrase) and work (busy hands: Hazel's saw, Pip's knobs).
+// painted drawings the game swaps: lib/face.lua), a small round body, stubby limbs whose round tops sit in the body (a shoulder and a
+// hip that never open), trousers, in the game's flat warm colours, each with one thing that says what they do. Clips: idle, walk,
+// run, trot, carry (laid over the arms while a parcel is held), talk (a gesture with each phrase) and work (busy hands: Hazel's saw,
+// Pip's knobs).
 import { tool } from "./lib.mjs";
 
-// the postmaster: a fox in a blue postal jacket and a peaked cap, an envelope on the chest, a satchel across it
-tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "tunic", outfit_color: "#2f5fa6", trim_color: "#2b3448", shoe_color: "#3a2a22", hat: "peaked", accessory: "satchel", emblem: "envelope" });
+// the postmaster: a fox in a mustard knitted cardigan over a cream shirt, brown trousers, a rust bucket hat with an envelope pin, an
+// envelope patch on the chest (the owner's sixth notes: no messenger bag; the navy uniform, peaked cap and badge read as police; of
+// three outfits pictured in the valley this one reads best as the village postie: mustard stands out against the grass, the road and
+// the fox's own orange, where moss green sank into the grass and rust into the fur; docs/games/mountain-post.md)
+tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: "#e2b04a", trim_color: "#86583c", shoe_color: "#5a3e2c", hat: "bucket", hat_color: "#b5503f", hat_pin: "envelope", emblem: "envelope" });
 // Hazel Brock: a bear, retired carpenter: a rust work shirt, old green trousers, a canvas apron with a pencil in its pocket
 tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_scale: 1.75, outfit: "shirt", outfit_color: "#b0623a", trim_color: "#4a5a3a", accessory: "apron" });
 // Pip Tansy: a young rabbit with a radio station: a mustard vest with a bolt on it, blue trousers, red headphones
