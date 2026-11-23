@@ -7,6 +7,34 @@ import { centreline } from "../../../scripts/lib/trackgen.mjs";
 import { BOUNDS_EN, BRIDGE, CREEK, DECK_ENDS, GORGE, LAKE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
 import { rng } from "./geo.mjs";
 import { put, tool } from "./lib.mjs";
+import { placedFootprint } from "./footprint.mjs";
+import { roads } from "./roads.mjs";
+
+// ---- nothing stands on a road ------------------------------------------------------------------------------------------------------
+// The road surface is the network road_make builds (tools/roads.mjs: its real outline, junction patches, fillets, aprons and rounded
+// ends included). Every placed thing keeps its ground footprint (tools/footprint.mjs, from its model) clear of it: a signpost 0.8 m or
+// more off the edge (it is put about a metre off, in the grass of its corner), a mailbox 0.6 m, everything else 0.4 m. Things placed
+// one by one are moved off the road until they are clear; scattered ones (trees, rocks, bushes) are simply not put there. Only the
+// BRIDGE OUT barrier stands across its road's end, as it must (the bridge's deck carries the road, the ribbon stops at it).
+const CLEAR = { signpost: 0.8, mailbox: 0.6 };
+const ON_ROAD_ALLOWED = new Set(["barrier"]); // (by name)
+const clearOf = (kind, en, ry = 0, sx = 1) => {
+  const pts = placedFootprint(kind, en, ry, sx);
+  return Math.min(...(pts.length ? pts : [en]).map((p) => roads().clearance(p)));
+};
+/// A thing placed one by one, moved off the road (the way off it) until its footprint is `want` metres clear.
+const placeOff = (kind, en, ry = 0, sx = 1, want = CLEAR[kind] ?? 0.4) => {
+  let p = [...en];
+  for (let k = 0; k < 60; k++) {
+    const c = clearOf(kind, p, ry, sx);
+    if (c >= want - 0.005) return p;
+    const d = roads().away(p), step = Math.max(0.03, Math.min(1, want - c));
+    p = [p[0] + d[0] * step, p[1] + d[1] * step];
+  }
+  throw new Error(`a ${kind} at ${en} could not be put clear of the road`);
+};
+// (the signposts in their corners, a metre off the edge: layout.mjs says which corner, this says exactly where)
+const SIGNS_AT = SIGNS.map((s) => ({ ...s, at: placeOff("signpost", s.at, 0, 1, 1.0).map((v) => Math.round(v * 100) / 100) }));
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const objects = [];
@@ -99,8 +127,8 @@ obj("woodpile", [hz.building[0] + 5.5, hz.building[1] + 2.5], { ry: r2(ry_facing
 obj("spot", at(hz.building, hz.face, -1.0, 3.7), {}, "door_hazel");
 deck(hz.building, hz.face, 0, 4.1, 3.25, 1.0, 0.36);
 obj("hazel", hz.resident, { ry: r2(ry_facing(1, -0.6)), work: hz.sawhorse }, "hazel");
-obj("mailbox", hz.mailbox, { ry: r2(ry_facing(0.5, -1)), number: 3 }, "mailbox_3");
-for (const s of [-1.2, 1.2]) obj("gate_post", [hz.gate[0] + s * 2.9 * 0.66, hz.gate[1] + s * 2.9 * 0.75]);
+obj("mailbox", placeOff("mailbox", hz.mailbox, ry_facing(0.5, -1)), { ry: r2(ry_facing(0.5, -1)), number: 3 }, "mailbox_3");
+for (const s of [-1.2, 1.2]) obj("gate_post", placeOff("gate_post", [hz.gate[0] + s * 2.9 * 0.66, hz.gate[1] + s * 2.9 * 0.75]));
 obj("flowers", [hz.building[0] + 4, hz.building[1] - 4.5]);
 obj("bush", [hz.building[0] - 5, hz.building[1] - 3]);
 // the low stone wall on the left of Fern Lane, going up, along its last stretch: right at the edge, where everyone clips it
@@ -109,9 +137,10 @@ obj("bush", [hz.building[0] - 5, hz.building[1] - 3]);
   for (let d = L - 92; d < L - 10; d += 4.05) {
     const { p, dir } = along(pts, d);
     const left = [-dir[1], dir[0]];
-    const off = 2.3 + 1.0;
-    obj("stone_wall", [p[0] + left[0] * off, p[1] + left[1] * off], { ry: r2(ry_facing(dir[0], dir[1]) + Math.PI / 2) });
-    take([p[0] + left[0] * off, p[1] + left[1] * off], 2);
+    const off = 2.3 + 1.0, ry = ry_facing(dir[0], dir[1]) + Math.PI / 2;
+    const w = placeOff("stone_wall", [p[0] + left[0] * off, p[1] + left[1] * off], ry);
+    obj("stone_wall", w, { ry: r2(ry) });
+    take(w, 2);
   }
 }
 
@@ -125,8 +154,8 @@ take(pp.mast, 2);
 obj("spot", at(pp.building, pp.face, 0.9, 3.0), {}, "door_pip");
 deck(pp.building, pp.face, 0, 3.3, 2.7, 0.75, 0.4);
 obj("pip", pp.resident, { ry: r2(ry_facing(-0.8, -0.6)), work: [pp.mast[0] - 1.6, pp.mast[1] - 1.0] }, "pip");
-obj("mailbox", pp.mailbox, { ry: r2(ry_facing(-1, -0.4)), number: 7 }, "mailbox_7");
-for (const s of [-1.2, 1.2]) obj("gate_post", [pp.gate[0] + s * 2.9 * 0.78, pp.gate[1] - s * 2.9 * 0.62]);
+obj("mailbox", placeOff("mailbox", pp.mailbox, ry_facing(-1, -0.4)), { ry: r2(ry_facing(-1, -0.4)), number: 7 }, "mailbox_7");
+for (const s of [-1.2, 1.2]) obj("gate_post", placeOff("gate_post", [pp.gate[0] + s * 2.9 * 0.78, pp.gate[1] - s * 2.9 * 0.62]));
 for (let i = 0; i < 5; i++) obj("fence", [pp.gate[0] + 5.5 + i * 2.6 * 0.78, pp.gate[1] - 4.5 - i * 2.6 * 0.62 + 0.0], { ry: r2(ry_facing(0.78, -0.62) + Math.PI / 2) });
 obj("flowers", [pp.building[0] - 4, pp.building[1] - 3.6]); obj("flowers", [pp.building[0] + 3.5, pp.building[1] - 4.2]);
 obj("bush2", [pp.building[0] + 5, pp.building[1] + 1]);
@@ -142,14 +171,20 @@ obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing
 {
   const pts = roadLines.post_road, end = pts.at(-1), dir = norm([pts.at(-1)[0] - pts.at(-3)[0], pts.at(-1)[1] - pts.at(-3)[1]]);
   obj("barrier", [end[0] - dir[0] * 1.5, end[1] - dir[1] * 1.5], { ry: r2(ry_facing(dir[0], dir[1]) + Math.PI) }, "barrier");
-  obj("old_bridge", [end[0] + dir[0] * 9, 239], { ry: r2(ry_facing(0, 1)) }, "old_bridge");
+  // what is left of the lake bridge: its near half on the rim just past the road's end (5 m on: its pier starts a metre past the
+  // origin, kept clear of the road), its far half on the far rim (z 271), both facing across the gorge
+  // (on along the road's line, half a metre at a time, until its footprint is clear of the road's rounded end)
+  let ruin = [...end];
+  while (clearOf("old_bridge", ruin, ry_facing(0, 1)) < 0.4) ruin = [ruin[0] + dir[0] * 0.5, ruin[1] + dir[1] * 0.5];
+  obj("old_bridge", ruin, { ry: r2(ry_facing(0, 1)) }, "old_bridge");
+  obj("old_bridge_far", [ruin[0], 271], { ry: r2(ry_facing(0, 1)) }, "old_bridge_far");
   take(end, 14);
   // a view point: the old bridge's far pier and the lake side
   obj("spot", [end[0] - dir[0] * 6, end[1] - dir[1] * 6], {}, "bridge_out_view");
 }
 
 // ---- signposts: at each junction, an arm for each road pointing along it ------------------------------------------------------------
-SIGNS.forEach((s, i) => {
+SIGNS_AT.forEach((s, i) => {
   obj("signpost", s.at, { arms: s.arms.map((a) => ({ text: a.text, ry: r2(ry_facing(a.toward[0] - s.at[0], a.toward[1] - s.at[1]) - Math.PI / 2) })) }, `sign_${i + 1}`);
   take(s.at, 2);
 });
@@ -188,7 +223,7 @@ let trees = 0, rocks = 0, masses = 0;
 const SIGHT = [];
 {
   const ARM_MID = 1.75; // (the middle of a board along its arm: entities/signpost.lua)
-  for (const s of SIGNS) {
+  for (const s of SIGNS_AT) {
     const boards = [s.at, ...s.arms.map((a) => { const d = norm([a.toward[0] - s.at[0], a.toward[1] - s.at[1]]); return [s.at[0] + d[0] * ARM_MID, s.at[1] + d[1] * ARM_MID]; })];
     for (const pts of Object.values(roadLines)) {
       // (the point of the road nearest the sign, then out along it either way)
@@ -267,7 +302,7 @@ for (const [c, face] of [[po.building, po.face], [hz.building, hz.face], [pp.bui
 // the inside of Fern Lane's bend: thick, so the cabin shows only once you are round it
 for (let i = 0; i < 4; i++) clump([-128 + (R() - 0.5) * 22, -2 + (R() - 0.5) * 22], 7, 4);
 // hero trees: one big tree beside each signpost and each gate, on the side away from the road
-for (const at of [...SIGNS.map((s) => s.at), hz.gate, pp.gate]) {
+for (const at of [...SIGNS_AT.map((s) => s.at), hz.gate, pp.gate]) {
   for (let k = 0; k < 16; k++) {
     const ang = (k / 16) * 6.28, p = [at[0] + Math.sin(ang) * 9, at[1] + Math.cos(ang) * 9];
     if (dRoadOf(p) > 9 && tree(p, k % 2 ? "pine2" : "birch", 1.35)) break;
@@ -322,6 +357,20 @@ obj("groundcover", [0, 0], {
 const ring = [[0, 900, 2.6], [-420, 820, 2.2], [380, 860, 2.4], [-820, 420, 2.0], [800, 300, 2.3], [-760, -300, 1.8], [700, -500, 2.0], [0, -900, 1.7], [-300, -820, 1.6], [420, -760, 1.8], [-600, 700, 2.1], [650, 650, 2.0]];
 ring.forEach(([e, n, s], i) => obj("far_mountain", [e, n], { ry: r2(i * 1.7), sx: s }));
 
+{
+  const SCATTERED = new Set(["pine", "pine2", "pine3", "larch", "larch_small", "birch", "rock", "rock_big", "rock_small", "bush", "bush2", "log", "stump", "flowers"]);
+  const UNPLACED = new Set(["valley_ground", "roadline", "water", "lake", "limits", "groundcover", "far_mountain", "spot", "van", "postmaster", "hazel", "pip", "deck", "bridge"]);
+  let dropped = 0;
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const o = objects[i];
+    if (UNPLACED.has(o.kind) || ON_ROAD_ALLOWED.has(o.name)) continue;
+    const en = [-o.x, o.z], c = clearOf(o.kind, en, o.props?.ry ?? 0, o.props?.sx ?? 1), want = CLEAR[o.kind] ?? 0.4;
+    if (c >= want - 0.01) continue;
+    if (SCATTERED.has(o.kind)) { objects.splice(i, 1); dropped++; continue; }
+    throw new Error(`${o.name ?? o.kind} at ${o.x}, ${o.z} stands ${c.toFixed(2)} m from the road surface (it needs ${want} m)`);
+  }
+  if (dropped) console.log(`(${dropped} scattered things left off the roads)`);
+}
 console.log(`valley: ${objects.length} objects, ${trees} trees, ${masses} forest masses, ${rocks} rocks`);
 tool("scene_write", { name: "valley", scene: { version: 1, background: [196, 222, 236], camera: { eye: [10, 30, -200], target: [20, 15, -170], fov: 60 }, objects } }, { quiet: true });
 
@@ -341,9 +390,10 @@ tool("scene_write", { name: "office", scene: { version: 1, background: [40, 34, 
 // Trees, bushes and tall things stand upright on the hills (`lift = "upright"`: the foot follows the slope, the crown stays level;
 // lifted vertex by vertex, a cone on a hillside leans with the ground: the owner's play notes of 2026-11-22).
 const UP = ', lift = "upright"';
+const RIGID = ', lift = "origin"'; // (drawn whole, lifted by the ground under its origin: a ruin standing on a rim)
 const statics = {
   post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "", stone_wall: "", gate_post: "",
-  picnic_table: "", bench: "", old_bridge: "", barrier: "", office_room: "", mast: UP,
+  picnic_table: "", bench: "", old_bridge: RIGID, old_bridge_far: RIGID, barrier: "", office_room: "", mast: UP,
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
   forest_long: ", max_distance = 1500", forest_tall: ", max_distance = 1500", forest_round: ", max_distance = 1500",

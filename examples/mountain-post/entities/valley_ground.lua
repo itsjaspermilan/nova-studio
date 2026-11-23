@@ -7,6 +7,7 @@ local world = require("lib.world")
 local ValleyGround = nova.entity { tags = { "ground" } }
 
 local ROAD = {}
+local WATER_EDGE = world.WATER_EDGE
 local MESH = { shadow = false }
 
 -- the greens (r, g, b): meadow, wood floor, sunlit, and the worn earth beside a road
@@ -36,7 +37,15 @@ function ValleyGround:build()
       -- follows the hills every metre or two, so where the ground bends a corner beside the road would otherwise rise through it)
       local rr, rd = world.nearest("road", x, z)
       local under = (rr and rd < rr.width * 0.75 + 0.6) or world.junction_surface(x, z) ~= nil
-      pos[#pos + 1] = x; pos[#pos + 1] = under and -0.15 or 0; pos[#pos + 1] = z
+      local y = under and -0.15 or 0
+      -- (and round the water, under its level: the creek's channel is narrower than a square, so without this the squares would
+      -- span it from bank to bank and hide the water; entities/water.lua runs its surface on into the banks to meet them)
+      local ww, wd, wx, wz = world.nearest("water", x, z)
+      if ww and wd < ww.width / 2 + WATER_EDGE + 0.5 then
+        local level = nova.terrain_height(wx, wz) + (ww.depth or 0.35)
+        y = math.min(y, level - 0.15 - nova.terrain_height(x, z))
+      end
+      pos[#pos + 1] = x; pos[#pos + 1] = y; pos[#pos + 1] = z
       -- a slow pattern: groves of darker wood floor, sunny meadows
       local n = nova.noise2(x * 0.018, z * 0.018, 3, 3, 0.5)
       local m = nova.noise2(x * 0.06 + 40, z * 0.06, 7, 2, 0.5)

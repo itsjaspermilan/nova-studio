@@ -29,4 +29,9 @@ for (const [n, x, z, w, a, b] of VIEWS) {
     route.push({ lua: `local h = nova.terrain_height(${ex}, ${ez}); local t = nova.terrain_height(${x}, ${z}); CAM.pinned = { ${ex}, h + 3.4, ${ez}, ${x + ux * 4}, t + 0.6, ${z + uz * 4}, 52 }` }, { wait: 3, capture: `${n} driving ${k}` });
   }
 }
+// and from beside: the bridge over Kettle Creek from its bank, the creek upstream, the BRIDGE OUT end's ruins from across the gorge
+for (const [n, eye, at] of [["bridge_from_the_bank", [-85, 3.5, 47], [-105, -1, 55]], ["creek_upstream", [-96, 6, -40], [-101, -2, -5]], ["old_bridge_from_across_the_gorge", [20, 5, 290], [20, null, 232]], ["old_bridge_from_the_side", [45, 20, 245], [20, 18, 235]]]) {
+  const ty = at[1] === null ? `nova.terrain_height(${at[0]}, ${at[2]})` : `nova.terrain_height(${at[0]}, ${at[2]}) + ${at[1]}`;
+  route.push({ lua: `CAM.pinned = { ${eye[0]}, nova.terrain_height(${eye[0]}, ${eye[2]}) + ${eye[1]}, ${eye[2]}, ${at[0]}, ${ty}, ${at[2]}, 50 }` }, { wait: 3, capture: n });
+}
 writeFileSync(join(dirname(fileURLToPath(import.meta.url)), "roads.json"), JSON.stringify({ size: "1280x720", start_scene: "valley", lua: "CAM = require('lib.camera')", route, out }, null, 1) + "\n");

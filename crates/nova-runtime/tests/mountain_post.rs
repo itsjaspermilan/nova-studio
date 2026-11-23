@@ -4881,7 +4881,7 @@ fn valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron() {
             "the junction with {road}"
         );
         let far = format!(
-            "(function() local W = require('lib.world'); for _, r in ipairs(W.roads) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 6) ^ 2 then return W.surface(p[1], p[2]) end end end end end)()"
+            "(function() local W = require('lib.world'); for _, r in ipairs(W.roads) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 2) ^ 2 then return W.surface(p[1], p[2]) end end end end end)()"
         );
         assert_eq!(lua(&g, &far), "gravel", "{road} past its apron");
     }
@@ -4934,4 +4934,153 @@ fn valley_roads_junctions_are_level_and_the_van_drives_through_them_smoothly() {
         near < 2.5 && near <= far * 1.2,
         "the body's vertical acceleration through the junctions {near:.2} m/s2, elsewhere {far:.2}"
     );
+}
+
+/// "Nothing stands on a road." Every object the valley's scene places (a signpost, a mailbox, a gate post, a fence, a wall, a tree,
+/// a rock, a bench, the old bridge's ruins...) keeps its ground footprint (its model's vertices less than 0.6 m above its foot, turned
+/// and sized as the scene places it) off the road surface, junction patches, corners, aprons and rounded ends included, by 0.3 m or
+/// more; a signpost by 0.75 m. Only the BRIDGE OUT barrier stands across its road's end (by name), and the bridge carries its road.
+#[test]
+fn valley_roads_nothing_placed_stands_on_a_road() {
+    use std::collections::HashMap;
+    let root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post");
+    let tris = valley_road_triangles();
+    // the road's triangles and its outline's edges, filed by 4 m square
+    let cell = 4.0f32;
+    let key = |x: f32, z: f32| ((x / cell).floor() as i32, (z / cell).floor() as i32);
+    let mut bins: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+    type Key = (u32, u32);
+    let mut edges: HashMap<(Key, Key), u32> = HashMap::new();
+    for (k, t) in tris.iter().enumerate() {
+        let (x0, x1) = (
+            t.iter().map(|p| p[0]).fold(f32::MAX, f32::min),
+            t.iter().map(|p| p[0]).fold(f32::MIN, f32::max),
+        );
+        let (z0, z1) = (
+            t.iter().map(|p| p[2]).fold(f32::MAX, f32::min),
+            t.iter().map(|p| p[2]).fold(f32::MIN, f32::max),
+        );
+        for i in key(x0, z0).0..=key(x1, z1).0 {
+            for j in key(x0, z0).1..=key(x1, z1).1 {
+                bins.entry((i, j)).or_default().push(k);
+            }
+        }
+        for e in 0..3 {
+            let p = (t[e][0].to_bits(), t[e][2].to_bits());
+            let q = (t[(e + 1) % 3][0].to_bits(), t[(e + 1) % 3][2].to_bits());
+            *edges
+                .entry(if p < q { (p, q) } else { (q, p) })
+                .or_default() += 1;
+        }
+    }
+    let outline: Vec<[f32; 4]> = edges
+        .iter()
+        .filter(|(_, n)| **n == 1)
+        .map(|((p, q), _)| {
+            [
+                f32::from_bits(p.0),
+                f32::from_bits(p.1),
+                f32::from_bits(q.0),
+                f32::from_bits(q.1),
+            ]
+        })
+        .collect();
+    let on_road = |x: f32, z: f32| {
+        bins.get(&key(x, z)).is_some_and(|list| {
+            list.iter().any(|&k| {
+                let [a, b, c] = tris[k];
+                let d = (b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0]);
+                if d.abs() < 1e-9 {
+                    return false;
+                }
+                let w0 = ((b[0] - x) * (c[2] - z) - (b[2] - z) * (c[0] - x)) / d;
+                let w1 = ((c[0] - x) * (a[2] - z) - (c[2] - z) * (a[0] - x)) / d;
+                w0 >= 0.0 && w1 >= 0.0 && w0 + w1 <= 1.0
+            })
+        })
+    };
+    let to_edge = |x: f32, z: f32| {
+        outline
+            .iter()
+            .map(|[ax, az, bx, bz]| {
+                let (dx, dz) = (bx - ax, bz - az);
+                let t = (((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz).max(1e-9))
+                    .clamp(0.0, 1.0);
+                ((x - ax - dx * t).powi(2) + (z - az - dz * t).powi(2)).sqrt()
+            })
+            .fold(f32::MAX, f32::min)
+    };
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let mut feet: HashMap<String, Vec<[f32; 2]>> = HashMap::new();
+    let (mut checked, mut kinds) = (0, std::collections::BTreeSet::new());
+    for o in scene["objects"].as_array().unwrap() {
+        let kind = o["kind"].as_str().unwrap().to_string();
+        let name = o["name"].as_str().unwrap_or("");
+        if name == "barrier"
+            || ["bridge", "van", "postmaster", "hazel", "pip"].contains(&kind.as_str())
+        {
+            continue;
+        }
+        let foot = feet.entry(kind.clone()).or_insert_with(|| {
+            let Ok(bytes) = std::fs::read(root.join(format!("models/{kind}.glb"))) else {
+                return vec![];
+            };
+            let Ok(mesh) = nova_runtime::model::import_glb(&bytes) else {
+                return vec![];
+            };
+            mesh.vertices
+                .iter()
+                .filter(|v| v.position[1] < 0.6)
+                .map(|v| [v.position[0], v.position[2]])
+                .collect()
+        });
+        if foot.is_empty() {
+            continue;
+        }
+        let props = &o["props"];
+        let (ry, sx) = (
+            props["ry"].as_f64().unwrap_or(0.0) as f32,
+            props["sx"].as_f64().unwrap_or(1.0) as f32,
+        );
+        let (ox, oz) = (
+            o["x"].as_f64().unwrap() as f32,
+            o["z"].as_f64().unwrap() as f32,
+        );
+        // (far from every road: nothing to check)
+        if to_edge(ox, oz) > 40.0 {
+            continue;
+        }
+        let want = if kind == "signpost" { 0.75 } else { 0.3 };
+        let (c, s) = (ry.cos(), ry.sin());
+        for [x, z] in foot.iter() {
+            let (wx, wz) = (ox + (x * c + z * s) * sx, oz + (-x * s + z * c) * sx);
+            assert!(
+                !on_road(wx, wz),
+                "{} ({kind}) at {ox}, {oz} stands on the road at {wx:.2}, {wz:.2}",
+                if name.is_empty() { &kind } else { name }
+            );
+            let d = to_edge(wx, wz);
+            assert!(
+                d >= want,
+                "{} ({kind}) at {ox}, {oz} is {d:.2} m from the road's edge at {wx:.2}, {wz:.2} (needs {want} m)",
+                if name.is_empty() { &kind } else { name }
+            );
+        }
+        checked += 1;
+        kinds.insert(kind);
+    }
+    assert!(checked > 100, "objects near a road checked: {checked}");
+    for k in [
+        "signpost",
+        "mailbox",
+        "gate_post",
+        "stone_wall",
+        "old_bridge",
+    ] {
+        assert!(kinds.contains(k), "no {k} was checked: {kinds:?}");
+    }
 }
