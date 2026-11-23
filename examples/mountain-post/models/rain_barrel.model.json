@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "cylinder", "from": [-6.4, 0, -6.4], "size": [12.8, 16, 12.8], "segments": 12, "paint": "wood", "color": "#86583c" },
+        { "shape": "cylinder", "from": [-6.8, 2.4, -6.8], "size": [13.6, 1.6, 13.6], "segments": 12, "color": "#b5b2aa" },
+        { "shape": "cylinder", "from": [-6.8, 12, -6.8], "size": [13.6, 1.6, 13.6], "segments": 12, "color": "#b5b2aa" },
+        { "shape": "cylinder", "from": [-6.4, 15.68, -6.4], "size": [12.8, 0.64, 12.8], "segments": 12, "color": "#7292a1" }
+      ],
+      "children": []
+    }
+  ],
+  "colliders": [{ "x": 0, "z": 0, "r": 6.72 }]
+}

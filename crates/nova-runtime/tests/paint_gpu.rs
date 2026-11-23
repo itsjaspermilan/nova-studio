@@ -310,3 +310,115 @@ fn painted_water_froths_where_shallow_and_runs_downstream() {
         moved / n
     );
 }
+
+/// A flat quad between four corners (counter-clockwise seen from the front, whose normal is `n`), in one colour, painted as `kind`.
+fn quad(c: [[f32; 3]; 4], n: [f32; 3], color: [u8; 4], kind: f32) -> MeshData {
+    let uv = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    MeshData {
+        vertices: (0..4)
+            .map(|i| vertex(c[i], n, color, uv[i], kind * PAINT_STEP))
+            .collect(),
+        indices: vec![0, 1, 2, 0, 2, 3],
+        ..Default::default()
+    }
+}
+
+/// The three building kinds (wood 5, roof 6, stone 7; "Painted surfaces"): near a wall they add light-and-dark of boards, tiles and
+/// stones to the plain surface without changing how bright it is, and seen from far off, where a board is under a pixel, they are as
+/// calm as plain paint.
+#[test]
+fn painted_walls_roofs_and_stone_vary_near_and_are_calm_far_off() {
+    let Some(mut gfx) = gfx() else { return };
+    // a wall facing +z, 8 m wide and 3 m high; a roof slope (0.6 rise a metre, facing up and to +z) of the same width; and a big wall
+    let wall = |kind: f32, color: [u8; 4]| {
+        quad(
+            [
+                [-4.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 3.0, 0.0],
+                [-4.0, 3.0, 0.0],
+            ],
+            [0.0, 0.0, 1.0],
+            color,
+            kind,
+        )
+    };
+    let slope = |kind: f32, color: [u8; 4]| {
+        let n = [0.0, 1.0, 0.6f32];
+        let l = (n[1] * n[1] + n[2] * n[2]).sqrt();
+        quad(
+            [
+                [-4.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 3.0, -1.8],
+                [-4.0, 3.0, -1.8],
+            ],
+            [0.0, n[1] / l, n[2] / l],
+            color,
+            kind,
+        )
+    };
+    let cases: [(&str, f32, [u8; 4], bool); 3] = [
+        ("wood", 5.0, [176, 130, 84, 255], false),
+        ("roof", 6.0, [120, 62, 52, 255], true),
+        ("stone", 7.0, [138, 134, 126, 255], false),
+    ];
+    for (name, kind, color, roof) in cases {
+        let make = |k: f32| {
+            if roof {
+                slope(k, color)
+            } else {
+                wall(k, color)
+            }
+        };
+        let plain = gfx.upload_mesh(&make(0.0));
+        let painted = gfx.upload_mesh(&make(kind));
+        let near = |gfx: &mut Gfx, m| shoot(gfx, m, [0.0, 3.2, 5.0], [0.0, 1.5, 0.0], 45.0, 0.0);
+        let (pm, ps, pn) = stats(&near(&mut gfx, plain), 0, 0, W, H);
+        let (gm, gs, gn) = stats(&near(&mut gfx, painted), 0, 0, W, H);
+        assert!(
+            pn > 5000 && (gn as f64 - pn as f64).abs() < pn as f64 * 0.02,
+            "{name}: the same shape is drawn"
+        );
+        assert!(
+            gs > ps + 2.0,
+            "{name}: painted varies (sd {gs:.2}) more than plain (sd {ps:.2})"
+        );
+        assert!(
+            (gm - pm).abs() < pm * 0.15,
+            "{name}: about as bright as plain ({gm:.1} against {pm:.1})"
+        );
+    }
+    // far off: a wall 400 m wide seen from 400 m back, a pixel spans over half a metre: no boards, tiles or stones to see
+    for (name, kind, color, roof) in cases {
+        let big = if roof {
+            quad(
+                [
+                    [-200.0, 0.0, 0.0],
+                    [200.0, 0.0, 0.0],
+                    [200.0, 150.0, -90.0],
+                    [-200.0, 150.0, -90.0],
+                ],
+                [0.0, 0.857, 0.514],
+                color,
+                kind,
+            )
+        } else {
+            quad(
+                [
+                    [-200.0, 0.0, 0.0],
+                    [200.0, 0.0, 0.0],
+                    [200.0, 150.0, 0.0],
+                    [-200.0, 150.0, 0.0],
+                ],
+                [0.0, 0.0, 1.0],
+                color,
+                kind,
+            )
+        };
+        let m = gfx.upload_mesh(&big);
+        let far = shoot(&mut gfx, m, [0.0, 60.0, 400.0], [0.0, 60.0, 0.0], 40.0, 0.0);
+        let g = grain(&far, 0, H);
+        assert!(g < 1.5, "{name}: far off it is calm: {g:.2} levels a pixel");
+    }
+}

@@ -1088,3 +1088,67 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
   words. "I don't like that when the text starts to appear, sometimes the text box will 'type' the word on one line then
   realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
   three lines, warmer and simpler words, faster text with a press to finish the line.)
+
+### What the seventh play changed: the houses (a minimum thickness, painted surfaces, lived-in details)
+
+The owner: "The houses look barren still. Also we should have a minimum thickness to prevent stick looking things and keep that
+cozy, cartoony look. I guess because there's no texture?" and, for the world, "lived-in details".
+
+- **A chunky minimum** (`HOUSE.min` in `tools/models.mjs`, written into the house style's comment). At house scale a post, rail,
+  fence board, mast leg or brace (anything over 1.2 m long and under 20 cm wide) is at least **10 cm** through, a window bar or small
+  trim (over 0.5 m) at least **6 cm**, a board or plate (20 cm wide or more) at least 3 cm, and only flat paint under 3 cm (a
+  floorboard line, a wainscot) is thinner; indoors and on a desk (`min.indoor`) half of that. Round things count by their diameter.
+  What had to change: window bars 6 x 7 cm (were 3 cm deep), the mast's legs 20 cm (were 13), its rungs 11 cm and thinned out to every
+  1.2 m, its crosspieces 12 cm, its top spike 14 cm; **the guy wires are gone** (the game drew 1-pixel lines from its top): three
+  timber braces of 20 cm run from the legs at 5.5 m to stone pads 3.6 m out, so nothing is a thread; saw-horse and table legs 10 cm,
+  the held plank 20 x 6 cm, the mailbox post 14 cm, the porch rail's balusters as before; indoors the picture rails, the kick board,
+  the pigeonholes' shelves and the window bars. Each new prop is made to it (rails of a garden fence 10 cm, its pickets 12 x 7 cm,
+  the washing line a rope 10 cm thick, a bicycle's tubes 10 cm).
+  **Test:** `every_model_is_chunky_nothing_is_a_stick` (tests/mountain_post.rs) reads the minimum from `HOUSE.min` and measures every
+  solid of every model `tools/models.mjs` makes (about 1,000: a box by its size, a cylinder by its diameter, a tube by its diameter and
+  line, a mesh along its own principal axes, so a turned plank is measured as it is) and lists each stick by name and size. The bridge
+  and the signposts (another round's) and the ferns (felt sheets) are left out by name.
+- **Painted surfaces on buildings** (the owner's guess, "because there's no texture", was right: three more paint kinds beside the
+  trees' and the grass's, `docs/project-format.md`, "Painted surfaces"): `wood`, `roof` and `stone` in `mesh.wgsl`'s own block ("painted
+  buildings"), worked out in the model's space on the plane the surface lies in, so they fit any house turned any way:
+  **boards** every 32 cm (20 cm on a deck), each a shade warmer or cooler by a hash of its row, each length of it a little different,
+  a soft seam 2.5 cm wide, a lighter lip on the upper edge and grain streaks about a metre long; **roof tiles** in rows of 26 cm up
+  the slope (found from the surface itself, so the porch's shallow roof and the gable's steep one both fit), 36 cm tiles with every
+  other row half a tile along, each a little different, a soft scalloped shadow under each row and a joint between tiles; **stone**
+  in courses of 22 cm with blocks of about 42 cm in a different place on each course, each its own shade and a little rounded, soft
+  mortar and a slow mottle. Every part is faded to the plain colour (and a slightly darker average) where it is under a few pixels
+  wide, so far houses are calm: nothing shimmers. The walls' siding is now this paint, not geometry: the painted lines (thousands of
+  4 cm slivers on every wall) are gone. Walls, decks, steps, benches, fences, tables, planks, shutters and crates are `wood`; the roofs
+  (gable, porch, workshop) `roof`; plinths, chimneys, the mast's footing, the washing line's feet and the post office's side steps
+  `stone`. Cost: two to four reads of the noise picture a painted pixel (the grass's six or so are the dearest); the new kinds add
+  no vertices and no draw (the kind rides in each vertex's `emissive` like the others) and the models have fewer triangles of
+  siding than before. **Test:** `painted_walls_roofs_and_stone_vary_near_and_are_calm_far_off` (tests/paint_gpu.rs: near, each kind
+  varies more than the plain surface and stays as bright; at 400 m a pixel is calm) and `the_buildings_are_painted_as_boards_tiles_and_stone`
+  (the written .glb files carry the kinds).
+- **Lived-in details** (`tools/models.mjs` the new models, `tools/scene.mjs` `detail(...)`, which places each at a house in the house's
+  own metres, moved off a road if it must be; a scene file as always). Built into the houses: a **box of flowers under every window**
+  (rounded blooms in the house's colours), **shutters** (the post office's dark green pair each side, Pip's teal and mustard odd pair),
+  a **lantern** by each door (it glows), a **doormat**, **pots of flowers** each side, the post office's **side door** with two stone
+  steps in its left end wall; **Hazel's** wall rack of tools (axe, spade, saw), a rocking chair with rockers. Placed: **post office** a
+  bicycle with a basket against its right end wall, **crates and parcels and a sack** stacked by the side door, a long raised **flower
+  bed** each side of the steps, a **watering can**; **Hazel** (tools, timber, tidy) a vegetable **garden** with a picket fence (neat
+  rows of cabbage, lettuce, carrot and onion, a bean teepee), a **chopping block** with an axe and split logs and a second **wood pile**
+  by her workshop, a **wheelbarrow** with logs, a **ladder** on the cabin's end wall, a **rain barrel**, a watering can and a **bird
+  feeder**; **Pip** (antennas, wires, a messy charm) a stout **aerial** on his ridge with a thick pipe of cable down the corner, a
+  crooked-fenced **flower plot** with sunflowers at the back, **tyre planters**, a **tinker bench** in the open (his radio in pieces, a
+  coil of red cable as thick as a hose, a lamp), a **washing line** whose odd socks, shirt, sheet and long johns (`cloths`, its own
+  model, drawn 1.3 m up so that the wind moves them: `sway` is the more the higher above the model's origin) sway, a bird feeder, and
+  **the flag up on his mailbox** (`mailbox_up`: `flag_up` in the scene file, `entities/mailbox.lua`). The chimneys' smoke is as it
+  was. The paths and doors stay clear: **Test** `the_lived_in_details_are_placed_and_the_doors_stay_clear` (each is in the scene file,
+  and from each door a walk 2.2 m wide and 14 m long has none of their feet in it); that nothing stands on a road is the road test's
+  (`valley_roads_nothing_placed_stands_on_a_road` reads every object of the scene).
+- **Pictures** (1280 x 720, made by the agent, not committed): `build/gallery/houses/` before and after, each house from the walking and
+  the driving camera, the post office front, and a sheet of the new props (`new-props-sheet-1.png`, `-2.png`); the route is
+  `tools/routes/houses.json`.
+- **Weak points:** the houses are heavier: the post office 3,800 to 6,800 triangles, Hazel's cabin 2,600 to 4,700, Pip's 2,400 to 4,600
+  (the flower boxes, pots and lanterns are rounded), the two gardens 5,000 to 6,600 each (a picket and a cabbage is a rounded solid);
+  about 34,000 more triangles in the valley in all, in three places (the houses' yards), not measured on the Retroid. The boards' seams read a little strongly at 3 to 6 m
+  and fade out by about 60 m (a pixel of 9 cm); the roof tiles are a regular grid close up, which is the toy look but not a hand's.
+  The wood paint treats a post's side as a wall (a seam every 32 cm), so posts and fence rails are painted but cream trim is not.
+  `foliage` on the flower boxes' leaves was tried and dropped (its core darkening reads from the model's axis, far from a window).
+  The paint kinds' numbers (5, 6, 7) follow the water's: another round adding kinds should add after them.

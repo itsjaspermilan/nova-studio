@@ -44,7 +44,7 @@ export interface MeshOpts {
   /// Painted with the model's texture at this many texels a model unit (a decal: see decal3d.ts); its place in the picture is set
   /// when the texture is packed.
   texture?: number;
-  /// How the game paints the surface ("foliage", "canopy", "ground", "water": model-doc.ts PAINT_KINDS; docs/project-format.md,
+  /// How the game paints the surface ("foliage", "canopy", "ground", "water", "wood", "roof", "stone": model-doc.ts PAINT_KINDS; docs/project-format.md,
   /// "Painted surfaces").
   paint?: string;
 }

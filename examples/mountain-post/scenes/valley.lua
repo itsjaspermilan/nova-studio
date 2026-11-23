@@ -521,16 +521,6 @@ function Valley:draw()
     OUT.face = { fx, 0, fz }
     nova.billboard("bridge_out", bar.x - fx * 0.36, 1.86, bar.z - fz * 0.36, 2.0, OUT)
   end
-  -- the mast's guy wires, from its top down to three pegs
-  local m = nova.named("mast")
-  if m then
-    local h0 = nova.terrain_height(m.x, m.z)
-    for k = 0, 2 do
-      local a = k * 2.094 + 0.3
-      local px, pz = m.x + math.sin(a) * 6.5, m.z + math.cos(a) * 6.5
-      nova.line3(m.x, h0 + 12, m.z, px, nova.terrain_height(px, pz) + 0.1, pz, { color = { 70, 70, 74 }, width = 1 })
-    end
-  end
 end
 
 function Valley:draw_ui()

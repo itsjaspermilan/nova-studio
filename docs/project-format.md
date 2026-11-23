@@ -200,7 +200,7 @@ points on a desktop (Apple M4); filling the lists in Lua costs more than that (a
 ### Painted surfaces
 
 A surface can be painted instead of flat-coloured (added 2026-11-23 for Fernhollow Post's grass, trees and creek, the owner's sixth
-play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Four kinds, each
+play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Seven kinds (the last three added 2026-11-23 for Fernhollow Post's houses), each
 an original look in the spirit of a hand-painted world, worked out in the plain look's shader (`mesh.wgsl`) from where the pixel is,
 over the surface's own colours:
 
@@ -210,6 +210,9 @@ over the surface's own colours:
 | `foliage` | a tree's crown: leaf clumps of about 0.7 m bend the light, leaf dabs of about 18 cm break the colour, what faces in towards the trunk or down is darker (the core), what faces out lighter; the sun wraps softly round it and lights its rim seen at a slant. The pattern is fixed in the model's own space, so it sways with the tree | a shape's `"paint": "foliage"` in a model file; `prop3d_make` with `style: "painted"` |
 | `canopy` | the same, for a long mass of trees along its model's x (its core worked out from that long middle line) | `"paint": "canopy"` |
 | `water` | running water: ripples stretched along the flow move downstream at about half a metre a second, the sky shows in them at a slant and the sun glints on them; the shallows are lighter and foam gathers along the waterline, broken by the ripples | `nova.mesh.make { paint = "water", uvs = ... }`: each point's UV is (metres across, metres downstream), and its colour's alpha is how deep the water is there (0 is 0.2 m above the bed, 255 is 0.6 m deep or more; make a place shallow to put foam round a post) |
+| `wood` | boards: courses of 0.32 m (0.2 m on a floor or deck) along a wall, one shade each (a little warmer or cooler), a little different along their length, a soft dark seam about 2.5 cm wide between them, a lighter lip on each upper edge and grain streaks about a metre long; the pattern is fixed in the model's own space | a shape's `"paint": "wood"` |
+| `roof` | tiles: rows of 0.26 m up the slope, tiles 0.36 m wide, every other row half a tile along, each a little different; a soft shadow under each row's scalloped lower edge and a joint between tiles; the slope is found from the surface itself, so it fits any pitch or turn | `"paint": "roof"` |
+| `stone` | courses of 0.22 m with blocks about 0.42 m long set differently on each course, each block its own shade and a little rounded, soft mortar, a slow mottle | `"paint": "stone"` |
 
 A model file says it per shape (`"paint": "foliage"`), which `model_write` writes to the `.glb` as the material's
 `"extras": { "nova": { "paint": "foliage" } }`; a name that is not a kind is a note and the shape is drawn plain. In the renderer the
@@ -217,7 +220,7 @@ kind travels in each vertex's `emissive` (the glow plus 1000 times the kind: `PA
 vertex layout and a painted model is instanced and batched like any other. The patterns come from one small picture of noise made by
 the engine (`gfx/paint.rs`: 128 by 128, four independent value noises 16 cells across, with its mip levels), read four to six times a
 painted pixel at different scales and slants; its mip levels average a pattern away where it is finer than a pixel, so far surfaces
-are calm. Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
+are calm (the seams, joints and mortar of the three building kinds are faded to a slightly darker average where they are under a few pixels wide, the shade of each board, tile and stone where a pixel spans over 7 to 20 cm). Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
 custom shader replaces it too. Cost on a desktop (Apple M4, Fernhollow's valley at 1280 by 720): see
 `docs/games/mountain-post.md`, "What the sixth play changed: grass, trees and the creek".
 

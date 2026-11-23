@@ -92,6 +92,20 @@ const free = (en, r) => used.every(([e, n, rr]) => Math.hypot(en[0] - e, en[1] -
 // A point of a house in its model's own metres (lx: its left, lz: its front), as (E, N): the model faces `face`, and its +x is its
 // own left, which is (-fn, fe) on the map.
 const at = (building, face, lx, lz) => { const f = norm(face); return [building[0] + f[0] * lz - f[1] * lx, building[1] + f[1] * lz + f[0] * lx]; };
+// A lived-in detail set at a house, in the house's own metres (lx its left, lz its front; models.mjs): the thing faces the way `dir` points in
+// those metres ([0, 1]: as the house does; [-1, 0]: along the house's -x, as a thing against its right end wall does). `r` is how much room it
+// takes from the trees. Nothing is put on a road (the same rule as everything: it is moved off if it must be, and the pass below checks).
+const DETAILS = []; // (what was set: kind, house, place and footprint: tests read the scene file, this is for the report)
+const detail = (kind, house, lx, lz, { dir = [0, 1], turn = 0, r = 1.2, props = {}, name, y = 0 } = {}) => {
+  const { building, face } = house, f = norm(face);
+  const ry = ry_facing(f[0] * dir[1] - f[1] * dir[0], f[1] * dir[1] + f[0] * dir[0]) + turn;
+  const p = placeOff(kind, at(building, face, lx, lz), ry);
+  const o = obj(kind, p, { ry: r2(ry), ...props }, name);
+  if (y) o.y = y;
+  take(p, r);
+  DETAILS.push({ kind, at: p });
+  return o;
+};
 // a porch or a step: a level floor over a rectangle of the house's front (`h` its height)
 const deck = (building, face, lx, lz, hw, hl, h) => obj("deck", at(building, face, lx, lz), { ry: r2(ry_facing(...norm(face))), hw, hl, h });
 
@@ -107,6 +121,12 @@ deck(po.building, po.face, 0, 5.9, 1.1, 0.2, 0.15);
 obj("van", po.parking, { ry: r2(ry_facing(...po.parking_face)) }, "van");
 obj("postmaster", at(po.building, po.face, 0, 7.6), { ry: r2(ry_facing(1, 0)) }, "postmaster");
 take(po.parking, 4);
+// (lived in, models.mjs: the side door is in the -x end wall; the bicycle leans on the +x end, flower beds flank the steps)
+detail("bicycle", po, 4.5 + 0.55, -0.9, { dir: [0, 1], turn: Math.PI / 2, r: 1.2 });
+detail("crates", po, -4.5 - 1.55, -1.5, { dir: [-1, 0], r: 1.2 });
+detail("flower_bed", po, -3.5, 6.35, { r: 2 });
+detail("flower_bed", po, 4.4, 6.35, { r: 2 });
+detail("watering_can", po, -1.7, 6.35, { turn: 0.6, r: 0.4 });
 obj("bench", [-8.5, -197], { ry: r2(ry_facing(1, 0.3)) });
 obj("woodpile", [-27, -177], { ry: r2(ry_facing(0, -1)) });
 obj("flowers", [-11.5, -191]); obj("flowers", [-11.8, -181]); obj("bush", [-14, -195.5]); obj("bush2", [-28, -195]);
@@ -130,6 +150,15 @@ deck(hz.building, hz.face, 0, 4.1, 3.25, 1.0, 0.36);
 obj("hazel", hz.resident, { ry: r2(ry_facing(1, -0.6)), work: hz.sawhorse }, "hazel");
 obj("mailbox", placeOff("mailbox", hz.mailbox, ry_facing(0.5, -1)), { ry: r2(ry_facing(0.5, -1)), number: 3 }, "mailbox_3");
 for (const s of [-1.2, 1.2]) obj("gate_post", placeOff("gate_post", [hz.gate[0] + s * 2.9 * 0.66, hz.gate[1] + s * 2.9 * 0.75]));
+// (Hazel: a tidy vegetable garden with a low fence, timber and tools by the workshop, a ladder and a rain barrel at the cabin's end)
+detail("garden_hazel", hz, 7.8, 6.0, { r: 2.6 });
+detail("watering_can", hz, 5.6, 7.4, { turn: 2.2, r: 0.4 });
+detail("wheelbarrow", hz, 3.2, 6.4, { turn: 0.5, r: 0.8 });
+detail("bird_feeder", hz, 10.8, 4.6, { r: 0.6 });
+detail("chopping_block", hz, -6.2, 5.2, { r: 1.2 });
+detail("woodpile", hz, -8.2, -0.7, { r: 1.4 });
+detail("ladder", hz, -3.75 - 0.75, -0.2, { dir: [-1, 0], r: 0.9 });
+detail("rain_barrel", hz, -3.75 - 0.8, 2.3, { r: 0.7 });
 obj("flowers", [hz.building[0] + 4, hz.building[1] - 4.5]);
 obj("bush", [hz.building[0] - 5, hz.building[1] - 3]);
 // the low stone wall on the left of Fern Lane, going up, along its last stretch: right at the edge, where everyone clips it
@@ -155,9 +184,19 @@ take(pp.mast, 2);
 obj("spot", at(pp.building, pp.face, 0.9, 3.0), {}, "door_pip");
 deck(pp.building, pp.face, 0, 3.3, 2.7, 0.75, 0.4);
 obj("pip", pp.resident, { ry: r2(ry_facing(-0.8, -0.6)), work: [pp.mast[0] - 1.6, pp.mast[1] - 1.0] }, "pip");
-obj("mailbox", placeOff("mailbox", pp.mailbox, ry_facing(-1, -0.4)), { ry: r2(ry_facing(-1, -0.4)), number: 7 }, "mailbox_7");
+obj("mailbox", placeOff("mailbox", pp.mailbox, ry_facing(-1, -0.4)), { ry: r2(ry_facing(-1, -0.4)), number: 7, flag_up: true }, "mailbox_7");
 for (const s of [-1.2, 1.2]) obj("gate_post", placeOff("gate_post", [pp.gate[0] + s * 2.9 * 0.78, pp.gate[1] - s * 2.9 * 0.62]));
 for (let i = 0; i < 5; i++) obj("fence", [pp.gate[0] + 5.5 + i * 2.6 * 0.78, pp.gate[1] - 4.5 - i * 2.6 * 0.62 + 0.0], { ry: r2(ry_facing(0.78, -0.62) + Math.PI / 2) });
+// (Pip: a jumble of flowers behind a crooked fence, tyre planters, a bench of radio parts in the open, a washing line with odd socks, a bird feeder)
+detail("garden_pip", pp, 5.8, 6.2, { r: 2.6 });
+detail("tyre_planters", pp, -4.6, 6.2, { turn: 0.4, r: 1.5 });
+detail("tinker_bench", pp, -6.5, 3.4, { dir: [1, 0], r: 1.2 });
+detail("bird_feeder", pp, 3.6, 6.4, { r: 0.6 });
+detail("watering_can", pp, 8.4, 4.4, { turn: 1.1, r: 0.4 });
+{
+  const line = detail("washing_line", pp, -4.3, -5.4, { r: 2.6, dir: [0, 1], turn: Math.PI / 2 + 0.25 });
+  detail("cloths", pp, -4.3, -5.4, { r: 0.1, dir: [0, 1], turn: Math.PI / 2 + 0.25, y: 1.3 });
+}
 obj("flowers", [pp.building[0] - 4, pp.building[1] - 3.6]); obj("flowers", [pp.building[0] + 3.5, pp.building[1] - 4.2]);
 obj("bush2", [pp.building[0] + 5, pp.building[1] + 1]);
 obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing(...pp.face)) });
@@ -433,7 +472,8 @@ tool("scene_write", { name: "office", scene: { version: 1, background: [40, 34, 
 const UP = ', lift = "upright"';
 const RIGID = ', lift = "origin"'; // (drawn whole, lifted by the ground under its origin: a ruin standing on a rim)
 const statics = {
-  post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "", stone_wall: "", gate_post: "",
+  post_office: "", cabin_hazel: "", cabin_pip: "", workshop: "", sawhorse: "", planks: "", woodpile: "", fence: "",
+  garden_hazel: "", garden_pip: "", flower_bed: "", tyre_planters: "", chopping_block: "", ladder: "", wheelbarrow: "", watering_can: "", bird_feeder: "", bicycle: "", crates: "", tinker_bench: "", washing_line: "", cloths: ", sway = 0.3", rain_barrel: "", stone_wall: "", gate_post: "",
   picnic_table: "", bench: "", old_bridge: RIGID, old_bridge_far: RIGID, barrier: "", office_room: "", package_counter: "", front_counter: "", stool: "", rug: "", door_mat: "", mail_sack: "", pigeonholes: "", tally_frame: "", wall_clock: "", calendar: "", notice_board: "", crt_computer: "", letter_tray: "", envelopes: "", desk_mat: "", stamp: "", bell: "", mast: UP,
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
