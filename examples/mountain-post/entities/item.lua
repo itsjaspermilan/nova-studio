@@ -29,8 +29,14 @@ end
 
 function Item:update() self:place() end
 
+-- The one about to be picked up (the nearest takeable parcel, or the letter: scenes/office.lua sets `pick`) gets a clean white outline,
+-- a few pixels wide on the screen (nova.model's `outline`).
+local OUTLINE = { color = { 255, 255, 255 }, width = 2.5 }
 function Item:draw()
-  if self:here() then nova.model(self.model_id, self.x, self.y, self.z, self.opts) end
+  if not self:here() then return end
+  local sc = nova.scene_now()
+  self.opts.outline = (sc and sc.pick == self) and OUTLINE or nil
+  nova.model(self.model_id, self.x, self.y, self.z, self.opts)
 end
 
 return Item

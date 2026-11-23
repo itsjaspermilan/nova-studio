@@ -408,6 +408,13 @@ the camera moves round instead, as Fernhollow Post's does). The shadows are not 
 changed, across scenes too: a scene with another camera calls `nova.see_through()` in its `enter`. Fernhollow Post's on-foot camera
 uses it (`examples/mountain-post/lib/camera.lua`); the test is `crates/nova-runtime/tests/see_through_gpu.rs`.
 
+**Outline round a model.** `nova.model("parcel", x, y, z, { outline = { color = { 255, 255, 255 }, width = 2.5 } })` draws a flat outline
+round that model, `width` pixels wide on the screen whatever the distance (0 to 16), for what the player is about to pick up. It is the
+model's own triangles again, back faces only, each vertex pushed out on the screen away from the model's middle (`outline.wgsl`), drawn
+after the world's models and depth tested against them: it shows round the silhouette, is behind what stands in front, is not lit or
+fogged and is never cut by `nova.see_through`. It costs one more draw of the mesh. A plain model only (not one posed from clips, layers or
+parts, and not lifted by hills); the test is `crates/nova-runtime/tests/outline_gpu.rs`.
+
 **Look.** `nova.look` sets how the finished picture is treated, and stays until changed (`nova.look()` clears it):
 
 ```lua

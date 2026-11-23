@@ -6,7 +6,6 @@
     { "kind": "office_room", "name": "room", "x": 0, "y": 0, "z": 0 },
     { "kind": "package_counter", "name": "package_counter", "x": 0, "y": 0, "z": -2.29 },
     { "kind": "tally_frame", "name": "tally_frame", "x": 0, "y": 0, "z": -2.6 },
-    { "kind": "conveyor_window", "name": "conveyor_window", "x": 3, "y": 0, "z": -2.6 },
     { "kind": "crt_computer", "name": "old_computer", "x": -1.15, "y": 0.8, "z": -0.75 },
     { "kind": "desk_set", "name": "desk_set", "x": 0.7, "y": 0.8, "z": -0.55 },
     { "kind": "postmaster", "name": "postmaster", "x": 0.3, "y": 0, "z": 0.55, "props": { "ry": 3.14 } },

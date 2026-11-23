@@ -1,4 +1,4 @@
--- What opens over the game and waits for the player: a parcel's label held up to read, the Mayor's letter, the paper map, the
+-- What opens over the game and waits for the player: the Mayor's letter, the paper map, the
 -- quiet card at the end, and the pause menu. One at a time; while one is open the world stands still around the player.
 local ui = require("lib.ui")
 local words = require("lib.words")
@@ -8,11 +8,11 @@ local open -- { kind, data, t, choice }
 
 function cards.open(kind, data)
   open = { kind = kind, data = data, t = 0, choice = 1 }
-  if kind == "label" or kind == "letter" or kind == "map" then nova.sound.play("paper", { volume = 0.5, vary = 0.06 }) end
+  if kind == "letter" or kind == "map" then nova.sound.play("paper", { volume = 0.5, vary = 0.06 }) end
   nova.log("card " .. kind .. (data and data.which and (" " .. data.which) or ""))
 end
 function cards.close()
-  if open and (open.kind == "label" or open.kind == "letter" or open.kind == "map") then nova.sound.play("paper", { volume = 0.35, pitch = 1.12, vary = 0.06 }) end
+  if open and (open.kind == "letter" or open.kind == "map") then nova.sound.play("paper", { volume = 0.35, pitch = 1.12, vary = 0.06 }) end
   local was = open
   open = nil
   if was and was.data and was.data.on_close then was.data.on_close() end
@@ -42,7 +42,7 @@ function cards.update(dt)
     if nova.input.pressed("map") then cards.close() end -- (Select opens it and closes it)
   elseif k == "ending" then
     if open.t > 2.5 and nova.input.pressed("interact") then cards.close() end
-  elseif nova.input.pressed("interact") then -- (X closes a label or the letter)
+  elseif nova.input.pressed("interact") then -- (X closes the letter)
     cards.close()
   end
 end
@@ -52,22 +52,6 @@ local text = ui.text
 
 -- (cards come in with a short rise and fade: s goes 0 to 1)
 local function rise(t, d) local k = math.min(1, t / (d or 0.18)); return k, 1 - (1 - k) * (1 - k) end
-
--- A parcel's label held up to read: a paper card with "Parcel" on its title strip, the label slip on it, "To:" and the name and
--- the street large.
-local function label_card(which, w, h, t)
-  local k, e = rise(t)
-  local cw, ch = s(640), s(300)
-  local x, y = (w - cw) / 2, (h - ch) / 2 - s(6) + (1 - e) * 30
-  ui.dim(w, h, k * 0.8)
-  ui.panel(x, y, cw, ch, { alpha = k })
-  ui.title_strip(w / 2, y - s(20), words.parcel, { alpha = k })
-  ui.slip(x + s(36), y + s(42), cw - s(72), ch - s(80), { alpha = k })
-  local name, street = ui.label_lines(which)
-  text(x + s(70), y + s(62), "To:", { size = F.line, color = ui.alpha(C.faint, k) })
-  text(w / 2, y + s(92), name, { size = s(50), align = "center", color = ui.alpha(C.ink, k), bold = true })
-  text(w / 2, y + s(166), street, { size = s(36), align = "center", color = ui.alpha(C.ink, k) })
-end
 
 -- The Mayor's letter: a sheet of the paper, who it is to over a rule, her words, her name in her hand. The sheet is as tall as the
 -- words (and the test that the letter fits uses its layout).
@@ -161,8 +145,7 @@ end
 function cards.draw(w, h)
   if not open then return end
   local k, t = open.kind, open.t
-  if k == "label" then label_card(open.data.which, w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
-  elseif k == "letter" then letter_card(w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
+  if k == "letter" then letter_card(w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
   elseif k == "map" then map_card(w, h, t); ui.hints({ { "SELECT", words.hint.close } }, w, h)
   elseif k == "ending" then ending_card(w, h, t)
   elseif k == "pause" then pause_card(open, w, h); ui.hints({ { "A", words.hint.choose } }, w, h) end

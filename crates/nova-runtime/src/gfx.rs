@@ -334,6 +334,25 @@ pub struct SeeThrough {
     pub near_amount: f32,
 }
 
+/// An outline round a model (`nova.model`'s `outline = { color, width }`; see `outline.wgsl`): the mesh drawn again, its back faces
+/// pushed out `width` pixels on the screen in a flat `color`, after the world's models. Lasts one frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OutlineDraw {
+    pub mesh: usize,
+    pub matrix: [[f32; 4]; 4],
+    pub color: [f32; 3],
+    pub width: f32,
+}
+
+/// What an outline draw is on the GPU: the model's matrix, its colour and width, and the model's middle in the world.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct OutlineInstance {
+    matrix: [[f32; 4]; 4],
+    color: [f32; 4],
+    middle: [f32; 4],
+}
+
 /// The wind that bends foliage (models drawn with a `sway`): the way it blows (a unit vector on the ground), how hard (0 is
 /// still), and the time the game keeps for it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -447,6 +466,8 @@ pub struct Lighting {
     pub terrain: Terrain,
     /// What is cut away between the camera and a point kept in view (`nova.see_through`); None draws everything.
     pub see_through: Option<SeeThrough>,
+    /// Outlines drawn this frame (`nova.model`'s `outline`).
+    pub outlines: Vec<OutlineDraw>,
     /// Opt-in quality settings; the world's pipelines are rebuilt when they change (`nova.graphics`, the manifest's `graphics`).
     pub quality: Quality,
     /// The 2D effects of this frame (lights, added light, shadows, reflections, rain); None when a game asks for none.
@@ -475,6 +496,7 @@ impl Default for Lighting {
             wind: Wind::default(),
             terrain: Terrain::default(),
             see_through: None,
+            outlines: Vec::new(),
             quality: Quality::default(),
             fx2d: None,
         }
@@ -815,6 +837,8 @@ struct Globals {
     see_through_opts: [f32; 4],
     /// x: within this many metres of the eye everything (above the base height) is wholly gone; y: how much of the near fade is on.
     see_through_near: [f32; 4],
+    /// x, y: the world picture's size in pixels (the outlines' width is in pixels).
+    outline_view: [f32; 4],
 }
 
 /// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
@@ -1188,6 +1212,9 @@ pub struct Gfx {
     model_instances: DynBuffer,
     /// The instances that are in view, for the world pass (the shadow pass has its own set, `model_instances`).
     view_instances: DynBuffer,
+    /// The frame's outlines ([`OutlineInstance`]) and the pipeline that draws them.
+    outline_instances: DynBuffer,
+    outline_pipeline: wgpu::RenderPipeline,
     /// Texture bind groups of model meshes by the picture's contents, so that models that carry the same picture (a kit's shared
     /// palette, embedded in every file) share one texture.
     texture_cache: HashMap<u64, wgpu::BindGroup>,
@@ -2341,6 +2368,65 @@ impl Gfx {
             cache: None,
         });
         let mesh_pipeline = make_mesh_pipeline("meshes", None, true);
+        // Outlines: the mesh's back faces again, pushed out in the vertex stage, flat colour, depth tested, no depth write.
+        let outline_shader =
+            device.create_shader_module(wgpu::include_wgsl!("shaders/outline.wgsl"));
+        let outline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("outline pipeline layout"),
+            bind_group_layouts: &[Some(&globals_layout)],
+            immediate_size: 0,
+        });
+        let outline_attributes = wgpu::vertex_attr_array![
+            4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 10 => Float32x4
+        ];
+        let outline_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("outlines"),
+            layout: Some(&outline_layout),
+            vertex: wgpu::VertexState {
+                module: &outline_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<MeshVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &vertex_attributes,
+                    }),
+                    Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<OutlineInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &outline_attributes,
+                    }),
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &outline_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: world_format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Front),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
+            multiview_mask: None,
+            cache: None,
+        });
         // Skinned meshes: the same shading, with the vertex stage bending the mesh by the frame's joint palette (a texture).
         let joint_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("joints"),
@@ -2576,6 +2662,12 @@ impl Gfx {
             wgpu::BufferUsages::VERTEX,
             1 << 16,
         );
+        let outline_instances = DynBuffer::new(
+            &device,
+            "outline instances",
+            wgpu::BufferUsages::VERTEX,
+            1 << 12,
+        );
 
         let gpu_timer = device
             .features()
@@ -2671,6 +2763,8 @@ impl Gfx {
             ui_instances,
             model_instances,
             view_instances,
+            outline_instances,
+            outline_pipeline,
             texture_cache: HashMap::new(),
             image_hashes: HashMap::new(),
             mesh_samplers: HashMap::new(),
@@ -3808,6 +3902,7 @@ impl Gfx {
                 };
                 [from, amount.clamp(0.0, 1.0), 0.0, 0.0]
             }),
+            outline_view: [world_size.0 as f32, world_size.1 as f32, 0.0, 0.0],
         };
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
@@ -3861,6 +3956,7 @@ impl Gfx {
                 see_through: [0.0; 4],
                 see_through_opts: [0.0; 4],
                 see_through_near: [0.0; 4],
+                outline_view: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));
@@ -3985,6 +4081,32 @@ impl Gfx {
         let view_list: Vec<ModelInstance> = world_models.iter().map(|m| m.instance).collect();
         self.view_instances
             .write(&self.device, &self.queue, bytemuck::cast_slice(&view_list));
+        // outlines: only plain (unskinned) meshes, with the model's middle in the world for the shader to push away from
+        let outline_list: Vec<(usize, OutlineInstance)> = lit
+            .outlines
+            .iter()
+            .filter_map(|o| {
+                let mesh = self
+                    .mesh(o.mesh)
+                    .filter(|m| m.skin.is_none() && m.solid > 0)?;
+                let m = glam::Mat4::from_cols_array_2d(&o.matrix);
+                let c = m.transform_point3(Vec3::from_array(mesh.bounds.0));
+                Some((
+                    o.mesh,
+                    OutlineInstance {
+                        matrix: o.matrix,
+                        color: [o.color[0], o.color[1], o.color[2], o.width.max(0.0)],
+                        middle: [c.x, c.y, c.z, 0.0],
+                    },
+                ))
+            })
+            .collect();
+        let outline_data: Vec<OutlineInstance> = outline_list.iter().map(|(_, i)| *i).collect();
+        self.outline_instances.write(
+            &self.device,
+            &self.queue,
+            bytemuck::cast_slice(&outline_data),
+        );
         // The sun's shadow pass takes what its own box (the light's view volume, depth included: the GPU clips by it) can
         // see, which is a different set from the camera's: a thing behind the camera can shadow the ground in front of it.
         // (opaque custom-shaded models cast shadows as plain ones do)
@@ -4332,6 +4454,26 @@ impl Gfx {
                     );
                     stats.draw_calls += calls;
                     stats.triangles += triangles;
+                }
+            }
+            if !outline_list.is_empty() {
+                pass.set_pipeline(&self.outline_pipeline);
+                pass.set_bind_group(0, &self.globals_group, &[]);
+                let stride = std::mem::size_of::<OutlineInstance>() as u64;
+                for (k, (mesh_id, _)) in outline_list.iter().enumerate() {
+                    let Some(mesh) = self.mesh(*mesh_id) else {
+                        continue;
+                    };
+                    pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                    pass.set_vertex_buffer(
+                        1,
+                        self.outline_instances
+                            .buffer
+                            .slice(k as u64 * stride..(k as u64 + 1) * stride),
+                    );
+                    pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(0..mesh.solid, 0, 0..1);
+                    stats.draw_calls += 1;
                 }
             }
             if fx2d.is_some() {
