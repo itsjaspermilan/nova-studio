@@ -619,8 +619,14 @@ fn nothing_on_screen_points_at_a_destination() {
                 assert!(!name.contains(bad), "{where_}: {name:?} is drawn");
             }
         }
-        // the minimap: its disc's middle and reach, from the disc sprite
-        let disc = r.drawn("ui_sprite", Some("minimap_disc"));
+        // the minimap: its disc's middle and reach, from the disc sprite (in the left half: the van's speedometer in the bottom right
+        // is drawn on the same painted disc, with the same strokes for its ticks and needle, since the sixth play)
+        let left = |s: &Value| s["x"].as_f64().unwrap_or(0.0) < 480.0;
+        let disc: Vec<Value> = r
+            .drawn("ui_sprite", Some("minimap_disc"))
+            .into_iter()
+            .filter(|s| left(s))
+            .collect();
         assert_eq!(disc.len(), 1, "{where_}: one minimap disc");
         let (cx, cy, rw) = (
             disc[0]["x"].as_f64().unwrap(),
@@ -635,7 +641,7 @@ fn nothing_on_screen_points_at_a_destination() {
             .into_iter()
             .filter(|s| {
                 let n = s["name"].as_str().unwrap_or("");
-                n.ends_with("minimap_road") || n.ends_with("minimap_joint")
+                left(s) && (n.ends_with("minimap_road") || n.ends_with("minimap_joint"))
             })
             .collect();
         assert!(!roads.is_empty(), "{where_}: roads on the minimap");
@@ -3270,7 +3276,7 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
         after.to_degrees()
     );
 
-    // standing on a slope: driven with nothing pressed it rolls; on the handbrake it stays
+    // standing on a slope: in N (no creep) with nothing pressed it rolls; on the handbrake it stays
     let out = lua(
         &g,
         "(function() local v = nova.named('van'); local W = require('lib.world'); local dt = 1 / 60; local bx, bz, best = 0, 0, 0; \
@@ -3278,7 +3284,7 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
            local r, dr = W.nearest('road', x, z); \
            if r and dr < r.width / 2 and s > best and s < 0.25 and not W.blocked(x, z, 2.5) and not W.on_bridge(x, z) and not nova.scenery.push(x, z, 2.5) then best, bx, bz = s, x, z end end end; \
          local gx, gz = nova.terrain_slope(bx, bz); local h = math.atan(gx, gz); \
-         local function hold(hb) v:teleport(bx, bz, h); v.driven = true; for i = 1, 300 do v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, 0, 0, hb; v:drive(dt) end; return math.sqrt((v.x - bx) ^ 2 + (v.z - bz) ^ 2) end; \
+         local function hold(hb) v:teleport(bx, bz, h); v.driven = true; v.gear = 'N'; for i = 1, 300 do v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, 0, 0, hb; v:drive(dt) end; return math.sqrt((v.x - bx) ^ 2 + (v.z - bz) ^ 2) end; \
          return string.format('%.3f %.3f %.3f', best, hold(0), hold(1)) end)()",
     );
     let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
@@ -3735,9 +3741,9 @@ fn the_valley_plays_the_stems_and_driving_brings_in_the_layers() {
             r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 30 }},
             {{ "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); nova.named('van').gear = 'D'" }},
             {{ "hold": ["go", "steer=0.5"], "frames": 740, "record": "{status} --driving" }},
-            {{ "hold": ["brake"], "frames": 150 }}, {{ "wait": 120 }},
-            {{ "wait": 60, "record": "{status} --stopped" }},
-            {{ "press": "van", "frames": 5 }}, {{ "wait": 200, "record": "{status} --out" }} ] }}"#
+            {{ "hold": ["brake"], "frames": 150 }}, {{ "hold": ["brake"], "frames": 120 }},
+            {{ "hold": ["brake"], "frames": 60, "record": "{status} --stopped" }},
+            {{ "hold": ["brake"], "press": "van", "frames": 5 }}, {{ "wait": 200, "record": "{status} --out" }} ] }}"#
         ),
     );
     let started: Vec<String> = r.json["sounds"]
@@ -5721,54 +5727,48 @@ fn the_hold_floor_is_one_closed_board_and_the_roof_has_no_slab() {
     );
 }
 
-/// The lever (the owner's sixth play: "a real automatic with PRNDL gear selection ... The vehicle should be in brake when
-/// switching between P, R, N, D. The vehicle can move between D and L freely"; the owner's final word on the buttons: A towards
-/// L, X towards P). Getting in, it is in P; A without the brake is refused with a soft click and "Hold the brake to shift"; with
-/// the brake held A steps P, R, N, D; X steps back; D to L and back at speed needs no brake; among P R N D a rolling van is refused
-/// even on the brake; getting out leaves it in P; the next time in, P again.
+/// The lever (the owner's sixth play: "a real automatic with PRNDL gear selection"; on the buttons: A towards L, X towards P; then
+/// "We can remove the brake requirement honestly"). Getting in, it is in P; A steps P, R, N, D with no pedal, X steps back, each
+/// at once with its clunk; D to L and back at speed; the one guard: never into P, nor into R, while going forwards faster than about
+/// 1 m/s (refused with a soft click and "Stop to shift"); getting out leaves it in P; the next time in, P again.
 #[test]
-fn the_lever_starts_in_p_needs_the_brake_among_p_r_n_d_and_moves_freely_between_d_and_l() {
+fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     let mut g = game();
     let r = play(
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
-        { "wait": 10 }, { "press": "confirm" }, { "wait": 5 } ] }"#,
+        { "wait": 10, "lua": "GEAR0 = nova.named('van').gear" }, { "press": "confirm" }, { "wait": 5 } ] }"#,
     );
+    assert_eq!(lua(&g, "GEAR0"), "P", "in P on getting in");
     assert_eq!(
         lua(&g, "nova.named('van').gear"),
-        "P",
-        "in P, and A without the brake does not move it"
+        "R",
+        "A moves it with no pedal"
     );
+    assert!(!logged(&r).iter().any(|l| l.starts_with("shift refused")));
     assert!(
-        logged(&r)
-            .iter()
-            .any(|l| l.starts_with("shift refused: P to R"))
+        r.json["sounds"].to_string().contains("gear_shift"),
+        "a clunk"
     );
-    assert!(
-        r.json["sounds"].to_string().contains("gear_refuse"),
-        "a soft click"
-    );
-    assert_eq!(r.drawn_count("ui_text", Some("Hold the brake to shift")), 1);
-    assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "P");
-    // the brake held: A steps down the column one gear a press
+    assert_eq!(r.drawn_count("ui_text", Some("to shift")), 0);
     let mut seen = Vec::new();
-    for _ in 0..3 {
+    for _ in 0..2 {
         play(
             &mut g,
-            r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
+            r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
         );
         seen.push(lua(&g, "nova.named('van').gear"));
     }
-    assert_eq!(seen, ["R", "N", "D"]);
-    // X steps back up towards P (on the brake), then down again
+    assert_eq!(seen, ["N", "D"]);
+    // X steps back up towards P, then A down again
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "press": "interact", "frames": 8 } ] }"#,
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "N");
     play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["brake"], "press": "confirm", "frames": 8 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.named('van').gear"), "D");
     // rolling at speed: D to L and back with no brake
@@ -5790,19 +5790,22 @@ fn the_lever_starts_in_p_needs_the_brake_among_p_r_n_d_and_moves_freely_between_
         "and back to D, no brake"
     );
     assert!(!logged(&r).iter().any(|l| l.starts_with("shift refused")));
-    // rolling, D to N is refused even with the brake pressed
+    // rolling forwards: D to N goes at once, but N to R is refused ("Stop to shift"), and so is P
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["go"], "frames": 60 }, { "lua": "local v = nova.named('van'); v.ctl.brake = 1; ROLLING = v.speed; OK = v:shift(-1)" }, { "wait": 2 } ] }"#,
+        r#"{ "steps": [ { "hold": ["go"], "frames": 60 }, { "lua": "local v = nova.named('van'); ROLLING = v.speed; TO_N = v:shift(-1); TO_R = v:shift(-1); v.gear = 'R'; TO_P = v:shift(-1); v.gear = 'D'" }, { "wait": 2 } ] }"#,
     );
-    assert!(num(&g, "ROLLING") > 1.0);
-    assert_eq!(lua(&g, "tostring(OK)"), "false");
+    assert!(num(&g, "ROLLING") > 1.5);
+    assert_eq!(lua(&g, "tostring(TO_N)"), "true");
+    assert_eq!(lua(&g, "tostring(TO_R)"), "false");
+    assert_eq!(lua(&g, "tostring(TO_P)"), "false");
     assert!(
         logged(&r)
             .iter()
-            .any(|l| l == "shift refused: D to N, rolling")
+            .any(|l| l == "shift refused: N to R, rolling")
     );
     assert_eq!(lua(&g, "nova.named('van').hint"), "stop");
+    assert_eq!(r.drawn_count("ui_text", Some("Stop to shift")), 1);
     // stopped, Y gets out: it is left in P; in again, P
     play(
         &mut g,
@@ -5931,9 +5934,10 @@ fn the_reversing_beeper_sounds_only_in_r() {
     assert_eq!(beeps(&r), 0, "none in N or D");
 }
 
-/// The gear display: bottom left, just right of the minimap and level with its foot, clear of the prompts, inside the screen at
-/// 1280x720 and 1920x1080; the gear it is in highlighted; the handbrake lamp lit only while B is held; hidden on foot. The horn is
-/// on L3 (X and A are the lever's now).
+/// The van's cluster (the owner: "We should move the PRNDL to the right along with an analog speedometer"): bottom right, the dial
+/// in the corner with the minimap's frame and the lever's panel just left of it, both standing on the same foot line as the minimap;
+/// the prompts above it, clear of it; inside the screen at 1280x720 and 1920x1080; the gear it is in highlighted; the handbrake lamp
+/// lit only while B is held; hidden on foot. The horn is on L3 (X and A are the lever's now).
 #[test]
 fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_the_handbrake() {
     for size in ["1280x720", "1920x1080"] {
@@ -5944,49 +5948,45 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
                 r#"{{ "size": "{size}", "start_scene": "valley", "steps": [ {{ "wait": 10 }} ] }}"#
             ),
         );
-        assert_eq!(
-            r.drawn_count("ui_text", Some("Handbrake")),
-            0,
-            "hidden on foot"
-        );
+        assert_eq!(r.drawn_count("ui_text", Some("km/h")), 0, "hidden on foot");
         let r = play(
             &mut g,
             r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 20 } ] }"#,
         );
         assert_eq!(
-            r.drawn_count("ui_text", Some("Handbrake")),
+            r.drawn_count("ui_text", Some("km/h")),
             1,
             "{size}: shown driving"
         );
-        assert_ui_from_the_kit(&r, "the gear display");
-        let (x, y, w, h) = (
-            num(&g, "require('lib.gear_hud').last.x"),
-            num(&g, "require('lib.gear_hud').last.y"),
-            num(&g, "require('lib.gear_hud').last.w"),
-            num(&g, "require('lib.gear_hud').last.h"),
+        assert_eq!(
+            r.drawn_count("ui_text", Some("(P)")),
+            1,
+            "the handbrake lamp"
         );
+        assert_ui_from_the_kit(&r, "the van's cluster");
+        let g_ = |k: &str| num(&g, &format!("require('lib.gear_hud').last.{k}"));
+        let (x, y, w, h) = (g_("x"), g_("y"), g_("w"), g_("h"));
+        let (cx, cy, rim, top) = (g_("cx"), g_("cy"), g_("rim"), g_("top"));
         let (vw, vh) = (num(&g, "(nova.view('exact'))"), 540.0);
         let mm = num(&g, "require('lib.ui').MINIMAP.r");
-        let (cx, cy, rr) = (24.0 + mm + 4.0, vh - 24.0 - mm - 4.0, mm + 8.0);
+        let foot = vh - 24.0 - mm - 4.0 + mm + 8.0;
         assert!(
-            x > cx + rr && x - (cx + rr) < 30.0,
-            "{size}: just right of the minimap's disc ({x}, the disc to {})",
-            cx + rr
+            (vw - (cx + rim) - 20.0).abs() < 1.0 && (cy + rim - foot).abs() < 1.0,
+            "{size}: the dial in the bottom right corner, on the minimap's foot line"
         );
         assert!(
-            ((y + h) - (cy + rr)).abs() < 1.0,
-            "{size}: level with its foot"
+            x + w < cx - rim && cx - rim - (x + w) < 20.0 && (y + h - foot).abs() < 1.0,
+            "{size}: the lever's panel just left of the dial"
         );
-        assert!(
-            y > 0.0 && x + w < vw / 2.0,
-            "{size}: in the screen's bottom left"
-        );
+        assert!(x > vw / 2.0, "{size}: on the right");
         for t in r.drawn("ui_text", Some("Get out")) {
+            let bottom = t["y"].as_f64().unwrap() + t["h"].as_f64().unwrap();
             assert!(
-                t["x"].as_f64().unwrap() > x + w + 20.0,
-                "{size}: the prompts are clear of it"
+                bottom < top,
+                "{size}: the prompts stand above the cluster ({bottom} over {top})"
             );
         }
+        assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
         assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "P");
         assert_eq!(lua(&g, "tostring(require('lib.gear_hud').lit)"), "false");
         play(
@@ -6978,5 +6978,143 @@ fn the_creek_runs_between_smooth_painted_banks() {
     assert!(
         worst < 0.2,
         "the waterline wiggles by up to {worst:.2} m from row to row"
+    );
+}
+
+/// "We need to add creep for D R and L." With the pedals up, on the flat (the van's own step at Post Road): D creeps at 1.2 to 1.5
+/// m/s, L a little slower (but with more pull), R about 1 m/s backwards; P and N never creep. It builds in over a second or so with
+/// no jump in the acceleration. Any brake overcomes it: held from a standstill the van stays exactly still (no shudder), and let go
+/// it creeps off; the handbrake overcomes it too.
+#[test]
+fn d_l_and_r_creep_at_idle_p_and_n_do_not_and_the_brake_holds_it_still() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        "(function() local v = nova.named('van'); local dt = 1 / 60; \
+         local function run(gear, brake, hb, n, fresh) if fresh ~= false then v:teleport(4.5, -150, 0); v.creep_k = 0 end; v.driven = true; v.gear = gear; \
+           local most, prev_a, jump, first_a, t1 = 0, nil, 0, nil, nil; \
+           for i = 1, n do local v0 = v.speed; v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, brake, 0, hb; v:drive(dt); v.x, v.z, v.heading = 4.5, -150, 0; \
+             local a = (v.speed - v0) / dt; if prev_a and i > 2 then jump = math.max(jump, math.abs(a - prev_a)) end; prev_a = a; first_a = first_a or a; \
+             most = math.max(most, math.abs(v.speed)); if not t1 and math.abs(v.speed) >= 1.0 then t1 = i * dt end end; \
+           return v.speed, most, jump, first_a, t1 or -1 end; \
+         local d, _, d_jump, d_first, d_t1 = run('D', 0, 0, 600); local l = run('L', 0, 0, 600); local r = run('R', 0, 0, 600); \
+         local p = run('P', 0, 0, 600); local n = run('N', 0, 0, 600); \
+         local _, held = run('D', 0.4, 0, 300); local _, held_light = run('D', 0.05, 0, 300); local _, hb = run('D', 0, 1, 300); \
+         run('D', 0.4, 0, 60); local off = run('D', 0, 0, 180, false); \
+         return string.format('%.3f %.3f %.3f %.4f %.4f %.4f %.4f %.4f %.4f %.3f %.3f %.3f %.3f', d, l, r, p, n, held, held_light, hb, d_jump, d_first, d_t1, off, v.TUNE.creep_pull.L / v.TUNE.creep_pull.D) end)()",
+    );
+    let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (d, l, r, p, n) = (v[0], v[1], v[2], v[3], v[4]);
+    assert!((1.2..=1.5).contains(&d), "D creeps at {d} m/s ({out})");
+    assert!(
+        (0.9..d).contains(&l) && v[12] > 1.5,
+        "L creeps a little slower, with more pull ({out})"
+    );
+    assert!((-1.15..=-0.85).contains(&r), "R creeps backwards ({out})");
+    assert!(
+        p.abs() < 1e-6 && n.abs() < 0.05,
+        "P and N do not creep ({out})"
+    );
+    assert!(
+        v[5] < 1e-6 && v[6] < 1e-6,
+        "the brake, hard or light, holds it exactly still from a standstill ({out})"
+    );
+    assert!(v[7] < 1e-6, "the handbrake overcomes it ({out})");
+    // (the first step from the teleport also meets the road's own gentle fall, about 0.17 m/s^2 here: the creep's own share of
+    // it is its pull times one step's easing, about 0.04)
+    assert!(
+        v[8] < 0.12 && v[9].abs() < 0.25,
+        "it builds with no jump in the acceleration: largest change {} m/s^2 a step, first step {} m/s^2 ({out})",
+        v[8],
+        v[9]
+    );
+    assert!(
+        (0.8..=3.0).contains(&v[10]),
+        "1 m/s after {} s: over a second or so ({out})",
+        v[10]
+    );
+    assert!(v[11] > 0.6, "let go of the brake, it creeps off ({out})");
+}
+
+/// Creeping in D, the van cannot be got out of (it is moving); stopped on the brake, or in P, it can, and getting out parks it.
+/// The autopilot stops on the brake and parks at the end of a drive.
+#[test]
+fn a_creeping_van_is_not_stopped_until_braked_or_in_p() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 150 }, { "press": "van" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('van').gear"), "D");
+    assert!(num(&g, "nova.named('van').speed") > 1.0, "creeping in D");
+    assert_eq!(
+        lua(&g, "nova.scene_now().mode"),
+        "van",
+        "no getting out of a creeping van"
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["brake"], "frames": 90 }, { "hold": ["brake"], "frames": 1, "lua": "SPEED = nova.named('van').speed" } ] }"#,
+    );
+    assert!(num(&g, "SPEED").abs() < 1e-6, "held still on the brake");
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1, "the prompt");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["brake"], "press": "van", "frames": 6 }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
+    assert_eq!(lua(&g, "nova.named('van').gear"), "P", "left in P");
+}
+
+/// The speedometer's needle follows the speed in km/h, eased (no step of more than a little from one frame to the next), reads 0
+/// standing, and backing up it shows the speed it backs at.
+#[test]
+fn the_speedometer_needle_follows_the_speed_smoothly() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "nova.named('van'):teleport(4.5, -150, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" },
+        { "wait": 20 } ] }"#,
+    );
+    assert!(num(&g, "require('lib.gear_hud').kmh") < 0.01, "0 standing");
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" }, { "wait": 2 }, { "press": "confirm" },
+        { "hold": ["go"], "frames": 360, "record": "string.format('%.3f', require('lib.gear_hud').kmh)" } ] }"#,
+    );
+    let (kmh, speed) = (
+        num(&g, "require('lib.gear_hud').kmh"),
+        num(&g, "nova.named('van').speed"),
+    );
+    assert!(
+        (kmh - speed * 3.6).abs() < 1.0,
+        "the needle at {kmh} km/h, the van at {} km/h",
+        speed * 3.6
+    );
+    let rec = r.record("string.format('%.3f', require('lib.gear_hud').kmh)");
+    let vals: Vec<f64> = rec.iter().map(|(_, _, v)| v.parse().unwrap()).collect();
+    let step = vals
+        .windows(2)
+        .map(|p| (p[1] - p[0]).abs())
+        .fold(0.0, f64::max);
+    assert!(step < 0.6, "eased: at most {step} km/h a frame");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["brake"], "until": "math.abs(nova.named('van').speed) < 0.05", "max": 400 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" },
+        { "hold": ["go"], "frames": 200 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('van').gear"), "R");
+    let (kmh, speed) = (
+        num(&g, "require('lib.gear_hud').kmh"),
+        num(&g, "nova.named('van').speed"),
+    );
+    assert!(
+        speed < -1.0 && (kmh + speed * 3.6).abs() < 0.8,
+        "backing up, the needle at {kmh} for {speed} m/s"
     );
 }
