@@ -13,17 +13,20 @@
 --   and more behind, more level, with the road and the horizon ahead; not more top-down): on foot 26 degrees down from 8 m with a 38
 --   degree lens, the postmaster about a fifth of the screen high in its lower middle, the sky and the far hills along the top; driving
 --   15 degrees down, the van in the lower third and the road and the horizon ahead. What stands between the camera and the postmaster
---   or the van (tree crowns, a roof, the porch) is cut away round them (nova.see_through); only the ground lifts it, smoothly.
--- - Nobody else is cut away either (residents, the driver): only scenery is. The same dodge covers a resident standing between.
--- - The van is never cut away (the owner: "I don't like that the van dithers away to make way for the player": it is drawn with
---   see_through = false). When the postmaster on foot would be hidden behind it, the camera moves instead: it eases up, or round to the
---   side, just as far as it must for them to show over or past the van, and eases back once the van is no longer in the way (DODGE).
+--   or the van is cut away round them only while it really hides them (tree crowns, a roof, the porch: lib/occluders.lua, CUT below);
+--   only the ground lifts the camera, smoothly.
+-- - Nobody else is cut away either (residents, the driver): only scenery is. The van is never cut away either (the owner: "I don't
+--   like that the van dithers away to make way for the player": it is drawn with see_through = false). The camera does not move for
+--   them either (the owner, 2026-11-23: "We don't need the camera dodge when the player is behind the van or other characters"):
+--   the postmaster is simply hidden for a moment behind the van or a resident, and the camera stays on its orbit and drift. The one
+--   thing it still does is stay out of the van's body: an eye that would be inside the van is lifted just over it.
 -- Whenever the stick becomes the postmaster's outdoors (the valley's start, out of the post office's door, out of the van, after a
 -- conversation) the camera is put straight behind the way they face, at the default; getting in and out of the van glides between the
 -- two views. Indoors: one fixed view from high over the cut-away front wall (unchanged). Going from one view to another the view glides
 -- over a moment, along a straight line between the two.
 -- The camera is placed by hand on the valley's hills (nova.terrain lifts what is drawn, not the camera).
 local world = require("lib.world")
+local occluders = require("lib.occluders")
 
 local camera = {}
 local cam = { yaw = 0, eye = { 0, 0, 0 }, at = { 0, 0, 0 }, fov = 40, blend = 1, from = nil, ready = false }
@@ -38,13 +41,14 @@ camera.FOOT = { dist = 8.0, pitch = math.rad(26), view = math.rad(15), low = mat
 -- The van: further and lower, a wider lens, looking out down the road; a quicker drift that grows with speed
 camera.VAN = { dist = 9.6, pitch = math.rad(16), view = math.rad(7), low = math.rad(3), high = math.rad(45), fov = 44, look = 1.0, ahead = 0.4,
   rate = 0.5, per = 0.12, top_rate = 1.7, gain = 2.6, accel = 3.0, still = 0.6 }
--- Round the van on foot: how far the camera may lift (radians of tilt) or swing (radians of turn) to keep the postmaster in view over
--- or past the van, the steps it tries, and how quickly it eases there and back (1/s)
-camera.DODGE = { up = math.rad(38), side = math.rad(50), step = math.rad(2), ease = 3.0, back = 1.6 }
 -- Doors whose building stands behind the camera (the scene lists them in camera.NEAR as { x, z, r = , near = }): the post office's.
 -- Coming out of it, the low camera straight behind the postmaster is in the building, and its porch roof would fill the lower half of
 -- the picture. They step out to the foot of the porch (4 m: scenes/valley.lua), and within `r` metres of such a door everything within
 -- `near` metres of the camera is cut away too (the porch roof, the posts), easing back to the usual 2.5 m as they walk out.
+-- Scenery close to the eye fades out whole, whatever else is happening (the owner, after the see-through circle: a big crown next to
+-- the camera filled the picture with green): wholly gone within half of NEAR_FADE metres of the eye, all there beyond it, the fade by
+-- a screen-door, never the van or people (nova.see_through's near, near_from and near_amount).
+camera.NEAR_FADE = 4.0
 camera.PORCH = { r = 9, near = 6.0 }
 camera.NEAR = {}
 camera.VIEW_TILT = 0.85    -- the share of the boom's tilt (the stick, a lift over the van) the view takes
@@ -63,7 +67,7 @@ local function smooth(e0, e1, x) local t = math.max(0, math.min(1, (x - e0) / (e
 function camera.reset(yaw)
   cam.yaw, cam.ready, cam.blend, cam.from = yaw or 0, false, 1, nil
   cam.pitch_off, cam.rate, cam.idle, cam.lift, cam.vx, cam.vz, cam.rev, cam.follow = 0, 0, 0, nil, 0, 0, 0, nil
-  cam.px, cam.pz, cam.orbit, cam.tilt, cam.dodge_p, cam.dodge_y, cam.view_yaw = nil, nil, 0, 0, 0, 0, nil
+  cam.px, cam.pz, cam.orbit, cam.tilt, cam.view_yaw = nil, nil, 0, 0, nil
 end
 camera.behind = camera.reset
 
@@ -115,10 +119,11 @@ end
 
 -- The boom from the point it hangs on: the eye, and the point looked at (down at `view`, tilted with the boom by VIEW_TILT of
 -- its own tilt: the stick's tilt and a lift over the van tilt the view less, so the postmaster stays in the frame's lower middle).
-local function boom(C, yaw, pitch, f)
+local function boom(C, yaw, pitch, f, k)
   local s, c = math.sin(yaw), math.cos(yaw)
   local ax, ay, az = f[1] + s * C.ahead, f[2] + C.look, f[3] + c * C.ahead
-  local h, d = math.sin(pitch) * C.dist, math.cos(pitch) * C.dist
+  k = k or 1 -- (the boom drawn in to this share of its length: an eye that would sit in a tree's crown comes in toward them)
+  local h, d = math.sin(pitch) * C.dist * k, math.cos(pitch) * C.dist * k
   local ex, ey, ez = ax - s * d, ay + h, az - c * d
   local v = C.view + (pitch - C.pitch) * camera.VIEW_TILT
   local l = C.dist
@@ -150,65 +155,16 @@ local function van_between(v, ex, ey, ez, px, py, pz)
 end
 camera.van_between = van_between
 
--- Whether a person (a resident: an upright cylinder, CHAR) stands between the eye and a point: the nearest the line comes to their
--- axis, on the ground plan, within their radius and at a height they reach. They are never cut away either (the owner, sixth
--- play: "We don't need to have the circle cut through other characters or the truck"): the camera moves round them like the van.
-camera.CHAR = { r = 0.42, h = 1.7 }
-local function person_between(r, ex, ey, ez, px, py, pz)
-  local dx, dz = px - ex, pz - ez
-  local l2 = dx * dx + dz * dz
-  if l2 < 1e-6 then return false end
-  local t = math.max(0, math.min(1, ((r.x - ex) * dx + (r.z - ez) * dz) / l2))
-  local qx, qz = ex + dx * t, ez + dz * t
-  if (qx - r.x) ^ 2 + (qz - r.z) ^ 2 > camera.CHAR.r ^ 2 then return false end
-  local g = world.height(r.x, r.z)
-  local y = ey + (py - ey) * t
-  return y > g - 0.1 and y < g + camera.CHAR.h
-end
-camera.person_between = person_between
-
--- How far the camera must lift or swing for the postmaster (their middle and their head) to show over or past the van: the smallest
--- change of the two it tries, as a lift and a swing (0, 0 when the van is not in the way).
-local function dodge_for(C, f, p, base, v, others)
-  local reach = (C.dist + 3) ^ 2
-  if v and (v.x - p.x) ^ 2 + (v.z - p.z) ^ 2 > reach then v = nil end
-  -- (the people who could be in the way: near enough to the postmaster, and not right beside them)
-  local near_people = {}
-  for _, r in ipairs(others or {}) do
-    local d2 = (r.x - p.x) ^ 2 + (r.z - p.z) ^ 2
-    if d2 < reach and d2 > 0.6 ^ 2 then near_people[#near_people + 1] = r end
-  end
-  if not v and #near_people == 0 then return 0, 0 end
-  local D = camera.DODGE
-  local pitch0 = C.pitch + (cam.pitch_off or 0)
-  local function clear(yaw, pitch)
-    local ex, ey, ez = boom(C, yaw, pitch, f)
-    ey = ey + (cam.lift or 0)
-    for _, y in ipairs({ 0.4, 0.85 }) do
-      if v and van_between(v, ex, ey, ez, p.x, base + y, p.z) then return false end
-      for _, r in ipairs(near_people) do
-        if person_between(r, ex, ey, ez, p.x, base + y, p.z) then return false end
-      end
-    end
-    return true
-  end
-  if clear(cam.yaw, pitch0) then return 0, 0 end
-  -- (the smallest move: up a step, or round a step either way, the swing counted a little dearer than the lift)
-  local up, side = math.min(D.up, math.max(0, C.high - pitch0)), D.side
-  for k = 1, 40 do
-    local a = k * D.step
-    if a <= up and clear(cam.yaw, pitch0 + a) then return a, 0 end
-    local b = a * 1.25
-    if b <= side then
-      if clear(cam.yaw + b, pitch0) then return 0, b end
-      if clear(cam.yaw - b, pitch0) then return 0, -b end
-    end
-    if a > up and b > side then break end
-  end
-  return up, 0
+-- Whether a point is inside the van's body (a box round it, a little fatter: tools/van.mjs), for keeping the eye out of it.
+local function inside_van(v, x, y, z, pad)
+  local sh, ch = math.sin(v.heading), math.cos(v.heading)
+  local dx, dz = x - v.x, z - v.z
+  local lx, lz = dx * ch - dz * sh, dx * sh + dz * ch
+  local ly = y - world.height(v.x, v.z)
+  return math.abs(lx) < VAN_BOX.hw + pad and lz > VAN_BOX.z0 - pad and lz < VAN_BOX.z1 + pad and ly > -1 and ly < VAN_BOX.h + pad
 end
 
-local function place(dt, C, x, base, z, look_at, dodge_from)
+local function place(dt, C, x, base, z, look_at, van)
   local pitch = C.pitch + (cam.pitch_off or 0)
   local yaw = cam.yaw
   -- (the point followed eases after the body a touch, so a bump in the path is not a bump in the picture)
@@ -218,28 +174,36 @@ local function place(dt, C, x, base, z, look_at, dodge_from)
     local k = math.min(1, dt * 12)
     f[1], f[2], f[3] = f[1] + (x - f[1]) * k, f[2] + (base - f[2]) * math.min(1, dt * 6), f[3] + (z - f[3]) * k
   end
-  -- (round the van: the lift and swing it needs, eased there, and eased back once the van is out of the way)
-  if dodge_from then
-    local wp, wy = dodge_for(C, f, dodge_from.p, dodge_from.base, dodge_from.v, dodge_from.others)
-    if not cam.ready then cam.dodge_p, cam.dodge_y = wp, wy end
-    local D = camera.DODGE
-    local kp = math.min(1, dt * (wp > (cam.dodge_p or 0) and D.ease or D.back))
-    local ky = math.min(1, dt * (math.abs(wy) > math.abs(cam.dodge_y or 0) and D.ease or D.back))
-    cam.dodge_p = (cam.dodge_p or 0) + (wp - (cam.dodge_p or 0)) * kp
-    cam.dodge_y = (cam.dodge_y or 0) + (wy - (cam.dodge_y or 0)) * ky
-  else
-    cam.dodge_p, cam.dodge_y = 0, 0
-  end
-  pitch, yaw = pitch + cam.dodge_p, yaw + cam.dodge_y
   cam.view_yaw = yaw
   local ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f)
+  -- (an eye inside a crown: the boom comes in toward the postmaster, as far as the first length that is clear and never closer than
+  -- PULL.min of it, held PULL.hold seconds after the crown is clear so it does not flicker, and eased both ways)
+  local P = camera.PULL
+  local want = 1
+  if occluders.tree_near(ex, ey, ez, P.clear) then
+    want = P.min
+    for _, k in ipairs(P.steps) do
+      local qx, qy, qz = boom(C, yaw, pitch, f, k)
+      if not occluders.tree_near(qx, qy, qz, P.clear) then want = k; break end
+    end
+  end
+  if not cam.ready or not cam.pull then cam.pull, cam.pull_hold = want, 0 end
+  if want < 1 then cam.pull_hold = P.hold else cam.pull_hold = (cam.pull_hold or 0) - dt end
+  if want < cam.pull then cam.pull = math.max(want, cam.pull - dt * P.in_speed)
+  elseif cam.pull_hold <= 0 then cam.pull = math.min(want, cam.pull + dt * P.out_speed) end
+  if cam.pull < 1 then ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f, cam.pull) end
   local need = math.max(0, world.height(ex, ez) + 1.2 - ey)
+  -- (an eye that would be inside the van's body is lifted just over it: the one thing the van moves the camera for)
+  if van and inside_van(van, ex, ey, ez, 0.3) then need = math.max(need, world.height(van.x, van.z) + VAN_BOX.h + 0.4 - ey) end
   if not cam.lift or not cam.ready then cam.lift = need
   else cam.lift = cam.lift + (need - cam.lift) * math.min(1, dt * (need > cam.lift and 5 or 1.5)) end
   ey = ey + cam.lift
   camera.set(ex, ey, ez, tx, ty, tz, C.fov, dt)
   cam.see = look_at
 end
+
+local FOOT_HEIGHTS = { 0.3, 0.7, 1.05 }
+local VAN_HEIGHTS = { 0.5, 1.0, 1.5 }
 
 -- On foot outdoors: the chase view behind the postmaster.
 function camera.foot(p, dt)
@@ -260,12 +224,12 @@ function camera.foot(p, dt)
   end
   local base = world.height(p.x, p.z) + (p.y or 0) - world.lift(p.x, p.z)
   -- (what is near the eye is cut away too: more by the doors in camera.NEAR)
-  local near = 2.5
+  local near = camera.NEAR_FADE
   for _, n in ipairs(camera.NEAR) do
     local d = math.sqrt((p.x - n[1]) ^ 2 + (p.z - n[2]) ^ 2)
-    near = math.max(near, 2.5 + (n.near - 2.5) * smooth(n.r, n.r * 0.5, d))
+    near = math.max(near, camera.NEAR_FADE + (n.near - camera.NEAR_FADE) * smooth(n.r, n.r * 0.5, d))
   end
-  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 2.0, margin = 0.9, near = near }, { p = p, base = base, v = nova.first("van"), others = nova.all("resident") })
+  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 0.85, margin = 0.6, near = near, base = base, heights = FOOT_HEIGHTS }, nova.first("van"))
 end
 
 -- Behind the van: the same rule, quicker.
@@ -282,7 +246,7 @@ function camera.van(v, dt)
   end
   cam.px, cam.pz, cam.vx, cam.vz = nil, nil, 0, 0
   local base = world.height(v.x, v.z)
-  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 2.2, margin = 2.4, near = 5 })
+  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 1.3, margin = 1.2, near = 4, base = base, heights = VAN_HEIGHTS })
 end
 
 -- The office: the fixed view (the room is level, its floor at 0).
@@ -323,7 +287,30 @@ function camera.set(ex, ey, ez, tx, ty, tz, fov, dt)
 end
 
 -- Puts the view on the screen (from draw): the glide between two views, eased; the hole round what the view follows.
-local SEE = { at = { 0, 0, 0 }, radius = 1.9, margin = 0.9, above = 0.35, near = 2.5, amount = 1 }
+local SEE = { at = { 0, 0, 0 }, radius = 0.85, margin = 0.6, above = 0.35, near = 4, amount = 1, near_from = 2, near_amount = 1 }
+-- The see-through cut (the owner, 2026-11-23: "the circle cutout comes on too aggressively. It should only be present when the camera is
+-- really blocked by some item"): lines from the eye to three points on the postmaster (or the van) are walked through the scenery that
+-- can hide someone (lib/occluders.lua: tree crowns, forest, roofs, the porch; never grass, ferns, bushes, people or the van). Only when
+-- two of three are hidden, or the eye itself is inside a crown or a roof, is a small hole (about the postmaster's size on the screen)
+-- cut, and only through what lies between: it fades in over CUT.up seconds, and, once the line is clear, holds for CUT.hold seconds
+-- (a trunk's edge crossing the line does not flicker it) before fading out over CUT.down.
+camera.PULL = { clear = 3.0, min = 0.55, steps = { 0.9, 0.8, 0.7, 0.62 }, hold = 0.5, in_speed = 0.8, out_speed = 0.4 }
+camera.CUT = { up = 0.2, down = 0.3, hold = 0.25 }
+cam.cut, cam.cut_hold, cam.hidden = 0, 99, false
+local function cut_amount(dt, s)
+  local hidden = false
+  if s then
+    local e = cam.eye
+    -- (what is within the near fade of the eye hides nobody: it is gone whole)
+    hidden = occluders.hides(e[1], e[2], e[3], s[1], s.base, s[3], s.heights, s.near or 4)
+  end
+  cam.hidden = hidden
+  local K = camera.CUT
+  if hidden then cam.cut_hold = 0 else cam.cut_hold = (cam.cut_hold or 99) + dt end
+  local want = (hidden or cam.cut_hold < K.hold) and 1 or 0
+  if want > cam.cut then cam.cut = math.min(want, cam.cut + dt / K.up) else cam.cut = math.max(want, cam.cut - dt / K.down) end
+  return cam.cut
+end
 function camera.apply(dt)
   -- (a view pinned by the gallery's routes, for the face sheets and film strips; the game never pins one)
   if camera.pinned then nova.see_through(); return nova.camera(table.unpack(camera.pinned)) end
@@ -344,9 +331,11 @@ function camera.apply(dt)
   cam.fov = fov
   nova.camera(ex, ey, ez, tx, ty, tz, fov)
   local s = cam.see
+  local cut = cut_amount(dt or 0, s)
   if s then
     SEE.at[1], SEE.at[2], SEE.at[3] = s[1], s[2], s[3]
-    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or 2.5, t
+    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or camera.NEAR_FADE, t * cut
+    SEE.near_from, SEE.near_amount = SEE.near * 0.5, t
     nova.see_through(SEE)
   else
     nova.see_through()
@@ -378,7 +367,7 @@ function camera.project(x, y, z, w, h)
 end
 
 -- "Forward" and "right" on the ground as this camera sees it (for the stick).
--- (the yaw the picture is seen from, swung round the van included)
+-- (the yaw the picture is seen from)
 function camera.forward() local y = cam.view_yaw or cam.yaw; return math.sin(y), math.cos(y) end
 
 return camera

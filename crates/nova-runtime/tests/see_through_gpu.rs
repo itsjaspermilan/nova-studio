@@ -130,6 +130,8 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
             amount: 1.0,
             above: 0.3,
             near: 0.0,
+            near_from: -1.0,
+            near_amount: -1.0,
         }),
     );
     // the middle of the hole (inside 70% of its radius, 1.2 m at the wall's distance: no dither there) shows the board
@@ -157,6 +159,8 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
             amount: 0.5,
             above: 0.3,
             near: 0.0,
+            near_from: -1.0,
+            near_amount: -1.0,
         }),
     );
     // `near`: the wall stands 15 m from the eye, so with 20 (its dithered edge from 16) all of it goes, out to its edges (not its foot)
@@ -169,6 +173,8 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
             amount: 1.0,
             above: 0.3,
             near: 20.0,
+            near_from: -1.0,
+            near_amount: -1.0,
         }),
     );
     assert_eq!(
@@ -177,6 +183,57 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
         "everything within `near` of the eye goes"
     );
     assert_eq!(what(&near, 0.0, 0.15), 'r', "but not under `above`");
+    // the near fade is its own: with the hole off (amount 0) and near_amount 1 everything within `near_from` of the eye (here 16 m,
+    // the wall is 15 m off) is wholly gone; with near_amount 0 and the hole on, the wall's edge stays, so the two are independent
+    let mut fade = |amount: f32, near_amount: f32, near_from: f32| {
+        shot(
+            &mut gfx,
+            Some(SeeThrough {
+                at: [0.0, 1.5, 0.0],
+                radius: 1.6,
+                margin: 1.0,
+                amount,
+                above: 0.3,
+                near: 20.0,
+                near_from,
+                near_amount,
+            }),
+        )
+    };
+    let only_fade = fade(0.0, 1.0, 16.0);
+    assert_eq!(
+        what(&only_fade, 2.8, 1.5),
+        'g',
+        "the near fade alone clears the wall inside near_from"
+    );
+    assert_eq!(what(&only_fade, 0.0, 0.15), 'r', "but not under `above`");
+    let only_hole = fade(1.0, 0.0, 16.0);
+    assert_eq!(
+        what(&only_hole, 2.8, 1.5),
+        'r',
+        "no near fade: the wall outside the hole stays"
+    );
+    assert_eq!(
+        what(&only_hole, 0.0, 1.5),
+        'g',
+        "and the hole still shows the board"
+    );
+    let far_from = fade(0.0, 1.0, 5.0);
+    let green = [
+        (2.8f32, 1.5f32),
+        (2.0, 2.0),
+        (-2.5, 1.0),
+        (1.0, 1.2),
+        (-1.0, 2.2),
+        (2.5, 0.8),
+    ]
+    .iter()
+    .filter(|(x, y)| what(&far_from, *x, *y) == 'g')
+    .count();
+    assert!(
+        (1..=5).contains(&green),
+        "at 15 m between near_from 5 and near 20 the wall is part faded: {green} of 6 spots"
+    );
     let (mut green, mut all) = (0, 0);
     for dy in -10..10 {
         for dx in -10..10 {
@@ -257,6 +314,8 @@ fn a_draw_kept_whole_is_never_cut() {
         amount: 1.0,
         above: 0.3,
         near: 0.0,
+        near_from: -1.0,
+        near_amount: -1.0,
     });
     let (w, h) = (400u32, 300u32);
     let middle = |p: &[u8]| {

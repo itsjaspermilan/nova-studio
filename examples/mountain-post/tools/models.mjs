@@ -5,7 +5,7 @@
 import { bevelled, box as hardBox, cone, cyl, mesh, model, one, part, rng, shade, tube } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
-import { BACK, FRAME, ROOM, TILE, TILES, TILE_Z, WINDOW, tileX } from "./office-layout.mjs";
+import { BACK, FRAME, FRONT, ROOM, TILE, TILES, TILE_Z, WINDOW, tileX } from "./office-layout.mjs";
 
 // The game's one look (tools/palette.mjs): every colour here is one of the palette's (or a shade of one), and every box is softened
 // as it is made (`box` below), every other solid when the model is written (`toy`).
@@ -238,11 +238,12 @@ def("office_room", () => {
   c.push(box([0.9, 0.018, Z - 0.15], [0.8, 0.02, 0.4], shade(PAL.mustard, -0.15)));
   // the counter: across the room in front of the shelves, a flap at its left end
   // (at the height of the cast: villagers a little over a metre tall, who look over it)
-  c.push(box([0.4, 0.36, -0.6], [4.2, 0.72, 0.7], C.wood));
-  c.push(box([0.4, 0.76, -0.6], [4.4, 0.08, 0.85], C.woodLight));
-  for (let x = -1.5; x <= 2.3; x += 0.95) c.push(box([x, 0.36, -0.24], [0.04, 0.64, 0.02], shade(C.wood, -0.3)));
-  c.push(cyl([2.2, 0.84, -0.7], 0.08, 0.06, PAL.mustard)); // a bell (the desk mat, stamp, envelopes and the old computer are models of their own)
-  c.push(cone([2.2, 0.92, -0.7], 0.07, 0.1, PAL.mustard));
+  // (3.1 m long, x -1.5..1.6: the walks round both ends are 1.85 m wide, 1.3 m clear for the postmaster's 0.26 m radius)
+  c.push(box([FRONT.x, 0.36, -0.6], [FRONT.w - 0.1, 0.72, 0.7], C.wood));
+  c.push(box([FRONT.x, 0.76, -0.6], [FRONT.w, 0.08, 0.85], C.woodLight));
+  for (let x = FRONT.x - 1.2; x <= FRONT.x + 1.3; x += 0.95) c.push(box([x, 0.36, -0.24], [0.04, 0.64, 0.02], shade(C.wood, -0.3)));
+  c.push(cyl([1.35, 0.84, -0.85], 0.08, 0.06, PAL.mustard)); // a bell (the desk mat, stamp, envelopes and the old computer are models of their own)
+  c.push(cone([1.35, 0.92, -0.85], 0.07, 0.1, PAL.mustard));
   // the pigeonholes on the back wall: a grid of cubbies, mostly empty
   const px0 = -3.3, py0 = 1.3, cw = 0.36, ch = 0.3, cols = 6, rows = 3;
   c.push(box([px0 + (cols * cw) / 2, py0 + (rows * ch) / 2, -Z + 0.2], [cols * cw + 0.08, rows * ch + 0.08, 0.36], C.plankDark));
@@ -271,7 +272,7 @@ def("office_room", () => {
     boxes: [
       { x: 0, z: -Z - 0.1, hw: X + 0.2, hl: 0.15, turn: 0 }, { x: X + 0.1, z: 0, hw: 0.15, hl: Z + 0.2, turn: 0 }, { x: -X - 0.1, z: 0, hw: 0.15, hl: Z + 0.2, turn: 0 },
       { x: (-X + 0.35) / 2, z: Z + 0.1, hw: (X + 0.35) / 2, hl: 0.15, turn: 0 }, { x: (X + 1.45) / 2, z: Z + 0.1, hw: (X - 1.45) / 2, hl: 0.15, turn: 0 },
-      { x: 0.4, z: -0.6, hw: 2.2, hl: 0.42, turn: 0 }, { x: 2.7, z: 2.0, hw: 0.38, hl: 0.3, turn: 0 },
+      { x: FRONT.x, z: -0.6, hw: FRONT.w / 2, hl: 0.42, turn: 0 }, { x: 2.7, z: 2.0, hw: 0.38, hl: 0.3, turn: 0 },
     ],
   });
 });
@@ -283,13 +284,10 @@ def("package_counter", () => {
   const c = [], w = BACK.x1 - BACK.x0, top = BACK.top;
   c.push(box([0, 0.36, 0], [w, 0.72, BACK.depth], C.wood));
   c.push(box([0, 0.04, BACK.depth / 2 + 0.01], [w - 0.1, 0.08, 0.04], C.plankDark)); // a kick board
-  c.push(box([0, top - 0.04, 0], [w + 0.05, 0.08, BACK.depth + 0.04], C.woodLight)); // the top
-  for (let i = 1; i <= TILES + 1; i++) {
-    const x = tileX(i);
-    // each tile: a painted square with a darker edge line and a lighter middle (flat paint, a few millimetres proud)
-    c.push(hardBox([x, top + 0.003, 0], [TILE - 0.04, 0.006, TILE - 0.04], shade(C.plankDark, 0.1)));
-    c.push(hardBox([x, top + 0.007, 0], [TILE - 0.1, 0.006, TILE - 0.1], shade(C.woodLight, 0.2)));
-  }
+  c.push(box([0, top - 0.04, 0], [w + 0.05, 0.08, BACK.depth + 0.04], shade(C.woodLight, -0.12))); // the top (darker than the tiles)
+  // the tiles: raised, bevelled plates (1.6 cm, a bevel on each edge that catches the light) with 10 cm of the darker top between them:
+  // wide enough, and standing far enough proud, that their edges are real shapes at the fixed view and stay calm on a small screen
+  for (let i = 1; i <= TILES + 1; i++) c.push(bevelled([tileX(i), top + 0.008, 0], [TILE - 0.1, 0.016, TILE - 0.1], shade(C.woodLight, 0.2), { bevel: 0.006 }));
   for (let i = 0; i <= TILES + 1; i++) c.push(box([tileX(i + 1) - TILE / 2, 0.36, BACK.depth / 2 + 0.005], [0.04, 0.6, 0.02], shade(C.wood, -0.3))); // the doors' seams
   return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: w / 2, hl: BACK.depth / 2, turn: 0 }] });
 });
@@ -306,31 +304,65 @@ def("tally_frame", () => {
 });
 
 // The conveyor window: a hatch in the back wall over the counter's last tile (origin on the wall plane z = 0 at the opening's middle, the
-// room at +z), rubber flaps over the opening, a short belt coming out of the backroom onto the counter, and a dim glimpse of the backroom with
-// stacked parcels. The belt's slats are drawn moving by scenes/office.lua (model "belt_slat").
+// room at +z): a little window onto a backroom, not a doorway. Through it, from the fixed view (high, in front, looking down about 35
+// degrees and a little to the right), you see the backroom's lit floor and what stands low on it: the belt coming in on trestles, a
+// rack of parcels beside it going back, a lamp, sacks. (The view's rays drift right as they go in, so the rack stands to the belt's
+// right, in the slice of the backroom the hatch shows.) The belt's slats are drawn moving by scenes/office.lua (model "belt_slat").
 def("conveyor_window", () => {
-  const c = [], hw = WINDOW.w / 2, f = HOUSE.trim, y0 = WINDOW.y0, y1 = WINDOW.y1, dark = shade(C.wall, -0.6);
-  // the trim round the opening, on the room's side
+  const c = [], hw = WINDOW.w / 2, f = HOUSE.trim, y0 = WINDOW.y0, y1 = WINDOW.y1;
+  const warm = (col, k) => shade(col, k);
+  const emis = (p, size, col, e) => hardBox(p, size, col, { emissive: e });
+  // the trim round the opening, on the room's side, and the lining of its depth (the wall is 0.2 thick)
   c.push(box([-hw - f / 2, (y0 + y1) / 2 + f / 2, 0.06], [f, y1 - y0 + f, 0.1], C.cream), box([hw + f / 2, (y0 + y1) / 2 + f / 2, 0.06], [f, y1 - y0 + f, 0.1], C.cream));
   c.push(box([0, y1 + f / 2, 0.06], [WINDOW.w + 2 * f, f, 0.1], C.cream));
-  // the rubber flaps: six strips hanging from a bar, a little apart, the lower ends swinging
-  c.push(box([0, y1 - 0.02, 0.0], [WINDOW.w, 0.06, 0.06], C.plankDark));
-  const n = 6, sw = (WINDOW.w - 0.04) / n;
-  for (let i = 0; i < n; i++) c.push(box([-hw + 0.02 + sw * (i + 0.5), y1 - 0.26, 0.0], [sw - 0.03, 0.44, 0.035], shade(PAL.ink, 0.1 + (i % 2) * 0.05), { rot: [i % 2 ? 4 : -3, 0, 0] }));
-  // the belt: side rails and the bed, from the backroom (-z) over the sill to the counter's tile (the end is 0.55 in front of the wall)
-  const bw = 0.62, zb = -1.5, ze = 0.55;
-  c.push(box([0, 0.84, (zb + ze) / 2], [bw, 0.04, ze - zb], shade(PAL.tyre, 0.1)));
+  c.push(hardBox([0, y0 - 0.02, -0.1], [WINDOW.w, 0.04, 0.2], C.woodLight)); // the sill
+  // the rubber flaps: a short curtain of strips from a bar, parted in the middle and held back at the sides, so the opening shows
+  c.push(box([0, y1 - 0.03, 0.0], [WINDOW.w, 0.06, 0.06], C.plankDark));
+  const n = 8, sw = (WINDOW.w - 0.04) / n;
+  for (let i = 0; i < n; i++) {
+    const x = -hw + 0.02 + sw * (i + 0.5), edge = Math.abs(i - (n - 1) / 2) / ((n - 1) / 2); // 0 in the middle, 1 at the sides
+    c.push(box([x, y1 - 0.06 - (0.1 + 0.08 * edge), 0.0], [sw - 0.03, 0.2 + 0.16 * edge, 0.03], shade(PAL.ink, 0.1 + (i % 2) * 0.05), { rot: [i % 2 ? 3 : -3, 0, 0] }));
+  }
+  // the backroom: a lit floor of planks on the room's own level (the belt comes in on trestles), 4 m back
+  const floor = shade(C.floor, 0.1);
+  c.push(box([0.6, -0.05, -2.2], [3.6, 0.1, 4.4], floor));
+  for (let z = -0.2; z > -4.3; z -= 0.5) c.push(hardBox([0.6, 0.004, z], [3.6, 0.008, 0.02], shade(floor, -0.3)));
+  c.push(emis([0.6, 0.006, -1.6], [2.4, 0.004, 2.6], shade(PAL.lit, -0.1), 0.35)); // the lamp's pool of light on the floor
+  // the belt, going back into the backroom on trestles: side rails and the bed, from deep in (-z) over the sill to the counter's tile
+  const bw = 0.62, zb = -4.0, ze = 0.55;
+  c.push(box([0, 0.84, (zb + ze) / 2], [bw, 0.04, ze - zb], shade(PAL.tyre, 0.14)));
   for (const s of [-1, 1]) c.push(box([s * (bw / 2 + 0.03), 0.87, (zb + ze) / 2], [0.06, 0.1, ze - zb], C.plankDark));
   c.push(cyl([0, 0.855, ze - 0.02], 0.035, bw, PAL.metal, { axis: "x", segments: 10 })); // the end roller
-  // the backroom: a floor, three low walls (the room's own wall hides them from the fixed view), dim, a pallet, stacked parcels
-  c.push(box([0, 0.79, -1.05], [2.2, 0.1, 1.9], shade(C.plankDark, -0.5)));
-  c.push(box([0, 1.0, zb - 0.4], [2.2, 0.5, 0.15], dark));
-  for (const s of [-1, 1]) c.push(box([s * 1.1, 0.95, -1.05], [0.14, 0.45, 1.7], dark));
-  c.push(box([-0.6, 0.86, -0.75], [0.62, 0.12, 0.5], shade(C.woodLight, -0.45))); // a pallet
-  const stack = (x, z, items) => { let y = 0.92; for (const [sx, sy, sz, col, ry] of items) { c.push(box([x, y + sy / 2, z], [sx, sy, sz], col, { bevel: 0.02, ry })); c.push(box([x, y + sy / 2, z], [sx + 0.012, sy + 0.012, 0.03], shade(C.string, -0.35), { ry })); y += sy; } };
-  stack(-0.6, -0.75, [[0.5, 0.26, 0.4, shade(PAL.woodLight, -0.42), 4], [0.44, 0.22, 0.36, shade(PAL.woodLight, -0.5), -6], [0.34, 0.24, 0.3, shade(PAL.woodLight, -0.4), 10]]);
-  stack(-0.05, -1.2, [[0.4, 0.3, 0.34, shade(PAL.woodLight, -0.5), 0], [0.34, 0.2, 0.3, shade(PAL.woodLight, -0.42), 7]]);
-  c.push(box([0.05, 0.9 + 0.08, -0.55], [0.3, 0.16, 0.24], shade(PAL.woodLight, -0.45), { bevel: 0.02, ry: -8 })); // one on the belt, coming
+  for (let z = -0.6; z > -4.0; z -= 1.1) {
+    for (const s of [-1, 1]) c.push(box([s * 0.3, 0.41, z], [0.06, 0.82, 0.06], C.plankDark));
+    c.push(box([0, 0.78, z], [0.7, 0.05, 0.06], C.plankDark));
+  }
+  // a rack along the belt's right, going back: uprights, two shelves, parcels of brown paper and string on each
+  const rx = 1.0, rw = 0.5, rz0 = -0.55, rz1 = -3.9, rh = 1.25;
+  for (let z = rz0; z >= rz1 - 0.01; z -= 0.85) for (const dx of [-1, 1]) c.push(box([rx + dx * (rw / 2 - 0.03), rh / 2, z], [0.06, rh, 0.06], C.wood));
+  for (const y of [0.08, 0.5, 0.92]) c.push(box([rx, y, (rz0 + rz1) / 2], [rw, 0.05, rz0 - rz1], C.woodLight));
+  const paper = [warm(PAL.woodLight, 0.05), warm(PAL.woodLight, -0.12), warm(PAL.paper, -0.08), warm(PAL.woodLight, 0.15)];
+  const R = rng(11);
+  for (let lv = 0; lv < 3; lv++) {
+    let z = rz0 - 0.08;
+    while (z > rz1 + 0.2) {
+      const d = 0.24 + R() * 0.22, h = 0.14 + R() * 0.2, w = 0.28 + R() * 0.16, col = paper[Math.floor(R() * paper.length)];
+      const y = [0.105, 0.525, 0.945][lv];
+      c.push(box([rx + (R() - 0.5) * 0.05, y + h / 2, z - d / 2], [w, h, d], col, { bevel: 0.02, ry: (R() - 0.5) * 14 }));
+      c.push(box([rx, y + h / 2, z - d / 2], [w + 0.012, h + 0.012, 0.025], shade(C.string, -0.25)));
+      z -= d + 0.05 + R() * 0.12;
+      if (R() < 0.18) z -= 0.3; // a gap: not every place on the shelf is full
+    }
+  }
+  // sacks and a crate on the floor beyond the rack's end and by the belt, one parcel riding the belt, another waiting in the hatch
+  c.push(box([0.35, 0.16, -2.0], [0.4, 0.32, 0.34], warm(PAL.woodLight, -0.2), { bevel: 0.03, ry: 12 }));
+  c.push(box([0.35, 0.4, -2.0], [0.34, 0.16, 0.3], warm(PAL.paper, -0.1), { bevel: 0.03, ry: -8 }));
+  c.push(box([0.08, 0.84 + 0.09, -0.75], [0.32, 0.18, 0.26], warm(PAL.woodLight, -0.05), { bevel: 0.02, ry: -8 }));
+  c.push(box([-0.02, 0.84 + 0.1, -2.3], [0.36, 0.2, 0.3], warm(PAL.woodLight, -0.15), { bevel: 0.02, ry: 6 }));
+  // a standing lamp by the hatch: a pole, a warm shade and its bulb (the game adds the light, scenes/office.lua)
+  c.push(cyl([0.62, 0.62, -0.95], 0.025, 1.24, C.plankDark, { segments: 6 }), cyl([0.62, 0.02, -0.95], 0.12, 0.04, C.plankDark, { segments: 10 }));
+  c.push(cone([0.62, 1.34, -0.95], 0.17, 0.16, PAL.mustard, { segments: 12 }));
+  c.push(emis([0.62, 1.25, -0.95], [0.1, 0.1, 0.1], PAL.lit, 1.0));
   return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0.28, hw: 0.31, hl: 0.3, turn: 0 }] });
 });
 // one slat of that belt: a ribbed bar across it

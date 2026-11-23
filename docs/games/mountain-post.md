@@ -897,6 +897,46 @@ really blocked by some item. Think about other games." And: "For the speedo and 
 just two separate shapes."
 The owner, on the cluster: "We don't need the button chips there either." (no X/A glyphs on the instrument.)
 
+**Done for these notes (the camera and the post office room, 2026-11-23).**
+- **No camera dodge.** `lib/camera.lua` no longer lifts or swings for the van or a resident; the camera stays on its orbit and drift
+  and the postmaster is hidden for a moment (`DODGE`, `person_between` gone). Neither the van nor people are ever cut away. The one
+  thing left: an eye that would be inside the van's body is lifted just over it.
+- **The see-through circle only when really blocked** (`lib/occluders.lua`, data `lib/occluders_data.lua` made by
+  `tools/occluders.mjs` from the models' own triangles and the valley scene: tree crowns, the forest masses, the post office with its
+  porch roof, the cabins, the workshop; never grass, ferns, bushes, rocks, fences, people or the van). Three lines from the eye
+  (feet's end, middle, head) are walked through those shapes; the cut comes on only when two of three are hidden, or the eye is inside
+  a crown or a roof. The hole is small (0.85 m round the postmaster, stopping 0.6 m short of them) and takes only what lies between;
+  it fades in over 0.2 s and, once clear, holds 0.25 s and fades out over 0.3 s (`camera.CUT`). The porch roof follows the same rule.
+  Indoors and in talk views nothing is cut. Pictures: `build/gallery/1_` to `8_`. Test: `the_see_through_circle_*`.
+  Regenerate the data after changing a tree or building model or the valley scene: `scripts/env.sh node examples/mountain-post/tools/occluders.mjs`.
+- **The front counter** is 3.1 m long (x -1.5..1.6, was 4.4): the walks round both ends are 1.85 m wide, 1.33 m clear of the
+  postmaster's 0.26 m radius (was 0.85 m at the right). The computer, desk set, letter and bell moved with it. Test:
+  `the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable`.
+- **The backroom** behind the conveyor hatch is 4 m deep with the belt running back on trestles, a rack of parcels along it, a lamp
+  (and a warm point light), the hatch taller (2.3 m) and the flaps a short parted curtain. From the fixed camera only the lit
+  floor and what is low on it show through (the view looks down about 35 degrees and a little to the right), and the hatch's top
+  reaches the picture's top edge.
+- **The counter's tiles** are raised bevelled plates (1.6 cm, 10 cm of the darker top between them) instead of flat paint, under 4x MSAA.
+
+- **Near-camera fade** (the owner's note after the circle pictures: a big crown next to the camera filled the screen with green).
+  `nova.see_through` gained `near_from` and `near_amount` (documented in `docs/project-format.md` and `nova-api.json`, GPU-tested in
+  `see_through_gpu.rs`): scenery within 2 m of the eye is wholly gone, all there beyond 4 m (`camera.NEAR_FADE`, in the open, in the
+  van, and out of the post office's door, where the porch fades out the same way out to 6 m), independent of the small circle. The
+  circle now counts only blockers beyond that near range. An eye that would sit in or within 3 m of a tree's crown is drawn in toward
+  the postmaster (`camera.PULL`: down to 0.55 of the boom, eased, held 0.5 s). Buildings are not pulled from: they fade. Test:
+  `scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_crown`.
+
+## The owner's notes, 2026-11-23 (evening)
+
+1. "I thought we were removing the requirement to brake when shifting gears?" (It is removed in the build installed after
+   this note; the build they played was older.)
+2. "We should add a tailpipe with exhaust for the truck."
+3. "We can remove the conveyor belt from the post office. Looks kinda dumb haha."
+4. "Instead of creating a popup when the user picks up a package, there should be a similar floating tooltip when the player
+   is near the package that shows a trimmed version of that popup. Also there should be a white outline on what the user is
+   about to pickup."
+5. "Let's angle the fox tail a little higher."
+6. "Also let's make the van blue with a red stripe."
 ### After the sixth play's cast: "I like the yellow outfit. Make the hat much bigger though. Fix the weakpoints" (2026-11-23)
 
 - **The hat**: a big slouchy bucket hat in the chibi way: the crown follows the head a couple of centimetres off it from just over the
