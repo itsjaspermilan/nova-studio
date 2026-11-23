@@ -122,6 +122,8 @@ struct Shared {
     music_playing: Option<(String, u64)>,
     /// Seconds into that track as last reported by the audio thread.
     music_position: Option<f64>,
+    /// Whether the game window has the focus (`nova.focused()`); a host that knows sets it, headless runs keep it true.
+    focused: bool,
     /// Whether playing streamed music starts its decoder (a thread decoding the Ogg ahead). Off only in headless tests that
     /// never hear the sound (`Game::set_music_decoding`): the music commands are still queued, with no stream to play.
     music_decoding: bool,
@@ -3547,6 +3549,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
         })?,
     )?;
     let s = shared.clone();
+    nova.set(
+        "focused",
+        lua.create_function(move |_, ()| Ok(s.borrow().focused))?,
+    )?;
+    let s = shared.clone();
     music.set(
         "position",
         lua.create_function(move |_, ()| Ok(s.borrow().music_position))?,
@@ -4605,6 +4612,7 @@ impl Game {
             music_layers: Vec::new(),
             music_playing: None,
             music_position: None,
+            focused: true,
             music_decoding: true,
             audio: Vec::new(),
             rumble: Vec::new(),
@@ -4857,6 +4865,12 @@ impl Game {
         if sh.current_music.is_some() || !sh.music_layers.is_empty() {
             sh.music_position = position;
         }
+    }
+
+    /// The window gained or lost the focus (another app or the system overlay came in front): `nova.focused()`, and the
+    /// framework calls the scene's `focus_lost` once when it is lost (a game pauses there).
+    pub fn set_focused(&self, focused: bool) {
+        self.shared.borrow_mut().focused = focused;
     }
 
     pub fn take_audio(&self) -> Vec<mixer::Command> {

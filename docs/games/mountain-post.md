@@ -184,11 +184,23 @@ same letter).
 - **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
   In the van (the sixth play) A moves the lever one gear towards L.
 - **The van's lever** (the sixth play: an automatic with PRNDL): A steps toward L (down the column), X toward P (up); the column
-  reads P R N D L top to bottom, shown bottom left beside the minimap with the handbrake lamp (lib/gear_hud.lua). It is in P each
-  time someone gets in, and left in P on getting out. Among P, R, N and D it moves only with L2 held and the van all but stopped
-  (under 0.5 m/s); otherwise a soft click and "Hold the brake to shift" (or "Stop to shift"). D and L change freely at any speed.
-  P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a slope too;
-  D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a gentle clunk.
+  reads P R N D L top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
+  with an analog speedometer") it is shown in the bottom right with an analog speedometer (0 to 40 km/h, the minimap's frame, a
+  soft red needle, eased; backing up it shows the speed it backs at). ~~The PRNDL panel beside the dial, with X and A glyphs,
+  and the handbrake lamp in the dial's foot~~ (replaced: "merge them in a nice UI way. Not just two separate shapes"; "We don't
+  need the button chips there either") it is ONE round instrument: the gears a row P R N D L in the dial's foot (the current
+  one on the red key), the handbrake's "(P)" warning light over the hub, bold dark ticks, the needle resting on a peg below the
+  0; no button glyphs. The prompts stand above it while driving (lib/gear_hud.lua). It is in P each time someone gets in, and left in P on getting out.
+  ~~Among P, R, N and D it moves only with L2 held and the van all but stopped (under 0.5 m/s); otherwise a soft click and "Hold
+  the brake to shift".~~ (replaced: "We can remove the brake requirement honestly") It moves at once with no pedal; the one guard:
+  never into P while moving faster than 1 m/s, nor into R while going forwards faster than that (a soft click and "Stop to
+  shift"). P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a
+  slope too; D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a
+  gentle clunk. **Creep** ("We need to add creep for D R and L"): in D, L and R with the pedals up the van creeps at idle, built
+  up over about a second and a half: about 1.25 to 1.35 m/s on Post Road in D, 1.1 in L, 1.0 backwards in R, a little slower on
+  the grass; D slows on a climb (and rolls back on a very steep one), L creeps up moderate hills. Any touch of L2 or the handbrake
+  takes it away and holds a stopped van still; P and N never creep. A creeping van is moving: Y gets out once it is stopped on
+  the brake or in P (Van.TUNE.creep, creep_pull, creep_band, creep_build, creep_brake).
 - **L3** (the left stick's click) sounds the horn while driving (it was X).
 - **B** (bottom), held: on foot, run (the stick alone only walks); driving, the handbrake (the rear wheels lock, the van slows firmly,
   in a bend at speed the tail steps out a little; standing, it holds the van still on a slope; the brake lamps light).
@@ -854,3 +866,33 @@ a birch and a pine close up, trees at 20 and 50 m, the forest masses, the creek 
 
 **Not checked:** how it looks and feels on the Retroid's screen in motion (strokes crawling or not as the camera turns, the water's
 speed); the owner should look at the grass from the walking camera and at the creek from the bridge.
+
+## The post office room (the owner, 2026-11-23)
+
+"There should be a full width counter at the back of the office where the packages will be. Only one package per square
+'tile' of countertop. Obv to start there are only two packages, but when we code the actual game, there will be a backlog to
+deliver. We can have a 'picture frame' at the back wall above all the packages that has the total number of packages to
+deliver. I'm imagining that eventually there will be more packages than just the ones that are on the package counter. We can
+have a small conveyor belt 'window' to show that there is a potential 'backroom'.
+
+In front of the package counter, we should keep the existing counter that's already there. We can put a little desk mat,
+stamp, some envelopes, and an old computer where the user can perform upgrades. We don't have to make the PC interactable just
+yet."
+
+The owner, 2026-11-23: "We need to add creep for D R and L." (idle creep like a real automatic: off the brake in D, R or L the
+van eases forward or back at walking pace; none in P or N.)
+
+The owner, 2026-11-23: "We can remove the brake requirement honestly." (shifting needs no brake; only shifting into P or R while
+moving faster than about 1 m/s is refused.)
+
+The owner, 2026-11-23: "I do want to keep the PRNDL UI on screen." The gear display stays whenever driving; removing the button
+chips later (feedback for later, item 1) must not remove it.
+The owner, 2026-11-23: "We should move the PRNDL to the right along with an analog speedometer."
+
+The owner, 2026-11-23: "We don't need the camera dodge when the player is behind the van or other characters." (the van and
+characters simply hide the postmaster for a moment; nothing is cut and the camera does not move for them.)
+
+The owner, 2026-11-23: "I also think the circle cutout comes on too aggressively. It should only be present when the camera is
+really blocked by some item. Think about other games." And: "For the speedo and gears, can we merge them in a nice UI way. Not
+just two separate shapes."
+The owner, on the cluster: "We don't need the button chips there either." (no X/A glyphs on the instrument.)

@@ -103,6 +103,12 @@ function Valley:enter()
   nova.log("valley: entered" .. (state.came_out and " from the porch" or ""))
 end
 
+-- The window lost the focus (the Steam overlay, another app): the game pauses itself, as Start would (the owner, 2026-11-23:
+-- "the game should pause on focus loss"). A card already open (the pause menu, the map, a label) stays as it is.
+function Valley:focus_lost()
+  if not cards.active() then cards.open("pause") end
+end
+
 function Valley:leave()
   nova.pause(false)
   ambience.stop()
@@ -536,7 +542,8 @@ function Valley:draw_ui()
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h, math.atan(camera.forward())) end
-    if not dialogue.active() then ui.hints(self.hint, w, h) end
+    -- (driving, the prompts stand just above the van's cluster in the bottom right: lib/gear_hud.lua)
+    if not dialogue.active() then ui.hints(self.hint, w, self.mode == "van" and gear_hud.hints_floor(w, h) or h) end
     if self.mode == "van" and not dialogue.active() then gear_hud.draw(v, w, h) end
     if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then
       -- the van's panel, floating over the open doors

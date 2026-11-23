@@ -1289,6 +1289,13 @@
   "group": "Scenes and entities"
  },
  {
+  "name": "nova.focused",
+  "kind": "function",
+  "signature": "nova.focused()",
+  "doc": "Whether the game window has the focus: false while the system overlay (Steam, the Android shade) or another app is in front. When it is lost the framework calls the scene's focus_lost(), once: a game opens its pause menu there (function Scene:focus_lost() ... end). Headless runs are always focused.",
+  "group": "Scenes and entities"
+ },
+ {
   "name": "nova.pause",
   "kind": "function",
   "signature": "nova.pause([on])",
