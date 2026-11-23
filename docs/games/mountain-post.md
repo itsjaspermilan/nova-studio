@@ -980,3 +980,5 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
 9. "The colour scheme for the player seems a little drab."
 10. "We should have some limits on how much padding UI elements get to contribute to our overall theme. I feel some padding is
     too tight, and some is too large."
+11. "The interior of buildings should follow a grid system so that furniture and other items can be placed easily down the
+    road."
