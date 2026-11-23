@@ -10,7 +10,7 @@ import { encodePng } from "../../src/lib/png-encode";
 import { CREATURES3D, makeCreature3d } from "./creature3d";
 import { GROUND_KINDS, makeGround } from "./ground3d";
 import { PALETTE_NAMES } from "./palettes";
-import { makeProp, PROP_KINDS, propEntity, type Prop } from "./prop3d";
+import { makeProp, PAINTED_KINDS, PROP_KINDS, propEntity, type Prop } from "./prop3d";
 import { DETAILED_KINDS, DETAILED_OF, makeScenery, speciesOf } from "./scenery";
 
 /// A spectator's entity: it plays its idle clip (a cheer, a clap, a wave or a long look along the road), each one from its own moment.
@@ -36,7 +36,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
     "prop3d_make",
     "Make the things a 3D level is furnished with, instead of modelling each: `models/<name>.model.json` and `.glb` by kind and seed, in one of the shared palettes, and `entities/<name>.lua` so a scene can place it at once (`{ \"kind\": \"<name>\", \"x\", \"y\": 0, \"z\", \"props\": { \"ry\": radians, \"sx\": scale } }`). " +
       `Kinds: ${PROP_KINDS.join(", ")}: the low style, few flat faces, each a slightly different tone, sized in metres beside a hero 1.6 high, standing on y = 0. ` +
-      `The detailed kinds (the scenery first made for Pine Ridge Rally: many more faces, smooth shading, real sizes): ${DETAILED_KINDS.map((k) => `${k} (${speciesOf(k).join(", ")})`).join("; ")}. A detailed kind takes \`species\` (the first when left out), \`season\` (summer, autumn, snow, night; from the palette when left out: autumn, snow, night, and desert's red rock) and \`height\` (metres; natural kinds only). \`style\`: "detailed" makes ${Object.keys(DETAILED_OF).join(", ")} the detailed ones (tree is a broadleaf, pine a conifer, bush a shrub, rock a boulder, sign a chevron, lantern a trackside lamp, arch a start arch, tower a race control tower). A spectator is half life size with the clips static, idle, watch, cheer, clap and wave; its entity plays idle. ` +
+      `The detailed kinds (the scenery first made for Pine Ridge Rally: many more faces, smooth shading, real sizes): ${DETAILED_KINDS.map((k) => `${k} (${speciesOf(k).join(", ")})`).join("; ")}. A detailed kind takes \`species\` (the first when left out), \`season\` (summer, autumn, snow, night; from the palette when left out: autumn, snow, night, and desert's red rock) and \`height\` (metres; natural kinds only). \`style\`: "detailed" makes ${Object.keys(DETAILED_OF).join(", ")} the detailed ones (tree is a broadleaf, pine a conifer, bush a shrub, rock a boulder, sign a chevron, lantern a trackside lamp, arch a start arch, tower a race control tower); "painted" makes ${PAINTED_KINDS.join(", ")} soft rounded crowns (leaf clumps, ragged pine tiers) that the game paints as foliage: leaf strokes, a darker core, a sunlit rim (docs/project-format.md, "Painted surfaces"). A spectator is half life size with the clips static, idle, watch, cheer, clap and wave; its entity plays idle. ` +
       "Give one (`kind`, with `name` when it should not be the kind's own) or several at once (`kinds`: names, or { kind, name, seed, size, color } objects: `\"kinds\": [\"tree\", \"pine\", { \"kind\": \"tree\", \"name\": \"tree2\", \"seed\": 5 }, \"rock\"]`); another `seed` is another tree of the same kind. " +
       "Each model carries what it blocks on the ground (`colliders`, `boxes` or `capsules`). The entity file says how it is used: scenery that never moves (`static = true`); things you bump into and can stand on are `solid = true` (their own shape blocks bodies moved with nova.solid.move, and the follow camera); a tree blocks with its trunk and keeps the camera out of its crown; `steps` and `dais` are low enough to walk up; `gem` and `coin` turn and bob and are tagged \"pickup\"; a `lantern`'s answer says where its light goes. " +
       "It returns the same picture as model_preview (a contact sheet for several). The models are ordinary ones afterwards: read the .model.json, change it and give it to model_write.",
@@ -47,7 +47,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       species: { type: "string", description: "A detailed kind's species (see the list)." },
       season: { type: "string", description: 'A detailed kind\'s season: "summer", "autumn", "snow", "night".' },
       height: { type: "number", description: "A natural detailed kind's height in metres (its own when left out)." },
-      style: { type: "string", description: '"detailed": the detailed versions of the kinds that have both.' },
+      style: { type: "string", description: '"detailed": the detailed versions of the kinds that have both. "painted": soft rounded crowns the game paints as foliage (leaf strokes, a darker core, a lit rim), for ' + PAINTED_KINDS.join(", ") + '; other kinds stay low.' },
       colliders: { type: "boolean", description: "false: no colliders added by the rule (a detailed model keeps any of its own)." },
       preview: { type: "boolean", description: "false: no picture (quicker for scripts that make many)." },
       size: { type: "string", description: 'For a rock: "small", "medium" (when left out) or "large".' },
@@ -70,11 +70,11 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
         if (bad.length) throw new Error(`kinds[${i}] has "${bad.join('", "')}"; an entry takes ${ITEM.join(", ")}`);
         for (const k of Object.keys(item)) if (item[k] === undefined) delete item[k];
         const style = item.style ?? a.style, season = item.season ?? a.season, colliders = item.colliders ?? a.colliders;
-        if (style !== undefined && style !== "low" && style !== "detailed") throw new Error(`style is "low" (when left out) or "detailed", not ${JSON.stringify(style)}`);
+        if (style !== undefined && style !== "low" && style !== "detailed" && style !== "painted") throw new Error(`style is "low" (when left out), "detailed" or "painted", not ${JSON.stringify(style)}`);
         const detailed = DETAILED_KINDS.includes(item.kind) && !(PROP_KINDS as readonly string[]).includes(item.kind) || (style === "detailed" && DETAILED_OF[item.kind] !== undefined);
         const prop = detailed
           ? makeScenery({ ...item, palette: a.palette, seed: item.seed ?? a.seed, style, season, colliders }, h.safeName(item.name ?? (style === "detailed" ? DETAILED_OF[item.kind] ?? item.kind : item.kind), "Model"))
-          : makeProp({ ...item, palette: a.palette, seed: item.seed ?? a.seed });
+          : makeProp({ ...item, palette: a.palette, seed: item.seed ?? a.seed, style });
         const name = h.safeName(item.name ?? prop.kind, "Model");
         if (made.some((m) => m.name === name)) throw new Error(`two entries are called "${name}": give the second its own "name"`);
         h.call("model_write", { project: a.project, name, model: prop.model });
@@ -220,6 +220,7 @@ export function register3d(h: Host, PALETTE: unknown, SEED: unknown): Record<str
       cell: { type: "number", description: "The side of one character's square in metres, 1 to 8 (2 when left out)." },
       hills: { type: "number", description: "How far the grass rises and falls, in metres, 0 to 3 (0.5 when left out)." },
       skirt: { type: "number", description: "How far the ground runs on past the map's edge, in metres (40 when left out; 0 for none)." },
+      painted: { type: "boolean", description: 'true: the land is painted as ground in the game (`paint: "ground"`: soft patches of warmer and cooler colour, brush strokes near the camera that fade further off, slopes facing the sun warmer; docs/project-format.md, "Painted surfaces").' },
       entity: { type: "boolean", description: "false: do not write entities/<name>.lua." },
       palette: PALETTE,
       seed: SEED,

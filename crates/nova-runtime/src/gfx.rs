@@ -12,6 +12,7 @@ use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
 mod custom;
 mod fx2d;
+pub mod paint;
 pub use custom::{MAX_SHADED_DRAWS, MaterialVertex};
 pub use fx2d::{
     Blend2d, Fx2d, Fx2dFrame, Light2d, MAX_LIGHTS_2D, MAX_MIRRORED, Rain2d, Reflect2d,
@@ -1157,6 +1158,8 @@ pub struct Gfx {
     globals: wgpu::Buffer,
     globals_group: wgpu::BindGroup,
     globals_layout: wgpu::BindGroupLayout,
+    /// The noise painted surfaces read (gfx/paint.rs), in every globals group.
+    paint_noise: paint::PaintNoise,
     /// The heightmap now on the GPU (a fresh device has none, so a recovered one uploads it again at the next frame).
     terrain_loaded: Option<std::sync::Arc<crate::heightmap::HeightMap>>,
     meshes: Vec<GpuMesh>,
@@ -1316,6 +1319,7 @@ fn globals_bind_group(
     layout: &wgpu::BindGroupLayout,
     buffer: &wgpu::Buffer,
     terrain: &wgpu::TextureView,
+    noise: &paint::PaintNoise,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("globals"),
@@ -1328,6 +1332,14 @@ fn globals_bind_group(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: wgpu::BindingResource::TextureView(terrain),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(&noise.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(&noise.sampler),
             },
         ],
     })
@@ -1626,7 +1638,8 @@ impl Gfx {
         };
         let sprite_view_layout = uniform_layout("sprite view layout", wgpu::ShaderStages::VERTEX);
         // The globals, and (binding 1) the heightmap for `nova.terrain{ heightmap }`: an R32Float texture read with textureLoad in the
-        // vertex stage (a 1 x 1 one when there is no map). Every pipeline that takes the globals has this layout.
+        // vertex stage (a 1 x 1 one when there is no map); (bindings 2 and 3) the noise painted surfaces read in the fragment stage
+        // (gfx/paint.rs). Every pipeline that takes the globals has this layout.
         let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("globals layout"),
             entries: &[
@@ -1650,9 +1663,26 @@ impl Gfx {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let terrain_view = terrain_texture_view(&device, &queue, &[0.0], 1, 1);
+        let paint_noise = paint::make(&device, &queue);
 
         let sprite_view = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sprite view"),
@@ -1674,7 +1704,13 @@ impl Gfx {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let globals_group = globals_bind_group(&device, &globals_layout, &globals, &terrain_view);
+        let globals_group = globals_bind_group(
+            &device,
+            &globals_layout,
+            &globals,
+            &terrain_view,
+            &paint_noise,
+        );
 
         let white = Image {
             width: 1,
@@ -1944,7 +1980,13 @@ impl Gfx {
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                let group = globals_bind_group(&device, &globals_layout, &buffer, &terrain_view);
+                let group = globals_bind_group(
+                    &device,
+                    &globals_layout,
+                    &buffer,
+                    &terrain_view,
+                    &paint_noise,
+                );
                 (buffer, group)
             })
             .collect();
@@ -2467,8 +2509,13 @@ impl Gfx {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let ui_globals_group =
-            globals_bind_group(&device, &globals_layout, &ui_globals, &terrain_view);
+        let ui_globals_group = globals_bind_group(
+            &device,
+            &globals_layout,
+            &ui_globals,
+            &terrain_view,
+            &paint_noise,
+        );
         let ui_instances = DynBuffer::new(
             &device,
             "ui model instances",
@@ -2581,6 +2628,7 @@ impl Gfx {
             globals,
             globals_group,
             globals_layout,
+            paint_noise,
             terrain_loaded: None,
             meshes: Vec::new(),
             dyn_meshes: HashMap::new(),
@@ -2872,12 +2920,28 @@ impl Gfx {
             Some(m) => terrain_texture_view(&self.device, &self.queue, &m.heights, m.width, m.rows),
             None => terrain_texture_view(&self.device, &self.queue, &[0.0], 1, 1),
         };
-        self.globals_group =
-            globals_bind_group(&self.device, &self.globals_layout, &self.globals, &view);
-        self.ui_globals_group =
-            globals_bind_group(&self.device, &self.globals_layout, &self.ui_globals, &view);
+        self.globals_group = globals_bind_group(
+            &self.device,
+            &self.globals_layout,
+            &self.globals,
+            &view,
+            &self.paint_noise,
+        );
+        self.ui_globals_group = globals_bind_group(
+            &self.device,
+            &self.globals_layout,
+            &self.ui_globals,
+            &view,
+            &self.paint_noise,
+        );
         for (buffer, group) in &mut self.cascade_globals {
-            *group = globals_bind_group(&self.device, &self.globals_layout, buffer, &view);
+            *group = globals_bind_group(
+                &self.device,
+                &self.globals_layout,
+                buffer,
+                &view,
+                &self.paint_noise,
+            );
         }
         self.terrain_loaded = wanted.cloned();
     }

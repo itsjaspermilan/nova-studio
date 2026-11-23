@@ -195,6 +195,31 @@ Normals left out are worked out from the triangles (smooth where triangles share
 `road_make` looks exactly like it (Pine Ridge Rally's generated stages, `examples/pine-ridge-rally/lib/generate.lua`). The mesh is
 kept on the GPU (and remade after a lost device) until it is freed. Making it is a copy of the lists: 5 to 9 ms for a road of 30,000
 points on a desktop (Apple M4); filling the lists in Lua costs more than that (about 30 ms for the same road).
+`paint = "ground"` (or "foliage", "canopy", "water") paints the mesh (below).
+
+### Painted surfaces
+
+A surface can be painted instead of flat-coloured (added 2026-11-23 for Fernhollow Post's grass, trees and creek, the owner's sixth
+play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Four kinds, each
+an original look in the spirit of a hand-painted world, worked out in the plain look's shader (`mesh.wgsl`) from where the pixel is,
+over the surface's own colours:
+
+| Kind | Looks like | Made by |
+| --- | --- | --- |
+| `ground` | big soft patches (about 20 m and 7 m) of warmer and cooler colour; near the camera, dabs of lighter and darker colour about 1.1 m by 0.25 m and finer blade streaks, laid one way here and another there, gone where a dab would be under a few pixels (calm far off: no shimmer, no moire); slopes facing the sun a little warmer, those turned away a little cooler | `nova.mesh.make { paint = "ground" }`, `ground3d_make` with `painted: true` |
+| `foliage` | a tree's crown: leaf clumps of about 0.7 m bend the light, leaf dabs of about 18 cm break the colour, what faces in towards the trunk or down is darker (the core), what faces out lighter; the sun wraps softly round it and lights its rim seen at a slant. The pattern is fixed in the model's own space, so it sways with the tree | a shape's `"paint": "foliage"` in a model file; `prop3d_make` with `style: "painted"` |
+| `canopy` | the same, for a long mass of trees along its model's x (its core worked out from that long middle line) | `"paint": "canopy"` |
+| `water` | running water: ripples stretched along the flow move downstream at about half a metre a second, the sky shows in them at a slant and the sun glints on them; the shallows are lighter and foam gathers along the waterline, broken by the ripples | `nova.mesh.make { paint = "water", uvs = ... }`: each point's UV is (metres across, metres downstream), and its colour's alpha is how deep the water is there (0 is 0.2 m above the bed, 255 is 0.6 m deep or more; make a place shallow to put foam round a post) |
+
+A model file says it per shape (`"paint": "foliage"`), which `model_write` writes to the `.glb` as the material's
+`"extras": { "nova": { "paint": "foliage" } }`; a name that is not a kind is a note and the shape is drawn plain. In the renderer the
+kind travels in each vertex's `emissive` (the glow plus 1000 times the kind: `PAINT_STEP` in `model.rs`), so every pipeline keeps its
+vertex layout and a painted model is instanced and batched like any other. The patterns come from one small picture of noise made by
+the engine (`gfx/paint.rs`: 128 by 128, four independent value noises 16 cells across, with its mip levels), read four to six times a
+painted pixel at different scales and slants; its mip levels average a pattern away where it is finer than a pixel, so far surfaces
+are calm. Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
+custom shader replaces it too. Cost on a desktop (Apple M4, Fernhollow's valley at 1280 by 720): see
+`docs/games/mountain-post.md`, "What the sixth play changed: grass, trees and the creek".
 
 ### Icon and box art
 

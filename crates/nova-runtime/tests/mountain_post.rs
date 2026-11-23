@@ -5086,3 +5086,105 @@ fn valley_roads_nothing_placed_stands_on_a_road() {
         assert!(kinds.contains(k), "no {k} was checked: {kinds:?}");
     }
 }
+
+// ---- the sixth play's note 5: painted grass, trees and creek (docs/games/mountain-post.md, "What the sixth play changed") ----
+
+/// Every tree, bush and forest mass of the valley is painted (a tree's leaves as foliage, a forest mass as canopy: model.rs
+/// PAINT_STEP in each vertex's emissive), with its trunk left plain, and none costs more triangles than its budget (the valley draws
+/// about 440 trees and 66 masses).
+#[test]
+fn the_valleys_trees_are_painted_and_within_their_triangles() {
+    use nova_runtime::model::{PAINT_STEP, import_glb};
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/mountain-post/models");
+    for (kind, paint, budget, leafy) in [
+        ("pine", 1.0, 450, 0.8),
+        ("pine2", 1.0, 600, 0.8),
+        ("pine3", 1.0, 450, 0.8),
+        ("pine_far", 1.0, 200, 0.7),
+        ("larch", 1.0, 520, 0.8),
+        ("larch_small", 1.0, 520, 0.8),
+        ("larch_far", 1.0, 200, 0.7),
+        ("birch", 1.0, 750, 0.75),
+        ("bush", 1.0, 450, 1.0),
+        ("bush2", 1.0, 450, 1.0),
+        ("forest_long", 2.0, 600, 1.0),
+        ("forest_tall", 2.0, 500, 1.0),
+        ("forest_round", 2.0, 500, 1.0),
+    ] {
+        let mesh =
+            import_glb(&std::fs::read(root.join(format!("{kind}.glb"))).unwrap()).expect("imports");
+        assert!(mesh.notes.is_empty(), "{kind}: {:?}", mesh.notes);
+        let tris = mesh.indices.len() / 3;
+        assert!(
+            tris <= budget,
+            "{kind}: {tris} triangles, over its budget of {budget}"
+        );
+        let painted = mesh
+            .vertices
+            .iter()
+            .filter(|v| (v.emissive - paint * PAINT_STEP).abs() < 0.5)
+            .count();
+        let share = painted as f64 / mesh.vertices.len() as f64;
+        assert!(
+            share >= leafy - 1e-9,
+            "{kind}: {:.0}% of its points are painted as kind {paint}",
+            share * 100.0
+        );
+        // (nothing glows: every point is plain, or painted with no glow on top)
+        assert!(
+            mesh.vertices
+                .iter()
+                .all(|v| v.emissive == 0.0 || (v.emissive - paint * PAINT_STEP).abs() < 0.5),
+            "{kind}"
+        );
+    }
+}
+
+/// The creek is painted running water between banks of finer painted ground, which take the place of the valley's 4 m squares along
+/// the water, and its waterline runs smoothly: the heightmap's 2 m cells used to cut the channel's sides into steps that drew a
+/// toothed waterline.
+#[test]
+fn the_creek_runs_between_smooth_painted_banks() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "route": [ { "wait": 5 } ] }"#,
+    );
+    // both waters (the creek and the river in the gorge) built their surface and their banks
+    assert_eq!(
+        num(
+            &g,
+            "(function() local n = 0; for _, w in ipairs(nova.all('water')) do if w.mesh and w.bank and #w.waterline > 20 then n = n + 1 end end; return n end)()"
+        ),
+        2.0
+    );
+    // the creek's waterline: two crossings a row (one each side, outside most of the water's half width), and from one row to the
+    // next (about 3 m on) it bends gently: no row stands out from the line through its neighbours by more than 20 cm (on the plain
+    // heightmap, the old banks, as much as 37 cm)
+    let creek = "(function() for _, w in ipairs(nova.all('water')) do if w.key == 'creek' then return w end end end)()";
+    let rows = num(&g, &format!("#{creek}.waterline"));
+    assert!(rows > 150.0, "the creek's bank has {rows} rows");
+    let two = num(
+        &g,
+        &format!(
+            "(function() local n = 0; for _, l in ipairs({creek}.waterline) do if #l == 2 and l[1] < -1.5 and l[2] > 1.5 then n = n + 1 end end; return n end)()"
+        ),
+    );
+    assert!(
+        two > rows * 0.9,
+        "{two} of {rows} rows cross the waterline once each side"
+    );
+    let worst = num(
+        &g,
+        &format!(
+            "(function() local L, worst = {creek}.waterline, 0; for r = 2, #L - 1 do local a, b, c = L[r - 1], L[r], L[r + 1]; \
+             if #a == 2 and #b == 2 and #c == 2 then for s = 1, 2 do worst = math.max(worst, math.abs(a[s] - 2 * b[s] + c[s]) / 2) end end end; \
+             return worst end)()"
+        ),
+    );
+    assert!(
+        worst < 0.2,
+        "the waterline wiggles by up to {worst:.2} m from row to row"
+    );
+}

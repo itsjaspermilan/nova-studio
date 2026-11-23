@@ -69,6 +69,111 @@ function rubble(m: Mesh3, rand: Rand, stone: string, at: V3, count: number, spre
   }
 }
 
+// ---- the painted style (`style: "painted"`, 2026-11-23): soft rounded crowns that the game paints as foliage --------------------------
+// A crown is a few leaf clumps, each a smooth ball with bulges of its own; a pine is soft stacked tiers whose rims are uneven and ragged,
+// their tips drooping by different amounts. Every leafy surface carries `paint: "foliage"` (docs/project-format.md, "Painted
+// surfaces"): the renderer gives it leaf strokes, a darker core between the clumps and a sunlit rim, so the colours here stay plain
+// (one tone a clump or a tier). Opt-in: the low style's models (and every example made with them) are unchanged.
+
+/// A leaf clump into `m`: a ball of radii `r` about `c` with `bulges` soft bumps in random directions, shaded smooth.
+function clump(m: Mesh3, c: V3, r: V3, color: string, rand: Rand, o: { seg?: number; rows?: number; bulges?: number; amp?: number } = {}): void {
+  const seg = o.seg ?? 9, rows = o.rows ?? 6, amp = o.amp ?? 0.15;
+  const bumps: [number, number, number, number][] = [];
+  for (let k = 0; k < (o.bulges ?? 4); k++) {
+    const y = rand() * 1.3 - 0.4, a = rand() * Math.PI * 2, s = Math.sqrt(Math.max(0, 1 - y * y));
+    bumps.push([Math.sin(a) * s, y, Math.cos(a) * s, amp * (0.6 + rand() * 0.8)]);
+  }
+  const at = (d: V3) => 1 + bumps.reduce((t, [x, y, z, h]) => t + h * Math.exp(-(1 - (d[0] * x + d[1] * y + d[2] * z)) * 3.2), 0) - amp * 0.55;
+  const put = (d: V3) => { const k = at(d); return m.v(c[0] + d[0] * r[0] * k, c[1] + d[1] * r[1] * k, c[2] + d[2] * r[2] * k); };
+  const top = put([0, 1, 0]), turn = rand() * Math.PI * 2;
+  const ring: number[][] = [];
+  for (let i = 1; i < rows; i++) {
+    const t = (i / rows) * Math.PI, y = Math.cos(t), s = Math.sin(t), row: number[] = [];
+    for (let j = 0; j < seg; j++) { const a = turn + (j / seg) * Math.PI * 2; row.push(put([Math.sin(a) * s, y, Math.cos(a) * s])); }
+    ring.push(row);
+  }
+  const bottom = put([0, -1, 0]);
+  for (let j = 0; j < seg; j++) {
+    const j2 = (j + 1) % seg;
+    m.face([top, ring[0]![j]!, ring[0]![j2]!], color, c, true);
+    for (let i = 0; i + 1 < ring.length; i++) {
+      const a = ring[i]![j]!, b = ring[i]![j2]!, d = ring[i + 1]![j]!, e = ring[i + 1]![j2]!;
+      if ((i + j) % 2) { m.face([a, b, e], color, c, true); m.face([a, e, d], color, c, true); } else { m.face([a, b, d], color, c, true); m.face([b, e, d], color, c, true); }
+    }
+    m.face([bottom, ring[ring.length - 1]![j2]!, ring[ring.length - 1]![j]!], color, c, true);
+  }
+}
+
+/// A soft cone tier into `m`: a rounded point, a fat rim and a flat-ish underside, `r` at its widest; every other side reaches a
+/// little less far and each tip droops by its own amount, so the rim reads as bunches of needles (never further out than `r`).
+function raggedTier(m: Mesh3, y0: number, h: number, r: number, color: string, rand: Rand, seg = 11): void {
+  const prof: [number, number][] = [[0, y0 + h * 0.05], [r * 0.86, y0], [r, y0 + h * 0.1], [r * 0.93, y0 + h * 0.24], [r * 0.62, y0 + h * 0.58], [r * 0.2, y0 + h * 0.95], [0, y0 + h]];
+  const reach = [0, 1, 1, 0.8, 0.45, 0.2, 0], turn = rand() * Math.PI * 2;
+  const out: number[] = [], droop: number[] = [];
+  for (let j = 0; j < seg; j++) { out.push(1 - (j % 2 ? 0.12 : 0.02) - rand() * 0.07); droop.push(-rand() * 0.11 * h); }
+  const inside: V3 = [0, y0 + h * 0.3, 0];
+  const bottom = m.v(0, prof[0]![1], 0), top = m.v(0, prof[6]![1], 0);
+  const rows: number[][] = [];
+  for (let i = 1; i <= 5; i++) {
+    const [pr, py] = prof[i]!, row: number[] = [];
+    for (let j = 0; j < seg; j++) {
+      const a = turn + (j / seg) * Math.PI * 2, s = 1 + (out[j]! - 1) * reach[i]!;
+      row.push(m.v(Math.sin(a) * pr * s, py + droop[j]! * (i <= 2 ? 1 : i === 3 ? 0.6 : 0), Math.cos(a) * pr * s));
+    }
+    rows.push(row);
+  }
+  for (let j = 0; j < seg; j++) {
+    const j2 = (j + 1) % seg;
+    m.face([bottom, rows[0]![j]!, rows[0]![j2]!], color, inside, true);
+    for (let i = 0; i + 1 < rows.length; i++) m.face([rows[i]![j]!, rows[i]![j2]!, rows[i + 1]![j2]!, rows[i + 1]![j]!], color, inside, true);
+    m.face([top, rows[4]![j2]!, rows[4]![j]!], color, inside, true);
+  }
+}
+
+const PAINTED: Partial<Record<PropKind, (rand: Rand, c: C) => Built>> = {
+  tree(rand, c) {
+    const h = between(rand, 1.7, 2.2), lean: [number, number] = [between(rand, -0.18, 0.18), between(rand, -0.18, 0.18)];
+    const trunk = new Mesh3(c.trunk);
+    trunk.rings([{ y: 0, rx: 0.42 }, { y: 0.3, rx: 0.28 }, { y: h * 0.55, rx: 0.23, cx: lean[0] * 0.5, cz: lean[1] * 0.5 }, { y: h + 0.6, rx: 0.16, cx: lean[0], cz: lean[1] }], 8, c.trunk!, { smooth: true });
+    const crown = new Mesh3(c.leaf, { paint: "foliage" });
+    const top: V3 = [lean[0], h + 1.45, lean[1]];
+    clump(crown, top, [1.55, 1.25, 1.55], c.leaf!, rand, { seg: 11, rows: 8, bulges: 5 });
+    const lumps = 4 + Math.floor(rand() * 2);
+    for (let i = 0; i < lumps; i++) {
+      const a = (i / lumps) * Math.PI * 2 + rand() * 0.8, d = between(rand, 1.15, 1.45), r = between(rand, 0.85, 1.1);
+      clump(crown, [top[0] + Math.cos(a) * d, top[1] + between(rand, -0.75, 0.15), top[2] + Math.sin(a) * d], [r, r * 0.82, r], tone(c.leaf!, between(rand, -0.25, 0.25)), rand, { seg: 9, rows: 6, bulges: 3 });
+    }
+    return { meshes: [trunk, crown], colliders: [{ x: 0, z: 0, r: 0.36 }], entity: { static: true, solid: false, sway: 0.2 }, says: "a broadleaf tree with a painted crown of leaf clumps; its trunk blocks (a circle of 0.36), you walk under its crown" };
+  },
+  pine(rand, c) {
+    const trunk = new Mesh3(c.trunk);
+    trunk.taper([0, 0, 0], 0, 1.5, 0.2, 0.12, 7, tone(c.trunk!, -0.5), { smooth: true, shades: false });
+    const green = blend(c.leaf!, "#1d5b52", 0.5);
+    const crown = new Mesh3(green, { paint: "foliage" });
+    const tiers = 4 + Math.floor(rand() * 2), height = between(rand, 4.6, 5.6);
+    let y = 0.8;
+    for (let i = 0; i < tiers; i++) {
+      const t = i / tiers, r = (1.55 - 1.15 * t) * between(rand, 0.94, 1.06), th = (height - 0.8) / tiers + 0.7;
+      raggedTier(crown, y, th, r, tone(green, i * 0.12 + between(rand, -0.1, 0.1)), rand);
+      y += th - 0.7;
+    }
+    return { meshes: [trunk, crown], colliders: [{ x: 0, z: 0, r: 0.3 }], entity: { static: true, solid: false, sway: 0.14 }, says: "a pine of soft ragged tiers, painted; its trunk blocks (a circle of 0.3)" };
+  },
+  bush(rand, c) {
+    const m = new Mesh3(c.leaf, { paint: "foliage" });
+    const green = tone(c.leaf!, 0.35);
+    clump(m, [0, 0.42, 0], [0.62, 0.5, 0.62], green, rand, { seg: 9, rows: 6, bulges: 4, amp: 0.12 });
+    const n = 3 + Math.floor(rand() * 2);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rand(), r = between(rand, 0.34, 0.46);
+      clump(m, [Math.cos(a) * 0.45, r * 0.8, Math.sin(a) * 0.45], [r, r * 0.85, r], tone(green, between(rand, -0.3, 0.2)), rand, { seg: 8, rows: 5, bulges: 3, amp: 0.12 });
+    }
+    return { meshes: [m], colliders: [{ x: 0, z: 0, r: 0.5 }], entity: { static: true, solid: false, sway: 0.08 }, says: "a round bush of painted leaf clumps; it blocks as a circle of 0.5" };
+  },
+};
+/// The kinds that have a painted style.
+export const PAINTED_KINDS = Object.keys(PAINTED) as PropKind[];
+
 const BUILDERS: Record<PropKind, (rand: Rand, c: C, a: Args) => Built> = {
   tree(rand, c) {
     const h = between(rand, 1.7, 2.2), lean: [number, number] = [between(rand, -0.18, 0.18), between(rand, -0.18, 0.18)];
@@ -555,7 +660,9 @@ export function makeProp(a: Args): Prop {
   const c = colours(p);
   const seed = Number.isFinite(a.seed) ? Number(a.seed) : 1;
   const rand = rngOf(seed * 7919 + PROP_KINDS.indexOf(kind) * 104729 + 17);
-  const b = BUILDERS[kind](rand, c, a);
+  // (`style: "painted"`: the painted version of a kind that has one; the others are the low style as ever)
+  const painted = a.style === "painted" ? PAINTED[kind] : undefined;
+  const b = painted ? painted(rand, c) : BUILDERS[kind](rand, c, a);
   const meshes = b.meshes.filter((m) => m.polys.length);
   const lo: V3 = [Infinity, Infinity, Infinity], hi: V3 = [-Infinity, -Infinity, -Infinity];
   for (const m of meshes) {

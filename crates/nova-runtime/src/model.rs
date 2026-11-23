@@ -399,6 +399,47 @@ fn read_influences(
     Some(out)
 }
 
+/// How a surface is painted (docs/project-format.md, "Painted surfaces"): carried in a vertex's `emissive` as the glow plus this
+/// times the kind, so every pipeline keeps its vertex layout. Read back by `paint_of` and `glow_of` in mesh.wgsl.
+pub const PAINT_STEP: f32 = 1000.0;
+
+/// The painted kinds by name, in the order of their numbers (1 is "foliage").
+pub const PAINT_KINDS: [&str; 4] = ["foliage", "canopy", "ground", "water"];
+
+/// The number of a painted kind's name (1 to 4), or None for a name that is not one.
+pub fn paint_kind(name: &str) -> Option<u32> {
+    PAINT_KINDS
+        .iter()
+        .position(|k| *k == name)
+        .map(|i| i as u32 + 1)
+}
+
+/// A material's painted kind (`"extras": { "nova": { "paint": "foliage" } }`), as the amount added to its vertices' `emissive`
+/// (0 for a plain one). An unknown name is a note and paints nothing.
+fn paint_of(material: &gltf::Material, notes: &mut Vec<String>) -> f32 {
+    let Some(paint) = material
+        .extras()
+        .as_ref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw.get()).ok())
+        .and_then(|v| v.get("nova").and_then(|n| n.get("paint")).cloned())
+    else {
+        return 0.0;
+    };
+    match paint.as_str().and_then(paint_kind) {
+        Some(k) => k as f32 * PAINT_STEP,
+        None => {
+            let note = format!(
+                "paint: {paint} is not one of {}; the surface is drawn plain",
+                PAINT_KINDS.join(", ")
+            );
+            if !notes.contains(&note) {
+                notes.push(note);
+            }
+            0.0
+        }
+    }
+}
+
 /// A material's detail picture (`extras.nova.detail`, see [`Detail`]): its `index` (a texture of the file) and its `scale` (one
 /// number or [u, v], each from 1/1024 to 1024; 8 when absent).
 fn detail_of(material: &gltf::Material) -> Result<Option<(usize, [f32; 2])>, &'static str> {
@@ -490,7 +531,8 @@ fn append_mesh(
             .emissive_factor()
             .into_iter()
             .fold(0.0f32, f32::max)
-            .clamp(0.0, 1.0);
+            .clamp(0.0, 1.0)
+            + paint_of(&primitive.material(), &mut out.notes);
         // the surface beyond its colour (drawn only where a project opts in)
         let material = primitive.material();
         // (a primitive with no material at all is Nova's plain surface: not metal, fully rough; glTF's default would be metal)
@@ -1481,6 +1523,71 @@ mod tests {
         // read without a project (for its shape only), the pictures are one white texel each
         let alone = import_glb(&glb).expect("imports alone");
         assert_eq!(alone.texture.as_ref().unwrap().rgba, [255; 4]);
+    }
+
+    /// A one-triangle binary glTF in vertex colours whose material carries `extras` (and an emissive factor of `glow`).
+    fn painted_glb(extras: &str, glow: f32) -> Vec<u8> {
+        let mut bin = Vec::new();
+        for v in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] {
+            bin.extend(v.to_le_bytes());
+        }
+        let json = format!(
+            r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"nodes":[{{"mesh":0}}],
+            "meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}},"material":0}}]}}],
+            "materials":[{{"emissiveFactor":[{glow},{glow},{glow}],"extras":{extras}}}],
+            "accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,0,1]}}],
+            "bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}}],
+            "buffers":[{{"byteLength":36}}]}}"#
+        );
+        let mut js = json.into_bytes();
+        while js.len() % 4 != 0 {
+            js.push(b' ');
+        }
+        let mut out = Vec::new();
+        out.extend(b"glTF");
+        out.extend(2u32.to_le_bytes());
+        out.extend((12 + 8 + js.len() as u32 + 8 + bin.len() as u32).to_le_bytes());
+        out.extend((js.len() as u32).to_le_bytes());
+        out.extend(b"JSON");
+        out.extend(&js);
+        out.extend((bin.len() as u32).to_le_bytes());
+        out.extend(b"BIN\0");
+        out.extend(&bin);
+        out
+    }
+
+    #[test]
+    fn a_painted_material_marks_its_vertices_and_keeps_its_glow() {
+        // `extras.nova.paint` adds the kind's number times PAINT_STEP to every vertex's emissive; the glow stays below it
+        for (i, kind) in PAINT_KINDS.iter().enumerate() {
+            let mesh = import_glb(&painted_glb(
+                &format!(r#"{{"nova":{{"paint":"{kind}"}}}}"#),
+                0.25,
+            ))
+            .expect("imports");
+            assert!(mesh.notes.is_empty(), "{kind}: {:?}", mesh.notes);
+            for v in &mesh.vertices {
+                assert!(
+                    (v.emissive - ((i + 1) as f32 * PAINT_STEP + 0.25)).abs() < 1e-3,
+                    "{kind}: {}",
+                    v.emissive
+                );
+            }
+            assert_eq!(paint_kind(kind), Some(i as u32 + 1));
+        }
+        // a plain material is as it was; a kind that is not one is a note and paints nothing
+        let plain = import_glb(&painted_glb("{}", 0.5)).expect("imports");
+        assert!(plain.vertices.iter().all(|v| v.emissive == 0.5));
+        let odd =
+            import_glb(&painted_glb(r#"{"nova":{"paint":"lava"}}"#, 0.0)).expect("still imports");
+        assert!(odd.vertices.iter().all(|v| v.emissive == 0.0));
+        assert!(
+            odd.notes
+                .iter()
+                .any(|n| n.starts_with("paint:") && n.contains("foliage")),
+            "{:?}",
+            odd.notes
+        );
     }
 
     #[test]
