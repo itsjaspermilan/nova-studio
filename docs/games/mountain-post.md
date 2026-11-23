@@ -1063,3 +1063,28 @@ the road." (Later the player decorates the post office and their home.) Every in
 ### "Looks too much like the Paddington colours" (2026-11-23)
 
 A big red hat on a small animal with blue near it read as that famous bear. Four outfits were pictured in the valley, close and beside the blue van (`build/gallery/own-options-*.png`, not committed), all with the marigold or coral cardigan, the big slouchy hat with its ear holes and the envelope pin: 1 an oatmeal hat with a teal band, marigold cardigan, olive-brown cord trousers, teal neckerchief; 2 a sage hat with a mustard band, coral cardigan, cream trousers; 3 a plum hat with a marigold band, marigold cardigan, sage trousers, cream scarf; 4 a moss hat with a cream band, marigold cardigan, cream trousers, plum neckerchief. **Chosen: 1.** The pale hat stands out against the grass, the road and the blue van at eight metres (the sage and moss hats sank into the grass, the plum one went dark), the marigold is sunny and clearly not his orange fur, and the teal band and neckerchief tie it together: a cheerful rambling postie, no famous red and blue. `hat_band_color` (character3d_make) colours a bucket hat's band and its ear holes' rims.
+
+## The owner's seventh play: the interview (2026-11-23)
+
+Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"), the camera ("Good"), the frame rate
+("Smooth"). To change, in the owner's words:
+
+- **Music:** "Too repetitive." Chosen fix: several pieces (three or four) that take turns, with quiet between them.
+- **Grass:** "The grass texture fades away too soon from the player's view. Is there a way to fix that in an efficient way? I
+  like BoTW's grass system."
+- **Trees:** "Trees look a little blobby still. Also the shadows from the trees disappear even though the tree is still in
+  view. Can we do that efficiently too?"
+- **Bridge:** "The bridge doesn't connect to the roads properly still. I love what you did with the roads otherwise."
+- **Houses:** "The houses look barren still. Also we should have a minimum thickness to prevent stick looking things and keep
+  that cozy, cartoony look. I guess because there's no texture?"
+- **Signs:** "Junctions are nice! The roads blend in together well but the signs need some work. They don't always follow the
+  direction of the road and the text doesn't line up properly."
+- **Atmosphere:** "Something feels missing from the world and I can't pinpoint it. Maybe the fact that there's no blur and
+  fading in the distance? Maybe because there's no skybox or sun visible? Maybe because there's nothing floating around the
+  area, like leaves or wind strokes or something?" Asked which first: all four (sky and sun, distance haze, floating life,
+  lived-in details).
+- **Conversations:** "We should add some text effects to the engine. Like jittery text for scared, or all caps for excited. A
+  slight animation to the letters that will add some identity to the game." Also too much text, pacing, and the tone of the
+  words. "I don't like that when the text starts to appear, sometimes the text box will 'type' the word on one line then
+  realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
+  three lines, warmer and simpler words, faster text with a press to finish the line.)
