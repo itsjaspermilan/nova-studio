@@ -277,6 +277,24 @@ export function heightmapFromNetwork(spec) {
     }
     if (last) profile = [...profile.filter((p) => p[0] < length), [length, last.h]];
     const elev = elevations(profile, line.length, spacing, true, maxGrade);
+    // (where it leaves or joins an earlier road, the lane is exactly that road's level for as long as it is on that road's level
+    // ground, then eases to its own profile over 15 m: the two meet at one level, with no step at the edge of the main road)
+    for (const [hit, from, step] of [[first, 0, 1], [last, line.length - 1, -1]]) {
+      if (!hit) continue;
+      const o = roads[hit.which];
+      const levelAt = (p) => { let best = Infinity, h = 0; o.line.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < best) { best = d; h = o.elev[i]; } }); return [best, h]; };
+      let i = from, held = 0;
+      for (; i >= 0 && i < line.length; i += step) {
+        const [d, h] = levelAt(line[i]);
+        if (d > o.flat + 1) break;
+        elev[i] = h; held = h;
+      }
+      const ease = Math.round(15 / spacing);
+      for (let k = 0; k < ease && i >= 0 && i < line.length; k++, i += step) {
+        const t = smoothstep(0, 1, (k + 1) / (ease + 1));
+        elev[i] = held + (elev[i] - held) * t;
+      }
+    }
     roads.push({ line, elev, flat: r.flat ?? 6, blend: r.blend ?? 40 });
   });
   let [x0, z0, x1, z1] = Array.isArray(spec.bounds) ? spec.bounds : [];
@@ -312,16 +330,20 @@ export function heightmapFromNetwork(spec) {
     const t = Math.min(1, Math.max(0, ((px - a.x) * dx + (pz - a.z) * dz) / len2));
     return [Math.hypot(px - (a.x + dx * t), pz - (a.z + dz * t)), t];
   };
-  for (const r of roads) {
+  // (a road's own level ground, its `flat` either side, is its level and nothing else's: where two roads' level ground overlaps, at a
+  // junction, the first road given wins, so a lane or a yard never tilts the main road's carriageway; outside that the levels blend)
+  const coreLevel = new Float32Array(width * rows).fill(NaN), coreDist = new Float32Array(width * rows).fill(Infinity), coreRoad = new Int16Array(width * rows).fill(-1);
+  roads.forEach((r, ri) => {
     const reach = r.flat + r.blend;
     for (let s = 0; s + 1 < r.line.length; s++) {
       const a = r.line[s], b = r.line[s + 1], ha = r.elev[s], hb = r.elev[s + 1];
       near(a.x, a.z, b.x, b.z, reach, (k, px, pz) => {
         const [d, t] = along(px, pz, a, b);
         hold(k, 1 - smoothstep(r.flat, reach, d), ha + (hb - ha) * t);
+        if (d <= r.flat && (coreRoad[k] < 0 || coreRoad[k] === ri) && d < coreDist[k]) { coreLevel[k] = ha + (hb - ha) * t; coreDist[k] = d; coreRoad[k] = ri; }
       });
     }
-  }
+  });
   const padLevels = [];
   for (const [n, p] of (spec.pads ?? []).entries()) {
     const [px0, pz0] = Array.isArray(p.at) ? p.at : [];
@@ -341,7 +363,12 @@ export function heightmapFromNetwork(spec) {
     padLevels.push(level);
     near(px0, pz0, px0, pz0, radius + blend, (k, x, z) => hold(k, 1 - smoothstep(radius, radius + blend, Math.hypot(x - px0, z - pz0)), level));
   }
-  for (let k = 0; k < heights.length; k++) heights[k] = heights[k] + (target[k] - heights[k]) * weight[k];
+  for (let k = 0; k < heights.length; k++) {
+    const blended = heights[k] + (target[k] - heights[k]) * weight[k];
+    // (the road's own level, easing into the blend over the last 1.5 m of its level ground: no crease where one hands to the other)
+    if (coreRoad[k] < 0) heights[k] = blended;
+    else { const t = smoothstep(roads[coreRoad[k]].flat - 1.5, roads[coreRoad[k]].flat, coreDist[k]); heights[k] = coreLevel[k] + (blended - coreLevel[k]) * t; }
+  }
   if (spec.rim) {
     const rh = spec.rim.height ?? 14, rw = spec.rim.width ?? 40;
     // (`edges`: which of the map's edges rise, "x0", "x1", "z0", "z1"; all four when left out: a view out over a valley keeps its side low)
@@ -368,11 +395,24 @@ export function heightmapFromNetwork(spec) {
       for (let i = 1; i < bed.length; i++) bed[i] = Math.min(bed[i], bed[i - 1]);
     }
     const half = (c.width ?? 4) / 2, bank = c.bank ?? 1.5;
+    // (`spare_roads`: the channel's bank stops at the roads' level ground, which falls away steeply beyond it (2.5 down for 1 across):
+    // a road that ends at a gorge ends on firm ground at its edge instead of running down the bank)
+    const floorAt = (px, pz) => {
+      let f = -Infinity;
+      for (const r of roads) {
+        let best = Infinity, h = 0;
+        for (let i = 0; i < r.line.length; i++) { const d = Math.hypot(r.line[i].x - px, r.line[i].z - pz); if (d < best) { best = d; h = r.elev[i]; } }
+        if (best < r.flat + 20) f = Math.max(f, h - Math.max(0, best - r.flat) * 2.5);
+      }
+      return f;
+    };
     for (let s = 0; s + 1 < line.length; s++) {
       const a = line[s], b = line[s + 1], ha = bed[s], hb = bed[s + 1];
       near(a.x, a.z, b.x, b.z, half + 40, (k, px, pz) => {
         const [d, t] = along(px, pz, a, b);
-        heights[k] = Math.min(heights[k], ha + (hb - ha) * t + Math.max(0, d - half) / bank);
+        let cut = ha + (hb - ha) * t + Math.max(0, d - half) / bank;
+        if (c.spare_roads && cut < heights[k] && d > half) cut = Math.max(cut, floorAt(px, pz));
+        heights[k] = Math.min(heights[k], cut);
       });
     }
     carved.push({ line, bed });

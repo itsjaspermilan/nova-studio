@@ -4,7 +4,7 @@
 // the bend on Fern Lane that hides Hazel's cabin until you are round it) and close the map's edges with thick wood.
 // Also the office's scene (scenes/office.scene.json) and the one-line entity files of the static props.
 import { centreline } from "../../../scripts/lib/trackgen.mjs";
-import { BOUNDS_EN, BRIDGE, CREEK, GORGE, LAKE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
+import { BOUNDS_EN, BRIDGE, CREEK, DECK_ENDS, GORGE, LAKE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
 import { rng } from "./geo.mjs";
 import { put, tool } from "./lib.mjs";
 
@@ -22,7 +22,7 @@ const line = (pts, spacing = 5) => centreline(pts.length < 4 ? [pts[0], ...pts, 
 const norm = ([a, b]) => { const l = Math.hypot(a, b) || 1; return [a / l, b / l]; };
 
 // ---- the ground, the roads' and the water's lines --------------------------------------------------------------------------------------
-obj("valley_ground", [0, 0], { roads: ["road_post_road", "road_fern_lane", "road_kettle_west", "road_kettle_east"] }, "ground");
+obj("valley_ground", [0, 0], { roads: ["road_valley"] }, "ground");
 const roadLines = {};
 for (const r of ROADS) {
   roadLines[r.id] = line(r.control);
@@ -135,7 +135,8 @@ obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing
 // ---- the bridge over Kettle Creek, the barrier at the gorge and what is left of the lake bridge ---------------------------------------
 {
   const mid = [(BRIDGE.a[0] + BRIDGE.b[0]) / 2, (BRIDGE.a[1] + BRIDGE.b[1]) / 2], d = norm([BRIDGE.b[0] - BRIDGE.a[0], BRIDGE.b[1] - BRIDGE.a[1]]);
-  obj("bridge", mid, { ry: r2(ry_facing(d[0], d[1])), a: xz(BRIDGE.a).map(r2), b: xz(BRIDGE.b).map(r2) }, "bridge");
+  // (its ends `a`, `b` are where its deck ends and the road stops: the deck is level with the road there)
+  obj("bridge", mid, { ry: r2(ry_facing(d[0], d[1])), a: xz(DECK_ENDS.a).map(r2), b: xz(DECK_ENDS.b).map(r2) }, "bridge");
   take(mid, 9);
 }
 {

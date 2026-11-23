@@ -101,9 +101,36 @@ function world.lift(x, z)
 end
 function world.height(x, z) return nova.terrain_height(x, z) + world.lift(x, z) end
 
+-- The junctions (lib/road_junctions.lua, made with the roads by tools/terrain.mjs): where a lane joins Post Road the junction's tarmac
+-- fills the corners and runs a few metres up the lane. On it: that surface's word ("road"), else nil.
+local JUNCTIONS = require("lib.road_junctions")
+local function inside(poly, x, z)
+  local n, c = #poly // 2, false
+  local j = n
+  for i = 1, n do
+    local xi, zi, xj, zj = poly[2 * i - 1], poly[2 * i], poly[2 * j - 1], poly[2 * j]
+    if (zi > z) ~= (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi then c = not c end
+    j = i
+  end
+  return c
+end
+function world.junction_surface(x, z)
+  for _, j in ipairs(JUNCTIONS) do
+    local dx, dz = x - j.at[1], z - j.at[2]
+    if dx * dx + dz * dz < (j.paved + 14) ^ 2 then
+      if inside(j.area, x, z) then return j.surface end
+      local r, d, px, pz = world.nearest("road", x, z)
+      if r and r.id == j.road and d < r.width / 2 + 0.3 and (px - j.at[1]) ^ 2 + (pz - j.at[2]) ^ 2 < j.paved ^ 2 then return j.surface end
+    end
+  end
+  return nil
+end
+
 -- The surface under a wheel or a foot: "road" (tarmac), "gravel", "bridge" or "grass".
 function world.surface(x, z)
   if world.on_bridge(x, z) then return "bridge" end
+  local js = world.junction_surface(x, z)
+  if js then return js end
   local r, d = world.nearest("road", x, z)
   if r and d < r.width / 2 + 0.3 then return r.surface end
   return "grass"

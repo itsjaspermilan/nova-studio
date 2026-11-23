@@ -1,8 +1,10 @@
 // The valley's ground: terrain/valley.png from the roads, the creek, the gorge and the level plots of layout.mjs (terrain_write with
-// `roads`), the three road ribbons (road_make), and the textured ground under them (land_make). Prints the nova.terrain line that
+// `roads`), the roads as one network with proper junctions (road_make with `roads`: models/road_valley.glb), and the textured ground under
+// them (land_make). Prints the nova.terrain line that
 // scenes/valley.lua uses.
-import { BOUNDS_EN, CREEK, GORGE, LAKE, PADS, ROADS, BRIDGE, xz } from "./layout.mjs";
+import { BOUNDS_EN, CREEK, DECK_ENDS, GORGE, LAKE, PADS, ROADS, xz } from "./layout.mjs";
 import { put, tool } from "./lib.mjs";
+import { buildNetwork } from "../../../scripts/lib/roadnet.mjs";
 
 const B = BOUNDS_EN;
 const answer = tool("terrain_write", {
@@ -13,7 +15,8 @@ const answer = tool("terrain_write", {
   pads: PADS.map((p) => ({ at: xz(p.at), radius: p.radius, blend: p.blend })),
   carve: [
     { points: CREEK.points.map(xz), profile: CREEK.profile, width: CREEK.width, bank: CREEK.bank },
-    { points: GORGE.points.map(xz), profile: GORGE.profile, width: GORGE.width, bank: GORGE.bank },
+    // (its bank stops at Post Road's level ground: the road ends at the BRIDGE OUT barrier on firm ground, not down the bank)
+    { points: GORGE.points.map(xz), profile: GORGE.profile, width: GORGE.width, bank: GORGE.bank, spare_roads: true },
     // the lake beyond the far bank: a wide flat bed along the north edge (the ground past the map keeps its height, so the lake runs on)
     { points: LAKE.points.map(xz), profile: LAKE.profile, width: LAKE.width, bank: LAKE.bank },
   ],
@@ -24,17 +27,24 @@ console.log(answer);
 const line = /nova\.terrain\{[^\n]*\}/.exec(answer)[0];
 put("lib/terrain_line.lua", `-- Made by tools/terrain.mjs (terrain_write): the valley's ground. Do not edit; run the recipe again.\nreturn function() ${line} end\n`);
 
-// The roads: one ribbon each. Kettle Creek Road is two, either side of the bridge (the creek is cut through the ground under it).
-// (road_make's cross-section is 12 m with its verges; the surface itself is about two thirds of it, so a zone's width is scaled up)
-const zones = (r) => [{ from: 0, to: 5000, width: Math.round((r.width * 12) / (r.surface === "road_asphalt" ? 8.3 : 7.6) * 10) / 10 }];
-for (const r of ROADS) {
-  if (r.id === "kettle_creek_road") {
-    const pts = r.control;
-    const west = [...pts.slice(0, 4), BRIDGE.a].map(xz), east = [BRIDGE.b, ...pts.slice(5)].map(xz);
-    tool("road_make", { name: "kettle_west", control: west, open: true, road: r.surface, zones: zones(r), textured: true, preview: false });
-    tool("road_make", { name: "kettle_east", control: east, open: true, road: r.surface, zones: zones(r), textured: true, preview: false });
-  } else {
-    tool("road_make", { name: r.id, control: r.control.map(xz), open: true, road: r.surface, zones: zones(r), textured: true, preview: false });
-  }
+// The roads: one network (road_make with `roads`), models/road_valley.glb: Fern Lane and Kettle Creek Road join Post Road at proper
+// junctions (filleted corners, a tarmac apron and a ragged edge into the gravel), the free ends rounded, and Kettle Creek Road stops
+// square with a threshold strip at each end of the bridge's deck (the creek is cut through the ground under it).
+// (road_make's cross-section is 12 m with its verges; the surface itself is about two thirds of it, so the width is scaled up)
+const whole = (r) => Math.round((r.width * 12) / (r.surface === "road_asphalt" ? 8.3 : 7.6) * 10) / 10;
+// (the road stops where the deck's planks start: layout.mjs DECK_ENDS)
+const network = {
+  roads: ROADS.map((r) => ({ id: r.id, control: r.control.map(xz), road: r.surface, width: whole(r) })),
+  gaps: [{ road: "kettle_creek_road", from: xz(DECK_ENDS.a), to: xz(DECK_ENDS.b) }],
+};
+console.log(tool("road_make", { name: "valley", ...network, preview: false }, { quiet: true }));
+// The junctions' ground for the game (lib/world.lua: the surface under a wheel, where ferns may grow): each junction's area and how far
+// up the lane its tarmac runs, from the same builder road_make used (the same numbers give the same junctions).
+{
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const word = (k) => (k === "road_asphalt" ? "road" : "gravel");
+  const rows = buildNetwork(network).junctions.filter((j) => j.area).map((j) =>
+    `  { through = "${j.through}", road = "${j.road}", from = "${j.end}", surface = "${word(j.surface)}", paved = ${r2(j.paved)}, at = { ${j.at.map(r2).join(", ")} },\n    area = { ${j.area.flat().map(r2).join(", ")} } },`);
+  put("lib/road_junctions.lua", `-- Made by tools/terrain.mjs (the road builder's junctions, scripts/lib/roadnet.mjs). Do not edit; run the recipe again.\n-- Each: the road through it and the road that joins it (at its start or end), the junction's surface, how many metres up the joining\n-- road that surface runs, the node, and the area (x, z pairs) its patch and corners cover on the joining road's side.\nreturn {\n${rows.join("\n")}\n}\n`);
 }
 tool("land_make", { name: "land", ground: "grass", cells: 60, cell: 8, tile: 32, repeat: 8, color: "#8fae5a", preview: false });

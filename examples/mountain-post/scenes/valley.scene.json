@@ -9,7 +9,7 @@
       "x": 0,
       "y": 0,
       "z": 0,
-      "props": { "roads": ["road_post_road", "road_fern_lane", "road_kettle_west", "road_kettle_east"] }
+      "props": { "roads": ["road_valley"] }
     },
     {
       "kind": "roadline",
@@ -624,7 +624,7 @@
       "x": -105,
       "y": 0,
       "z": 55.25,
-      "props": { "ry": -1.33, "a": [-96, 53], "b": [-114, 57.5] }
+      "props": { "ry": -1.33, "a": [-94.33, 52.58], "b": [-115.67, 57.92] }
     },
     { "kind": "barrier", "name": "barrier", "x": 20.11, "y": 0, "z": 220.6, "props": { "ry": 3.11 } },
     { "kind": "old_bridge", "name": "old_bridge", "x": 19.83, "y": 0, "z": 239, "props": { "ry": 0 } },
