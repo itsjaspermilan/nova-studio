@@ -937,3 +937,4 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
    about to pickup."
 5. "Let's angle the fox tail a little higher."
 6. "Also let's make the van blue with a red stripe."
+7. "Let's switch what X and A do while driving." (X now steps toward L, A toward P.)
