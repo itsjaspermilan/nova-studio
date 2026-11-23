@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scale": 0.0625,
+  "parts": [
+    {
+      "name": "body",
+      "origin": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "cubes": [
+        { "shape": "cylinder", "from": [-1.28, 0, -1.28], "size": [2.56, 0.96, 2.56], "segments": 12, "color": "#e2b04a" },
+        { "shape": "cone", "from": [-1.12, 0.96, -1.12], "size": [2.24, 1.6, 2.24], "segments": 8, "color": "#e2b04a" }
+      ],
+      "children": []
+    }
+  ]
+}

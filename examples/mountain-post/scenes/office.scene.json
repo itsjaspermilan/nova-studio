@@ -3,117 +3,271 @@
   "background": [40, 34, 30],
   "camera": { "eye": [0, 2.2, 2.2], "target": [0, 1, 0], "fov": 60 },
   "objects": [
-    { "kind": "office_room", "name": "room", "x": 0, "y": 0, "z": 0 },
-    { "kind": "package_counter", "name": "package_counter", "x": 0, "y": 0, "z": -2.29 },
-    { "kind": "tally_frame", "name": "tally_frame", "x": 0, "y": 0, "z": -2.6 },
-    { "kind": "crt_computer", "name": "old_computer", "x": -1.15, "y": 0.8, "z": -0.75 },
-    { "kind": "desk_set", "name": "desk_set", "x": 0.7, "y": 0.8, "z": -0.55 },
-    { "kind": "postmaster", "name": "postmaster", "x": 0.3, "y": 0, "z": 0.55, "props": { "ry": 3.14 } },
+    {
+      "kind": "office_room",
+      "name": "room",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "props": {
+        "grid": {
+          "cell": 0.5,
+          "origin": [-3.5, -2.5],
+          "cols": 14,
+          "rows": 10,
+          "wall_step": 0.5,
+          "wall_height": 3,
+          "door": { "x": [0.5, 1.5], "cols": [8, 9] },
+          "window": { "y": [1, 2], "wall": "left", "rows": [4, 6] },
+          "surfaces": {
+            "package_counter": { "y": 0.8, "origin": [-3.5, -2.5], "cell": 0.5, "cols": 14, "rows": 1 },
+            "front_counter": { "y": 0.8, "origin": [-1.5, -1], "cell": 0.25, "cols": 12, "rows": 4 }
+          }
+        }
+      }
+    },
+    {
+      "kind": "package_counter",
+      "name": "package_counter",
+      "x": 0,
+      "y": 0,
+      "z": -2.25,
+      "props": { "surface": "floor", "cell": [0, 0], "size": [14, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "front_counter",
+      "name": "front_counter",
+      "x": 0,
+      "y": 0,
+      "z": -0.5,
+      "props": { "surface": "floor", "cell": [4, 3], "size": [6, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "stool",
+      "name": "stool",
+      "x": -1.25,
+      "y": 0,
+      "z": 0.25,
+      "props": { "surface": "floor", "cell": [4, 5], "size": [1, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "rug",
+      "name": "rug",
+      "x": 1,
+      "y": 0,
+      "z": 1.5,
+      "props": { "layer": "flat", "surface": "floor", "cell": [7, 7], "size": [4, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "door_mat",
+      "name": "door_mat",
+      "x": 1,
+      "y": 0,
+      "z": 2.25,
+      "props": { "layer": "flat", "surface": "floor", "cell": [8, 9], "size": [2, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "mail_sack",
+      "name": "mail_sack",
+      "x": 2.75,
+      "y": 0,
+      "z": 1.75,
+      "props": { "surface": "floor", "cell": [12, 8], "size": [1, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "crt_computer",
+      "name": "old_computer",
+      "x": -1.125,
+      "y": 0.8,
+      "z": -0.625,
+      "props": { "surface": "front_counter", "cell": [0, 0], "size": [3, 3], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "letter_tray",
+      "name": "letter_tray",
+      "x": -0.5,
+      "y": 0.8,
+      "z": -0.75,
+      "props": { "surface": "front_counter", "cell": [3, 0], "size": [2, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "envelopes",
+      "name": "envelopes",
+      "x": 0,
+      "y": 0.8,
+      "z": -0.875,
+      "props": { "surface": "front_counter", "cell": [5, 0], "size": [2, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "desk_mat",
+      "name": "desk_mat",
+      "x": 0.25,
+      "y": 0.8,
+      "z": -0.5,
+      "props": { "layer": "flat", "surface": "front_counter", "cell": [5, 1], "size": [4, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "stamp",
+      "name": "stamp",
+      "x": 1,
+      "y": 0.8,
+      "z": -0.5,
+      "props": { "surface": "front_counter", "cell": [9, 1], "size": [2, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "bell",
+      "name": "bell",
+      "x": 1.375,
+      "y": 0.8,
+      "z": -0.875,
+      "props": { "surface": "front_counter", "cell": [11, 0], "size": [1, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "pigeonholes",
+      "name": "pigeonholes",
+      "x": -2.5,
+      "y": 1.5,
+      "z": -2.5,
+      "props": { "surface": "wall:back", "cell": [0, 3], "size": [4, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "tally_frame",
+      "name": "tally_frame",
+      "x": -0.25,
+      "y": 1.5,
+      "z": -2.5,
+      "props": { "surface": "wall:back", "cell": [5, 3], "size": [3, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "wall_clock",
+      "name": "wall_clock",
+      "x": 1.75,
+      "y": 2,
+      "z": -2.5,
+      "props": { "surface": "wall:back", "cell": [10, 4], "size": [1, 1], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "calendar",
+      "name": "calendar",
+      "x": 2.75,
+      "y": 1.5,
+      "z": -2.5,
+      "props": { "surface": "wall:back", "cell": [12, 3], "size": [1, 2], "face": 0, "ry": 0 }
+    },
+    {
+      "kind": "notice_board",
+      "name": "notice_board",
+      "x": 3.5,
+      "y": 1.5,
+      "z": -1.5,
+      "props": { "surface": "wall:right", "cell": [1, 3], "size": [2, 2], "face": 270, "ry": 4.712 }
+    },
     {
       "kind": "item",
       "name": "letter",
-      "x": 0.75,
-      "y": 0.82,
-      "z": -0.45,
-      "props": { "item": "letter", "ry": 0.25 }
+      "x": 0.125,
+      "y": 0.813,
+      "z": -0.625,
+      "props": { "surface": "front_counter", "cell": [6, 1], "size": [1, 1], "face": 0, "ry": 0.25, "item": "letter" }
     },
+    { "kind": "postmaster", "name": "postmaster", "x": 0.3, "y": 0, "z": 0.55, "props": { "ry": 3.14 } },
     {
       "kind": "tile",
       "name": "tile_1",
-      "x": -3,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 1 }
+      "x": -2.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 1, "surface": "package_counter", "cell": [2, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_2",
-      "x": -2.4,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 2 }
+      "x": -1.75,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 2, "surface": "package_counter", "cell": [3, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_3",
-      "x": -1.8,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 3 }
+      "x": -1.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 3, "surface": "package_counter", "cell": [4, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_4",
-      "x": -1.2000000000000002,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 4 }
+      "x": -0.75,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 4, "surface": "package_counter", "cell": [5, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_5",
-      "x": -0.6000000000000001,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 5 }
+      "x": -0.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 5, "surface": "package_counter", "cell": [6, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_6",
-      "x": 0,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 6 }
+      "x": 0.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 6, "surface": "package_counter", "cell": [7, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_7",
-      "x": 0.5999999999999996,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 7 }
+      "x": 0.75,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 7, "surface": "package_counter", "cell": [8, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_8",
-      "x": 1.2000000000000002,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 8 }
+      "x": 1.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 8, "surface": "package_counter", "cell": [9, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_9",
-      "x": 1.7999999999999998,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 9 }
+      "x": 1.75,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 9, "surface": "package_counter", "cell": [10, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "tile",
       "name": "tile_10",
-      "x": 2.3999999999999995,
-      "y": 0.8160000000000001,
-      "z": -2.29,
-      "props": { "slot": 10 }
+      "x": 2.25,
+      "y": 0.816,
+      "z": -2.25,
+      "props": { "slot": 10, "surface": "package_counter", "cell": [11, 0], "size": [1, 1], "face": 0 }
     },
     {
       "kind": "item",
       "name": "parcel_hazel",
-      "x": -3,
-      "y": 0.8160000000000001,
-      "z": -2.29,
+      "x": -2.25,
+      "y": 0.816,
+      "z": -2.25,
       "props": { "item": "hazel", "ry": 0 }
     },
     {
       "kind": "item",
       "name": "parcel_pip",
-      "x": -2.4,
-      "y": 0.8160000000000001,
-      "z": -2.29,
+      "x": -1.75,
+      "y": 0.816,
+      "z": -2.25,
       "props": { "item": "pip", "ry": 0 }
     },
-    { "kind": "spot", "name": "office_exit", "x": 0.9, "y": 0, "z": 2.55 },
-    { "kind": "spot", "name": "counter_spot", "x": 0.4, "y": 0, "z": 0.1 }
+    { "kind": "spot", "name": "office_exit", "x": 1, "y": 0, "z": 2.45 },
+    { "kind": "spot", "name": "counter_spot", "x": 0.25, "y": 0, "z": 0.35 }
   ]
 }

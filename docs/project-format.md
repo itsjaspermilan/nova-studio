@@ -1108,6 +1108,7 @@ local Car = nova.entity {
 - Settings are inherited: a child's setting of the same name replaces the parent's, and a child's plain field of that name
   (`speed = 80`) is a new default for it, checked the same way. A field may not be both a setting and a plain field of one spec.
 - Props that are not settings still pass through as plain fields (and the studio shows them as before, below the settings).
+- A room interior can keep its placement grid as plain props, with no format change: the room object's `props.grid` (cell size, origin, columns, rows, the counters' own grids) and each piece's `props.surface`, `cell`, `size`, `face`. Fernhollow Post's post office does (`docs/games/mountain-post.md`, "Rooms and the placement grid"; `lib/room_grid.lua` reads it with `nova.scene_data`).
 - The studio writes what is picked, the default included, so games that read an object's props straight from the file with
   `nova.scene_data` (a level's settings) see every value; ↺ takes a setting out of the scene file again.
 

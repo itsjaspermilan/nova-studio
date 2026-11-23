@@ -982,3 +982,45 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
     too tight, and some is too large."
 11. "The interior of buildings should follow a grid system so that furniture and other items can be placed easily down the
     road."
+
+## Rooms and the placement grid
+
+The owner, 2026-11-23: "The interior of buildings should follow a grid system so that furniture and other items can be placed easily down
+the road." (Later the player decorates the post office and their home.) Every interior is built this way; the post office is the first.
+
+- **Cell size 0.5 m.** The post office is 7 x 5 m inside (the room was 5.2 deep; it is now 5.0 so the rows are whole): **14 columns by 10
+  rows**, column 0 at the left wall (x = -3.5), row 0 at the back wall (z = -2.5). 0.5 m is the smallest square a person's footprint
+  (a 0.5 m cell for a 0.26 m radius) and the smallest piece of furniture (a stool) fill, and it divides every wall and counter length. The
+  counter tiles were 0.6 m: they are now 0.5 m, one cell each, so the package counter is just its cells. A counter's top has its own
+  finer grid (`surfaces` in the room's data): 0.25 m cells for the front counter (12 x 4), the package counter's own 0.5 m cells.
+- **Footprint and facing.** A piece has a footprint `size = [w, d]` in cells before it is turned, a facing `face` of 0, 90, 180 or 270
+  (0 faces +z, into the room from the back wall; 90 faces +x, 180 faces -z, 270 faces -x; a quarter turn swaps w and d), and a position
+  `cell = [col, row]` that is the footprint's top-left cell, so the piece's middle always lies on the grid (the object's x, z are that
+  middle, its y the floor, a counter's top, or the bottom of its wall cells). A `layer` of `"flat"` is for rugs and mats: things stand on
+  them and they overlap nothing; every other piece is solid to its own surface. Models are built with their origin at the middle of
+  their footprint on the surface (wall things: on the wall plane at the middle of their cells, facing +z), so turning is just `ry`.
+- **Wall cells.** Each wall is a row of cells along it (14 on the back wall, 10 on the side walls) by rows of `wall_step` 0.5 m up from the
+  floor (6 up to the 3 m wall top). A wall piece has `surface = "wall:back"` (or `wall:right`, `wall:left`), `cell = [along, height]`
+  and `size = [w, h]` in those cells: the pigeonholes are cells 0-3 at height 3-4 (1.5 to 2.5 m), the picture frame 5-7, the clock 10, the
+  calendar 12, the notice board on the right wall at 1-2. The window (left wall, rows 4-6, 1.0 to 2.0 m) and the door (front wall,
+  columns 8-9) are structure; their cells are in the room's grid data and the door's floor cells stay free.
+- **Where it is stored: the scene file, as data.** The format has no grid field of its own (the studio's snap step is an editor setting
+  and is not saved), so this uses what it has: the room object's `props.grid` (cell, origin, cols, rows, wall_step, wall_height, the door,
+  the window, `surfaces`) and each object's `props.surface`, `cell`, `size`, `face` (and `layer`); props pass through untouched. The
+  object's x, y, z are still written (the engine places by them) and always agree with the cell. The tool `tools/scene.mjs` writes
+  them from one table, `PLACED` in `tools/office-layout.mjs`, which the models share. Nothing about the layout is in Lua.
+- **`lib/room_grid.lua`** reads that data (`RG.load("office")`) and answers: `RG.place` / `RG.world` / `RG.cell_at` (cells and world
+  points), `RG.cells` (what a footprint covers), `RG.problems` (a list, empty when sound: every piece on the grid, inside its surface,
+  no two solid pieces overlapping on one surface, a counter's top grid on its counter, nothing solid in the door's cells), `RG.free_cells`
+  and `RG.free_top_cells(room, counter)` (the free cells, what a decorating mode would offer), `RG.gap_beside` (free cells beside a piece to
+  the wall: the walks round a counter's ends) and `RG.reachable` (a person's walk between two points over the floor cells, round what is
+  solid, with the postmaster's 0.26 m radius). Set `require("lib.room_grid").debug = true` and the room draws its cells and footprints
+  (solid red, flat blue, the door green; off by default): `tools/routes/office-grid.json`, pictures `build/gallery/grid_*.png`.
+- **A decorating mode** would take `RG.free_cells` (and a counter's `free_top_cells`, a wall's free cells), let the player pick a piece with
+  its footprint, move a ghost over the cells with the stick (snapping by whole cells, turning by quarter turns), colour it red where
+  `RG.problems` would complain (overlap, outside, in the door, or `RG.reachable` from the door to the tiles failing), and on confirm
+  write the object (`surface`, `cell`, `size`, `face`, and x, y, z from `RG.place`) into the room's data. **The player's home** is the same:
+  a `grid` on its room object and the same props on each piece; only the numbers change.
+- Tests: `every_piece_of_the_post_office_sits_on_the_grid_and_the_walks_stay_clear` (on the grid, inside, no overlap, the door reaches the
+  aisle before each of the ten tiles, the letter's counter and the stool, 4 free cells at each end of the front counter, the free cells
+  counted: 112 of 140 on the floor, 27 on the front counter's top, 4 on the package counter's).

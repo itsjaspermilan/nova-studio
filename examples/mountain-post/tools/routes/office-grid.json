@@ -1,0 +1,13 @@
+{
+  "start_scene": "office",
+  "lua": "RG = require('lib.room_grid'); GO = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil end",
+  "route": [
+    { "wait": 5 },
+    { "lua": "GO(0.2, 1.4)" },
+    { "wait": 40, "capture": "grid_1_the_room_as_normal" },
+    { "lua": "RG.debug = true" },
+    { "wait": 5, "capture": "grid_2_debug_grid_and_footprints" },
+    { "lua": "RG.debug = false" }
+  ],
+  "out": "build/gallery"
+}
