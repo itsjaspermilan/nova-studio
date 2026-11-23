@@ -12,20 +12,30 @@ local cards = require("lib.cards")
 local ui = require("lib.ui")
 local words = require("lib.words")
 local parcels = require("lib.parcels")
+local room_grid = require("lib.room_grid")
 local music = require("lib.music")
 
 local Office = nova.scene {}
 
-local LETTER_AT = { 0.75, -0.45 }
+local LETTER_AT = { 0, 0 } -- (where the letter lies, set from its object in enter: the scene file puts things on the room grid, lib/room_grid.lua)
 local FADE = 0.3
 local REACH = 1.1 -- how far from a tile's middle X still reaches it (the postmaster stands in the aisle between the counters)
 
 -- The picture frame on the back wall (tools/office-layout.mjs FRAME):
 -- the numerals are pictures lying on the frame's plate.
-local FRAME = { x = 0, y = 1.8, z = -2.6 + 0.065 }
-local COMPUTER = { x = -1.15, y = 0.8, z = -0.75 } -- (the old computer on the front counter: its screen glows, nothing more yet)
+local FRAME = { x = 0, y = 2.0, z = -2.5 + 0.065 } -- (the middle of the plate: set from the frame's object in enter)
+local COMPUTER = { x = 0, y = 0.8, z = 0 } -- (the old computer on the front counter: its screen glows, nothing more yet)
+
+-- Where the things the room draws on are, from their objects (the scene file puts them on the grid).
+local function read_layout()
+  local f, c, l = nova.named("tally_frame"), nova.named("old_computer"), nova.named("letter")
+  FRAME.x, FRAME.y, FRAME.z = f.x, f.y + 0.5, f.z + 0.065
+  COMPUTER.x, COMPUTER.y, COMPUTER.z = c.x, c.y, c.z
+  LETTER_AT[1], LETTER_AT[2] = l.x, l.z
+end
 
 function Office:enter()
+  read_layout()
   world.clear()
   nova.terrain() -- (no hills indoors)
   nova.sky { top = { 60, 48, 40 }, horizon = { 60, 48, 40 } }
@@ -241,11 +251,12 @@ end
 
 function Office:draw()
   camera.apply(self.paused and 0 or 1 / 60)
-  nova.point_light(-2.6, 1.8, 0, { radius = 6, color = { 255, 214, 160 } })
+  nova.point_light(-2.5, 1.8, 0, { radius = 6, color = { 255, 214, 160 } })
   nova.point_light(0.9, 1.8, 2.0, { radius = 4, color = { 255, 226, 180 } })
   nova.point_light(COMPUTER.x, COMPUTER.y + 0.45, COMPUTER.z + 0.5, { radius = 1.4, color = { 70, 150, 90 } })
-  nova.billboard("crt_screen", COMPUTER.x, COMPUTER.y + 0.35, COMPUTER.z + 0.19, 0.44, SCREEN)
+  nova.billboard("crt_screen", COMPUTER.x, COMPUTER.y + 0.35, COMPUTER.z + 0.12, 0.44, SCREEN)
   self:draw_tally()
+  if room_grid.debug then self.grid_data = self.grid_data or room_grid.load("office"); room_grid.draw(self.grid_data) end
   if self.target then nova.quad3(self.target[1], self.target[2] + 0.004, self.target[3], 0, 1, 0, 0.5, READY) end -- (a free tile to put the parcel back on)
   for i = 1, 26 do
     local ph = (i * 0.618) % 1

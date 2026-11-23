@@ -5,7 +5,7 @@
 import { bevelled, box as hardBox, cone, cyl, mesh, model, one, part, rng, shade, tube } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
-import { BACK, FRAME, FRONT, ROOM, TILE, TILES, TILE_Z, tileX } from "./office-layout.mjs";
+import { BACK, DOOR, FRAME, FRONT, GRID, ROOM, TILE, TILES, TOP, WALL_H, WINDOW, tileX } from "./office-layout.mjs";
 
 // The game's one look (tools/palette.mjs): every colour here is one of the palette's (or a shade of one), and every box is softened
 // as it is made (`box` below), every other solid when the model is written (`toy`).
@@ -190,143 +190,161 @@ def("post_office", () => {
   return model([part("body", [0, 0, 0], c.filter(Boolean)), leaf], { boxes: [{ x: 0, z: 0, hw: W / 2 + 0.2, hl: D / 2 + 0.2, turn: 0 }, { x: 3.3, z: D / 2 + 1.1, hw: 1.0, hl: 1.1, turn: 0 }, { x: -3.3, z: D / 2 + 1.1, hw: 1.0, hl: 1.1, turn: 0 }], colliders: [{ x: 1.75, z: D / 2 + 3.6, r: 0.4 }] });
 });
 
-// ---- the post office, inside: a room 7 x 5 m, the door in the front wall (+z), a window in the right-hand wall --------------------------
+// ---- the post office, inside: a room 7 x 5 m on a 0.5 m grid (tools/office-layout.mjs), the door in the front wall (+z), a window in the left wall --
 // Seen from one fixed view high over the front (scenes/office.lua, lib/camera.lua ROOM), like a diorama: no ceiling, and the front
-// wall cut away to a low stub either side of the doorway, a mat in the doorway.
+// wall cut away to a low stub either side of the doorway. This model is the SHELL only (floor, walls, window, door gap, wainscot and rail):
+// every piece of furniture and every hung thing below is a model of its own, placed on the grid by the scene file. Each is built with its
+// origin at the middle of its footprint on the floor (a counter's things on the counter's top; a wall thing on its wall plane, at the
+// bottom of its cells, facing +z, which the scene turns to the wall's facing).
 def("office_room", () => {
-  const X = 3.5, Z = 2.6, H = 3.0;
+  const X = ROOM.X, Z = ROOM.Z, H = WALL_H;
   const c = [];
   c.push(box([0, -0.05, 0], [2 * X + 0.4, 0.1, 2 * Z + 0.4], C.floor));
   for (let x = -X + 0.25; x < X; x += 0.5) c.push(box([x, 0.003, 0], [0.02, 0.01, 2 * Z], shade(C.floor, -0.2))); // floorboards
-  // the walls, each a thick slab; the front one with a door gap, the right one (-x) with a window gap
   const wall = (cx, cz, w, d, h = H, y = H / 2) => c.push(box([cx, y, cz], [w, h, d], C.wall));
-  // the back wall, plain
+  // the back wall, plain, and the right wall
   wall(0, -Z - 0.1, 2 * X + 0.4, 0.2);
   wall(X + 0.1, 0, 0.2, 2 * Z);
-  // the front, cut away: a low stub either side of the door (1.1 wide at x = 0.9), its cut top a darker wood
-  const STUB = 0.32;
-  wall((-X + 0.35) / 2, Z + 0.1, X + 0.35, 0.2, STUB, STUB / 2);
-  wall((X + 1.45) / 2, Z + 0.1, X - 1.45, 0.2, STUB, STUB / 2);
-  for (const [cx, w] of [[(-X + 0.35) / 2, X + 0.35], [(X + 1.45) / 2, X - 1.45]]) c.push(box([cx, STUB + 0.015, Z + 0.1], [w + 0.02, 0.03, 0.22], C.plankDark));
-  // the right-hand wall with a window 1.4 wide, 1.2 high
-  wall(-X - 0.1, (-Z - 0.7) / 2 - 0.0, 0.2, Z - 0.7 + 0.0001 + 0.0);
-  wall(-X - 0.1, (Z + 0.7) / 2, 0.2, Z - 0.7);
-  wall(-X - 0.1, 0, 0.2, 1.4, 1.0, 0.5);
-  wall(-X - 0.1, 0, 0.2, 1.4, H - 2.2, 2.2 + (H - 2.2) / 2);
-  c.push(box([-X - 0.06, 1.6, 0], [0.08, 1.24, 1.5], C.cream));
-  c.push(box([-X - 0.12, 1.6, 0], [0.04, 1.2, 1.4], shade(PAL.lit, 0.4), { emissive: 0.9 })); // the bright day outside
-  c.push(box([-X + 0.02, 1.6, 0], [0.04, 1.2, 0.06], C.cream));
-  c.push(box([-X + 0.02, 1.6, 0], [0.04, 0.06, 1.4], C.cream));
-  c.push(box([-X + 0.1, 0.98, 0], [0.22, 0.06, 1.6], C.cream)); // the sill
-  // a wainscot and a picture rail round the walls
-  {
-    c.push(box([0, 0.5, -Z + 0.01], [2 * X, 1.0, 0.02], shade(C.wall, -0.18)));
-    c.push(box([0, 2.45, -Z + 0.01], [2 * X, 0.06, 0.04], shade(C.wall, -0.3)));
-    c.push(box([X - 0.01, 0.5, 0], [0.02, 1.0, 2 * Z], shade(C.wall, -0.18)));
-    c.push(box([X - 0.01, 2.45, 0], [0.02, 0.06, 2 * Z + 0.02], shade(C.wall, -0.3)));
+  // the front, cut away: a low stub either side of the door (its gap is DOOR.x0..x1), its cut top a darker wood
+  const STUB = 0.32, L = -X - 0.2, R = X + 0.2;
+  const stubs = [[L, DOOR.x0], [DOOR.x1, R]];
+  for (const [a, b] of stubs) {
+    wall((a + b) / 2, Z + 0.1, b - a, 0.2, STUB, STUB / 2);
+    c.push(box([(a + b) / 2, STUB + 0.015, Z + 0.1], [b - a + 0.02, 0.03, 0.22], C.plankDark));
   }
-  // the walls' cut tops (no ceiling: the room is seen from above), and a mat in the doorway
+  // the left wall with a window over WINDOW.rows (along z), WINDOW.y0..y1 high
+  {
+    const wz0 = GRID.z0 + WINDOW.rows[0] * GRID.cell, wz1 = GRID.z0 + (WINDOW.rows[1] + 1) * GRID.cell, wm = (wz0 + wz1) / 2, ww = wz1 - wz0;
+    const wh = WINDOW.y1 - WINDOW.y0, wy = (WINDOW.y0 + WINDOW.y1) / 2;
+    wall(-X - 0.1, (-Z + wz0) / 2, 0.2, wz0 + Z);
+    wall(-X - 0.1, (wz1 + Z) / 2, 0.2, Z - wz1);
+    wall(-X - 0.1, wm, 0.2, ww, WINDOW.y0, WINDOW.y0 / 2);
+    wall(-X - 0.1, wm, 0.2, ww, H - WINDOW.y1, WINDOW.y1 + (H - WINDOW.y1) / 2);
+    c.push(box([-X - 0.06, wy, wm], [0.08, wh + 0.04, ww + 0.1], C.cream));
+    c.push(box([-X - 0.12, wy, wm], [0.04, wh, ww - 0.1], shade(PAL.lit, 0.4), { emissive: 0.9 })); // the bright day outside
+    c.push(box([-X + 0.02, wy, wm], [0.04, wh, 0.06], C.cream));
+    c.push(box([-X + 0.02, wy, wm], [0.04, 0.06, ww - 0.1], C.cream));
+    c.push(box([-X + 0.1, WINDOW.y0 - 0.02, wm], [0.22, 0.06, ww + 0.1], C.cream)); // the sill
+  }
+  // a wainscot and a picture rail round the walls (the rail above the wall things' top, 2.5 m)
+  c.push(box([0, 0.5, -Z + 0.01], [2 * X, 1.0, 0.02], shade(C.wall, -0.18)));
+  c.push(box([0, 2.58, -Z + 0.01], [2 * X, 0.06, 0.04], shade(C.wall, -0.3)));
+  c.push(box([X - 0.01, 0.5, 0], [0.02, 1.0, 2 * Z], shade(C.wall, -0.18)));
+  c.push(box([X - 0.01, 2.58, 0], [0.02, 0.06, 2 * Z + 0.02], shade(C.wall, -0.3)));
+  // the walls' cut tops (no ceiling: the room is seen from above)
   for (const [cx, cz, w, d] of [[0, -Z - 0.1, 2 * X + 0.42, 0.22], [X + 0.1, 0, 0.22, 2 * Z + 0.4], [-X - 0.1, 0, 0.22, 2 * Z + 0.4]]) c.push(box([cx, H + 0.015, cz], [w, 0.03, d], C.plankDark));
-  c.push(box([0.9, 0.012, Z - 0.15], [1.0, 0.02, 0.55], PAL.mustard));
-  c.push(box([0.9, 0.018, Z - 0.15], [0.8, 0.02, 0.4], shade(PAL.mustard, -0.15)));
-  // the counter: across the room in front of the shelves, a flap at its left end
-  // (at the height of the cast: villagers a little over a metre tall, who look over it)
-  // (3.1 m long, x -1.5..1.6: the walks round both ends are 1.85 m wide, 1.3 m clear for the postmaster's 0.26 m radius)
-  c.push(box([FRONT.x, 0.36, -0.6], [FRONT.w - 0.1, 0.72, 0.7], C.wood));
-  c.push(box([FRONT.x, 0.76, -0.6], [FRONT.w, 0.08, 0.85], C.woodLight));
-  for (let x = FRONT.x - 1.2; x <= FRONT.x + 1.3; x += 0.95) c.push(box([x, 0.36, -0.24], [0.04, 0.64, 0.02], shade(C.wood, -0.3)));
-  c.push(cyl([1.35, 0.84, -0.85], 0.08, 0.06, PAL.mustard)); // a bell (the desk mat, stamp, envelopes and the old computer are models of their own)
-  c.push(cone([1.35, 0.92, -0.85], 0.07, 0.1, PAL.mustard));
-  // the pigeonholes on the back wall: a grid of cubbies, mostly empty
-  const px0 = -3.3, py0 = 1.3, cw = 0.36, ch = 0.3, cols = 6, rows = 3;
-  c.push(box([px0 + (cols * cw) / 2, py0 + (rows * ch) / 2, -Z + 0.2], [cols * cw + 0.08, rows * ch + 0.08, 0.36], C.plankDark));
-  for (let i = 0; i <= cols; i++) c.push(box([px0 + i * cw, py0 + (rows * ch) / 2, -Z + 0.38], [0.03, rows * ch, 0.04], C.wood));
-  for (let j = 0; j <= rows; j++) c.push(box([px0 + (cols * cw) / 2, py0 + j * ch, -Z + 0.38], [cols * cw, 0.03, 0.04], C.wood));
-  const R = rng(4);
-  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) if (R() < 0.12) c.push(box([px0 + (i + 0.5) * cw, py0 + j * ch + 0.08, -Z + 0.22], [0.24, 0.12, 0.2], R() < 0.5 ? PAL.paper : shade(PAL.paper, -0.12), { rot: [0, 0, R() * 20 - 10] }));
-  c.push(box([px0 + (cols * cw) / 2, py0 + rows * ch + 0.06, -Z + 0.22], [cols * cw, 0.04, 0.3], C.dust)); // dust on the top
-  // (the day's parcels no longer sit on a shelf: they lie on the package counter's tiles)
-  // a noticeboard with yellowed papers, a calendar, a clock that has stopped
-  c.push(box([X - 0.03, 1.8, -1.2], [0.04, 0.8, 1.1], PAL.wood));
-  for (const [y, z, w, h] of [[1.95, -1.45, 0.3, 0.38], [1.75, -1.0, 0.36, 0.3], [1.6, -1.42, 0.25, 0.2]]) c.push(box([X - 0.06, y, z], [0.02, h, w], shade(PAL.paper, -0.08), { rot: [0, 0, 0] }));
-  c.push(box([2.6, 2.1, -Z + 0.03], [0.5, 0.65, 0.02], PAL.paper));
-  c.push(box([2.6, 2.32, -Z + 0.045], [0.5, 0.18, 0.02], C.red));
-  c.push(cyl([1.7, 2.2, -Z + 0.06], 0.22, 0.06, C.plankDark, { axis: "z", segments: 14 }));
-  c.push(cyl([1.7, 2.2, -Z + 0.1], 0.18, 0.02, PAL.paper, { axis: "z", segments: 14 }));
-  // a rug, a stool, a stove in the corner, a sack of old mail, cobwebs
-  c.push(box([0.9, 0.012, 1.4], [1.6, 0.02, 1.0], PAL.redDark));
-  c.push(box([0.9, 0.018, 1.4], [1.3, 0.02, 0.7], PAL.rose));
-  c.push(cyl([-1.2, 0.35, 0.2], 0.2, 0.06, C.wood, { segments: 10 }));
-  for (const [dx, dz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]]) c.push(box([-1.2 + dx, 0.17, 0.2 + dz], [0.04, 0.34, 0.04], C.plankDark));
-  // (the old stove stood in the back left corner, where the package counter is now)
-  c.push(bevelled([2.7, 0.3, 2.0], [0.7, 0.6, 0.5], shade(PAL.woodLight, -0.18), { bevel: 0.12, taper: 0.7 }));
+  // a corner of cobweb up in the back right
   c.push(mesh([[X - 0.02, H - 0.02, -Z + 0.02], [X - 0.6, H - 0.02, -Z + 0.02], [X - 0.02, H - 0.55, -Z + 0.02], [X - 0.03, H - 0.02, -Z + 0.6]], [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]], PAL.white));
   return model([part("body", [0, 0, 0], c)], {
     boxes: [
       { x: 0, z: -Z - 0.1, hw: X + 0.2, hl: 0.15, turn: 0 }, { x: X + 0.1, z: 0, hw: 0.15, hl: Z + 0.2, turn: 0 }, { x: -X - 0.1, z: 0, hw: 0.15, hl: Z + 0.2, turn: 0 },
-      { x: (-X + 0.35) / 2, z: Z + 0.1, hw: (X + 0.35) / 2, hl: 0.15, turn: 0 }, { x: (X + 1.45) / 2, z: Z + 0.1, hw: (X - 1.45) / 2, hl: 0.15, turn: 0 },
-      { x: FRONT.x, z: -0.6, hw: FRONT.w / 2, hl: 0.42, turn: 0 }, { x: 2.7, z: 2.0, hw: 0.38, hl: 0.3, turn: 0 },
+      ...stubs.map(([a, b]) => ({ x: (a + b) / 2, z: Z + 0.1, hw: (b - a) / 2, hl: 0.15, turn: 0 })),
     ],
   });
 });
 
-// ---- the post office's furniture: package counter, picture frame, the old computer, the desk set ----------------------
-// (tools/office-layout.mjs holds the numbers the scene and these share; every one stands on y = 0 of the room, placed by scenes/office.scene.json)
-// The package counter: full width along the back wall (its middle line at TILE_Z), its top painted in square tiles, one parcel on each.
+// ---- the post office's furniture, each on the grid ---------------------------------------------------------------------------------------
+// The package counter: full width along the back wall, one cell deep (its middle at the footprint's middle), its top in square tiles
+// (TILES of them, one parcel on each, in the middle), the front doors' seams.
 def("package_counter", () => {
-  const c = [], w = BACK.x1 - BACK.x0, top = BACK.top;
-  c.push(box([0, 0.36, 0], [w, 0.72, BACK.depth], C.wood));
-  c.push(box([0, 0.04, BACK.depth / 2 + 0.01], [w - 0.1, 0.08, 0.04], C.plankDark)); // a kick board
-  c.push(box([0, top - 0.04, 0], [w + 0.05, 0.08, BACK.depth + 0.04], shade(C.woodLight, -0.12))); // the top (darker than the tiles)
-  // the tiles: raised, bevelled plates (1.6 cm, a bevel on each edge that catches the light) with 10 cm of the darker top between them:
-  // wide enough, and standing far enough proud, that their edges are real shapes at the fixed view and stay calm on a small screen
-  for (let i = 1; i <= TILES; i++) c.push(bevelled([tileX(i), top + 0.008, 0], [TILE - 0.1, 0.016, TILE - 0.1], shade(C.woodLight, 0.2), { bevel: 0.006 }));
-  for (let i = 0; i <= TILES + 1; i++) c.push(box([tileX(i + 1) - TILE / 2, 0.36, BACK.depth / 2 + 0.005], [0.04, 0.6, 0.02], shade(C.wood, -0.3))); // the doors' seams
-  return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: w / 2, hl: BACK.depth / 2, turn: 0 }] });
+  const c = [], w = 14 * GRID.cell, d = GRID.cell, top = TOP;
+  c.push(box([0, 0.36, 0], [w - 0.04, 0.72, d - 0.04], C.wood));
+  c.push(box([0, 0.04, d / 2 + 0.005], [w - 0.1, 0.08, 0.04], C.plankDark)); // a kick board
+  c.push(box([0, top - 0.04, 0], [w, 0.08, d], shade(C.woodLight, -0.12))); // the top (darker than the tiles)
+  // the tiles: raised, bevelled plates (1.6 cm, a bevel on each edge that catches the light) with the darker top between them
+  for (let i = 1; i <= TILES; i++) c.push(bevelled([tileX(i), top + 0.008, 0], [TILE - 0.08, 0.016, TILE - 0.08], shade(C.woodLight, 0.2), { bevel: 0.006 }));
+  for (let i = 0; i <= 14; i++) c.push(box([-w / 2 + i * GRID.cell, 0.36, d / 2 + 0.005], [0.04, 0.6, 0.02], shade(C.wood, -0.3))); // the doors' seams
+  return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: w / 2, hl: d / 2, turn: 0 }] });
 });
 
-// The picture frame on the back wall (its back on the wall plane z = 0, centred on x = 0): a wooden frame round a cream plate; the numerals
-// and the caption are pictures the game lays on the plate (tools/art-office.mjs).
+// The front counter: 6 x 2 cells (3.0 x 1.0 m), the room's desk.
+def("front_counter", () => {
+  const c = [];
+  c.push(box([0, 0.36, 0], [FRONT.w - 0.08, 0.72, FRONT.d - 0.08], C.wood));
+  c.push(box([0, 0.76, 0], [FRONT.w + 0.04, 0.08, FRONT.d + 0.04], C.woodLight));
+  for (let x = -1.2; x <= 1.3; x += 0.95) c.push(box([x, 0.36, FRONT.d / 2 - 0.035], [0.04, 0.64, 0.02], shade(C.wood, -0.3)));
+  return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: FRONT.w / 2, hl: FRONT.d / 2, turn: 0 }] });
+});
+
+def("stool", () => {
+  const c = [cyl([0, 0.35, 0], 0.2, 0.06, C.wood, { segments: 10 })];
+  for (const [dx, dz] of [[-0.12, -0.12], [0.12, -0.12], [-0.12, 0.12], [0.12, 0.12]]) c.push(box([dx, 0.17, dz], [0.04, 0.34, 0.04], C.plankDark));
+  return one(c);
+});
+// a rug 4 x 2 cells, a mat 2 x 1: flat (a few millimetres thick); things may stand on them
+def("rug", () => one([box([0, 0.012, 0], [1.9, 0.02, 0.9], PAL.redDark), box([0, 0.018, 0], [1.55, 0.02, 0.6], PAL.rose)]));
+def("door_mat", () => one([box([0, 0.012, 0], [0.96, 0.02, 0.46], PAL.mustard), box([0, 0.018, 0], [0.78, 0.02, 0.32], shade(PAL.mustard, -0.15))]));
+def("mail_sack", () => {
+  return model([part("body", [0, 0, 0], [bevelled([0, 0.3, 0], [0.46, 0.6, 0.44], shade(PAL.woodLight, -0.18), { bevel: 0.12, taper: 0.7 })])], { boxes: [{ x: 0, z: 0, hw: 0.24, hl: 0.22, turn: 0 }] });
+});
+
+// Wall things: origin on the wall plane, at the middle of their cells along the wall and the bottom of their height cells, facing +z.
+// The pigeonholes: 4 cells wide, 2 high (2.0 x 1.0 m), a grid of cubbies, mostly empty.
+def("pigeonholes", () => {
+  const c = [], w = 2.0, h = 1.0, cols = 6, rows = 3, cw = (w - 0.08) / cols, ch = (h - 0.08) / rows, x0 = -w / 2 + 0.04, y0 = 0.04;
+  c.push(box([0, h / 2, 0.2], [w, h, 0.36], C.plankDark));
+  for (let i = 0; i <= cols; i++) c.push(box([x0 + i * cw, h / 2, 0.38], [0.03, rows * ch, 0.04], C.wood));
+  for (let j = 0; j <= rows; j++) c.push(box([0, y0 + j * ch, 0.38], [cols * cw, 0.03, 0.04], C.wood));
+  const R = rng(4);
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) if (R() < 0.12) c.push(box([x0 + (i + 0.5) * cw, y0 + j * ch + 0.08, 0.22], [0.24, 0.12, 0.2], R() < 0.5 ? PAL.paper : shade(PAL.paper, -0.12), { rot: [0, 0, R() * 20 - 10] }));
+  c.push(box([0, h + 0.02, 0.22], [w, 0.04, 0.3], C.dust)); // dust on the top
+  return one(c);
+});
+// The picture frame: 3 cells wide, 2 high (1.5 x 1.0 m); a cream plate in a wooden frame (the numerals and the caption are pictures the game
+// lays on it, tools/art-office.mjs)
 def("tally_frame", () => {
-  const c = [], { w, h, y } = FRAME, f = HOUSE.window.frame, dep = 0.1;
+  const c = [], { w, h } = FRAME, f = HOUSE.window.frame, dep = 0.1, y = h / 2;
   c.push(box([0, y, 0.03], [w - 2 * f, h - 2 * f, 0.04], shade(C.cream, 0.02)));
   c.push(box([0, y + h / 2 - f / 2, dep / 2], [w, f, dep], C.wood), box([0, y - h / 2 + f / 2, dep / 2], [w, f, dep], C.wood));
   c.push(box([-w / 2 + f / 2, y, dep / 2], [f, h - 2 * f, dep], C.wood), box([w / 2 - f / 2, y, dep / 2], [f, h - 2 * f, dep], C.wood));
-  c.push(cyl([0, y + h / 2 + 0.12, 0.03], 0.035, 0.04, PAL.mustard, { axis: "z", segments: 8 })); // the nail it hangs from
+  c.push(cyl([0, h + 0.05, 0.03], 0.035, 0.04, PAL.mustard, { axis: "z", segments: 8 })); // the nail it hangs from
+  return one(c);
+});
+def("wall_clock", () => one([
+  cyl([0, 0.25, 0.06], 0.22, 0.06, C.plankDark, { axis: "z", segments: 14 }), cyl([0, 0.25, 0.1], 0.18, 0.02, PAL.paper, { axis: "z", segments: 14 }),
+]));
+def("calendar", () => one([box([0, 0.5, 0.03], [0.46, 0.7, 0.02], PAL.paper), box([0, 0.78, 0.045], [0.46, 0.16, 0.02], C.red)]));
+def("notice_board", () => {
+  const c = [box([0, 0.5, 0.02], [0.9, 0.8, 0.04], PAL.wood)];
+  for (const [x, y, w, h] of [[-0.18, 0.62, 0.3, 0.38], [0.2, 0.52, 0.36, 0.3], [-0.12, 0.36, 0.25, 0.2]]) c.push(box([x, y, 0.05], [w, h, 0.02], shade(PAL.paper, -0.08)));
   return one(c);
 });
 
-// The old computer on the front counter (origin: on the counter top, the screen towards +z): a chunky beige monitor and a keyboard. Not used
-// yet: later the postmaster does her upgrades here. The screen's words are a picture the game lays on it (fx/crt_screen).
+// On the front counter (origin on its top, at the middle of the footprint): the old computer (3 x 3 cells of 0.25 m: a chunky beige
+// monitor and a keyboard; the screen's words are a picture the game lays on it, fx/crt_screen), a letter tray (2 x 2), a stack of envelopes
+// (2 x 1), the desk mat the Mayor's letter lies on (4 x 2, flat), a rubber stamp with its ink pad (2 x 2) and a bell (1 x 1).
 def("crt_computer", () => {
-  const c = [], beige = shade(PAL.cream, -0.12);
-  c.push(box([0, 0.03, 0.0], [0.34, 0.06, 0.3], shade(beige, -0.15)));
-  c.push(box([0, 0.34, 0.08], [0.58, 0.5, 0.16], beige));
-  c.push(bevelled([0, 0.34, -0.12], [0.42, 0.38, 0.3], shade(beige, -0.08), { bevel: 0.05, segments: 2, taper: 0.62, taperZ: 0.7 }));
-  c.push(box([0, 0.35, 0.168], [0.46, 0.36, 0.014], shade(PAL.glass, -0.55), { emissive: 0.6 })); // the glass
-  c.push(box([0.2, 0.14, 0.17], [0.05, 0.03, 0.02], PAL.red)); // a power light
-  c.push(box([0, 0.025, 0.42], [0.46, 0.05, 0.17], beige)); // the keyboard
-  for (let r = 0; r < 3; r++) c.push(hardBox([0, 0.052, 0.375 + r * 0.045], [0.4, 0.006, 0.026], shade(beige, -0.3)));
+  const c = [], beige = shade(PAL.cream, -0.12), dz = -0.07;
+  c.push(box([0, 0.03, dz], [0.34, 0.06, 0.3], shade(beige, -0.15)));
+  c.push(box([0, 0.34, 0.08 + dz], [0.58, 0.5, 0.16], beige));
+  c.push(bevelled([0, 0.34, -0.12 + dz], [0.42, 0.38, 0.3], shade(beige, -0.08), { bevel: 0.05, segments: 2, taper: 0.62, taperZ: 0.7 }));
+  c.push(box([0, 0.35, 0.168 + dz], [0.46, 0.36, 0.014], shade(PAL.glass, -0.55), { emissive: 0.6 })); // the glass
+  c.push(box([0.2, 0.14, 0.17 + dz], [0.05, 0.03, 0.02], PAL.red)); // a power light
+  c.push(box([0, 0.025, 0.31], [0.46, 0.05, 0.17], beige)); // the keyboard
+  for (let r = 0; r < 3; r++) c.push(hardBox([0, 0.052, 0.265 + r * 0.045], [0.4, 0.006, 0.026], shade(beige, -0.3)));
   return one(c);
 });
-
-// The desk set on the front counter (origin at the middle of the mat, on the counter top): the mat the Mayor's letter lies on, a rubber stamp and its
-// ink pad, a small stack of envelopes and a letter tray.
-def("desk_set", () => {
+def("letter_tray", () => {
   const c = [];
-  c.push(box([0, 0.006, 0], [0.8, 0.012, 0.52], shade(PAL.slate, -0.1)), hardBox([0, 0.0125, 0], [0.74, 0.004, 0.46], PAL.slate));
-  // the stamp (a wooden handle on a rubber block) and its pad
-  c.push(box([0.55, 0.03, 0.1], [0.2, 0.05, 0.14], PAL.red), box([0.55, 0.075, 0.1], [0.07, 0.07, 0.07], C.woodLight), cyl([0.55, 0.12, 0.1], 0.05, 0.05, C.wood, { segments: 10 }));
-  c.push(box([0.55, 0.018, -0.1], [0.2, 0.036, 0.14], C.plankDark), hardBox([0.55, 0.037, -0.1], [0.16, 0.004, 0.1], PAL.redDark));
-  // envelopes, a little untidy
-  for (let i = 0; i < 4; i++) c.push(box([-0.75 + (i % 2) * 0.01, 0.014 + i * 0.022, (i % 2) * 0.01], [0.3, 0.02, 0.2], i % 2 ? PAL.paper : shade(PAL.paper, -0.1), { ry: i * 7 - 8 }));
-  c.push(hardBox([-0.75, 0.1, 0.0], [0.08, 0.004, 0.05], PAL.red));
-  // a letter tray: a wooden box open at the top, with envelopes standing in it
-  c.push(box([-1.2, 0.01, 0], [0.34, 0.02, 0.26], C.plankDark), box([-1.2, 0.05, -0.13], [0.34, 0.1, 0.03], C.wood), box([-1.2, 0.05, 0.13], [0.34, 0.1, 0.03], C.wood));
-  for (const s of [-1, 1]) c.push(box([-1.2 + s * 0.16, 0.05, 0], [0.03, 0.1, 0.26], C.wood));
-  for (let i = 0; i < 3; i++) c.push(box([-1.28 + i * 0.07, 0.09, 0], [0.04, 0.12, 0.2], i % 2 ? PAL.paper : shade(PAL.paper, -0.1), { rot: [0, 0, i * 5 - 5] }));
+  c.push(box([0, 0.01, 0], [0.34, 0.02, 0.26], C.plankDark), box([0, 0.05, -0.13], [0.34, 0.1, 0.03], C.wood), box([0, 0.05, 0.13], [0.34, 0.1, 0.03], C.wood));
+  for (const s of [-1, 1]) c.push(box([s * 0.16, 0.05, 0], [0.03, 0.1, 0.26], C.wood));
+  for (let i = 0; i < 3; i++) c.push(box([-0.08 + i * 0.07, 0.09, 0], [0.04, 0.12, 0.2], i % 2 ? PAL.paper : shade(PAL.paper, -0.1), { rot: [0, 0, i * 5 - 5] }));
   return one(c);
 });
+def("envelopes", () => {
+  const c = [];
+  for (let i = 0; i < 4; i++) c.push(box([(i % 2) * 0.01, 0.014 + i * 0.022, (i % 2) * 0.01], [0.3, 0.02, 0.2], i % 2 ? PAL.paper : shade(PAL.paper, -0.1), { ry: i * 7 - 8 }));
+  c.push(hardBox([0, 0.1, 0.0], [0.08, 0.004, 0.05], PAL.red));
+  return one(c);
+});
+def("desk_mat", () => one([box([0, 0.006, 0], [0.96, 0.012, 0.46], shade(PAL.slate, -0.1)), hardBox([0, 0.0125, 0], [0.9, 0.004, 0.4], PAL.slate)]));
+def("stamp", () => {
+  const c = [];
+  c.push(box([0, 0.03, 0.1], [0.2, 0.05, 0.14], PAL.red), box([0, 0.075, 0.1], [0.07, 0.07, 0.07], C.woodLight), cyl([0, 0.12, 0.1], 0.05, 0.05, C.wood, { segments: 10 }));
+  c.push(box([0, 0.018, -0.1], [0.2, 0.036, 0.14], C.plankDark), hardBox([0, 0.037, -0.1], [0.16, 0.004, 0.1], PAL.redDark));
+  return one(c);
+});
+def("bell", () => one([cyl([0, 0.03, 0], 0.08, 0.06, PAL.mustard), cone([0, 0.11, 0], 0.07, 0.1, PAL.mustard)]));
 
 // ---- parcels and the letter ----------------------------------------------------------------------------------------------------------
 // (a soft brown-paper bundle; its string is a band as rounded as the parcel, a hair bigger, so it hugs the corners)

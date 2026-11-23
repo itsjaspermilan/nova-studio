@@ -6980,7 +6980,7 @@ fn the_creek_runs_between_smooth_painted_banks() {
 
 // ---- the post office room: the package counter, the picture frame, the belt window, the old computer (the owner, 2026-11-23) ----------
 
-/// Where the aisle in front of a tile of the package counter is (tile 1 is the leftmost; they are 0.6 m apart).
+/// Where the aisle in front of a tile of the package counter is (tile 1 is the leftmost; they are 0.5 m apart, one grid cell each).
 fn aisle_in_front_of_tile(g: &Game, i: usize) -> (f64, f64) {
     (
         num(g, &format!("nova.named('tile_{i}').x")),
@@ -6988,7 +6988,7 @@ fn aisle_in_front_of_tile(g: &Game, i: usize) -> (f64, f64) {
     )
 }
 
-/// The package counter has ten square tiles in a row along the back wall, 0.6 m apart, and the day's two parcels lie one to a tile
+/// The package counter has ten square tiles in a row along the back wall, 0.5 m apart, and the day's two parcels lie one to a tile
 /// on the first two from the left (the rest empty); each parcel sits at its tile's middle.
 #[test]
 fn the_package_counter_holds_one_parcel_to_a_tile() {
@@ -7000,9 +7000,10 @@ fn the_package_counter_holds_one_parcel_to_a_tile() {
     assert_eq!(num(&g, "#nova.all('tile')"), 10.0);
     for i in 1..=10 {
         assert!(
-            (num(&g, &format!("nova.named('tile_{i}').x")) - (-3.0 + 0.6 * (i as f64 - 1.0))).abs()
+            (num(&g, &format!("nova.named('tile_{i}').x")) - (-2.25 + 0.5 * (i as f64 - 1.0)))
+                .abs()
                 < 1e-6,
-            "tile {i} is 0.6 m from the last"
+            "tile {i} is 0.5 m (one grid cell) from the last"
         );
         assert!(
             (num(&g, &format!("nova.named('tile_{i}').z")) - num(&g, "nova.named('tile_1').z"))
@@ -7557,17 +7558,19 @@ fn the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable(
     let mut g = game();
     play(
         &mut g,
-        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [ { "wait": 5 } ] }"#,
+        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit'); RG = require('lib.room_grid'); ROOM = RG.load('office')", "steps": [ { "wait": 5 } ] }"#,
     );
-    // the gaps, from the room's walls and the counter's collision box
+    // the gaps, in cells of 0.5 m, from the room grid: left and right of the front counter
     let gap_l = num(
         &g,
-        "(function() local b; for _, x in ipairs(nova.model_shapes('office_room').boxes) do if math.abs(x.z + 0.6) < 0.01 then b = x end end; return (b.x - b.hw) + 3.45 end)()",
-    );
+        "(function() local l, r = RG.gap_beside(ROOM, 'front_counter'); return l end)()",
+    ) * 0.5
+        - 0.05;
     let gap_r = num(
         &g,
-        "(function() local b; for _, x in ipairs(nova.model_shapes('office_room').boxes) do if math.abs(x.z + 0.6) < 0.01 then b = x end end; return 3.45 - (b.x + b.hw) end)()",
-    );
+        "(function() local l, r = RG.gap_beside(ROOM, 'front_counter'); return r end)()",
+    ) * 0.5
+        - 0.05;
     for (side, gap) in [("left", gap_l), ("right", gap_r)] {
         assert!(
             gap - 2.0 * 0.26 >= 1.3,
@@ -7576,18 +7579,18 @@ fn the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable(
         );
     }
     let mut stuck = vec![];
-    for (name, side) in [("left", -2.42), ("right", 2.52)] {
+    for (name, side) in [("left", -2.5), ("right", 2.5)] {
         for i in 1..=10 {
-            let tx = -3.0 + (i as f64 - 1.0) * 0.6;
+            let tx = -2.25 + (i as f64 - 1.0) * 0.5;
             let plan = format!(
-                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 0.9, 1.8, 3.14; p.speed = 0; p.walk_path = {{ {{ {side}, 0.3 }}, {{ {side}, -0.6 }}, {{ {tx}, -1.44 }} }}; p.walk_to = nil" }},
+                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 1.0, 1.8, 3.14; p.speed = 0; p.walk_path = {{ {{ {side}, 0.3 }}, {{ {side}, -0.5 }}, {{ {tx}, -1.4 }} }}; p.walk_to = nil" }},
                 {{ "until": "not T.walking()", "max": 900 }}, {{ "wait": 10 }} ] }}"#
             );
             play(&mut g, &plan);
             let off = num(
                 &g,
                 &format!(
-                    "(function() local p = nova.named('postmaster'); return math.sqrt((p.x - {tx})^2 + (p.z + 1.44)^2) end)()"
+                    "(function() local p = nova.named('postmaster'); return math.sqrt((p.x - {tx})^2 + (p.z + 1.4)^2) end)()"
                 ),
             );
             if off > 0.3 {
@@ -8024,7 +8027,7 @@ fn only_the_nearest_parcel_gets_the_tip_and_the_outline_and_it_fades_when_you_wa
     play(
         &mut g,
         r#"{ "start_scene": "office", "lua": "GO = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil end; REC = {}; local orig = nova.model; nova.model = function(id, x, y, z, o) if o and o.outline then REC[#REC + 1] = id end; return orig(id, x, y, z, o) end",
-        "steps": [ { "wait": 5 }, { "lua": "GO(-2.8, -1.44)" }, { "wait": 40 }, { "lua": "REC = {}" }, { "wait": 2 } ] }"#,
+        "steps": [ { "wait": 5 }, { "lua": "GO(-2.1, -1.4)" }, { "wait": 40 }, { "lua": "REC = {}" }, { "wait": 2 } ] }"#,
     );
     assert_eq!(
         lua(&g, "nova.scene_now().pick.item"),
@@ -8039,7 +8042,7 @@ fn only_the_nearest_parcel_gets_the_tip_and_the_outline_and_it_fades_when_you_wa
     assert!(num(&g, "nova.scene_now().tip_a") > 0.99, "the tip is up");
     play(
         &mut g,
-        r#"{ "steps": [ { "lua": "GO(-2.55, -1.44)" }, { "wait": 60 }, { "lua": "REC = {}" }, { "wait": 1 } ] }"#,
+        r#"{ "steps": [ { "lua": "GO(-1.9, -1.4)" }, { "wait": 60 }, { "lua": "REC = {}" }, { "wait": 1 } ] }"#,
     );
     assert_eq!(
         lua(&g, "nova.scene_now().pick.item"),
@@ -8364,7 +8367,7 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
     let mut g = game();
     let r = play(
         &mut g,
-        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = -3.0, -1.44, 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil" }, { "wait": 40 } ] }"#,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "lua": "local p = nova.named('postmaster'); local at = require('lib.testkit').shelf_spot('hazel'); p.x, p.z, p.face = at[1], at[2], 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil" }, { "wait": 40 } ] }"#,
     );
     check(
         &r,
@@ -8381,5 +8384,122 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "require('lib.ui').FRAME.small",
         "Take",
         "pickup tip word",
+    );
+}
+
+/// The post office is built on a placement grid (docs/games/mountain-post.md, "Rooms and the placement grid"; lib/room_grid.lua reads the
+/// scene file's data): every placed object sits on the grid (its x, z the cell's own place), has a footprint that stays on its surface and
+/// overlaps no other, the door's cells are free, a person can walk from the door to the aisle before every tile, to the letter's side and
+/// round both ends of the front counter, and the free cells are reported.
+#[test]
+fn every_piece_of_the_post_office_sits_on_the_grid_and_the_walks_stay_clear() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "RG = require('lib.room_grid'); ROOM = RG.load('office'); PROBLEMS = RG.problems(ROOM)", "steps": [ { "wait": 3 } ] }"#,
+    );
+    assert_eq!(lua(&g, "table.concat(PROBLEMS, '; ')"), "", "a sound room");
+    // the grid itself
+    assert_eq!(num(&g, "ROOM.grid.cell"), 0.5);
+    assert_eq!(
+        (num(&g, "ROOM.grid.cols"), num(&g, "ROOM.grid.rows")),
+        (14.0, 10.0)
+    );
+    // all the furniture and things the room has are placed: the counters, the stool, the rug, the mat, the sack, what is on the front
+    // counter, what hangs on the walls, the ten tiles
+    for name in [
+        "package_counter",
+        "front_counter",
+        "stool",
+        "rug",
+        "door_mat",
+        "mail_sack",
+        "old_computer",
+        "letter_tray",
+        "envelopes",
+        "desk_mat",
+        "stamp",
+        "bell",
+        "letter",
+        "pigeonholes",
+        "tally_frame",
+        "wall_clock",
+        "calendar",
+        "notice_board",
+        "tile_1",
+        "tile_10",
+    ] {
+        assert_eq!(
+            lua(&g, &format!("tostring(ROOM.by_name['{name}'] ~= nil)")),
+            "true",
+            "{name} is placed on the grid"
+        );
+    }
+    // the objects the game made are where the grid puts them (not only the file's numbers)
+    assert_eq!(
+        num(
+            &g,
+            "(function() local worst = 0; for _, it in ipairs(ROOM.items) do local o = nova.named(it.name); if o then local x, _, z = RG.place(ROOM.grid, it); worst = math.max(worst, math.abs(o.x - x), math.abs(o.z - z)) end end; return worst end)()"
+        ) < 0.003,
+        true
+    );
+    // a facing is 0, 90, 180 or 270 and a turned footprint swaps its sides: the notice board on the right wall faces 270
+    assert_eq!(num(&g, "ROOM.by_name.notice_board.face"), 270.0);
+    // the door to every tile's aisle, to the letter's side and to the stool, round the counters
+    for i in 1..=10 {
+        let ok = lua(
+            &g,
+            &format!(
+                "tostring(RG.reachable(ROOM, 1.0, 2.2, nova.named('tile_{i}').x, nova.named('tile_{i}').z + 0.85))"
+            ),
+        );
+        assert_eq!(ok, "true", "the door reaches the aisle before tile {i}");
+    }
+    assert_eq!(
+        lua(
+            &g,
+            "tostring(RG.reachable(ROOM, 1.0, 2.2, nova.named('letter').x, 0.4))"
+        ),
+        "true",
+        "the letter's counter"
+    );
+    assert_eq!(
+        lua(&g, "tostring(RG.reachable(ROOM, 1.0, 2.2, -1.25, 0.9))"),
+        "true",
+        "the stool"
+    );
+    // both ends of the front counter are 1.3 m clear or more of the postmaster's body: 4 cells (2.0 m) free on the left, 4 on the right
+    assert_eq!(
+        lua(
+            &g,
+            "(function() local l, r = RG.gap_beside(ROOM, 'front_counter'); return l .. ',' .. r end)()"
+        ),
+        "4,4"
+    );
+    // the free cells of the floor: all of them minus what the solid things cover (the rug and mats are flat: their cells are free)
+    let free = num(&g, "#RG.free_cells(ROOM)");
+    // 140 cells: the package counter 14, the front counter 12, the stool 1 and the sack 1 are solid
+    assert_eq!(free, 140.0 - 14.0 - 12.0 - 1.0 - 1.0, "free floor cells");
+    // and on the front counter's top (12 x 4 = 48 cells of 0.25 m) and on the package counter's (14 cells, 10 of them tiles)
+    assert_eq!(
+        num(&g, "#RG.free_top_cells(ROOM, 'front_counter')"),
+        48.0 - 9.0 - 4.0 - 2.0 - 4.0 - 1.0 - 1.0,
+        "free counter cells (computer 9, tray 4, envelopes 2, stamp 4, bell 1, the letter 1; the mat is flat)"
+    );
+    assert_eq!(
+        num(&g, "#RG.free_top_cells(ROOM, 'package_counter')"),
+        4.0,
+        "the package counter's four cells that are not tiles"
+    );
+    // a piece moved off the grid, or onto another, is reported
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local bad = RG.load('office'); bad.by_name.stool.x = bad.by_name.stool.x + 0.1; BAD1 = #RG.problems(bad); local over = RG.load('office'); over.by_name.stool.cell = { 4, 3 }; local x, _, z = RG.place(over.grid, over.by_name.stool); over.by_name.stool.x, over.by_name.stool.z = x, z; BAD2 = table.concat(RG.problems(over), ';')" } ] }"#,
+    );
+    assert!(num(&g, "BAD1") >= 1.0, "off the grid is a problem");
+    assert!(
+        lua(&g, "BAD2").contains("overlap"),
+        "overlapping is a problem: {}",
+        lua(&g, "BAD2")
     );
 }
