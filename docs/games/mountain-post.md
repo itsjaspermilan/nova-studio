@@ -896,3 +896,24 @@ The owner, 2026-11-23: "I also think the circle cutout comes on too aggressively
 really blocked by some item. Think about other games." And: "For the speedo and gears, can we merge them in a nice UI way. Not
 just two separate shapes."
 The owner, on the cluster: "We don't need the button chips there either." (no X/A glyphs on the instrument.)
+
+**Done for these notes (the camera and the post office room, 2026-11-23).**
+- **No camera dodge.** `lib/camera.lua` no longer lifts or swings for the van or a resident; the camera stays on its orbit and drift
+  and the postmaster is hidden for a moment (`DODGE`, `person_between` gone). Neither the van nor people are ever cut away. The one
+  thing left: an eye that would be inside the van's body is lifted just over it.
+- **The see-through circle only when really blocked** (`lib/occluders.lua`, data `lib/occluders_data.lua` made by
+  `tools/occluders.mjs` from the models' own triangles and the valley scene: tree crowns, the forest masses, the post office with its
+  porch roof, the cabins, the workshop; never grass, ferns, bushes, rocks, fences, people or the van). Three lines from the eye
+  (feet's end, middle, head) are walked through those shapes; the cut comes on only when two of three are hidden, or the eye is inside
+  a crown or a roof. The hole is small (0.85 m round the postmaster, stopping 0.6 m short of them) and takes only what lies between;
+  it fades in over 0.2 s and, once clear, holds 0.25 s and fades out over 0.3 s (`camera.CUT`). The porch roof follows the same rule.
+  Indoors and in talk views nothing is cut. Pictures: `build/gallery/1_` to `8_`. Test: `the_see_through_circle_*`.
+  Regenerate the data after changing a tree or building model or the valley scene: `scripts/env.sh node examples/mountain-post/tools/occluders.mjs`.
+- **The front counter** is 3.1 m long (x -1.5..1.6, was 4.4): the walks round both ends are 1.85 m wide, 1.33 m clear of the
+  postmaster's 0.26 m radius (was 0.85 m at the right). The computer, desk set, letter and bell moved with it. Test:
+  `the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable`.
+- **The backroom** behind the conveyor hatch is 4 m deep with the belt running back on trestles, a rack of parcels along it, a lamp
+  (and a warm point light), the hatch taller (2.3 m) and the flaps a short parted curtain. From the fixed camera only the lit
+  floor and what is low on it show through (the view looks down about 35 degrees and a little to the right), and the hatch's top
+  reaches the picture's top edge.
+- **The counter's tiles** are raised bevelled plates (1.6 cm, 10 cm of the darker top between them) instead of flat paint, under 4x MSAA.

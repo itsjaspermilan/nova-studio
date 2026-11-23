@@ -7,25 +7,46 @@
     { "kind": "package_counter", "name": "package_counter", "x": 0, "y": 0, "z": -2.29 },
     { "kind": "tally_frame", "name": "tally_frame", "x": 0, "y": 0, "z": -2.6 },
     { "kind": "conveyor_window", "name": "conveyor_window", "x": 3, "y": 0, "z": -2.6 },
-    { "kind": "crt_computer", "name": "old_computer", "x": -1.3, "y": 0.8, "z": -0.75 },
-    { "kind": "desk_set", "name": "desk_set", "x": 0.95, "y": 0.8, "z": -0.55 },
+    { "kind": "crt_computer", "name": "old_computer", "x": -1.15, "y": 0.8, "z": -0.75 },
+    { "kind": "desk_set", "name": "desk_set", "x": 0.7, "y": 0.8, "z": -0.55 },
     { "kind": "postmaster", "name": "postmaster", "x": 0.3, "y": 0, "z": 0.55, "props": { "ry": 3.14 } },
     {
       "kind": "item",
       "name": "letter",
-      "x": 1,
+      "x": 0.75,
       "y": 0.82,
       "z": -0.45,
       "props": { "item": "letter", "ry": 0.25 }
     },
-    { "kind": "tile", "name": "tile_1", "x": -3, "y": 0.81, "z": -2.29, "props": { "slot": 1 } },
-    { "kind": "tile", "name": "tile_2", "x": -2.4, "y": 0.81, "z": -2.29, "props": { "slot": 2 } },
-    { "kind": "tile", "name": "tile_3", "x": -1.8, "y": 0.81, "z": -2.29, "props": { "slot": 3 } },
+    {
+      "kind": "tile",
+      "name": "tile_1",
+      "x": -3,
+      "y": 0.8160000000000001,
+      "z": -2.29,
+      "props": { "slot": 1 }
+    },
+    {
+      "kind": "tile",
+      "name": "tile_2",
+      "x": -2.4,
+      "y": 0.8160000000000001,
+      "z": -2.29,
+      "props": { "slot": 2 }
+    },
+    {
+      "kind": "tile",
+      "name": "tile_3",
+      "x": -1.8,
+      "y": 0.8160000000000001,
+      "z": -2.29,
+      "props": { "slot": 3 }
+    },
     {
       "kind": "tile",
       "name": "tile_4",
       "x": -1.2000000000000002,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 4 }
     },
@@ -33,16 +54,23 @@
       "kind": "tile",
       "name": "tile_5",
       "x": -0.6000000000000001,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 5 }
     },
-    { "kind": "tile", "name": "tile_6", "x": 0, "y": 0.81, "z": -2.29, "props": { "slot": 6 } },
+    {
+      "kind": "tile",
+      "name": "tile_6",
+      "x": 0,
+      "y": 0.8160000000000001,
+      "z": -2.29,
+      "props": { "slot": 6 }
+    },
     {
       "kind": "tile",
       "name": "tile_7",
       "x": 0.5999999999999996,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 7 }
     },
@@ -50,7 +78,7 @@
       "kind": "tile",
       "name": "tile_8",
       "x": 1.2000000000000002,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 8 }
     },
@@ -58,7 +86,7 @@
       "kind": "tile",
       "name": "tile_9",
       "x": 1.7999999999999998,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 9 }
     },
@@ -66,7 +94,7 @@
       "kind": "tile",
       "name": "tile_10",
       "x": 2.3999999999999995,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "slot": 10 }
     },
@@ -74,7 +102,7 @@
       "kind": "item",
       "name": "parcel_hazel",
       "x": -3,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "item": "hazel", "ry": 0 }
     },
@@ -82,7 +110,7 @@
       "kind": "item",
       "name": "parcel_pip",
       "x": -2.4,
-      "y": 0.81,
+      "y": 0.8160000000000001,
       "z": -2.29,
       "props": { "item": "pip", "ry": 0 }
     },

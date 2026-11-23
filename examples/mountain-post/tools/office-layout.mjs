@@ -8,6 +8,8 @@ export const TILES = 10; // for parcels, from the left; the eleventh tile's plac
 export const tileX = (i) => -3.0 + (i - 1) * TILE; // i from 1
 export const TILE_Z = -ROOM.Z + BACK.depth / 2;
 // The conveyor window: in the back wall at the counter's right-hand end, over the eleventh tile.
-export const WINDOW = { x: tileX(11), w: 0.9, y0: 0.84, y1: 2.0 };
+export const WINDOW = { x: tileX(11), w: 0.9, y0: 0.84, y1: 2.3 };
 // The picture frame, centred on the back wall.
 export const FRAME = { x: 0, y: 1.8, w: 1.5, h: 1.05 };
+// The front counter across the middle of the room (its top's middle and length): the walks round both ends are 1.85 m wide.
+export const FRONT = { x: 0.05, w: 3.1 };

@@ -1,0 +1,26 @@
+{
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); S = require('lib.state'); C = require('lib.camera'); W = require('lib.world'); PUT = function(x, z, yaw) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, yaw; p.walk_to = nil; p.walk_path = nil; nova.named('van'):teleport(x + 300, z + 300, 0); C.reset(yaw) end; BETWEEN = function(who, d) local p = nova.named('postmaster'); local e = C.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local x, z = p.x + dx / l * d, p.z + dz / l * d; if who == 'van' then nova.named('van'):teleport(x, z, 1.57) else local h = nova.named('hazel'); h.x, h.z = x, z; h.mode = 'work'; h.work_at = { x, z }; h.home = { x, z } end end",
+  "route": [
+    { "wait": 3 },
+    { "lua": "PUT(135, 40, 0)" },
+    { "wait": 80, "capture": "1_open_meadow_no_circle" },
+    { "lua": "PUT(-19.72, -222, 0)" },
+    { "wait": 80, "capture": "2_before_the_tree_no_circle" },
+    { "lua": "PUT(-19.72, -229.2, 0)" },
+    { "wait": 80, "capture": "3_under_the_big_tree_small_circle" },
+    { "lua": "PUT(-19.72, -222, 0)" },
+    { "wait": 70, "capture": "4_clear_again_no_circle" },
+    { "lua": "local c, s = math.cos(-2.29), math.sin(-2.29); local lx, lz = 5.0, 1.0; PUT(162 + lx * c + lz * s, 54 - lx * s + lz * c, 0)" },
+    { "wait": 80, "capture": "5_behind_the_cabin_roof" },
+    { "lua": "PUT(135, 40, 0)" },
+    { "wait": 70 },
+    { "lua": "BETWEEN('van', 3.5)" },
+    { "wait": 80, "capture": "6_behind_the_van_camera_unchanged" },
+    { "lua": "nova.named('van'):teleport(600, 600, 0); BETWEEN('hazel', 3.0)" },
+    { "wait": 80, "capture": "7_behind_hazel_camera_unchanged" },
+    { "lua": "S.came_out = true; nova.goto_scene('valley')" },
+    { "wait": 90, "capture": "8_porch_exit" }
+  ],
+  "out": "build/gallery"
+}

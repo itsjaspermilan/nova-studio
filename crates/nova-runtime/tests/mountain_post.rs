@@ -2751,41 +2751,18 @@ fn the_wheels_come_back_quickly_and_the_van_sweeps_round_a_wider_circle() {
 }
 
 /// "I don't like that the van dithers away to make way for the player." The van (and the driver in it, and the parcels in its hold)
-/// is drawn with see_through = false: never cut away. Standing just beyond the van from the camera, the camera lifts (or swings)
-/// until the postmaster's middle and head both show past it, and eases back down once the van is out of the way.
+/// is drawn with see_through = false: never cut away. (The camera does not move for it either: see the next test.)
 #[test]
-fn the_van_is_never_cut_away_and_the_camera_goes_round_it() {
+fn the_van_is_never_cut_away() {
     let mut g = game();
     play(
         &mut g,
-        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); SEEN = function() local c, p, v = CAM.state, nova.named('postmaster'), nova.named('van'); local g = require('lib.world').height(p.x, p.z); local e = c.eye; return not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.4, p.z) and not CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.85, p.z) end",
-        "steps": [ { "wait": 3, "lua": "local v = nova.named('van'); v:teleport(4.5, -132, 0); local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -129.0, 0; CAM.reset(0)" },
-        { "wait": 60 },
-        { "lua": "SEEN_THEN = SEEN(); LIFT = CAM.state.dodge_p; SWING = CAM.state.dodge_y" },
-        { "lua": "local p = nova.named('postmaster'); p.x, p.z = 4.5, -110" },
-        { "wait": 180 },
-        { "lua": "LIFT_AWAY = CAM.state.dodge_p" } ] }"#,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
     );
     assert_eq!(
         lua(&g, "tostring(nova.named('van').draw_opts.see_through)"),
         "false",
         "the van is never cut away"
-    );
-    assert_eq!(
-        lua(&g, "SEEN_THEN"),
-        "true",
-        "the postmaster shows past the van"
-    );
-    let (lift, swing) = (num(&g, "LIFT"), num(&g, "SWING"));
-    assert!(
-        lift > 0.05 || swing.abs() > 0.05,
-        "the camera moved round the van: lift {lift}, swing {swing}"
-    );
-    assert!(lift < 0.7, "only as far as it must: {lift} rad");
-    assert!(
-        num(&g, "LIFT_AWAY") < 0.03,
-        "and back once the van is out of the way: {}",
-        num(&g, "LIFT_AWAY")
     );
 }
 
@@ -5362,31 +5339,6 @@ fn the_see_through_circle_never_cuts_people_or_the_van() {
     );
 }
 
-/// Where a resident would hide the postmaster, the camera moves (as it does for the van) rather than cutting the resident away:
-/// a resident standing between the eye and the postmaster makes the dodge lift or swing, and nothing is left between them.
-#[test]
-fn a_resident_between_the_camera_and_the_postmaster_moves_the_camera() {
-    let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world'); S = require('lib.state')",
-        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 150, 36, 0; p.walk_to = nil; p.walk_path = nil; CAM.reset(0); nova.named('van'):teleport(300, 300, 0)" },
-        { "wait": 60 } ] }"#,
-    );
-    // put Hazel on the line from the eye to the postmaster, 3 m from the postmaster
-    play(
-        &mut g,
-        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local h = nova.named('hazel'); h.x, h.z = p.x + dx / l * 3, p.z + dz / l * 3; h.mode = 'work'; h.work_at = { h.x, h.z }; h.home = { h.x, h.z }; BEFORE = CAM.state.dodge_p + math.abs(CAM.state.dodge_y)" },
-        { "wait": 90, "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local h = nova.named('hazel'); HID = CAM.person_between(h, e[1], e[2], e[3], p.x, W.height(p.x, p.z) + 0.85, p.z) and 1 or 0" } ] }"#,
-    );
-    let moved = num(&g, "CAM.state.dodge_p + math.abs(CAM.state.dodge_y)");
-    assert!(
-        moved > 0.05,
-        "the camera moved for the resident: {moved:.3} rad (was {})",
-        lua(&g, "BEFORE")
-    );
-}
-
 /// "Pressing start should actually pause the game." Start opens the pause menu and the world stands still: the engine's clock, the
 /// van, the residents, the postmaster (the stick is not read), the scene's own timers; the music goes on, ducked. Closing it carries
 /// on from the same moment.
@@ -7232,6 +7184,32 @@ fn the_picture_frame_shows_the_parcels_still_to_deliver_through_the_whole_slice(
     }
 }
 
+/// "We don't need the camera dodge when the player is behind the van or other characters." The van or a resident stands on the
+/// line from the camera to the postmaster, and the camera does not move: the eye is where it was, nothing is lifted or swung.
+#[test]
+fn the_camera_does_not_move_for_the_van_or_a_resident_between() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world')",
+        "steps": [ { "wait": 5 }, { "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 150, 36, 0; p.walk_to = nil; p.walk_path = nil; CAM.reset(0); nova.named('van'):teleport(300, 300, 0)" },
+        { "wait": 80 }, { "lua": "local e = CAM.state.eye; E0 = { e[1], e[2], e[3] }; LIFT0 = CAM.state.lift" },
+        { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local h = nova.named('hazel'); h.x, h.z = p.x + dx / l * 3, p.z + dz / l * 3; h.mode = 'work'; h.work_at = { h.x, h.z }; h.home = { h.x, h.z }; local v = nova.named('van'); v:teleport(p.x + dx / l * 4.5, p.z + dz / l * 4.5, 0)" },
+        { "wait": 90 }, { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local v = nova.named('van'); local g = W.height(p.x, p.z); VAN_IN = CAM.van_between(v, e[1], e[2], e[3], p.x, g + 0.85, p.z) and 1 or 0; EYE_MOVED = math.abs(e[1] - E0[1]) + math.abs(e[2] - E0[2]) + math.abs(e[3] - E0[3]); LIFT_MOVED = math.abs(CAM.state.lift - LIFT0)" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(CAM.state.dodge_p)"),
+        "nil",
+        "no dodge state any more"
+    );
+    assert!(
+        num(&g, "EYE_MOVED") < 0.02,
+        "the eye stayed where it was: moved {} m",
+        num(&g, "EYE_MOVED")
+    );
+    assert!(num(&g, "LIFT_MOVED") < 0.02, "nothing was lifted");
+}
+
 /// "We need to add creep for D R and L." With the pedals up, on the flat (the van's own step at Post Road): D creeps at 1.2 to 1.5
 /// m/s, L a little slower (but with more pull), R about 1 m/s backwards; P and N never creep. It builds in over a second or so with
 /// no jump in the acceleration. Any brake overcomes it: held from a standstill the van stays exactly still (no shudder), and let go
@@ -7435,4 +7413,162 @@ fn the_instruments_needle_rests_clear_of_the_numbers_and_the_lamp_does_not_crowd
         src.contains("local TICK = { 52, 44, 40, 255 }"),
         "the ticks are a dark, opaque ink"
     );
+}
+
+/// "I also think the circle cutout comes on too aggressively. It should only be present when the camera is really blocked by some
+/// item." In the open meadow nothing is cut, and nothing is cut for what is not scenery that can hide someone: Hazel, the van, grass,
+/// ferns. (`camera.state.cut` is how much of the small see-through hole is on: 0 off, 1 whole.)
+#[test]
+fn the_see_through_circle_is_off_in_the_open_and_for_people_and_the_van() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world'); OCC = require('lib.occluders'); MAXCUT = 0",
+        "each_frame": "MAXCUT = math.max(MAXCUT, CAM.state.cut or 0)",
+        "steps": [ { "wait": 5 }, { "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 150, 36, 0; p.walk_to = nil; p.walk_path = nil; CAM.reset(0); nova.named('van'):teleport(300, 300, 0)" },
+        { "wait": 80 }, { "lua": "MAXCUT = 0" }, { "wait": 60 } ] }"#,
+    );
+    assert_eq!(lua(&g, "tostring(CAM.state.hidden)"), "false");
+    assert_eq!(num(&g, "MAXCUT"), 0.0, "no circle in the open");
+    // Hazel, then the van, stand on the line from the eye to the postmaster
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); local e = CAM.state.eye; local dx, dz = e[1] - p.x, e[3] - p.z; local l = math.sqrt(dx * dx + dz * dz); local h = nova.named('hazel'); h.x, h.z = p.x + dx / l * 3, p.z + dz / l * 3; h.mode = 'work'; h.work_at = { h.x, h.z }; h.home = { h.x, h.z }; local v = nova.named('van'); v:teleport(p.x + dx / l * 4.5, p.z + dz / l * 4.5, 0)" },
+        { "wait": 90 } ] }"#,
+    );
+    assert_eq!(lua(&g, "tostring(CAM.state.hidden)"), "false");
+    assert_eq!(
+        num(&g, "MAXCUT"),
+        0.0,
+        "no circle for a resident or the van in the way"
+    );
+}
+
+/// A tree's crown or a roof that really covers the postmaster cuts a small hole, fading in over about 0.2 s and, once the line is clear,
+/// holding a moment and fading out over about 0.3 s; the hole is about the postmaster's size, not a big circle.
+#[test]
+fn the_see_through_circle_comes_on_under_a_crown_and_a_roof_and_fades_off() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); W = require('lib.world'); OCC = require('lib.occluders'); PUT = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 0; p.walk_to = nil; p.walk_path = nil; nova.named('van'):teleport(x + 300, z + 300, 0); CAM.reset(0) end",
+        "steps": [ { "wait": 5 }, { "lua": "PUT(-19.72, -222)" }, { "wait": 70 } ] }"#,
+    );
+    assert_eq!(num(&g, "CAM.state.cut"), 0.0, "clear of the tree");
+    // under a big pine's crown (the camera behind and above looks through it)
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "PUT(-19.72, -229.2)" }, { "wait": 6 }, { "lua": "EARLY = CAM.state.cut" }, { "wait": 60 }, { "lua": "HIDDEN = CAM.state.hidden and 1 or 0; FULL = CAM.state.cut" } ] }"#,
+    );
+    let early = num(&g, "EARLY");
+    assert!(
+        early > 0.0 && early < 1.0,
+        "the circle fades in, not a jump: {early}"
+    );
+    assert_eq!(num(&g, "HIDDEN"), 1.0, "the crown hides the postmaster");
+    assert!(
+        num(&g, "FULL") > 0.99,
+        "and the circle is whole: {}",
+        num(&g, "FULL")
+    );
+    // out from under it: held for a moment, then gone
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "PUT(-19.72, -222)" }, { "wait": 5 }, { "lua": "HELD = CAM.state.cut" }, { "wait": 60 }, { "lua": "GONE = CAM.state.cut; HID2 = CAM.state.hidden and 1 or 0" } ] }"#,
+    );
+    assert!(num(&g, "HELD") > 0.0, "a moment's hold, not a flicker off");
+    assert_eq!(num(&g, "HID2"), 0.0);
+    assert_eq!(num(&g, "GONE"), 0.0, "and gone once clear");
+    // behind a cabin's roof
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local c, s = math.cos(-2.29), math.sin(-2.29); PUT(162 + 5.0 * c + 1.0 * s, 54 - 5.0 * s + 1.0 * c)" }, { "wait": 80 }, { "lua": "ROOF = CAM.state.cut" } ] }"#,
+    );
+    assert!(
+        num(&g, "ROOF") > 0.99,
+        "a roof between: {}",
+        num(&g, "ROOF")
+    );
+    // the hole is small: about the postmaster's size
+    assert!(
+        num(&g, "CAM.CUT.up") > 0.0
+            && num(&g, "(CAM.state.see and CAM.state.see.radius) or 0") <= 1.0,
+        "a small hole"
+    );
+}
+
+/// The occluders are the scenery's real shapes: a line through a pine's crown is blocked, one beside it or over it is not, and grass
+/// and the like are not in the data at all.
+#[test]
+fn the_occluders_block_a_line_through_a_crown_and_not_one_beside_it() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "OCC = require('lib.occluders'); W = require('lib.world')", "steps": [ { "wait": 3 } ] }"#,
+    );
+    // the pine at (-19.72, -230.61), 2.11 times its size: a line from 6 m south at 3 m up to a point 1 m above the ground behind it
+    let line = |dx: f64| {
+        let g0 = "W.height(-19.72, -230.61)";
+        format!(
+            "tostring(OCC.blocked(-19.72 + {dx}, {g0} + 3, -237, -19.72 + {dx}, {g0} + 1, -224))"
+        )
+    };
+    assert_eq!(lua(&g, &line(0.0)), "true");
+    assert_eq!(lua(&g, &line(9.0)), "false");
+    assert_eq!(
+        lua(
+            &g,
+            "tostring(OCC.blocked(-19.72, W.height(-19.72, -230.61) + 30, -237, -19.72, W.height(-19.72, -230.61) + 30, -224))"
+        ),
+        "false"
+    );
+}
+
+/// The post office's front counter leaves a wide walk round both ends (the owner: "You can fix the weak points"; the right-hand gap was
+/// 0.85 m and straight-line walks stuck there): at least 1.3 m clear of the postmaster's body on each side, and a walk in straight lines
+/// from the door through the middle of either gap to the aisle in front of every tile of the package counter arrives.
+#[test]
+fn the_front_counter_has_wide_walks_round_both_ends_and_every_tile_is_reachable() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [ { "wait": 5 } ] }"#,
+    );
+    // the gaps, from the room's walls and the counter's collision box
+    let gap_l = num(
+        &g,
+        "(function() local b; for _, x in ipairs(nova.model_shapes('office_room').boxes) do if math.abs(x.z + 0.6) < 0.01 then b = x end end; return (b.x - b.hw) + 3.45 end)()",
+    );
+    let gap_r = num(
+        &g,
+        "(function() local b; for _, x in ipairs(nova.model_shapes('office_room').boxes) do if math.abs(x.z + 0.6) < 0.01 then b = x end end; return 3.45 - (b.x + b.hw) end)()",
+    );
+    for (side, gap) in [("left", gap_l), ("right", gap_r)] {
+        assert!(
+            gap - 2.0 * 0.26 >= 1.3,
+            "the {side} walk: {gap} m wide, {} m clear of the postmaster",
+            gap - 0.52
+        );
+    }
+    let mut stuck = vec![];
+    for (name, side) in [("left", -2.42), ("right", 2.52)] {
+        for i in 1..=10 {
+            let tx = -3.0 + (i as f64 - 1.0) * 0.6;
+            let plan = format!(
+                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 0.9, 1.8, 3.14; p.speed = 0; p.walk_path = {{ {{ {side}, 0.3 }}, {{ {side}, -0.6 }}, {{ {tx}, -1.44 }} }}; p.walk_to = nil" }},
+                {{ "until": "not T.walking()", "max": 900 }}, {{ "wait": 10 }} ] }}"#
+            );
+            play(&mut g, &plan);
+            let off = num(
+                &g,
+                &format!(
+                    "(function() local p = nova.named('postmaster'); return math.sqrt((p.x - {tx})^2 + (p.z + 1.44)^2) end)()"
+                ),
+            );
+            if off > 0.3 {
+                stuck.push(format!("{name} side, tile {i}: {off:.2} m short"));
+            }
+        }
+    }
+    assert!(stuck.is_empty(), "walks that did not arrive: {stuck:?}");
 }
