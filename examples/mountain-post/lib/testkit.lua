@@ -6,7 +6,7 @@ local testkit = {}
 -- In the office: take a parcel from the shelf (walk to it, X, close the label with X).
 function testkit.shelf_spot(item)
   local it = nova.named("parcel_" .. item) or nova.named("postmaster")
-  return { it.x - 0.65, it.z }
+  return { it.x, it.z + 0.85 } -- (in the aisle in front of its tile)
 end
 
 -- In the valley: walk round the van to a resident, or to a spot by the van's back or door.
