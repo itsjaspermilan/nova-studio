@@ -13,7 +13,8 @@
 --   and more behind, more level, with the road and the horizon ahead; not more top-down): on foot 26 degrees down from 8 m with a 38
 --   degree lens, the postmaster about a fifth of the screen high in its lower middle, the sky and the far hills along the top; driving
 --   15 degrees down, the van in the lower third and the road and the horizon ahead. What stands between the camera and the postmaster
---   or the van (tree crowns, a roof, the porch) is cut away round them (nova.see_through); only the ground lifts it, smoothly.
+--   or the van is cut away round them only while it really hides them (tree crowns, a roof, the porch: lib/occluders.lua, CUT below);
+--   only the ground lifts the camera, smoothly.
 -- - Nobody else is cut away either (residents, the driver): only scenery is. The van is never cut away either (the owner: "I don't
 --   like that the van dithers away to make way for the player": it is drawn with see_through = false). The camera does not move for
 --   them either (the owner, 2026-11-23: "We don't need the camera dodge when the player is behind the van or other characters"):
@@ -25,6 +26,7 @@
 -- over a moment, along a straight line between the two.
 -- The camera is placed by hand on the valley's hills (nova.terrain lifts what is drawn, not the camera).
 local world = require("lib.world")
+local occluders = require("lib.occluders")
 
 local camera = {}
 local cam = { yaw = 0, eye = { 0, 0, 0 }, at = { 0, 0, 0 }, fov = 40, blend = 1, from = nil, ready = false }
@@ -179,6 +181,9 @@ local function place(dt, C, x, base, z, look_at, van)
   cam.see = look_at
 end
 
+local FOOT_HEIGHTS = { 0.3, 0.7, 1.05 }
+local VAN_HEIGHTS = { 0.5, 1.0, 1.5 }
+
 -- On foot outdoors: the chase view behind the postmaster.
 function camera.foot(p, dt)
   local C = camera.FOOT
@@ -203,7 +208,7 @@ function camera.foot(p, dt)
     local d = math.sqrt((p.x - n[1]) ^ 2 + (p.z - n[2]) ^ 2)
     near = math.max(near, 2.5 + (n.near - 2.5) * smooth(n.r, n.r * 0.5, d))
   end
-  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 2.0, margin = 0.9, near = near }, nova.first("van"))
+  place(dt, C, p.x, base, p.z, { p.x, base + 0.5, p.z, radius = 0.85, margin = 0.6, near = near, base = base, heights = FOOT_HEIGHTS }, nova.first("van"))
 end
 
 -- Behind the van: the same rule, quicker.
@@ -220,7 +225,7 @@ function camera.van(v, dt)
   end
   cam.px, cam.pz, cam.vx, cam.vz = nil, nil, 0, 0
   local base = world.height(v.x, v.z)
-  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 2.2, margin = 2.4, near = 5 })
+  place(dt, C, v.x, base, v.z, { v.x, base + 1.0, v.z, radius = 1.3, margin = 1.2, near = 4, base = base, heights = VAN_HEIGHTS })
 end
 
 -- The office: the fixed view (the room is level, its floor at 0).
@@ -261,7 +266,28 @@ function camera.set(ex, ey, ez, tx, ty, tz, fov, dt)
 end
 
 -- Puts the view on the screen (from draw): the glide between two views, eased; the hole round what the view follows.
-local SEE = { at = { 0, 0, 0 }, radius = 1.9, margin = 0.9, above = 0.35, near = 2.5, amount = 1 }
+local SEE = { at = { 0, 0, 0 }, radius = 0.85, margin = 0.6, above = 0.35, near = 2.5, amount = 1 }
+-- The see-through cut (the owner, 2026-11-23: "the circle cutout comes on too aggressively. It should only be present when the camera is
+-- really blocked by some item"): lines from the eye to three points on the postmaster (or the van) are walked through the scenery that
+-- can hide someone (lib/occluders.lua: tree crowns, forest, roofs, the porch; never grass, ferns, bushes, people or the van). Only when
+-- two of three are hidden, or the eye itself is inside a crown or a roof, is a small hole (about the postmaster's size on the screen)
+-- cut, and only through what lies between: it fades in over CUT.up seconds, and, once the line is clear, holds for CUT.hold seconds
+-- (a trunk's edge crossing the line does not flicker it) before fading out over CUT.down.
+camera.CUT = { up = 0.2, down = 0.3, hold = 0.25 }
+cam.cut, cam.cut_hold, cam.hidden = 0, 99, false
+local function cut_amount(dt, s)
+  local hidden = false
+  if s then
+    local e = cam.eye
+    hidden = occluders.hides(e[1], e[2], e[3], s[1], s.base, s[3], s.heights) or occluders.inside(e[1], e[2], e[3])
+  end
+  cam.hidden = hidden
+  local K = camera.CUT
+  if hidden then cam.cut_hold = 0 else cam.cut_hold = (cam.cut_hold or 99) + dt end
+  local want = (hidden or cam.cut_hold < K.hold) and 1 or 0
+  if want > cam.cut then cam.cut = math.min(want, cam.cut + dt / K.up) else cam.cut = math.max(want, cam.cut - dt / K.down) end
+  return cam.cut
+end
 function camera.apply(dt)
   -- (a view pinned by the gallery's routes, for the face sheets and film strips; the game never pins one)
   if camera.pinned then nova.see_through(); return nova.camera(table.unpack(camera.pinned)) end
@@ -282,9 +308,10 @@ function camera.apply(dt)
   cam.fov = fov
   nova.camera(ex, ey, ez, tx, ty, tz, fov)
   local s = cam.see
-  if s then
+  local cut = cut_amount(dt or 0, s)
+  if s and cut > 0.01 then
     SEE.at[1], SEE.at[2], SEE.at[3] = s[1], s[2], s[3]
-    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or 2.5, t
+    SEE.radius, SEE.margin, SEE.near, SEE.amount = s.radius, s.margin, s.near or 2.5, t * cut
     nova.see_through(SEE)
   else
     nova.see_through()
