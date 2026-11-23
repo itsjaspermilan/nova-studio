@@ -11,6 +11,9 @@ export const FACES: Face[] = ["east", "west", "up", "down", "south", "north"];
 /// What an element is. Every shape but `mesh` fills its box (`from`, `size`); a `mesh` is free points and faces.
 export type Shape = "box" | "wedge" | "pyramid" | "cylinder" | "cone" | "sphere" | "mesh";
 export const SHAPES: Shape[] = ["box", "wedge", "pyramid", "cylinder", "cone", "sphere", "mesh"];
+/// The painted surfaces the game draws (crates/nova-runtime/src/model.rs PAINT_KINDS, in the same order).
+export const PAINT_KINDS = ["foliage", "canopy", "ground", "water"] as const;
+export type PaintKind = (typeof PAINT_KINDS)[number];
 export const MIN_SEGMENTS = 3;
 export const MAX_SEGMENTS = 64;
 export const DEFAULT_SEGMENTS = 16;
@@ -55,6 +58,10 @@ export interface Cube {
   /// colour that mirrors the sky and the land (faintly straight on, brightly at a slant) with the sun's sharp glint. Written to the .glb as
   /// `KHR_materials_transmission` (the game draws it when nova.json says `"materials": true`).
   glass?: number;
+  /// How the game paints the surface (docs/project-format.md, "Painted surfaces"): "foliage" (a tree's crown: leaf clumps, leaf strokes,
+  /// a darker core and a lit rim), "canopy" (the same for a long mass of trees along the model's x), "ground" or "water". Written to the
+  /// .glb as the material's `extras.nova.paint`; the plain look draws it, with no picture.
+  paint?: PaintKind;
   /// Mesh only: sharp edges for a Subdivision modifier, `[point a, point b, weight]` with weight 0 (smooth) to 1 (sharp at every level).
   creases?: [number, number, number][];
   /// Mesh only: UV seams, `[point a, point b]`. The unwrap cuts along them, so the faces on either side become separate islands in the picture.
@@ -409,6 +416,7 @@ export function parseModel(text: string): Parsed {
       if (c.smooth !== undefined && typeof c.smooth !== "boolean") return `${cat}.smooth must be true or false`;
       if (c.emissive !== undefined && !(typeof c.emissive === "number" && c.emissive >= 0 && c.emissive <= 1)) return `${cat}.emissive must be a number from 0 to 1`;
       for (const k of ["metallic", "roughness", "coat", "glass"] as const) if (c[k] !== undefined && !(typeof c[k] === "number" && c[k]! >= 0 && c[k]! <= 1)) return `${cat}.${k} must be a number from 0 to 1`;
+      if (c.paint !== undefined && !PAINT_KINDS.includes(c.paint)) return `${cat}.paint must be one of ${PAINT_KINDS.join(", ")}`;
       if (c.rotation !== undefined && !isVec3(c.rotation)) return `${cat}.rotation must be three numbers`;
       if (c.texture !== undefined) {
         const t = c.texture;
@@ -584,6 +592,7 @@ export function serializeModel(source: ModelDoc): string {
     if (roughnessOf(c) < 1) parts.push(`"roughness": ${roughnessOf(c)}`);
     if (coatOf(c) > 0) parts.push(`"coat": ${coatOf(c)}`);
     if (glassOf(c) > 0) parts.push(`"glass": ${glassOf(c)}`);
+    if (c.paint) parts.push(`"paint": "${c.paint}"`);
     parts.push(`"color": "${c.color}"`);
     if (c.faces && Object.keys(c.faces).length) parts.push(`"faces": ${JSON.stringify(c.faces)}`);
     if (c.texture) parts.push(`"texture": { "at": ${vec2(c.texture.at)}${c.texture.scale !== undefined && c.texture.scale !== 1 ? `, "scale": ${c.texture.scale}` : ""}${c.texture.mirror ? `, "mirror": ${c.texture.mirror}` : ""}${c.texture.faces && Object.keys(c.texture.faces).length ? `, "faces": ${JSON.stringify(c.texture.faces)}` : ""}${c.texture.islands?.length ? `, "islands": ${JSON.stringify(c.texture.islands)}` : ""} }`);

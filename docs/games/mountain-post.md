@@ -798,3 +798,59 @@ Given as "more feedback for later": not started yet; to pick up after the sixth-
 3. "Subtle feedback when shifting gears correctly/incorrectly."
 4. "Little faces next to the residents' names."
 5. "Character carrying the parcel. The parcel should move with the player's arms."
+### What the sixth play changed: grass, trees and the creek (note 5, and the creek's rough spot)
+
+"Can we add a subtle texture to the grass? I liked how BoTW did it. Shouldn't be too expensive right? Same feedback for the trees,
+they just look like blobs now." An original painted look in that spirit (no assets of that game's), kept a soft toy diorama:
+rounded, chunky, flat-ish painted colour, textured but not realistic. Nova now has **painted surfaces** (docs/project-format.md,
+"Painted surfaces"): a surface says it is ground, foliage, canopy or water, and the plain look's shader paints it from one small
+repeating picture of noise the engine makes (`gfx/paint.rs`), read a few times a pixel; its mip levels calm a pattern where it would
+be finer than a pixel.
+
+- **The grass** (`entities/valley_ground.lua`, `paint = "ground"`): big soft patches of warmer and cooler green (about 20 m and 7 m),
+  and near the camera painterly dabs of lighter and darker green about a metre long with finer blade streaks, laid one way here and
+  another there; they fade to the calm colour by about 20 m from the walking camera, and nothing shimmers on the 1280 x 720 picture.
+  Slopes facing the sun are a little warmer and lighter, those turned away a little cooler; hollows are darker and rises lighter
+  (`lib/world.lua` `ground_color`, shared by the ground and the banks). No grass tufts were added (the groundcover already plants
+  grass near the roads; a tuft layer was not needed for the look and would cost draws).
+- **The trees** (`tools/nature.mjs`, regenerated): broadleaf crowns are a few leaf clumps, each a ball with bulges of its own; pine
+  and larch tiers have uneven, ragged rims whose tips droop by different amounts; every leafy shape is painted as foliage (leaf
+  clumps bend the light, leaf dabs of about 18 cm, a darker core where the crown faces in or down, a sunlit rim, the sun wrapping
+  softly round it; the pattern is fixed to the tree, so it sways with it). The far versions (`pine_far`, `larch_far`) are two ragged
+  tiers painted the same, so the switch at 110 m does not change the look. The forest masses are clumps too, painted as canopy, the
+  pine-green ones drawn up into soft spires so the scalloped edge reads as conifer tops. No crown reaches further than before (the
+  signs' sight lines are measured from them). The same recipe is in Nova: `prop3d_make` with `style: "painted"` (tree, pine, bush),
+  and `ground3d_make` with `painted: true`; both opt-in, so Pine Ridge Rally and every example are unchanged (`scripts/rally/verify.sh`:
+  563 files identical).
+- **The creek** (`entities/water.lua`, `paint = "water"`): ripples stretched along the flow move downstream, the sun glints on them and
+  the sky shows at a slant; the shallows are lighter, foam lines run along both waterlines and round the bridge's trestle posts. The
+  waterline was a row of steps: the valley's 4 m squares were lowered round the water, and the heightmap's 2 m cells cut the channel's
+  sides into a saw. Now a strip of finer ground lies along both banks (0.5 m across round the waterline, painted as ground, darker
+  where wet), on the heightmap smoothed along the stream, and the 4 m squares are left out under it: the waterline wanders by under
+  0.18 m from one row to the next (0.37 m on the plain heightmap; a test checks it).
+
+Triangles per model, before and after: pine 318 / 408, pine2 408 / 528, pine3 318 / 408, pine_far 100 / 180, larch and larch_small
+368 / 488, larch_far 100 / 180, birch 516 / 694, bush and bush2 360 / 400, forest_long 294 / 528, forest_tall and forest_round 252 / 448.
+Per frame (shadow passes included, `nova.perf().triangles` in `tools/routes/nature-bench.json`): the driving view on Post Road
+261,000 before and 332,000 after, the walking view in the meadow 202,000 and 253,000, the far valley 186,000 and 226,000. Of the
+increase about half is the trees and masses and half the creek's banks and finer water (the banks are one mesh, never culled).
+
+**Cost.** On the Retroid (`scripts/handheld-bench.sh`, the camera-turn route, 2,000 frames each, the same engine with the old and the
+new game): the GPU's mean time a frame went from 6.99 ms to 7.36 ms (+0.37 ms, each mean of 33 one-second readings with a spread of
+about 0.5 ms; measured with the banks a row every 1.5 m, before they were thinned to every 3 m, so the final build is a little
+cheaper), Lua unchanged (5.3 and 5.1 ms); both at a steady 60 fps. (The GPU readings at a capped 60 fps depend on the clock the
+driver picks, so they are higher than the 5.3 ms measured before; the difference between the two runs is what counts.) Entering the
+valley takes about 180 ms longer on the device (the banks are made in Lua at the first frame). On a desktop (Apple M4, the world drawn
+at 2160 lines so that the pixels' work dominates; `tools/routes/nature-bench.json`, the best of three runs): the render time a
+frame went from 11.9 to 13.5 ms walking, 12.1 to 13.6 driving, 12.0 to 13.1 on the hillside, 10.7 to 11.8 over the far valley and
+12.1 to 13.8 at the creek: about 1.1 to 1.7 ms at nine times the device's pixels, so 0.12 to 0.19 ms at 1280 x 720 on that GPU.
+(Desktop runs vary by about a millisecond between runs while other work runs on the machine; Metal there gives no GPU timer.)
+
+**Pictures** (1280 x 720, the same views before and after, `build/gallery/`, not committed): `nature-before-after-1.png` and `-2.png`
+(each row before on the left, after on the right: the meadow from the walking and the driving camera, the hillside, the far valley,
+a birch and a pine close up, trees at 20 and 50 m, the forest masses, the creek at the bridge and upstream), each also as
+`nature-<view>-before.png` and `-after.png`; `nature-models-after.png` (the trees and masses one by one) and `prop3d-painted.png`
+(prop3d_make's low and painted tree, pine and bush). The route is `tools/routes/nature.json`.
+
+**Not checked:** how it looks and feels on the Retroid's screen in motion (strokes crawling or not as the camera turns, the water's
+speed); the owner should look at the grass from the walking camera and at the creek from the bridge.

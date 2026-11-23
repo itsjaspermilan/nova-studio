@@ -166,15 +166,16 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
   const tex: Texel | undefined = image ? { w: image.w, rows: image.h, whiteU: 0.5 / image.w, whiteV: (image.h - 0.5) / image.h } : undefined;
 
   // Material 0 is the plain one; a glowing shape's material adds an emissive factor (see `glowOf`).
-  const mats: { glow: number; metal: number; rough: number; coat: number; glass: number }[] = [];
+  const mats: { glow: number; metal: number; rough: number; coat: number; glass: number; paint?: string }[] = [];
   const materialFor = (c: Cube) => {
     const painted = !!surfaceImage && !!c.texture && hasVolume(c);
     const glow = glowOf(c), metal = painted ? 1 : metallicOf(c), rough = painted ? 1 : roughnessOf(c);
     const coat = coatOf(c); // (car paint: a glossy lacquer over the colour)
     const glass = glassOf(c); // (a pane: the game draws it as tinted, mirroring glass)
-    if (glow === 0 && metal === 0 && rough === 1 && coat === 0 && glass === 0) return 0;
-    let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough && m.coat === coat && m.glass === glass);
-    if (at < 0) at = mats.push({ glow, metal, rough, coat, glass }) - 1;
+    const paint = c.paint; // (a painted surface: the game's own look for leaves, ground or water, `extras.nova.paint`)
+    if (glow === 0 && metal === 0 && rough === 1 && coat === 0 && glass === 0 && !paint) return 0;
+    let at = mats.findIndex((m) => m.glow === glow && m.metal === metal && m.rough === rough && m.coat === coat && m.glass === glass && m.paint === paint);
+    if (at < 0) at = mats.push({ glow, metal, rough, coat, glass, ...(paint ? { paint } : {}) }) - 1;
     return at + 1;
   };
   let drawn = 0;
@@ -374,7 +375,7 @@ export function exportGlb(source: ModelDoc, texture?: Raster, surface?: Raster, 
     ...(skins.length ? { skins } : {}),
     materials: [
       { name: tex ? "texture" : "vertex colours", pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: 0, roughnessFactor: 1 }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}) },
-      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : "", m.coat ? `coat ${m.coat}` : "", m.glass ? `glass ${m.glass}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}), ...(m.coat || m.glass ? { extensions: { ...(m.coat ? { KHR_materials_clearcoat: { clearcoatFactor: m.coat, clearcoatRoughnessFactor: 0.05 } } : {}), ...(m.glass ? { KHR_materials_transmission: { transmissionFactor: m.glass } } : {}) } } : {}) })),
+      ...mats.map((m) => ({ name: [m.glow ? `glow ${m.glow}` : "", m.metal ? `metal ${m.metal}` : "", m.rough < 1 ? `rough ${m.rough}` : "", m.coat ? `coat ${m.coat}` : "", m.glass ? `glass ${m.glass}` : "", m.paint ? `paint ${m.paint}` : ""].filter(Boolean).join(" "), pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], ...(tex ? { baseColorTexture: { index: 0 } } : {}), ...(surfaceImage ? { metallicRoughnessTexture: { index: 1 } } : {}), metallicFactor: m.metal, roughnessFactor: m.rough }, ...(normalImage ? { normalTexture: { index: surfaceImage ? 2 : 1 } } : {}), ...(m.glow ? { emissiveFactor: [m.glow, m.glow, m.glow] } : {}), ...(m.paint ? { extras: { nova: { paint: m.paint } } } : {}), ...(m.coat || m.glass ? { extensions: { ...(m.coat ? { KHR_materials_clearcoat: { clearcoatFactor: m.coat, clearcoatRoughnessFactor: 0.05 } } : {}), ...(m.glass ? { KHR_materials_transmission: { transmissionFactor: m.glass } } : {}) } } : {}) })),
     ],
     ...(tex && image
       ? {

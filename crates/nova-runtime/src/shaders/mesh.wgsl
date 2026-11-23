@@ -201,7 +201,202 @@ struct VertexOut {
     @location(6) @interpolate(flat) dirt: f32,
     // xyz: the vertex in its piece's own space (dirt's blotches are fixed to it); w: metres above the model's base (its own origin)
     @location(7) local: vec4<f32>,
+    // how the surface is painted (`paint_of`): 0 plain, 1 a tree's crown, 2 a mass of canopy, 3 ground, 4 running water
+    @location(8) @interpolate(flat) paint: f32,
 };
+
+// ---- painted surfaces (docs/project-format.md, "Painted surfaces") ----
+// A vertex says how its surface is painted in its `emissive` slot: the glow (0 to 1) plus 1000 times the kind (model.rs PAINT_STEP;
+// a model's material says `extras.nova.paint`, a run-time mesh `nova.mesh.make { paint = ... }`). The kind changes the colour and
+// the light of the plain look only: a tree's crown gets clumps, leaf strokes, a darker core and a lit rim; the ground soft patches of
+// warmer and cooler green and brush strokes near the camera; water moving ripples, glints and foam. The patterns come from one small
+// repeating picture of noise (gfx/paint.rs: four noises, 16 cells across, with mip levels) read a few times a pixel at different
+// scales and slants, where the pixel is: in its own model's space for a crown (so the pattern sways with the tree), in the world for
+// the ground and water. Its mip levels average a pattern away where it would be finer than a pixel, so nothing shimmers.
+const PAINT_STEP: f32 = 1000.0;
+@group(0) @binding(2) var paint_noise: texture_2d<f32>;
+@group(0) @binding(3) var paint_sampler: sampler;
+
+fn paint_of(emissive: f32) -> f32 {
+    if (emissive < PAINT_STEP * 0.5) { return 0.0; }
+    return floor((emissive + 0.5) / PAINT_STEP);
+}
+
+fn glow_of(emissive: f32) -> f32 {
+    return emissive - paint_of(emissive) * PAINT_STEP;
+}
+
+// The noise picture through a linear map `m` (so `f` cells a metre along an axis is that axis times f / 16) plus `off`, with the
+// point's own rate of change across the pixel (`gx`, `gy`: its derivatives, worked out before anything branched) for the mip level.
+fn paint_read(p: vec2<f32>, gx: vec2<f32>, gy: vec2<f32>, m: mat2x2<f32>, off: vec2<f32>) -> vec4<f32> {
+    return textureSampleGrad(paint_noise, paint_sampler, m * p + off, m * gx, m * gy);
+}
+
+// A map that reads `p` along `a` at `fa` cells a metre and along `b` at `fb` (a and b unit and square to each other).
+fn paint_axes(a: vec2<f32>, b: vec2<f32>, fa: f32, fb: f32) -> mat2x2<f32> {
+    let ka = fa / 16.0;
+    let kb = fb / 16.0;
+    return mat2x2<f32>(vec2<f32>(a.x * ka, b.x * kb), vec2<f32>(a.y * ka, b.y * kb));
+}
+
+// What a painted surface changes before it is lit: its colour and the normal the light sees, and how much the sun wraps round it
+// (0: the plain look's light; more: softer, as felt or a mass of leaves takes it).
+struct Painted {
+    rgb: vec3<f32>,
+    normal: vec3<f32>,
+    wrap: f32,
+    // light added on the side towards the sun at a slant (a crown's lit rim), times the sun's colour
+    rim: f32,
+    // added after the light: a glint or the sky in water, foam's own brightness
+    extra: vec3<f32>,
+};
+
+// The ground: big soft patches (about 20 m and 7 m) of warmer and cooler green; dabs of lighter and of darker green (about 1.1 m
+// long and 0.25 m wide) with soft but definite edges and finer blade streaks (about 0.45 by 0.1 m), laid along one of two directions,
+// the two mixed by the big patches so the strokes lie one way here and another there. A dab's edge is never sharper than about two
+// pixels (`edge`), and the strokes fade out where a dab would be under a few pixels wide (`footprint`, metres a pixel spans): the calm
+// colour far off. Slopes that face the sun more than level ground are a little warmer and lighter, those turned away a little cooler.
+fn paint_ground(rgb: vec3<f32>, world: vec3<f32>, n: vec3<f32>, gx: vec2<f32>, gy: vec2<f32>, footprint: f32) -> Painted {
+    var o: Painted;
+    let p = world.xz;
+    let x = vec2<f32>(1.0, 0.0);
+    let z = vec2<f32>(0.0, 1.0);
+    let wide = paint_read(p, gx, gy, paint_axes(x, z, 0.045, 0.045), vec2<f32>(0.19, 0.48));
+    let big = wide.r;
+    let mid = paint_read(p, gx, gy, paint_axes(x, z, 0.14, 0.14), vec2<f32>(0.69, 0.31)).g;
+    let patches = big * 0.62 + mid * 0.38;
+    let warm = vec3<f32>(1.08, 1.03, 0.80);
+    let cool = vec3<f32>(0.88, 0.98, 1.08);
+    var c = rgb * mix(cool, warm, smoothstep(0.22, 0.78, patches)) * (0.9 + 0.2 * mid);
+    let near = 1.0 - smoothstep(0.03, 0.08, footprint);
+    if (near > 0.0) {
+        let a1 = vec2<f32>(0.8, 0.6);
+        let b1 = vec2<f32>(-0.6, 0.8);
+        let a2 = vec2<f32>(0.28, -0.96);
+        let b2 = vec2<f32>(0.96, 0.28);
+        let w = smoothstep(0.35, 0.65, big);
+        let edge = max(0.05, footprint * 8.0);
+        // (lighter dabs in the blue channel, darker ones in the alpha: two noises from one read)
+        let s1 = paint_read(p, gx, gy, paint_axes(a1, b1, 0.9, 4.0), vec2<f32>(0.0, 0.0));
+        let s2 = paint_read(p, gx, gy, paint_axes(a2, b2, 0.9, 4.0), vec2<f32>(0.43, 0.0));
+        let lit = mix(s1.b, s2.b, w);
+        let dim = mix(s1.a, s2.a, w);
+        let dabs = smoothstep(0.6 - edge, 0.6 + edge, lit) * 0.13 - smoothstep(0.62 - edge, 0.62 + edge, dim) * 0.12;
+        let fine = 1.0 - smoothstep(0.012, 0.03, footprint);
+        var blades = 0.0;
+        if (fine > 0.0) {
+            let f1 = paint_read(p, gx, gy, paint_axes(a1, b1, 2.2, 10.0), vec2<f32>(0.2, 0.7)).r;
+            let f2 = paint_read(p, gx, gy, paint_axes(a2, b2, 2.2, 10.0), vec2<f32>(0.6, 0.1)).r;
+            blades = (smoothstep(0.5 - edge * 2.0, 0.5 + edge * 2.0, mix(f1, f2, w)) - 0.5) * 0.09 * fine;
+        }
+        let stroke = dabs * near + blades;
+        c = c * (1.0 + stroke) + vec3<f32>(0.010, 0.014, -0.004) * stroke * 4.0;
+    }
+    // the sun's side of a slope: warmer and a little lighter; the far side: cooler
+    let to_sun = safe_normalize(-globals.light_dir.xyz);
+    let lean = dot(n, to_sun) - to_sun.y;
+    c = c * mix(vec3<f32>(1.0), select(vec3<f32>(0.94, 0.97, 1.04), vec3<f32>(1.10, 1.06, 0.90), lean > 0.0), min(abs(lean) * 2.2, 1.0));
+    o.rgb = c;
+    o.normal = n;
+    o.wrap = 0.0;
+    o.rim = 0.0;
+    o.extra = vec3<f32>(0.0);
+    return o;
+}
+
+// A tree's crown (kind 1, round about its trunk) or a mass of canopy (kind 2, long along its model's x): `local` is the point in the
+// model's own space (the pattern is fixed to the tree, so it does not swim as the tree sways; `lx`, `ly` its derivatives). The
+// picture is two-dimensional, so a crown reads it on two slanted planes through its space and averages them: a pattern that changes
+// whichever way the surface faces. Leaf clumps (about 0.7 m) bend the normal the light sees; leaf dabs (about 18 cm) break the
+// colour; what faces in towards the trunk or down is darker (the crown's core), what faces out is lighter; the sun wraps softly round
+// it and lights its rim.
+fn paint_foliage(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, n: vec3<f32>, kind: f32) -> Painted {
+    var o: Painted;
+    // the way out of the crown here: away from the trunk's axis (a crown) or from the mass's long middle line (canopy)
+    var out_dir = vec3<f32>(local.x, 0.0, local.z);
+    if (kind > 1.5) {
+        out_dir = vec3<f32>(0.0, 0.0, local.z);
+    }
+    let outward = dot(n.xz, safe_normalize(out_dir).xz) * min(length(out_dir) * 1.5, 1.0);
+    // the two planes: x and z, each slanted by y
+    let pa = local.xz + local.y * vec2<f32>(0.37, -0.61);
+    let pax = lx.xz + lx.y * vec2<f32>(0.37, -0.61);
+    let pay = ly.xz + ly.y * vec2<f32>(0.37, -0.61);
+    let pb = local.zy + local.x * vec2<f32>(0.53, 0.29);
+    let pbx = lx.zy + lx.x * vec2<f32>(0.53, 0.29);
+    let pby = ly.zy + ly.x * vec2<f32>(0.53, 0.29);
+    let i2 = mat2x2<f32>(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0));
+    // clumps: three noises a direction, from both planes
+    let c1 = paint_read(pa, pax, pay, i2 * (1.35 / 16.0), vec2<f32>(0.11, 0.57));
+    let c2 = paint_read(pb, pbx, pby, i2 * (1.35 / 16.0), vec2<f32>(0.73, 0.29));
+    let bend = (c1.rgb + c2.gbr) - vec3<f32>(1.0);
+    let bn = safe_normalize(n + bend * 0.9);
+    // the core: in-facing and under sides darker, out-facing tops lighter
+    let core = smoothstep(-0.7, 0.8, outward * 0.75 + n.y * 0.55 + 0.15);
+    var c = rgb * mix(0.62, 1.08, core);
+    // leaf dabs: lighter and darker leaf with soft but definite edges (never sharper than about two pixels, `edge`), averaged away by
+    // the mip levels where a dab is under a pixel
+    let d1 = paint_read(pa, pax, pay, i2 * (5.5 / 16.0), vec2<f32>(0.37, 0.05));
+    let d2 = paint_read(pb, pbx, pby, i2 * (5.5 / 16.0), vec2<f32>(0.91, 0.62));
+    let edge = clamp((length(lx) + length(ly)) * 5.5 * 1.2, 0.05, 0.5);
+    let lit = (d1.a + d2.a) * 0.5;
+    let dim = (d1.b + d2.r) * 0.5;
+    c = c * (1.0 + smoothstep(0.56 - edge, 0.56 + edge, lit) * 0.2 - smoothstep(0.58 - edge, 0.58 + edge, dim) * 0.17);
+    // a slow mottle of warmer and cooler greens across the crown
+    let mottle = c1.a;
+    c = c * (0.92 + 0.16 * mottle) * mix(vec3<f32>(0.97, 1.0, 1.04), vec3<f32>(1.04, 1.02, 0.92), mottle);
+    o.rgb = c;
+    o.normal = bn;
+    o.wrap = 0.45;
+    o.rim = 0.32 * core;
+    o.extra = vec3<f32>(0.0);
+    return o;
+}
+
+// Running water: `flow` is the point's (metres across, metres downstream) from the mesh's UVs (`fx`, `fy` its derivatives);
+// `depth_in` (0 to 1) its colour's alpha, how deep it is there. Ripples stretched along the flow move downstream; the sky shows in
+// them at a slant, the sun glints on them; the shallows are lighter and foam gathers along the waterline (a mesh makes a place shallow
+// to put foam there: round a post).
+fn paint_water(rgb: vec3<f32>, world: vec3<f32>, flow: vec2<f32>, fx: vec2<f32>, fy: vec2<f32>, depth_in: f32, footprint: f32) -> Painted {
+    var o: Painted;
+    let t = globals.wind.w;
+    let calm = 1.0 - smoothstep(0.05, 0.25, footprint);
+    let x = vec2<f32>(1.0, 0.0);
+    let z = vec2<f32>(0.0, 1.0);
+    // (the time moves the reading downstream: `off` carries it, so the derivatives stay the flow's own)
+    let w1 = paint_read(flow, fx, fy, paint_axes(x, z, 1.3, 0.42), vec2<f32>(0.0, -t * 0.55 * 0.42 / 16.0));
+    let w2 = paint_read(flow, fx, fy, paint_axes(x, z, 2.6, 0.9), vec2<f32>(0.25, -t * 0.95 * 0.9 / 16.0));
+    let r1 = w1.r;
+    let r2 = w2.a;
+    let wave = r1 * 0.6 + r2 * 0.4;
+    // the ripples' slope: the other two noises of the first read, the across one stronger (ripples lie across the flow)
+    let n = safe_normalize(vec3<f32>((w1.g - 0.5) * 0.9 * calm, 1.0, (w1.b - 0.5) * 0.5 * calm));
+    var c = rgb * (0.96 + 0.22 * (wave - 0.5) * calm);
+    // how deep it is here (the mesh's alpha: 0 is 0.2 m above the bed, 1 is 0.6 m deep or more): lighter and a little warmer where
+    // the bed comes up, and a line of foam where it meets the bank, broken by the ripples
+    let depth = depth_in * 0.8 - 0.2;
+    let shallow = 1.0 - smoothstep(0.0, 0.32, depth);
+    c = mix(c * 0.9, c * vec3<f32>(1.2, 1.18, 1.02) + vec3<f32>(0.03, 0.03, 0.0), shallow * 0.6);
+    let shore = 1.0 - smoothstep(0.015, 0.1, depth);
+    let foam = smoothstep(0.38, 0.72, shore * 0.9 + (r2 - 0.5) * 0.8 * calm + (r1 - 0.5) * 0.35);
+    let v = safe_normalize(globals.eye.xyz - world);
+    let fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+    var sky = globals.ambient.rgb * 1.4;
+    if (globals.sky_top.w > 0.5) {
+        sky = mix(globals.sky_horizon.rgb, globals.sky_top.rgb, 0.35);
+    }
+    let to_sun = safe_normalize(-globals.light_dir.xyz);
+    let h = safe_normalize(v + to_sun);
+    let glint = pow(max(dot(n, h), 0.0), 120.0) * 0.9 * calm;
+    let streak = smoothstep(0.6, 0.85, wave) * 0.25 * calm;
+    o.extra = sky * (fres * 0.3 + streak * 0.45) + globals.light_color.rgb * glint;
+    o.rgb = mix(c, vec3<f32>(0.84, 0.88, 0.86), foam * 0.8);
+    o.extra = o.extra * (1.0 - foam);
+    o.normal = vec3<f32>(0.0, 1.0, 0.0);
+    o.wrap = 0.0;
+    o.rim = 0.0;
+    return o;
+}
 
 // The dirt an instance carries in the w slot of its matrix's fourth column (1 in a clean one; negated when the draw is never cut by
 // `nova.see_through`): 2 + a whole number of 23 bits, which
@@ -282,7 +477,8 @@ fn mesh_vertex(v: Vertex, inst: Instance) -> VertexOut {
     out.normal = normal;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
-    out.emissive = v.emissive;
+    out.emissive = glow_of(v.emissive);
+    out.paint = paint_of(v.emissive);
     return out;
 }
 
@@ -443,7 +639,23 @@ fn fs_detail(in: VertexOut) -> @location(0) vec4<f32> {
 
 // The plain look's light on a surface of colour `base` (the picture times the vertex colour and the tint): fs_main's work, shared
 // with fs_detail.
-fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
+fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
+    // (how the point moves across the pixel, worked out before anything branches: a painted surface reads its noise's mip level by it
+    // and fades its finest strokes by how many metres a pixel spans)
+    let wx = dpdx(in.world);
+    let wy = dpdy(in.world);
+    let lx = dpdx(in.local.xyz);
+    let ly = dpdy(in.local.xyz);
+    let ux = dpdx(in.uv);
+    let uy = dpdy(in.uv);
+    var base = base_in;
+    let paint = in.paint;
+    // (water's alpha is how deep it is there, not its cover)
+    var deep = 1.0;
+    if (paint > 3.5) {
+        deep = base.a;
+        base.a = 1.0;
+    }
     // cut-out textures (leaves, glass, plants): see-through texels are not drawn at all
     if (base.a < 0.3) {
         discard;
@@ -459,18 +671,46 @@ fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
         }
         return vec4<f32>(vrgb, base.a);
     }
-    let n = safe_normalize(in.normal);
+    let geo = safe_normalize(in.normal);
+    var n = geo;
     var surface = base.rgb;
     var glow = in.emissive;
+    var wrap = 0.0;
+    var rim = 0.0;
+    var extra = vec3<f32>(0.0);
+    if (paint > 0.5) {
+        var p: Painted;
+        if (paint < 2.5) {
+            p = paint_foliage(surface, in.local.xyz, lx, ly, geo, paint);
+        } else if (paint < 3.5) {
+            let gx = wx.xz;
+            let gy = wy.xz;
+            p = paint_ground(surface, in.world, geo, gx, gy, max(max(abs(gx.x) + abs(gy.x), abs(gx.y) + abs(gy.y)), 1e-5));
+        } else {
+            p = paint_water(surface, in.world, in.uv, ux, uy, deep, max(abs(ux.x) + abs(uy.x), abs(ux.y) + abs(uy.y)));
+        }
+        surface = p.rgb;
+        n = p.normal;
+        wrap = p.wrap;
+        rim = p.rim;
+        extra = p.extra;
+    }
     if (abs(in.dirt) > 1.5) {
         let dirt = dirt_of(abs(in.dirt));
         let cover = dirt_cover(in.local, n, dirt.w, smoothstep(10.0, 25.0, distance(in.world, globals.eye.xyz)));
         surface = mix(surface, dirt.rgb, cover);
         glow = glow * (1.0 - 0.7 * cover);
     }
-    // the sun's share is dimmed in a shadow, down to `1 - strength` of it
-    let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, n));
-    var diffuse = max(dot(n, -globals.light_dir.xyz), 0.0) * visible;
+    // the sun's share is dimmed in a shadow, down to `1 - strength` of it (the shadow is looked up on the true surface)
+    let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(in.world, geo));
+    var diffuse = max((dot(n, -globals.light_dir.xyz) + wrap) / (1.0 + wrap), 0.0) * visible;
+    if (rim > 0.0) {
+        // the side towards the sun seen at a slant: a lit rim (light through the outer leaves)
+        let v = safe_normalize(globals.eye.xyz - in.world);
+        let edge = pow(1.0 - max(dot(geo, v), 0.0), 3.0);
+        let sunward = smoothstep(-0.2, 0.6, dot(geo, -globals.light_dir.xyz));
+        extra = extra + surface * globals.light_color.rgb * (rim * edge * sunward * visible);
+    }
     // a toon look cuts the sun's light into flat bands (soft only at the pixel's width, so the edges stay clean)
     if (globals.voxel.y >= 1.5) {
         let x = diffuse * globals.voxel.y;
@@ -495,7 +735,7 @@ fn plain_light(in: VertexOut, base: vec4<f32>) -> vec4<f32> {
         light = light + globals.point_color[i].rgb * (falloff * falloff * lambert * cone);
     }
     // a glowing surface shows its colour at full brightness however dark the scene is
-    var rgb = surface * (light + vec3<f32>(glow));
+    var rgb = surface * (light + vec3<f32>(glow)) + extra;
     if (globals.fog_color.w > 0.5) {
         let d = distance(in.world, globals.eye.xyz);
         let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
@@ -579,7 +819,8 @@ fn skinned_vertex(v: SkinVertex, inst: Instance) -> VertexOut {
     out.dissolve = inst.m1.w;
     out.color = v.color * vec4<f32>(srgb_to_linear(inst.tint.rgb), inst.tint.a);
     out.uv = v.uv;
-    out.emissive = v.emissive;
+    out.emissive = glow_of(v.emissive);
+    out.paint = paint_of(v.emissive);
     return out;
 }
 

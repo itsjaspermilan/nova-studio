@@ -100,6 +100,19 @@ pub(super) fn build(spec: &Table) -> mlua::Result<(Vec<MeshVertex>, Vec<u32>)> {
         4
     };
     check("colors", &colors, per_color)?;
+    // `paint = "ground"`: how the surface is painted (model.rs PAINT_KINDS), carried in every point's `emissive`
+    let paint = match spec.get::<Option<String>>("paint")? {
+        None => 0.0,
+        Some(name) => {
+            crate::model::paint_kind(&name).ok_or_else(|| {
+                lua_err(format!(
+                    "nova.mesh.make: paint = '{name}' is not one of {}",
+                    crate::model::PAINT_KINDS.join(", ")
+                ))
+            })? as f32
+                * crate::model::PAINT_STEP
+        }
+    };
     check("uvs", &uvs, 2)?;
     check("normals", &normals, 3)?;
     let mut vertices: Vec<MeshVertex> = (0..count)
@@ -135,7 +148,7 @@ pub(super) fn build(spec: &Table) -> mlua::Result<(Vec<MeshVertex>, Vec<u32>)> {
                     Some(u) => [u[i * 2] as f32, u[i * 2 + 1] as f32],
                     None => NO_TEXTURE_UV,
                 },
-                emissive: 0.0,
+                emissive: paint,
             }
         })
         .collect();
