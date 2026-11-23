@@ -798,7 +798,12 @@ export function makeCharacter3d(a: Args): Character3d {
 
   // ---- an animal's tail, a part of its own so the clips can swing it
   const tailM = new Mesh3(skin, { bend: false });
-  if (species === "fox") tailM.tube([[0, 0.02, 0], [0, -0.06, -0.12], [0, -0.05, -0.3], [0, 0.04, -0.46], [0, 0.12, -0.52]], [0.04, 0.085, 0.1, 0.07, 0.01], chibi ? 16 : 8, (i) => (i >= 3 ? fur2 : skin), { smooth: true });
+  // (a fox's brush sweeps up behind, 25 degrees higher than it hung before 2026-11-23, its tip curling up)
+  if (species === "fox") {
+    const up = (25 * Math.PI) / 180;
+    const lift = ([x, y, z]: V3): V3 => [x, y * Math.cos(up) - z * Math.sin(up), y * Math.sin(up) + z * Math.cos(up)];
+    tailM.tube([[0, 0.02, 0], [0, -0.06, -0.12], [0, -0.05, -0.3], [0, 0.05, -0.45], [0, 0.17, -0.5]].map((p) => lift(p as V3)), [0.04, 0.085, 0.1, 0.07, 0.01], chibi ? 16 : 8, (i) => (i >= 3 ? fur2 : skin), { smooth: true });
+  }
   else if (species === "cat") tailM.tube([[0, 0, 0], [0, -0.06, -0.15], [0, 0.06, -0.3], [0, 0.26, -0.35], [0, 0.32, -0.3]], [0.03, 0.03, 0.028, 0.025, 0.015], 6, skin, { smooth: true });
   else if (species === "badger") tailM.tube([[0, 0, 0], [0, -0.03, -0.09], [0, -0.07, -0.15]], [0.05, 0.05, 0.015], 6, skin, { smooth: true });
   else if (species === "rabbit") ellipsoid(tailM, [0, 0, -0.03], [0.07, 0.07, 0.065], fur2, 18, 10);

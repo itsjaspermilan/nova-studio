@@ -7944,3 +7944,50 @@ fn the_porch_steps_are_climbed_smoothly_and_feet_lie_on_the_hillside() {
         );
     }
 }
+
+/// "Let's angle the fox tail a little higher": the postmaster's brush sweeps up behind him, its tip well above its root and curling
+/// up, still a part of its own that the clips and the spring swing; at the wheel it is put away (so it never meets the seat), and the
+/// parcel he carries is in front of him, never near it.
+#[test]
+fn the_fox_tail_sweeps_up_behind() {
+    let m = cast_model("postmaster");
+    let t = &m["tail"];
+    let (root_y, root_z) = (t.origin[1], t.origin[2]);
+    let tip = t.points.iter().fold(
+        [0.0, f64::MIN, 0.0],
+        |a, p| if p[1] > a[1] { *p } else { a },
+    );
+    assert!(
+        tip[1] > 0.2,
+        "the tip rises {:.3} m over the root ({root_y:.3}, {root_z:.3})",
+        tip[1]
+    );
+    assert!(
+        tip[2] < -0.3,
+        "and reaches back behind him ({:.3} m)",
+        tip[2]
+    );
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let follows = lua(
+        &g,
+        "(function() for _, f in ipairs(nova.named('postmaster').walker.followers) do if f.part == 'tail' then return 'yes' end end return 'no' end)()",
+    );
+    assert_eq!(follows, "yes", "the tail still swings on its spring");
+    let pm_lua = std::fs::read_to_string(game_dir().join("entities/postmaster.lua")).unwrap();
+    assert!(
+        pm_lua.contains("parts.tail.visible = false"),
+        "at the wheel the tail is put away"
+    );
+    // the parcel is carried at the chest, in front: its middle at least 25 cm ahead of the hips, the tail all behind them
+    let ahead = num(
+        &g,
+        "(function() local p = nova.named('postmaster'); local x, _, z = p:hands(); return (x - p.x) * math.sin(p.face) + (z - p.z) * math.cos(p.face) end)()",
+    );
+    assert!(ahead > 0.25, "the parcel is held {ahead:.2} m in front");
+    let front = t.points.iter().map(|p| p[2]).fold(f64::MIN, f64::max) + root_z;
+    assert!(
+        front < 0.05,
+        "no part of the tail reaches in front of the hips ({front:.3})"
+    );
+}

@@ -960,3 +960,5 @@ The owner, on the cluster: "We don't need the button chips there either." (no X/
 - examples/starter-3d's hero is made again with the current maker (trousers, not a skirt).
 - **Weak points left**: the hat's ear holes are faceted at close range (the crown's faces are cut whole; the rolled rim hides most
   of it). The stair glide is only on the postmaster (the residents have no steps on their paths). Nothing is tried on the Retroid.
+- **The tail** ("Let's angle the fox tail a little higher"): the brush sweeps up behind, 25 degrees higher than before with its tip
+  curling up; it still swings on its spring, is put away at the wheel, and stays behind him clear of a carried parcel.
