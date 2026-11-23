@@ -989,3 +989,4 @@ Three brighter outfits were pictured in the valley at the game camera, close and
 12. "Sorry flip X and A while driving again": while driving A steps toward L, X toward P (as before the swap).
 13. "There's a weird bug where you can see the side windows extending past the van when you're looking at the back of the
     window."
+14. On the brighter cast: "Looks too much like the paddington colours haha" (no red bucket hat with blue nearby).
