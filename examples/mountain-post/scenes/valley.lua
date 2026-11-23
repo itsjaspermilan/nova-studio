@@ -14,6 +14,7 @@ local dialogue = require("lib.dialogue")
 local ambience = require("lib.ambience")
 local ui = require("lib.ui")
 local words = require("lib.words")
+local parcels = require("lib.parcels")
 
 local Valley = nova.scene {}
 
@@ -23,7 +24,10 @@ Valley.DOOR = { 1.2, 0, 0.26 }
 Valley.BACK = { 0, 0, -1.95 }
 local DOOR, BACK = Valley.DOOR, Valley.BACK
 local BACK_OPEN, BACK_SHUT = 2.1, 2.6  -- the rear doors open as the postmaster comes this near the back, and shut again past the other
-local AT_BACK = 1.35                   -- near enough to load or take
+-- near enough to load or take: once the doors are open (BACK_OPEN), all but at once (with 1.35 m the doors swung open as the
+-- postmaster came near, and the panel waited until they stood right at the bumper: "if there is only one item in the van, the
+-- menu should still pop up")
+local AT_BACK = 2.0
 local AT_DOOR = 1.0                    -- near enough to the doorway to get in
 local FADE = 0.3                       -- the porch door's fade, out and in (seconds)
 
@@ -192,6 +196,7 @@ function Valley:act(a, r)
     local i = math.max(1, math.min(#state.van_load, self.pick_i))
     local which = table.remove(state.van_load, i)
     state.carrying = which
+    parcels.show(which)
     self.pick_i = 1
     nova.sound.play("parcel_up", { volume = 0.5, vary = 0.05 })
     v:rock(0, 0.08)
@@ -285,6 +290,7 @@ function Valley:update(dt)
     if nova.input.pressed("van") and v:stopped() then self:get_out()
     elseif nova.input.pressed("map") then cards.open("map")
     elseif nova.input.pressed("pause") then cards.open("pause") end
+    parcels.update() -- (L1 and R1 go round the corner card's parcels)
   else
     p.control = true
     local a, b, r = self:actions()
@@ -296,6 +302,7 @@ function Valley:update(dt)
       if n > 1 and nova.input.pressed("prev") then self.pick_i = (self.pick_i - 2) % n + 1; nova.sound.play("tick", { volume = 0.35 }) end
     else
       self.pick_i = 1
+      parcels.update() -- (away from the van's panel, L1 and R1 go round the corner card's parcels)
     end
     if nova.input.pressed("act") and a then self:act(a, r)
     elseif nova.input.pressed("van") and b == "get_in" then self:get_in()
@@ -393,7 +400,8 @@ function Valley:draw_ui()
   local w, h = nova.view("exact")
   local p, v = self.p, self.van
   if not cards.active() then
-    ui.parcel_cards(state.carrying, state.van_load, w)
+    -- the one parcel card (faded back, without its L1 / R1, while the van's panel has them)
+    if not dialogue.active() then parcels.draw(self:picker() ~= nil) end
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h) end

@@ -592,7 +592,7 @@ pub fn export_desktop(
         .as_bytes(),
     )?;
     files.push("README.txt".into());
-    if let Some(text) = notices {
+    if let Some(text) = with_game_notices(Some(project), notices) {
         write("THIRD-PARTY.txt", text.as_bytes())?;
         files.push("THIRD-PARTY.txt".into());
     }
@@ -611,9 +611,85 @@ pub fn export_desktop(
     Ok(Exported { dir, files })
 }
 
+/// The game's own notices: every `.txt` and `.md` file in the project's `licenses/` folder (the licences of the art, sounds
+/// and fonts the game took from others, such as a Kenney pack's), in name order, each under its file name. None when the
+/// folder is missing or holds none.
+pub fn game_notices(project: &Path) -> Option<String> {
+    let dir = project.join("licenses");
+    let mut names: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .ok()?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "txt" || x == "md"))
+        .collect();
+    names.sort();
+    let mut out = String::new();
+    for path in names {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        out.push_str(&format!("---- licenses/{name}\n\n{}\n\n", text.trim_end()));
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// The notices an exported game carries: the engine's (`engine`, the licences of the software the runtime is built from)
+/// followed by the game's own (`game_notices`), under a heading. None when there are neither.
+pub fn with_game_notices(project: Option<&Path>, engine: Option<&str>) -> Option<String> {
+    let game = project.and_then(game_notices);
+    match (engine, game) {
+        (None, None) => None,
+        (Some(e), None) => Some(e.to_string()),
+        (e, Some(g)) => Some(format!(
+            "{}==== This game's own assets: the licences of what it took from others (its licenses/ folder)\n\n{g}",
+            e.map(|e| format!("{}\n\n", e.trim_end()))
+                .unwrap_or_default()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A game's own licences (its `licenses/` folder) travel with the engine's in the exported THIRD-PARTY.txt, in name
+    /// order, each under its file name; a game without the folder gets the engine's alone.
+    #[test]
+    fn the_games_own_licences_follow_the_engines_notices() {
+        let dir = std::env::temp_dir().join(format!("nova-notices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("licenses")).unwrap();
+        assert_eq!(
+            with_game_notices(Some(&dir), Some("ENGINE")).as_deref(),
+            Some("ENGINE")
+        );
+        assert_eq!(with_game_notices(Some(&dir), None), None);
+        std::fs::write(dir.join("licenses/b-pack.txt"), "CC0 pack B\n").unwrap();
+        std::fs::write(dir.join("licenses/a-font.md"), "OFL font A").unwrap();
+        std::fs::write(dir.join("licenses/notes.png"), "not a notice").unwrap();
+        let text = with_game_notices(Some(&dir), Some("ENGINE\n")).unwrap();
+        assert!(
+            text.starts_with("ENGINE\n\n==== This game's own assets"),
+            "{text}"
+        );
+        let a = text
+            .find("---- licenses/a-font.md\n\nOFL font A")
+            .expect("the font's notice");
+        let b = text
+            .find("---- licenses/b-pack.txt\n\nCC0 pack B")
+            .expect("the pack's notice");
+        assert!(a < b, "in name order");
+        assert!(!text.contains("not a notice"));
+        assert!(
+            with_game_notices(Some(&dir), None)
+                .unwrap()
+                .starts_with("==== This game's own assets")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The warning about a draw() that hides the picture looks only at the class's own spec: a `sprite = "..."` in a
     /// spawn call's props elsewhere in the file is another entity's.

@@ -229,6 +229,37 @@ describe("the instruments: FM, plucked string, organ and the presets", () => {
     const bent = await play({ wave: "fm", fmIndex: 9, fmRatio: 3.5 });
     expect(roughness(bent)).toBeGreaterThan(roughness(plain) * 1.3);
   });
+  it("a piano: struck strings that ring out, longer low than high, brighter when struck harder, sharp-stretched partials", async () => {
+    const { renderSong } = await import("./song");
+    const rate = 22050;
+    const one = (pitch: number, vel: number, patch: Record<string, unknown> = {}, steps = 32) => {
+      const s = song([{ step: 0, len: steps, pitch, vel }], steps);
+      s.bpm = 120;
+      s.tracks[0] = { ...s.tracks[0]!, wave: "piano", attack: 0.001, decay: 0.05, sustain: 1, release: 0.3, ...patch } as typeof s.tracks[0];
+      return renderSong(s, rate).channels[0]!;
+    };
+    const a = one(48, 0.8), b = one(48, 0.8);
+    expect(a).toEqual(b);
+    expect(Array.from(a).every(Number.isFinite)).toBe(true);
+    // a soft start (no click: the first millisecond is quiet), then a fall: a struck string, not an organ
+    expect(rms(a, 0, 20)).toBeLessThan(rms(a, 200, 2000) * 0.5);
+    expect(rms(a, 200, 2200)).toBeGreaterThan(rms(a, rate * 2, rate * 2 + 2000) * 1.5);
+    // a low note rings on longer than a high one (relative to their starts)
+    const low = one(40, 0.8), high = one(84, 0.8);
+    const fall = (x: Float32Array) => rms(x, rate * 1.5, rate * 1.5 + 2000) / rms(x, 300, 2300);
+    expect(fall(low)).toBeGreaterThan(fall(high) * 2);
+    // harder is brighter: more of the sound in the sample-to-sample changes (the highs), against its level
+    const edge = (x: Float32Array) => { let d = 0, s = 0; for (let i = 1; i < 6000; i++) { d += (x[i]! - x[i - 1]!) ** 2; s += x[i]! ** 2; } return Math.sqrt(d / s); };
+    expect(edge(one(60, 1))).toBeGreaterThan(edge(one(60, 0.3)) * 1.1);
+    expect(edge(one(60, 0.8, { brightness: 1 }))).toBeGreaterThan(edge(one(60, 0.8, { brightness: 0 })) * 1.2);
+    // the partials are stretched: the 7th of a high-ish note lies above 7 times the fundamental (a stiff string), found by
+    // a scan of the spectrum round it
+    const x = one(72, 1, { brightness: 1 }), f0 = 440 * 2 ** ((72 - 69) / 12);
+    const power = (f: number) => { let re = 0, im = 0; for (let i = 500; i < 8692; i++) { const ph = (2 * Math.PI * f * i) / rate; re += x[i]! * Math.cos(ph); im += x[i]! * Math.sin(ph); } return re * re + im * im; };
+    let best = 0, at = 0;
+    for (let c = -10; c <= 30; c += 1) { const f = 7 * f0 * 2 ** (c / 1200); const p = power(f); if (p > best) { best = p; at = c; } }
+    expect(at).toBeGreaterThan(1); // the 7th partial is a few cents sharp
+  });
   it("the settings are saved and checked, and a preset sets what it names", async () => {
     const { INSTRUMENT_PRESETS } = await import("./song");
     const s = song([], 8);

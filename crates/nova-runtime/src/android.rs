@@ -491,6 +491,9 @@ pub fn build_apk(build: &AndroidBuild, progress: &mut dyn FnMut(&str)) -> Result
         .as_ref()
         .and_then(|r| std::fs::read_to_string(r.join("licenses/rust-dependencies.txt")).ok())
         .unwrap_or_else(|| include_str!("../../../licenses/rust-dependencies.txt").to_string());
+    // (and the game's own: the licences in its licenses/ folder)
+    let notices = crate::export::with_game_notices(build.project.as_deref(), Some(&notices))
+        .unwrap_or(notices);
     let mut h = DefaultHasher::new();
     manifest_text.hash(&mut h);
     RESOURCES.hash(&mut h);

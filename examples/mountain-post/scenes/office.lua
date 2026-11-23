@@ -10,6 +10,7 @@ local camera = require("lib.camera")
 local cards = require("lib.cards")
 local ui = require("lib.ui")
 local words = require("lib.words")
+local parcels = require("lib.parcels")
 
 local Office = nova.scene {}
 
@@ -105,6 +106,7 @@ function Office:update(dt)
         p:face_to(it.x, it.z)
         nova.log("took " .. it.item)
         nova.sound.play("parcel_up", { volume = 0.55, vary = 0.05 })
+        parcels.show(it.item)
         cards.open("label", { which = it.item })
       elseif what == "put_back" then
         nova.log("put back " .. state.carrying)
@@ -117,6 +119,7 @@ function Office:update(dt)
     elseif nova.input.pressed("pause") then
       cards.open("pause")
     end
+    parcels.update() -- (L1 and R1 go round the corner card's parcels)
     -- out of the door: the doorway's spot
     local d = nova.named("office_exit")
     if d and p.z > d.z - 0.45 and math.abs(p.x - d.x) < 0.6 then
@@ -160,8 +163,10 @@ end
 
 function Office:draw_ui()
   local w, h = nova.view("exact")
-  ui.parcel_cards(state.carrying, state.van_load, w)
-  if not cards.active() then ui.hints(self.hint, w, h) end
+  if not cards.active() then
+    parcels.draw()
+    ui.hints(self.hint, w, h)
+  end
   cards.draw(w, h)
   ui.fade(math.max(self.fade_in, self.leaving and self.leaving / FADE or 0), w, h)
 end

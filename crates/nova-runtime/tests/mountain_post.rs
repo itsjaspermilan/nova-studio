@@ -1448,3 +1448,421 @@ fn the_valley_has_clumps_of_trees_and_forest_masses_not_thousands_of_trees() {
     );
     assert!(plants <= 6360.0, "{plants} ferns, grasses and flowers");
 }
+
+// ---- the owner's second play on the Retroid (2026-11-22): one UI kit, the parcel card, the piano, a quieter bed -----------------
+
+/// The UI pictures the game may draw: the kit (Kenney's UI Pack recoloured, sprites/ui/kit/) and the game's own painted pictures
+/// that are content, not chrome (the parcel's icon, the paper map, the minimap's disc and "you" mark, the logo, the title's valley).
+fn assert_ui_from_the_kit(r: &Report, where_: &str) {
+    let sprites: Vec<String> = r
+        .drawn("ui_sprite", None)
+        .iter()
+        .map(|s| s["name"].as_str().unwrap_or("").to_string())
+        .collect();
+    for s in &sprites {
+        let ok = s.contains("ui/kit/")
+            || [
+                "ui/parcel_icon",
+                "ui/map",
+                "ui/minimap_disc",
+                "ui/you",
+                "ui/logo",
+                "ui/title_bg",
+            ]
+            .iter()
+            .any(|n| s.ends_with(n));
+        assert!(ok, "{where_}: {s:?} is not from the kit: {sprites:?}");
+    }
+    assert!(
+        sprites.iter().any(|s| s.contains("ui/kit/")),
+        "{where_}: the kit draws it: {sprites:?}"
+    );
+}
+
+/// "Can we spruce up the menu UI a bit? ... a cohesive theme that we can use." Every piece of UI on the screen is drawn from the
+/// one kit: the title, the prompts on foot and driving, the parcel card, the van's panel, the label, the letter, the map, the
+/// pause menu, both residents' dialogue and the end card. No scene or card draws a rectangle of its own any more (lib/ui.lua
+/// does, for a panel's soft shadow, a dimming and a fade), and the kit's pictures are in the game with the pack's licence.
+#[test]
+fn every_piece_of_ui_is_drawn_from_the_one_kit() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "title", "steps": [ { "wait": 100 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the title");
+    assert_eq!(r.drawn_count("ui_text", Some("Start")), 1);
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "local S = require('lib.state'); S.carrying = 'hazel'; S.van_load = { 'pip' }", "steps": [ { "wait": 20 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "on foot");
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "map" }, { "wait": 30 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the paper map");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "map" }, { "wait": 20 } ] }"#,
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "pause" }, { "wait": 30 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the pause menu");
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "act" }, { "wait": 20 } ] }"#,
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 30 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "driving");
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+    // a conversation with each: the name on a key of the kit over the box
+    for (who, name, x, z) in [("hazel", "Hazel", 150, 36), ("pip", "Pip", -178, 100)] {
+        let mut g = game();
+        let r = play(
+            &mut g,
+            &format!(
+                r#"{{ "start_scene": "valley", "lua": "require('lib.state').carrying = '{who}'", "steps": [
+                {{ "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = {x}, {z}" }},
+                {{ "walk_to": "{who}", "max": 600 }}, {{ "until": "nova.scene_now():resident_near() ~= nil", "max": 200 }},
+                {{ "press": "act" }}, {{ "wait": 90 }} ] }}"#
+            ),
+        );
+        assert_ui_from_the_kit(&r, who);
+        assert_eq!(r.drawn_count("ui_text", Some(name)), 1, "{who}'s name tag");
+        assert!(r.drawn_count("ui_sprite", Some("ui/kit/raised")) >= 1);
+    }
+    // the office: the letter, a label, the end card
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "walk_to": [0.9, 0.35], "max": 300 }, { "press": "act" }, { "wait": 30 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the letter");
+    assert!(r.drawn_count("ui_sprite", Some("ui/kit/rule")) >= 1);
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "steps": [
+        { "wait": 20, "lua": "nova.named('postmaster').walk_to = T.shelf_spot('pip')" }, { "until": "not T.walking()", "max": 400 },
+        { "press": "act" }, { "wait": 30 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the label");
+    assert!(r.drawn_count("ui_sprite", Some("ui/kit/slip")) >= 1);
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "lua": "local s = require('lib.state'); s.delivered.hazel = true; s.delivered.pip = true; s.on_shelf.hazel = false; s.on_shelf.pip = false; s.came_out = true; nova.goto_scene('office')", "steps": [
+        { "until": "require('lib.cards').kind() == 'ending'", "max": 300 }, { "wait": 200 } ] }"#,
+    );
+    assert_ui_from_the_kit(&r, "the end card");
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Two delivered. A few hundred to go.")),
+        1
+    );
+    // the kit's pictures and the pack's licence travel with the game
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for f in [
+        "panel",
+        "panel_down",
+        "raised",
+        "pressed",
+        "round",
+        "round_down",
+        "slip",
+        "rule",
+        "chev_l",
+        "chev_r",
+    ] {
+        assert!(
+            root.join(format!("{GAME}/sprites/ui/kit/{f}.png"))
+                .is_file(),
+            "{f}.png"
+        );
+    }
+    let licence = std::fs::read_to_string(root.join(format!("{GAME}/licenses/kenney-ui-pack.txt")))
+        .expect("the game's copy of the pack's licence");
+    assert!(
+        licence.contains("Creative Commons Zero")
+            && licence.contains("button_rectangle_depth_flat")
+    );
+    assert_eq!(
+        licence,
+        std::fs::read_to_string(root.join("licenses/kenney-ui-pack.txt")).unwrap()
+    );
+    for f in [
+        "lib/cards.lua",
+        "lib/dialogue.lua",
+        "scenes/title.lua",
+        "scenes/valley.lua",
+        "scenes/office.lua",
+    ] {
+        let text = std::fs::read_to_string(root.join(format!("{GAME}/{f}"))).unwrap();
+        assert!(
+            !text.contains("nova.ui.rect"),
+            "{f} draws through lib/ui.lua"
+        );
+    }
+}
+
+/// "Instead of listing all the active packages in the top left, the user should be able to scroll through them with LB/RB
+/// assuming they're not in the van storage menu." One card in the corner shows one parcel on the go (carried first, then those
+/// in the van), where it is, and with more than one "1 of 2" and L1 / R1; L1 and R1 go round them on foot and driving. At the
+/// van's open back the panel has L1 and R1: the card fades back without its count or buttons and stays on its parcel; in a
+/// conversation it is hidden.
+#[test]
+fn one_corner_card_goes_round_the_parcels_with_l1_and_r1() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.carrying = 'hazel'; S.van_load = { 'pip' }",
+        "steps": [ { "wait": 20 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Hazel Brock")), 1);
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Pip Tansy")),
+        0,
+        "one card, not a stack"
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("carrying")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "next" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Pip Tansy")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("in the van")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("2 of 2")), 1);
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "next" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Hazel Brock")),
+        1,
+        "round again"
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "prev" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Pip Tansy")), 1);
+    // driving, too
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 10 }, { "press": "next" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Hazel Brock")), 1);
+    // one parcel: the card shows it, with no count and no buttons; none: no card
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.van_load = {}" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Hazel Brock")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.carrying = nil" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Hazel Brock")), 0);
+    // at the van's open back with both in it: the panel has L1 and R1, the card does not move
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); T = require('lib.testkit'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }",
+        "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 }, { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 5 } ] }"#,
+    );
+    let shown = lua(&g, "require('lib.parcels').current().which");
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "next" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "nova.scene_now():picker()"),
+        "pip",
+        "R1 is the panel's"
+    );
+    assert_eq!(
+        lua(&g, "require('lib.parcels').current().which"),
+        shown,
+        "the card stays on its parcel"
+    );
+    assert_eq!(
+        r.drawn_count("ui_text", Some(" of ")),
+        1,
+        "only the panel counts"
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
+    // in a conversation the card is hidden and L1 / R1 do nothing to it
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.carrying = 'hazel'; S.van_load = { 'pip' }", "steps": [
+        { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "act" }, { "wait": 30, "lua": "SHOWN = require('lib.parcels').current().which" }, { "press": "next" }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("in the van")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
+    assert_eq!(
+        lua(&g, "require('lib.parcels').current().which"),
+        lua(&g, "SHOWN")
+    );
+}
+
+/// "If there is only one item in the van, the menu should still pop up to show what's there." Walking from the doorway round to
+/// the back with one parcel in the van, the panel opens with the doors (it used to wait until the postmaster stood at the bumper,
+/// 1.35 m from the spot behind the van, while the doors had swung open at 2.1 m), and shows the parcel without a count.
+#[test]
+fn the_vans_panel_opens_with_the_doors_for_a_single_parcel() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); T = require('lib.testkit'); S.on_shelf.hazel = false; S.van_load = { 'hazel' }",
+        "steps": [ { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" },
+        { "wait": 5, "lua": "local s = nova.scene_now(); local x, z = s:van_point({ 1.0, 0, -2.4 }); local bx, bz = s:van_point(s.BACK); local p = nova.named('postmaster'); p.walk_path = { { x, z }, { bx, bz } }; p.walk_to = nil; p.walk_pace = 0.8" },
+        { "until": "nova.scene_now():picker() ~= nil", "max": 600 } ] }"#,
+    );
+    let at = num(&g, "nova.scene_now():to_back()");
+    assert!(
+        (1.35..2.1).contains(&at),
+        "the panel opened {at} m from the back, as the doors swung open"
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "until": "not T.walking()", "max": 300 }, { "wait": 5 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
+    assert_eq!(r.drawn_count("ui_text", Some("In the van")), 1);
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Hazel Brock")),
+        2,
+        "the panel and the faded card"
+    );
+    assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
+}
+
+/// "The music is a little repetitive. Can we use piano?" The one piece is for piano alone (Nova's `piano` instrument: struck
+/// strings, felt-muted), two hands and no drums; it plays a short intro once and then loops for over two and a half minutes
+/// through sections that come back changed (A A' B A'' C B' A'''), with rests in the tune, bars without it, and a level that
+/// rises and falls; the tempo only ever eases below its own.
+#[test]
+fn the_song_is_a_long_piano_piece_in_sections() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let song: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join(format!("{GAME}/music/fernhollow.song.json"))).unwrap(),
+    )
+    .unwrap();
+    let tracks = song["tracks"].as_array().unwrap();
+    assert!(!tracks.is_empty());
+    for t in tracks {
+        assert_eq!(t["kind"], "synth", "no drums");
+        assert_eq!(t["wave"], "piano", "{}", t["name"]);
+        assert!(
+            t["brightness"].as_f64().unwrap() < 0.5,
+            "a soft, felt piano"
+        );
+    }
+    let spb = song["stepsPerBeat"].as_f64().unwrap();
+    let bpm = song["bpm"].as_f64().unwrap();
+    let (from, to) = (
+        song["loop"]["from"].as_f64().unwrap(),
+        song["loop"]["to"].as_f64().unwrap(),
+    );
+    assert!(from > 0.0, "an intro that plays once");
+    assert_eq!(to, song["length"].as_f64().unwrap());
+    let seconds = (to - from) / spb * 60.0 / bpm;
+    assert!(seconds >= 150.0, "the loop is {seconds} s");
+    for t in song["tempos"].as_array().unwrap() {
+        assert!(t["bpm"].as_f64().unwrap() <= bpm);
+    }
+    let names: Vec<&str> = song["markers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
+    for s in ["A", "A'", "B", "A''", "C", "B'", "A'''"] {
+        assert!(names.contains(&s), "the section {s}: {names:?}");
+    }
+    let right = tracks[0]["notes"].as_array().unwrap();
+    let bar = 4.0 * spb;
+    let mut quiet_bars = 0;
+    let mut b = from;
+    while b < to {
+        if !right
+            .iter()
+            .any(|n| (b..b + bar).contains(&n["step"].as_f64().unwrap()))
+        {
+            quiet_bars += 1;
+        }
+        b += bar;
+    }
+    assert!(quiet_bars >= 2, "{quiet_bars} bars without the tune");
+    let (lo, hi) = right
+        .iter()
+        .map(|n| n["vel"].as_f64().unwrap())
+        .fold((1.0f64, 0.0f64), |(a, b), v| (a.min(v), b.max(v)));
+    assert!(hi - lo > 0.25, "the level rises and falls: {lo} to {hi}");
+    assert!(root.join(format!("{GAME}/music/fernhollow.ogg")).is_file());
+}
+
+/// "I think the ambiance is a little loud at times." The bed is steady: the creek's level eases when the camera jumps (from the
+/// post office's yard to the creek's bridge in one frame), never more than a small step a frame, and is heard on the bridge;
+/// birds never call two at once; the levels are the measured ones (tools/ambience.mjs: under -30 LUFS over any three seconds
+/// everywhere it was rendered; docs/games/mountain-post.md, "Sound levels").
+#[test]
+fn the_ambience_eases_and_never_jumps() {
+    let mut g = game();
+    let expr = "math.floor(1000 * require('lib.ambience').creek_volume())";
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 30 }},
+            {{ "wait": 150, "lua": "local p = nova.named('postmaster'); p.x, p.z = -105, 55.2; require('lib.camera').reset(1.57)", "record": "{expr}" }},
+            {{ "wait": 1800 }} ] }}"#
+        ),
+    );
+    let runs = r.record(expr);
+    assert!(runs.len() > 3, "the creek's level was recorded: {runs:?}");
+    let values: Vec<f64> = runs.iter().map(|(_, _, v)| v.parse().unwrap()).collect();
+    for w in values.windows(2) {
+        assert!(
+            (w[1] - w[0]).abs() <= 12.0,
+            "a step of {} thousandths in a frame: {runs:?}",
+            w[1] - w[0]
+        );
+    }
+    assert!(
+        *values.last().unwrap() > 20.0,
+        "on the bridge the creek is heard: {runs:?}"
+    );
+    assert!(num(&g, "require('lib.ambience').LEVEL.air") <= 0.3);
+    let starts: Vec<u64> = r.json["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| {
+            let t = s["text"].as_str()?;
+            if t.starts_with("sound bird_") {
+                s["frame"].as_u64()
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(starts.len() >= 5, "birds call: {starts:?}");
+    for w in starts.windows(2) {
+        assert!(w[1] - w[0] >= 130, "two birds at once: {starts:?}");
+    }
+}

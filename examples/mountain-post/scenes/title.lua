@@ -1,4 +1,4 @@
--- The title card: the name over a painted valley, the song beginning, "Press A". A goes into the post office.
+-- The title card: the name over a painted valley, the song beginning, A to start (a prompt chip of the UI kit). A goes into the post office.
 local ui = require("lib.ui")
 local words = require("lib.words")
 
@@ -27,17 +27,13 @@ function Title:draw_ui()
   nova.ui.sprite("ui/title_bg", w / 2, h / 2, { w = math.max(w, h * 16 / 9), h = math.max(h, w * 9 / 16) })
   local a = math.min(1, self.t / 1.2)
   -- (a soft shade behind the name, so the cream letters stand out of the bright sky)
-  local k = math.floor(95 * a)
-  nova.ui.rect(0, h * 0.36 - 120, w, 120, { 30, 44, 62, k }, { gradient = { { 30, 44, 62, 0 }, { 30, 44, 62, k } } })
-  nova.ui.rect(0, h * 0.36, w, 120, { 30, 44, 62, k }, { gradient = { { 30, 44, 62, k }, { 30, 44, 62, 0 } } })
+  ui.band(h * 0.36, w, a)
   nova.ui.sprite("ui/logo", w / 2, h * 0.36, { w = 660, h = 192, color = { 255, 255, 255, math.floor(255 * a) } })
   if self.t > 1.0 then
-    local pulse = 0.65 + 0.35 * math.sin(self.t * 3)
-    -- "Press" and the A button's glyph
-    local word = words.press:gsub(" A$", "")
-    local tw = nova.ui.text_width(word, { font = "rounded", size = 28 })
-    nova.ui.text(w / 2 - (tw + 40) / 2, h * 0.8, word, { font = "rounded", size = 28, color = { 255, 248, 232, math.floor(255 * pulse) }, shadow = { 0, 0, 0, 120 } })
-    ui.glyph(w / 2 + (tw + 40) / 2 - 16, h * 0.8 + 17, "A", 32)
+    -- A to start, on a prompt chip of the kit (the A button's cap and the word), rising and settling once as it appears
+    local e = math.min(1, (self.t - 1.0) / 0.3)
+    local word = words.press
+    ui.chip(w / 2 - ui.chip_width("A", word) / 2, h * 0.79 + (1 - e) * 10, "A", word, { alpha = e, down = nova.input.down("act") })
   end
   ui.fade(self.leaving and self.leaving / 0.6 or math.max(0, 1 - self.t / 0.8), w, h)
 end

@@ -1,0 +1,10 @@
+{
+  "size": "1280x720",
+  "start_scene": "office",
+  "lua": "local s = require('lib.state'); s.delivered.hazel = true; s.delivered.pip = true; s.on_shelf.hazel = false; s.on_shelf.pip = false; s.came_out = true; nova.goto_scene('office')",
+  "route": [
+    { "until": "require('lib.cards').kind() == 'ending'", "max": 300 },
+    { "wait": 220, "capture": "ui_end_card" }
+  ],
+  "out": "build/ui_end"
+}

@@ -16,10 +16,10 @@ import { applyFx, cleanFx, type Fx } from "./fx";
 import { integratedLufs, limitPeaks } from "./loudness";
 import type { Sound } from "./wav";
 
-export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ" | "wavetable" | "formula" | "sample";
-export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ", "wavetable", "formula", "sample"];
+export type Wave = "square" | "saw" | "triangle" | "sine" | "noise" | "fm" | "pluck" | "organ" | "piano" | "wavetable" | "formula" | "sample";
+export const WAVES: Wave[] = ["square", "saw", "triangle", "sine", "noise", "fm", "pluck", "organ", "piano", "wavetable", "formula", "sample"];
 /// The waves that are whole instruments (their own settings; the fuller voice's unison, filter and vibrato do not apply to them).
-export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "wavetable", "formula", "sample"];
+export const INSTRUMENT_WAVES: Wave[] = ["fm", "pluck", "organ", "piano", "wavetable", "formula", "sample"];
 
 // ---- the sampler ----
 /// The sound files the "sample" instrument can play, by project path (`sounds/kick.wav`). The editor loads the files a song names and puts them here before it renders;
@@ -117,7 +117,8 @@ export interface Track {
   wtPos?: number;
   /// The "formula" instrument: an expression of the phase `p`, the time `t` and the pitch `f` (lib/formula.ts).
   formula?: string;
-  /// The "pluck" and "organ" instruments: how bright it is (0 dull to 1 bright).
+  /// The "pluck", "organ" and "piano" instruments: how bright it is (0 dull to 1 bright; for the piano, 0 is a felt-muted upright
+  /// and 1 an open grand, and a harder note is brighter too).
   brightness?: number;
   /// A lane that changes how loud the notes are over the song: the gain (0 to 2) at each note's start follows these points (lib/song-tools.ts).
   automation?: Lane[];
@@ -783,9 +784,93 @@ function oscillator(wave: Wave, duty: number, rng: () => number) {
   };
 }
 
-/// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong) and an organ (added harmonics).
+/// The "piano" instrument: a struck string, built from its partials. Each partial sits a little sharp of the harmonic series (a
+/// stiff string's inharmonicity, more in the treble), falls away in two stages (the prompt sound and the long aftersound) and the
+/// faster the higher it is; a felt hammer rounds off the top (less with `brightness` and with a harder note) and, struck an eighth
+/// of the way along, leaves every eighth partial weak; two strings a note, a fraction of a cent apart, beat slowly against each
+/// other; the hammer's soft knock and a short ramp start it. Low notes ring for many seconds and high ones briefly. The track's
+/// envelope still applies on top: its release is the damper falling when the key is let go.
+function pianoVoice(t: Track, rng: () => number, vel: number) {
+  const bright = clamp(t.brightness ?? 0.35, 0, 1);
+  const v = clamp(vel, 0.05, 1);
+  let parts: Float64Array | null = null; // per partial and string: re, im, cos, sin, fast amp, slow amp, fast fall, slow fall
+  let count = 0;
+  let n = 0;
+  let ramp = 0;
+  let knock = 0, knockLevel = 0, knockFall = 0, knockLp = 0;
+  const STRIDE = 8;
+  const setup = (freq: number, rate: number) => {
+    const midi = 69 + 12 * Math.log2(freq / 440);
+    const B = clamp(1e-4 * 2 ** ((midi - 60) / 12), 2e-5, 2e-3); // inharmonicity
+    const top = Math.min(rate * 0.45, 7000);
+    const corner = 700 + 2600 * bright + 1600 * v; // the felt's roll-off
+    const tilt = 1.5 - 0.35 * bright - 0.45 * v; // (a harder blow throws more of the upper partials)
+    const ring = clamp(6.5 * (262 / freq) ** 0.75, 0.5, 14); // seconds to fall to 1/e for the fundamental's aftersound
+    const list: number[] = [];
+    let total = 0;
+    for (let k = 1; k <= 40; k++) {
+      const fk = freq * k * Math.sqrt(1 + B * k * k);
+      if (fk > top) break;
+      const comb = Math.abs(Math.sin(Math.PI * k * 0.125)) * 0.85 + 0.15;
+      const amp = comb / k ** tilt / (1 + (fk / corner) ** 2);
+      const slow = ring / (1 + 0.28 * (k - 1) ** 1.25);
+      for (let s = 0; s < 2; s++) {
+        const detune = s === 0 ? 1 : 2 ** ((0.4 + rng() * 0.6) / 1200);
+        const w = (2 * Math.PI * fk * detune) / rate;
+        list.push(1, 0, Math.cos(w), Math.sin(w), amp * 0.55, amp * 0.45, Math.exp(-1 / (slow * 0.16 * rate)), Math.exp(-1 / (slow * rate)));
+        total += amp;
+      }
+    }
+    // (so that a full-strength note peaks near 1: the partials start in step)
+    const norm = 1 / Math.max(1e-6, total * 0.75);
+    for (let i = 0; i < list.length; i += STRIDE) { list[i + 4]! *= norm; list[i + 5]! *= norm; }
+    parts = Float64Array.from(list);
+    count = list.length / STRIDE;
+    ramp = Math.max(1, Math.round((0.003 + 0.006 * (1 - v)) * rate));
+    knockLevel = 0.05 * v;
+    knockFall = Math.exp(-1 / (0.006 * rate));
+    knock = 1;
+  };
+  return (freq: number, rate: number) => {
+    if (!parts) setup(freq, rate);
+    const p = parts!;
+    let out = 0;
+    for (let i = 0; i < count; i++) {
+      const o = i * STRIDE;
+      const re = p[o]!, im = p[o + 1]!, c = p[o + 2]!, s = p[o + 3]!;
+      p[o] = re * c - im * s;
+      p[o + 1] = re * s + im * c;
+      const a = p[o + 4]! + p[o + 5]!;
+      out += a * p[o + 1]!;
+      p[o + 4] = p[o + 4]! * p[o + 6]!;
+      p[o + 5] = p[o + 5]! * p[o + 7]!;
+    }
+    // (the rotation's rounding drifts its length a little: put each partial back on the circle now and then)
+    if ((n & 4095) === 4095) {
+      for (let i = 0; i < count; i++) {
+        const o = i * STRIDE;
+        const l = Math.hypot(p[o]!, p[o + 1]!) || 1;
+        p[o] = p[o]! / l;
+        p[o + 1] = p[o + 1]! / l;
+      }
+    }
+    // the hammer's felt: a soft knock of dull noise, and a short rise
+    if (knock > 1e-4) {
+      knockLp += ((rng() * 2 - 1) - knockLp) * 0.18;
+      out += knockLp * knock * knockLevel;
+      knock *= knockFall;
+    }
+    const r = n < ramp ? Math.sin((Math.PI / 2) * (n / ramp)) ** 2 : 1;
+    n++;
+    return out * r * 1.6;
+  };
+}
+
+/// The instruments that are more than one oscillator: FM (a sine bent by another sine), a plucked string (Karplus-Strong), an organ
+/// (added harmonics) and a piano (struck strings: `pianoVoice`).
 /// Each call makes a voice for one note; it gives one sample each time it is called with the note's pitch.
-function instrumentOscillator(t: Track, rng: () => number) {
+function instrumentOscillator(t: Track, rng: () => number, vel = 1) {
+  if (t.wave === "piano") return pianoVoice(t, rng, vel);
   if (t.wave === "sample") {
     const snd = sampleBank.get(t.sample ?? "");
     if (!snd || !snd.channels[0]) return () => 0;
@@ -894,6 +979,8 @@ export const INSTRUMENT_PRESETS: { name: string; set: Partial<Track> }[] = [
   { name: "Wavetable sweep", set: { wave: "wavetable", wtPos: 0.55, attack: 0.02, decay: 0.2, sustain: 0.7, release: 0.2 } },
   { name: "Formula: soft square", set: { wave: "formula", formula: "tri(p) * 0.6 + sq(p) * 0.2", attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.1 } },
   { name: "Organ", set: { wave: "organ", brightness: 0.55, attack: 0.01, decay: 0.05, sustain: 0.95, release: 0.08 } },
+  { name: "Felt piano", set: { wave: "piano", brightness: 0.3, attack: 0.002, decay: 0.05, sustain: 1, release: 0.4, reverb: 0.3 } },
+  { name: "Piano", set: { wave: "piano", brightness: 0.65, attack: 0.001, decay: 0.05, sustain: 1, release: 0.25, reverb: 0.2 } },
 ];
 
 /// Level of an attack-decay-sustain-release envelope `t` seconds after the note starts, for a note held `hold` seconds.
@@ -1421,7 +1508,7 @@ export function renderSong(source: Song, rate = RATE): Sound {
       }
       const hold = holdOf(n);
       const length = Math.round((hold + track.release) * rate);
-      const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1)) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
+      const osc = isInstrument(track.wave) ? instrumentOscillator(track, mulberry32(ti * 1000 + ni + 1), n.vel) : oscillator(track.wave, track.duty, mulberry32(ti * 1000 + ni + 1));
       const freq = midiFreq(n.pitch);
       const glide = n.bend ?? 0;
       for (let k = 0; k < length; k++) {
