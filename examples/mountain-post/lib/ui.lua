@@ -81,6 +81,16 @@ function ui.text(x, y, str, opts)
   if opts.bold == nil then opts.bold = REGULAR elseif opts.bold == true then opts.bold = HEAVY elseif opts.bold == false then opts.bold = nil end
   return nova.ui.text(x, y, str, opts)
 end
+-- A line with the engine's markup ({shake}, {wave}, {big}, {slow}, {pop}, {c=red}, {pause}), typed on `opts.time`: the dialogue's
+-- words. The face and weights as ui.text's. `ui.rich_letters` gives the same line's letters (where, when, how) without drawing.
+local function rich_opts(opts)
+  opts = opts or {}
+  opts.font = "rounded"
+  if opts.bold == nil then opts.bold = REGULAR elseif opts.bold == true then opts.bold = HEAVY elseif opts.bold == false then opts.bold = nil end
+  return opts
+end
+function ui.rich_text(x, y, str, opts) return nova.ui.rich_text(x, y, str, rich_opts(opts)) end
+function ui.rich_letters(x, y, str, opts) return nova.ui.rich_text_letters(x, y, str, rich_opts(opts)) end
 function ui.text_width(str, size, bold)
   return nova.ui.text_width(str, { font = "rounded", size = size, bold = bold and HEAVY or REGULAR })
 end

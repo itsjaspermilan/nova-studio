@@ -19,40 +19,40 @@ words.letter = {
 }
 words.letter_from = "Odette Marsh, Mayor"
 
+-- The talks are short (the owner's seventh play: "Too much text", "pacing", "tone of the words"): three lines when a parcel is handed
+-- over, one when talked to again, one at the door without it. The braces are the engine's text markup (nova.ui.rich_text): {wave}
+-- letters bob, {big} larger and bolder, {shake} jitter, {slow} typed slowly, {pop} letters pop in, {pause=s} a wait. Used where a
+-- line has a feeling to carry, not on every line.
 words.people = {
   hazel = {
     name = "Hazel",
     given = {
-      "Hm. So there IS a postmaster.",
-      "Chisels. I ordered these two winters back. Built a whole porch without them.",
-      "Pemberton never lost a parcel in forty years, then one morning he just didn't open up. Same winter the lake bridge went.",
-      "I'd have rebuilt that bridge myself, if the Mayor and I were speaking. We're not. Don't ask.",
-      "...Thank you. Mind the left on Fern Lane. Everybody clips my wall.",
+      "Hm. So there {slow}IS{/slow} a postmaster.",
+      "My chisels. Ordered them the winter Pemberton shut up shop and the lake bridge went.",
+      "I'd fix that bridge, if the Mayor and I were speaking. We're not.{pause=0.3} {slow}...{/slow}Thank you.",
     },
     after = {
-      "Still here? The wall's fine. Mostly.",
-      "If you see Pip, tell him his aerial hums through my teeth.",
+      "Still here? Mind my wall on Fern Lane. Everybody clips it.",
+      "Tell Pip his aerial {shake}hums{/shake} through my teeth.",
     },
     without = "Unless that's my chisels, I'm busy.",
-    -- the face for each line (lib/face.lua): gruff, then dry, a flicker of sadness for Pemberton, gruff again, a small smile at the end
-    faces = { given = { "gruff", "neutral", "sad", "gruff", "smile" }, after = { "neutral", "gruff" }, without = "gruff" },
+    -- the face for each line (lib/face.lua): gruff, a flicker of sadness for Pemberton, a small smile at the end
+    faces = { given = { "gruff", "sad", "smile" }, after = { "dry", "gruff" }, without = "gruff" },
   },
   pip = {
     name = "Pip",
     given = {
-      "IT CAME! It actually came! You're real!",
-      "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!",
-      "This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge.",
-      "Hazel says my aerial hums. It does not hum. It SINGS.",
-      "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander.",
+      "{big}{wave}IT CAME!{/wave}{/big} It actually came! You're {pop}real!{/pop}",
+      "A whole year I told the radio the mail was coming back. Nobody believed me!",
+      "This valve gets Fernhollow Radio past the creek. The lake side too, once there's a bridge!",
     },
     after = {
-      "Testing, testing. Can you hear that? No? Good, it's not plugged in yet.",
-      "If Hazel asks, the aerial is staying.",
+      "Tonight I say your name on the radio. {shake}Live.{/shake} No pressure!",
+      "If Hazel asks, the aerial {wave}sings{/wave}. It does {big}not{/big} hum.",
     },
-    without = "Is it here? Is it? ...Oh. Hello anyway!",
-    -- delighted and wide-eyed throughout; indignant about the aerial
-    faces = { given = { "delighted", "delighted", "happy", "indignant", "delighted" }, after = { "happy", "indignant" }, without = "surprised" },
+    without = "Is it here? Is it?{pause=0.3} ...Oh. Hello anyway!",
+    -- delighted and wide-eyed; indignant that nobody believed him, and about the aerial; a gulp at going live
+    faces = { given = { "delighted", "indignant", "happy" }, after = { "surprised", "indignant" }, without = "surprised" },
   },
 }
 

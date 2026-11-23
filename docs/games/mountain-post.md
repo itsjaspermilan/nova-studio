@@ -142,30 +142,42 @@ loading two is two trips from the shelf). A cheerful horn. (The shape since the 
 4. When both are delivered and you are back at the post office, the slice ends quietly on a card: "Two delivered. A few hundred
    to go."
 
-**The conversations** (text boxes, a babble voice per character; the player's lines are not shown; keep these words unless the
-owner changes them).
+**The conversations** (text boxes, a babble voice per character; the player's lines are not shown). Rewritten after the owner's
+seventh play ("Too much text", "pacing", "tone of the words"): three lines at the hand-over, one line each time they are talked to
+again (the two "after that" lines take turns), one at the door without the parcel; warmer, shorter, the facts kept lighter (the
+bridge out, the Mayor, Pemberton). The braces are the engine's text markup (`nova.ui.rich_text`, docs/project-format.md "Rich
+text"): `{slow}` typed slowly, `{big}` larger and bolder, `{wave}` letters bobbing, `{shake}` jitter, `{pop}` letters popping
+in, `{pause=s}` a wait; used where a line has a feeling to carry, not on every line. The face for each line is in brackets.
 
 Hazel, when handed her parcel:
-- "Hm. So there IS a postmaster."
-- "Chisels. I ordered these two winters back. Built a whole porch without them."
-- "Pemberton never lost a parcel in forty years, then one morning he just didn't open up. Same winter the lake bridge went."
-- "I'd have rebuilt that bridge myself, if the Mayor and I were speaking. We're not. Don't ask."
-- "...Thank you. Mind the left on Fern Lane. Everybody clips my wall."
+- "Hm. So there {slow}IS{/slow} a postmaster." (gruff)
+- "My chisels. Ordered them the winter Pemberton shut up shop and the lake bridge went." (sad)
+- "I'd fix that bridge, if the Mayor and I were speaking. We're not.{pause=0.3} {slow}...{/slow}Thank you." (smile)
 
-Hazel, after that (talk again): "Still here? The wall's fine. Mostly." / "If you see Pip, tell him his aerial hums through my
-teeth."
+Hazel, after that (talk again): "Still here? Mind my wall on Fern Lane. Everybody clips it." (dry) / "Tell Pip his aerial
+{shake}hums{/shake} through my teeth." (gruff)
 
 Pip, when handed his parcel:
-- "IT CAME! It actually came! You're real!"
-- "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!"
-- "This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge."
-- "Hazel says my aerial hums. It does not hum. It SINGS."
-- "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander."
+- "{big}{wave}IT CAME!{/wave}{/big} It actually came! You're {pop}real!{/pop}" (delighted)
+- "A whole year I told the radio the mail was coming back. Nobody believed me!" (indignant)
+- "This valve gets Fernhollow Radio past the creek. The lake side too, once there's a bridge!" (happy)
 
-Pip, after that: "Testing, testing. Can you hear that? No? Good, it's not plugged in yet." / "If Hazel asks, the aerial is
-staying."
+Pip, after that: "Tonight I say your name on the radio. {shake}Live.{/shake} No pressure!" (surprised) / "If Hazel asks, the
+aerial {wave}sings{/wave}. It does {big}not{/big} hum." (indignant)
 
-If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." Pip: "Is it here? Is it? ...Oh. Hello anyway!"
+If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." (gruff) Pip: "Is it here? Is it?{pause=0.3}
+...Oh. Hello anyway!" (surprised)
+
+~~The first conversations (replaced after the seventh play):~~ Hazel's five lines were "Hm. So there IS a postmaster." / "Chisels.
+I ordered these two winters back. Built a whole porch without them." / "Pemberton never lost a parcel in forty years, then one
+morning he just didn't open up. Same winter the lake bridge went." / "I'd have rebuilt that bridge myself, if the Mayor and I were
+speaking. We're not. Don't ask." / "...Thank you. Mind the left on Fern Lane. Everybody clips my wall."; after that "Still here?
+The wall's fine. Mostly." / "If you see Pip, tell him his aerial hums through my teeth." Pip's were "IT CAME! It actually came!
+You're real!" / "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!" /
+"This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge." / "Hazel says
+my aerial hums. It does not hum. It SINGS." / "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say
+'the Postmaster'. Sounds grander."; after that "Testing, testing. Can you hear that? No? Good, it's not plugged in yet." / "If Hazel
+asks, the aerial is staying."
 
 **Finding your way.** Labels give name and street. The **paper map** (one button) is a hand-drawn sheet of the slice's roads with
 their names and the post office marked; no house numbers, no marker for you, no destination. The **minimap** is a small disc that
@@ -1088,3 +1100,22 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
   words. "I don't like that when the text starts to appear, sometimes the text box will 'type' the word on one line then
   realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
   three lines, warmer and simpler words, faster text with a press to finish the line.)
+
+### What the seventh play changed: the talks (text effects, the layout, the pace, the words)
+
+- **Text effects in Nova** (`nova.ui.rich_text`, docs/project-format.md "Rich text"): markup a writer types in a line, `{shake}`,
+  `{wave}`, `{big}`, `{slow}`, `{pop}`, `{c=red}`, `{pause}`. Every letter of a talk rises softly into place with a quick fade as
+  it appears (0.16 s, a fifth of its size): the game's own little animation. One quad a letter, as plain text; everything is a
+  function of the line and the time, so a test sees the same picture every run.
+- **Laid out before it is typed:** the whole line is wrapped first and typed into its final places, big letters' room
+  included; no word starts on one line and jumps to the next, nothing reflows (test
+  `the_talk_is_laid_out_before_it_is_typed_and_never_reflows`).
+- **The pace:** Hazel 46 letters a second, Pip 60 (spaces count), a short pause after a comma, a longer one after a full stop,
+  the longest after "..."; the babble follows the letters as they come out and the mouth moves only while they do (it rests in
+  the pauses). X once shows the rest of the line at once (a tenth-of-a-second ripple), X again goes on; the "next" button fades
+  in and bobs softly once the line is out. The talk opens snappily: the camera glides in 0.4 s (was 0.55) and out in 0.45 s
+  (was 0.6), the box rises the last few units into place in 0.1 s, the first letter comes 0.06 s after.
+- **The words:** three lines at each hand-over (were five), one line each time after, short and warmer (the conversations above).
+- **Weak points:** the effects are judged from pictures at 1280x720, not yet read on the Retroid; `{shake}` at the dialogue's
+  size moves letters about 2 px, readable but subtle in a still; the face changes per line, not inside a line (Hazel smiles from
+  the start of "I'd fix that bridge", not at "...Thank you").

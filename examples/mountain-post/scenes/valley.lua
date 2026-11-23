@@ -199,7 +199,7 @@ end
 function Valley:say(r, lines, faces, on_done)
   r:begin_talk()
   self.talking_to = r
-  camera.glide(0.55)
+  camera.glide(0.4) -- (snappy: the talk opens quickly)
   r.talking = true
   self.p.control = false
   self.p:face_to(r.x, r.z)
@@ -211,7 +211,7 @@ function Valley:say(r, lines, faces, on_done)
       self.talking_to = nil
       -- (back behind the postmaster, at the default, gliding there from the talk's view)
       camera.reset(self.p.face)
-      camera.glide(0.6)
+      camera.glide(0.45)
       self.p.control = true
       if on_done then on_done() end
     end,
