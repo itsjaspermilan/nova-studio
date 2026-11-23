@@ -438,3 +438,8 @@ These replace the matching lines above where they differ (the UI theme, the musi
   middle, the horizon along the top); driving it rises 16 degrees from 9.6 m, looking down 7 (the van in the lower third, the road
   and the horizon ahead). Coming out of the post office they step out to the foot of the porch (4 m) and everything within 6 m of the
   camera is cut away there (the porch roof and posts), easing back to the usual 2.5 m by 9 m out.
+- **The cab's sides** (the owner, on the pictures: "they would go around the wheel well and have a step in them too. We can remove the
+  passenger side door and just keep it as a window"): the left doorway's foot is low (0.36 m) with a dark ribbed step inside, lower
+  than the cab floor, level from its back until it meets the front wheel's well and then rising round it 7 cm clear of the lip; its
+  front edge leans with the windscreen pillar, its top corners round. The right side has no doorway: one window (0.48 x 0.44 m, at
+  the windscreen's height) in a dark frame with a tinted pane, the panel and the band unbroken below it.

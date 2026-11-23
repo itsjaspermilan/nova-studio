@@ -1,0 +1,20 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "out": "build/van-doors",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); W = require('lib.world'); LOOK = function(lx, ly, lz, ty, fov, tx, tz) local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local g = W.height(v.x, v.z); local ax, _, az = v:to_world(tx or 0, 0, tz or 0); CAM.pinned = { v.x + s * lz + c * lx, g + ly, v.z + c * lz - s * lx, ax, g + (ty or 0.85), az, fov or 30 } end; PARK = function(x, z, h) local v = nova.named('van'); v.autopilot = nil; v.driven = false; v.engine_on = false; v:teleport(x, z, h); nova.scene_now().mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; p.control = true end",
+  "route": [
+    { "wait": 20, "lua": "PARK(4.5, -132, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); LOOK(9.0, 0.85, 0.0, 0.85, 22)" },
+    { "wait": 20, "capture": "left-side-seated: exactly side-on, the left (driver's) side, the postmaster at the wheel" },
+    { "lua": "LOOK(-9.0, 0.85, 0.0, 0.85, 22)" },
+    { "wait": 3, "capture": "right-side: exactly side-on, the right side: a window, no door" },
+    { "lua": "LOOK(5.2, 1.9, 6.2, 0.8, 26)" },
+    { "wait": 3, "capture": "34-front-left: three-quarter front from the left" },
+    { "lua": "LOOK(-5.2, 1.9, 6.2, 0.8, 26)" },
+    { "wait": 3, "capture": "34-front-right: three-quarter front from the right, the driver through the window" },
+    { "lua": "CAM.pinned = nil; nova.scene_now():get_out(); local s = nova.scene_now(); local p = nova.named('postmaster'); local x, z = s:van_point(s.DOOR); p.x, p.z = x, z; p.face = nova.named('van').heading - math.pi / 2 - 0.9; CAM.reset(p.face)" },
+    { "wait": 60, "capture": "get-in-distance: the on-foot camera facing the doorway, at Get in" },
+    { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 3.0, 0, -2.0 }); LOOK(2.0, 1.2, 1.1, 0.45, 30, 0.6, 0.3)" },
+    { "wait": 3, "capture": "doorway-close: the doorway round the wheel well and the step" }
+  ]
+}
