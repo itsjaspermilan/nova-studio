@@ -113,8 +113,9 @@ mitten hands, simple feet, big simple eyes. About a metre tall, and the world is
 readable mouth, a big simple nose or muzzle, bold enough to read from the driving camera. A small set of expressions (neutral,
 happy, delighted, gruff, surprised, talking, blink) that change with each line of a conversation; idle blinking.
 
-**Running** (the owner: "when the player runs, their arms go wide. Very cute"): a gentle push of the stick walks; a full push
-runs with the arms held straight out to the sides. Carrying a parcel, the run is a trot with the parcel held in front.
+**Running** (the owner: "when the player runs, their arms go wide. Very cute"): ~~a gentle push of the stick walks; a full push
+runs with the arms held straight out to the sides~~ (replaced by the owner's fourth notes: the stick alone only walks, B held runs,
+and the run banks into turns; see the end of this file). Carrying a parcel, the run is a trot with the parcel held in front.
 
 **The van.** Simple, like a modern high-roof panel van (the owner: "the van isn't simple like a Sprinter"): one tall smooth box
 with soft edges, a short sloping bonnet into a big windscreen, clean flat sides, two tall rear doors, plain lights; no roof rack,
@@ -134,9 +135,9 @@ loading two is two trips from the shelf). A cheerful horn. (The shape since the 
    "Welcome to Fernhollow. The post office is yours, such as it is. Mr. Pemberton left two winters ago and nobody has had a
    letter since. Take your time. We have waited this long. P.S. The van pulls a little to the left. So did Mr. Pemberton."
 3. Take a parcel (one at a time), read its label, walk out, put it in the back of the van (its rear doors open as you come near;
-   A loads it), get in at the left doorway, find the address by the signs and the paper map, get out, take it from the van's
+   X loads it), get in at the left doorway (Y), find the address by the signs and the paper map, get out, take it from the van's
    back (a small panel shows the parcels in the van one at a time, name and street; L1 and R1 go through them, A takes the one
-   shown), hand it over at the door, talk. Come back for the other, or load both before setting out: the van holds both. The
+   shown), hand it over at the door (X), talk. (The buttons as the fourth notes have them: "Controls" below.) Come back for the other, or load both before setting out: the van holds both. The
    order is the player's.
 4. When both are delivered and you are back at the post office, the slice ends quietly on a card: "Two delivered. A few hundred
    to go."
@@ -170,12 +171,23 @@ If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." 
 their names and the post office marked; no house numbers, no marker for you, no destination. The **minimap** is a small disc that
 shows the roads right around you and you; nothing else. Nothing in the world points the way except signposts and mailbox numbers.
 
-**Controls** (gamepad; letters as engraved on the Retroid: A south, B east, X west, Y north). Walking: left stick moves, right
-stick looks, **A** talks / takes / hands over / reads (at the van's open back: loads the parcel carried, or takes the one the
-panel shows; **L1** / **R1** go through the parcels in the van), **B** gets into the van at its left doorway, **Y** opens the
-paper map. Driving:
-R2 goes, L2 brakes then reverses, left stick steers, right stick looks, **B** gets out (when stopped), **X** sounds the horn,
-**Y** opens the paper map. Start pauses (resume, quit).
+**Controls** (replaced 2026-11-22 by the owner's fourth notes; the old paragraph, which also put the letters at the wrong places,
+was: ~~A south, B east, X west, Y north; A talks, takes, hands over, reads, loads and takes from the van; B gets in and out; X the
+horn; Y the paper map~~). The letters are the ones engraved on the Retroid, whose face buttons are laid out Nintendo-style: **A on
+the right**, **B at the bottom**, **X at the top**, **Y on the left** (Android reports them by letter: A is `pad:south`, B
+`pad:east`, X `pad:west`, Y `pad:north`, read off the device 2026-11-12; nova.json binds by those names, and the prompts draw the
+same letter).
+- **X** (top) interacts on foot: talk, take from the shelf, read the letter, put a parcel back, hand over, and "Load package" at the
+  van's open back; it goes on in a conversation and closes the label, the letter and the end card. In the van X sounds the horn.
+- **Y** (left) gets into the van at its left doorway, and out of it when it has stopped.
+- **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
+- **B** (bottom), held: on foot, run (the stick alone only walks); driving, the handbrake (the rear wheels lock, the van slows firmly,
+  in a bend at speed the tail steps out a little; standing, it holds the van still on a slope; the brake lamps light).
+- **Select** (the minus button) opens and closes the paper map. **Start** pauses (resume, quit). **L1** / **R1** go round the
+  parcel card, or the van's panel at its open back. **R2** goes, **L2** brakes then reverses, the left stick moves or steers, the
+  right stick looks.
+- Keyboard (tests and the desktop): X is Space (or the X key), Y is F, A is Enter, B is Shift, Select is M (or Tab), Start is
+  Escape (or P), L1 / R1 are Z / C, the stick and the pedals are the arrows or WASD, Q / E look.
 
 **Sound.** The van's engine (soft, small, a little rattly), tyres on gravel and tarmac, the horn, doors; forest air, birds, the
 creek near the bridge, Pip's radio faintly near his cabin, sawing near Hazel's; footsteps; a babble voice for each of Hazel
@@ -296,6 +308,7 @@ toy palette by a gradient map (the pack's four greys become ours); the files and
 | panel | `ui/kit/panel`: cream paper (#f3e6c8) on a wooden frame (#9a6a44) with a darker foot (#6f4a31) | every card, the dialogue box, the van's panel, the pause menu, the map's frame, the letter, the end card, prompt chips |
 | key | `ui/kit/raised` / `pressed` (neutral, tinted), or the paper `panel` / `panel_down` | buttons (the chosen one red), the title strip, name tags, L1 / R1 |
 | round | `ui/kit/round` / `round_down`, tinted | the face buttons: A red, B mustard, X blue, Y green, letters in cream |
+| select | a slate key (as L1 / R1) with "Select" on it (`ui.select_key`) | the paper map's button |
 | slip | `ui/kit/slip`: white with the post's red double edge | a parcel's label (the label card, the van's panel) |
 | rule | `ui/kit/rule`: a wooden groove | under the letter's address, between the card and its count |
 | chevrons | `ui/kit/chev_l` / `chev_r`, slate | beside L1 and R1 |
@@ -454,3 +467,29 @@ These replace the matching lines above where they differ (the UI theme, the musi
   handbrake while driving.
 - **Walking and running:** "Walking the player shouldn't have their arms out. For running they will and turning will also tilt
   them slightly in the direction that they're turning in."
+
+### What the fourth round changed (the controls, walking and running, the handbrake, the wheelbase)
+
+- **Controls:** as "Controls" in the slice spec now says. nova.json's actions: `interact` (X, `pad:west`), `van` (Y, `pad:north`),
+  `confirm` (A, `pad:south`), `run` and `handbrake` (both B, `pad:east`), `map` (Select, `pad:select`); `act` and `horn` are
+  gone. Every prompt chip, the dialogue's continue button, the van's panel, the pause and title hints show the new letters, and the
+  map's button is a small slate "Select" key of the kit. A test (`x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else`)
+  presses each button where the others belong: A never talks or loads, X never confirms the pause menu or takes from the panel, Y
+  only gets in and out, the map opens and closes on Select only. The routes (tools/routes/*.json) press the new buttons.
+- **Walking and running** (entities/postmaster.lua): the left stick alone walks, a gentle push slowly, a push of 0.9 or more at the
+  full walk (1.6 m/s), the arms by the sides. B held runs (3.0 m/s): the arms out like wings, in and out over about 0.2 s (the walk and
+  run clips are mixed by speed, which eases a little quicker into and out of the run). Running, the body banks into a turn like an
+  aeroplane: a roll of 0.11 rad per rad/s of turn, at most 13 degrees, eased over about a tenth of a second, level going straight, none
+  in a sharp about-turn; a 45 degree change of direction banks about 8 to 9 degrees. Walking does not bank. With a parcel B is the
+  trot (2.2 m/s, the arms round the parcel) and banks half as much. The dust and the light steps stay with the run; residents never run.
+- **Handbrake** (entities/van.lua, `Van.TUNE.handbrake` and the `hb_` numbers): held, the rear wheels lock (they stop turning), it slows
+  by 4 m/s^2 whatever the pedals do, and the brake lamps light. From 3 m/s up (fully from 7) the locked rear lets the tail step out: the
+  body turns up to 70% more than the wheels ask and the sideways grip falls to 30%, easing off once the van slides 7 degrees, so in a
+  bend at the top speed it settles about 10 degrees out and comes back in line when let go. Standing, it holds the van on a slope.
+- **Wheelbase** (tools/van.mjs): the rear axle moved back from 70% of the length to 77% (z -0.59 to -0.79; the wheelbase 1.31 to 1.51
+  m), the body's length and the front axle unchanged. The rear well and its lining follow it; the underside now sweeps up at 32 degrees
+  from under the back of the wheel to the rear bumper (it was 25 degrees from further forward), and the well's lining no longer hangs
+  below the swept underside. The lock went from 18.3 to 20.9 degrees, the same tan(lock) / wheelbase, so the kerb-to-kerb circle at a
+  crawl is still about 10 m (the test keeps it at 9 to 10.5). Both slice orders still complete with the test driver.
+- **Not checked on the Retroid:** the letters were read off the device on 2026-11-12 for the Android build; on its Linux side (Armada
+  or Zaviya, gilrs) the face buttons are named by position, which may put X and Y (and A and B) the other way round there.

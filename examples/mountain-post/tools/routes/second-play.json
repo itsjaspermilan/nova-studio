@@ -5,10 +5,10 @@
   "route": [
     { "wait": 10 },
     { "walk_to": [0.9, 1.7], "max": 300 },
-    { "hold": ["move_y=1"], "until": "nova.current_scene() == 'valley'", "max": 120 },
+    { "hold": ["move_y=1"], "until": "nova.current_scene() == 'valley'", "max": 240 },
     { "wait": 1, "capture": "leaving the post office: the first frame outside" },
     { "wait": 30, "capture": "leaving the post office: half a second on, the porch cut away round the postmaster" },
-    { "hold": ["move_y=-1"], "frames": 70, "capture": "running away from the post office: the yard and the van" },
+    { "hold": ["move_y=-1", "run"], "frames": 70, "capture": "running away from the post office: the yard and the van" },
     { "lua": "AT(4.5, -140, 0.4)" },
     { "wait": 40, "capture": "open ground, the default view" },
     { "hold": ["look_y=-1"], "frames": 30 },

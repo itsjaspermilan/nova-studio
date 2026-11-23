@@ -1,5 +1,5 @@
 -- The post office's room (scenes/office.scene.json): dusty, half the pigeonholes empty, the Mayor's letter on the counter and the
--- day's two parcels on the shelf by the window. A reads the letter, takes a parcel (one at a time; its label is held up to read)
+-- day's two parcels on the shelf by the window. X reads the letter, takes a parcel (one at a time; its label is held up to read)
 -- or puts it back; the doorway leads out to the porch (a short fade, and they stand outside, free at once). Coming back in with both
 -- delivered, the slice ends on its quiet card. The room is seen from one fixed view high over its cut-away front wall, like a
 -- diorama ("when in a building, we should just have a simple top down view like Animal Crossing"); the stick moves the postmaster
@@ -95,7 +95,7 @@ function Office:update(dt)
       end
     end
     local what, it = self:action()
-    if nova.input.pressed("act") and what then
+    if nova.input.pressed("interact") and what then
       if what == "read" then
         state.letter_read = true
         p:face_to(LETTER_AT[1], LETTER_AT[2])
@@ -137,10 +137,10 @@ function Office:hints()
   if cards.active() or self.leaving then return nil end
   local what = self:action()
   local list = {}
-  if what == "read" then list[#list + 1] = { "A", words.hint.read }
-  elseif what == "take" then list[#list + 1] = { "A", words.hint.take }
-  elseif what == "put_back" then list[#list + 1] = { "A", words.hint.put_back } end
-  list[#list + 1] = { "Y", words.hint.map }
+  if what == "read" then list[#list + 1] = { "X", words.hint.read }
+  elseif what == "take" then list[#list + 1] = { "X", words.hint.take }
+  elseif what == "put_back" then list[#list + 1] = { "X", words.hint.put_back } end
+  list[#list + 1] = { "SELECT", words.hint.map }
   return list
 end
 

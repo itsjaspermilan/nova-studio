@@ -120,9 +120,23 @@ function ui.shoulder(x, y, name, size, opts)
   text(x, y - size * 0.4 + dy, name, { size = size * 0.58, align = "center", color = alpha(C.cream, opts.alpha), bold = true })
 end
 
--- How wide a prompt chip is, and the chip itself: a small panel holding a button and its word (`button` nil: the word alone).
+-- The Select button (the paper map's): a small slate key with the word on it, like the shoulder keys, centred on x, y. Its width.
+local SEL_FS = math.max(12, sz(15))
+local function select_w(size) return text_width("Select", SEL_FS, true) + size * 0.75 end
+function ui.select_key(x, y, size, opts)
+  opts = opts or {}
+  local w = select_w(size)
+  ui.key(x - w / 2, y - size / 2, w, size, C.slate, { down = opts.down, alpha = opts.alpha, scale = size / 70 })
+  local dy = opts.down and size * 0.06 or 0
+  text(x, y - SEL_FS * 0.66 + dy, "Select", { size = SEL_FS, align = "center", color = alpha(C.cream, opts.alpha), bold = true })
+end
+
+-- How wide a prompt chip is, and the chip itself: a small panel holding a button and its word (`button` nil: the word alone;
+-- "SELECT": the Select key).
 local CHIP_H = s(40)
+local SEL_H = s(24)
 function ui.chip_width(button, str)
+  if button == "SELECT" then return text_width(str, F.hint) + select_w(SEL_H) + s(36) end
   return text_width(str, F.hint) + (button and s(56) or s(34))
 end
 function ui.chip(x, y, button, str, opts)
@@ -131,16 +145,21 @@ function ui.chip(x, y, button, str, opts)
   ui.panel(x, y, w, CHIP_H, { scale = 0.4, alpha = opts.alpha })
   local tx = x + s(17)
   if button then
-    if button == "L1" or button == "R1" then ui.shoulder(x + s(24), y + CHIP_H / 2 - 1, button, s(20), { down = opts.down })
-    else ui.glyph(x + s(22), y + CHIP_H / 2 - 1, button, s(25), { down = opts.down }) end
     tx = x + s(42)
+    if button == "L1" or button == "R1" then ui.shoulder(x + s(24), y + CHIP_H / 2 - 1, button, s(20), { down = opts.down })
+    elseif button == "SELECT" then
+      local pw = select_w(SEL_H)
+      ui.select_key(x + s(13) + pw / 2, y + CHIP_H / 2 - 1, SEL_H, { down = opts.down, alpha = opts.alpha })
+      tx = x + s(22) + pw
+    else ui.glyph(x + s(22), y + CHIP_H / 2 - 1, button, s(25), { down = opts.down }) end
   end
   text(tx, y + CHIP_H / 2 - F.hint * 0.62, str, { size = F.hint, color = alpha(C.ink, opts.alpha) })
   return w
 end
 
 -- Which game action each button of a hint is (so a chip shows its button held while it is held).
-local ACTION = { A = "act", B = "van", X = "horn", Y = "map", L1 = "prev", R1 = "next" }
+-- (the letters engraved on the Retroid: X interact, Y the van, A confirm, B run / handbrake; Select the map)
+local ACTION = { A = "confirm", B = "run", X = "interact", Y = "van", SELECT = "map", L1 = "prev", R1 = "next" }
 local function held(button) return button and ACTION[button] and nova.input.down(ACTION[button]) end
 
 -- The prompts at the bottom right: { { "A", "Take" }, { "B", "Get in" } } (a hint with no button, { nil, "words" }, is words alone).

@@ -3,7 +3,7 @@
 -- Nothing in the game uses them.
 local testkit = {}
 
--- In the office: take a parcel from the shelf (walk to it, A, close the label).
+-- In the office: take a parcel from the shelf (walk to it, X, close the label with X).
 function testkit.shelf_spot(item)
   local it = nova.named("parcel_" .. item) or nova.named("postmaster")
   return { it.x - 0.65, it.z }
@@ -35,10 +35,10 @@ function testkit.to_van(where)
   end
   for i = #first, 1, -1 do table.insert(p.walk_path, 1, first[i]) end
   p.walk_to = nil
-  p.walk_pace = 2.8 -- (a run, or a trot with a parcel: the tests hurry)
+  p.walk_pace = 2.8 -- (a run, or a trot with a parcel, as B held gives: the tests hurry)
 end
 -- In the valley: the postmaster straight into the van's seat or out beside it (a test's or a picture's shortcut; the game does the
--- same on B at the doorway).
+-- same on Y at the doorway).
 function testkit.board() nova.scene_now():get_in() end
 function testkit.walking() local p = nova.named("postmaster"); return p.walk_to ~= nil or #(p.walk_path or {}) > 0 end
 function testkit.drive(place) nova.named("van").autopilot = require("lib.autopilot").to(place) end

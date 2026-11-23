@@ -1,8 +1,10 @@
 -- The postmaster: a fox in a blue postal jacket and a peaked cap (models/postmaster.glb, character3d_make). The left stick moves
--- as the camera sees it, in two gaits by how far it is pushed: a gentle tilt is the waddling walk; a full push is a run with the
--- arms held straight out to the sides like wings (the "run" clip; the walk and run clips are mixed by speed, so the arms ease up
--- and down as it speeds up and slows). Carrying a parcel, the arms hold it at the chest (the "carry" clip laid over the arms) and
--- the full push is a brisk trot instead. In the van they sit at the wheel (the "sit" clip), drawn in the cab and carried by the
+-- as the camera sees it, and alone it only walks (a gentle push a slow walk, a full push the full walk), the arms swinging by the
+-- sides. Holding B runs (the owner's fourth notes: "Walking the player shouldn't have their arms out. For running they will and
+-- turning will also tilt them slightly in the direction that they're turning in"): the arms held straight out to the sides like wings
+-- (the "run" clip; the walk and run clips are mixed by speed, so the arms ease up and down in about 0.2 s as B is pressed and let go),
+-- and while running the body banks into a turn like an aeroplane, by how fast it is turning. Carrying a parcel, the arms hold it at
+-- the chest (the "carry" clip laid over the arms) and B gives a brisk trot instead, banking half as much. In the van they sit at the wheel (the "sit" clip), drawn in the cab and carried by the
 -- body as it leans, the hands on the wheel as it turns, the head turning a little into a bend. The scene decides what A and B do;
 -- this file only moves, animates and is heard.
 local world = require("lib.world")
@@ -13,9 +15,13 @@ local face = require("lib.face")
 -- the speeds at which the walk, run and trot do not slide: the long, calm strides of tools/strides.mjs (TARGET there; the owner after
 -- the second play: "the animation needs to slow down a bit and the player should be able to move faster")
 local WALK, RUN, TROT = 1.6, 3.0, 2.2
-local STROLL = 1.6                    -- the walk's top: a stick pushed up to TILT walks, up to this
-local TILT = 0.7                      -- past this much push the walk turns into the run (or the trot)
-local TOP, TOP_CARRY = 3.0, 2.2        -- metres a second at a full push: running, trotting with a parcel
+local STROLL = 1.6                    -- the walk's top: the stick alone walks, up to this
+local TILT = 0.9                      -- a push this far (or further) walks at the full walk; less, slower
+local TOP, TOP_CARRY = 3.0, 2.2        -- metres a second holding B: running, trotting with a parcel
+-- The bank while running: the body rolls into a turn by how fast it is turning (radians of roll per radian a second of turn), up to
+-- BANK_MAX, eased in and out; half as much trotting with a parcel; none walking. A sharp about-turn (the way it wants to face far
+-- from the way it faces) is a pivot, not a bank.
+local BANK_PER, BANK_MAX, BANK_EASE = 0.11, math.rad(13), 10
 -- (the clips are mixed at these speeds and played at the pace that keeps the feet in step: at their own pace at the top of each gait)
 local function pace(speed, laden)
   local top, fast = laden and TOP_CARRY or TOP, laden and TROT or RUN
@@ -52,7 +58,9 @@ function Postmaster:create()
   self.mood = face.new(5)
   self.gait = "still"           -- still, walk, run or trot (what the stick asks for; the tests read it)
   self.dust = {}                 -- little puffs kicked up by the run's steps
-  self.draw_opts = { ry = 0 }
+  self.draw_opts = { ry = 0, rz = 0 }
+  self.bank = 0                  -- the roll into a turn while running (radians; the tests read it)
+  self.run_held = false
 end
 
 -- A smile for a moment (a parcel handed over, a letter read).
@@ -95,9 +103,10 @@ function Postmaster:update(dt)
   local len = math.sqrt(dx * dx + dz * dz)
   if len > 1 then dx, dz, len = dx / len, dz / len, 1 end
   local top = state.carrying and TOP_CARRY or TOP
-  -- (the walk up to TILT, then the run: the speed climbs from the walk's top to the run's over the rest of the push)
+  -- (the stick alone walks, up to the full walk at TILT; holding B runs, or trots with a parcel)
+  self.run_held = self.control and nova.input.down("run") or false
   local want = 0
-  if len > 0.15 then want = len <= TILT and STROLL * len / TILT or STROLL + (top - STROLL) * math.min(1, (len - TILT) / (0.95 - TILT)) end
+  if len > 0.15 then want = self.run_held and top or STROLL * math.min(1, len / TILT) end
   -- (a few points to walk through in turn: a test leading it round the van)
   if not self.walk_to and self.walk_path and #self.walk_path > 0 then self.walk_to = table.remove(self.walk_path, 1) end
   if self.walk_to then
@@ -111,12 +120,23 @@ function Postmaster:update(dt)
     if d < 0.12 or self.walk_budget <= 0 then self.walk_to = nil; want = 0 else dx, dz, want = tx / d, tz / d, math.min(pace, d * 4) end
     len = 1
   end
-  self.speed = self.speed + (want - self.speed) * math.min(1, dt * 9)
+  -- (into and out of the run a little quicker than the walk eases: the arms go out and come in over about 0.2 s)
+  local quick = want > STROLL + 0.01 or self.speed > STROLL + 0.01
+  self.speed = self.speed + (want - self.speed) * math.min(1, dt * (quick and 12 or 9))
+  local turn_rate, pivot = 0, 0
   if want > 0 and len > 0.15 then
     local turn = (math.atan(dx, dz) - self.face + math.pi) % (2 * math.pi) - math.pi
-    self.face = self.face + turn * math.min(1, dt * 11)
+    local step = turn * math.min(1, dt * 11)
+    self.face = self.face + step
+    turn_rate, pivot = step / math.max(dt, 1e-6), math.abs(turn)
     self.dir_x, self.dir_z = dx / math.max(len, 1e-6), dz / math.max(len, 1e-6)
   end
+  -- the bank: only running (by how far into the run it is: the arms' share), half trotting, into the turn (turning left, +face, tips
+  -- the top to the left, +x: a negative roll)
+  local runw = math.max(0, math.min(1, (self.speed - STROLL) / (top - STROLL)))
+  local arc = math.max(0, math.min(1, 1 - (pivot - 0.7) / 1.0))
+  local bank = -math.max(-BANK_MAX, math.min(BANK_MAX, turn_rate * BANK_PER)) * runw * arc * (state.carrying and 0.5 or 1)
+  self.bank = (self.bank or 0) + (bank - (self.bank or 0)) * math.min(1, dt * BANK_EASE)
   if self.speed > 0.01 and self.dir_x then
     local nx, nz = world.move(self.x, self.z, self.dir_x * self.speed * dt, self.dir_z * self.speed * dt, RADIUS)
     self.x, self.z = nx, nz
@@ -158,8 +178,9 @@ end
 -- Where the parcel it carries is: at the chest, in front of it.
 function Postmaster:hands()
   local s, c = math.sin(self.face), math.cos(self.face)
-  local bob = math.abs(math.sin(self.steps * 0.5 + nova.time() * 0)) * 0
-  return self.x + s * 0.33, self.y + 0.42 + bob, self.z + c * 0.33
+  -- (leaning with the bank: the top tips to the side the body rolls to; the model's left, +x, is (cos, -sin) in the world)
+  local lean = -0.42 * math.sin(self.bank or 0)
+  return self.x + s * 0.33 + c * lean, self.y + 0.42 * math.cos(self.bank or 0), self.z + c * 0.33 - s * lean
 end
 
 local DUST = { color = { 196, 178, 150, 110 } }
@@ -173,7 +194,7 @@ function Postmaster:sit(dt)
     self.x, self.y, self.z = x, 0, z
     self.face = v.heading
   end
-  self.speed, self.gait = 0, "still"
+  self.speed, self.gait, self.bank = 0, "still", 0
   self.anim:play("sit", { fade = 0.1 })
   self.anim.speed = 1
   self.anim:update(dt)
@@ -213,7 +234,7 @@ function Postmaster:draw()
   local parts = face.parts(self.mood)
   -- (the turns the seat gave the arms, the head and the tail are let go)
   if parts.arm_l then parts.arm_l.rx, parts.arm_r.rx, parts.head.ry, parts.tail.visible = 0, 0, 0, true end
-  o.ry, o.extra, o.parts = self.face, self.carry_w > 0.01 and self.carry_layer or nil, parts
+  o.ry, o.rz, o.extra, o.parts = self.face, self.bank or 0, self.carry_w > 0.01 and self.carry_layer or nil, parts
   self.anim:draw(self.x, self.y, self.z, o)
   for _, p in ipairs(self.dust) do
     local k = p.age / 0.5

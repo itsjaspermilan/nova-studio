@@ -27,7 +27,7 @@
   },
   {
    "hold": [
-    "move_y=-0.5"
+    "move_y=-1"
    ],
    "frames": 60,
    "capture": "walk"
@@ -37,10 +37,11 @@
   },
   {
    "hold": [
-    "move_y=-1"
+    "move_y=-1",
+    "run"
    ],
    "frames": 60,
-   "capture": "run"
+   "capture": "run (B held)"
   },
   {
    "wait": 25,
@@ -48,10 +49,11 @@
   },
   {
    "hold": [
-    "move_y=-1"
+    "move_y=-1",
+    "run"
    ],
    "frames": 60,
-   "capture": "trot with a parcel"
+   "capture": "trot with a parcel (B held)"
   }
  ],
  "out": "build/gaits_run"

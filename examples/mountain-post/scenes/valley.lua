@@ -1,9 +1,11 @@
 -- The valley (scenes/valley.scene.json, composed by tools/scene.mjs): Post Road with the post office and the BRIDGE OUT barrier,
--- Fern Lane up to No. 3, Kettle Creek Road over the creek to No. 7. On foot: A talks and hands over; at the van's back (its doors
--- swing open by themselves as the postmaster comes near) A loads the parcel carried, or, empty-handed, a small panel shows the
--- parcels in the van one at a time (L1 and R1 go through them, A takes the one shown); B at the van's left doorway gets in. In the
--- van: R2 goes, L2 brakes then reverses, the stick steers, B gets out when stopped, X is the horn. Y is the paper map; Start
--- pauses. Nothing takes the stick away for a walk the player has to watch (the owner, after the second pictures: "The user should
+-- Fern Lane up to No. 3, Kettle Creek Road over the creek to No. 7. The buttons by the letters engraved on the Retroid (the owner's
+-- fourth notes: "X: Interact, continue conversation. Y: Enter/Exit vehicle. A: Confirm items in menus. B: Hold to run while walking,
+-- hold for handbrake while driving."). On foot: X talks and hands over; at the van's back (its doors swing open by themselves as the
+-- postmaster comes near) X loads the parcel carried, or, empty-handed, a small panel shows the parcels in the van one at a time (L1
+-- and R1 go through them, A takes the one shown: the panel is a menu); Y at the van's left doorway gets in; B held runs. In the van:
+-- R2 goes, L2 brakes then reverses, the stick steers, B held is the handbrake, Y gets out when stopped, X is the horn. Select is
+-- the paper map; Start pauses. Nothing takes the stick away for a walk the player has to watch (the owner, after the second pictures: "The user should
 -- just be outside."): the porch door is a short fade, getting in and out is at once. Nothing on the screen points anywhere: the
 -- signposts and the mailboxes' numbers do.
 local state = require("lib.state")
@@ -139,9 +141,9 @@ end
 function Valley:to_back() local x, z = self:van_point(BACK); return dist(self.p, x, z) end
 function Valley:to_door() local x, z = self:van_point(DOOR); return dist(self.p, x, z) end
 
--- What A and B would do now, on foot: A "load" (the parcel carried into the open back), "pick" (the one the panel shows out of
+-- What X and Y would do now, on foot (the first answer is X's, but "pick" is A's: the van's panel is a menu): X "load" (the parcel carried into the open back), "pick" (the one the panel shows out of
 -- it), "give" (a resident's own parcel to them), "talk" (to a resident out of doors, close and in front) or "knock" (at a resident's
--- front door while they are indoors); B "get_in" at the left doorway. A third answer is the resident it is about. The van comes
+-- front door while they are indoors), A "pick"; Y "get_in" at the left doorway. A third answer is the resident it is about. The van comes
 -- first: at its open back or its doorway nobody else's prompt shows (the owner, after the second play: "If I'm close to the van trying
 -- to get the package, I only get an option to 'knock'").
 function Valley:actions()
@@ -259,7 +261,7 @@ end
 function Valley:get_out()
   local v, p = self.van, self.p
   v.driven = false
-  v.ctl.go, v.ctl.brake, v.ctl.steer = 0, 0, 0
+  v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, 0, 0, 0
   v.engine_on = false
   nova.sound.play("engine_off", { volume = 0.4 })
   nova.sound.play("step_wood", { volume = 0.4 })
@@ -308,17 +310,21 @@ function Valley:update(dt)
   -- what is open over the game first: a card, then a conversation
   if cards.active() then
     cards.update(dt)
-    if self.mode == "van" then v.ctl.go, v.ctl.brake, v.ctl.steer = 0, 0.4, 0 end
+    if self.mode == "van" then v.ctl.go, v.ctl.brake, v.ctl.steer, v.ctl.handbrake = 0, 0.4, 0, 0 end
     p.control = false
     if not cards.active() and self.mode == "foot" and not dialogue.active() then p.control = true end
   elseif dialogue.active() then
     dialogue.update(dt)
   elseif self.mode == "van" then
+    -- (B held: the handbrake, rear wheels locked)
+    v.ctl.handbrake = nova.input.down("handbrake") and 1 or 0
     if v.autopilot and not v.autopilot.done then v.autopilot:steer(v, dt)
     else v.ctl.go, v.ctl.brake, v.ctl.steer = nova.input.axis("go"), nova.input.axis("brake"), nova.input.axis("steer") end
-    if nova.input.pressed("horn") then
+    -- (X, which nothing else uses in the van: the horn)
+    if nova.input.pressed("interact") then
       nova.sound.play("horn", { volume = 0.7 })
       p:smile(1.2)
+      nova.log("horn")
     end
     if nova.input.pressed("van") and v:stopped() then self:get_out()
     elseif nova.input.pressed("map") then cards.open("map")
@@ -337,7 +343,9 @@ function Valley:update(dt)
       self.pick_i = 1
       parcels.update() -- (away from the van's panel, L1 and R1 go round the corner card's parcels)
     end
-    if nova.input.pressed("act") and a then self:act(a, r)
+    -- X does what is at hand; A takes the parcel the van's panel shows (a menu: A confirms); Y gets in
+    if a == "pick" and nova.input.pressed("confirm") then self:act(a, r)
+    elseif a and a ~= "pick" and nova.input.pressed("interact") then self:act(a, r)
     elseif nova.input.pressed("van") and b == "get_in" then self:get_in()
     elseif nova.input.pressed("map") then cards.open("map")
     elseif nova.input.pressed("pause") then cards.open("pause") end
@@ -367,16 +375,16 @@ function Valley:hints()
   if cards.active() or dialogue.active() or self.leaving then return nil end
   local list = {}
   if self.mode == "van" then
-    if self.van:stopped() then list[#list + 1] = { "B", words.hint.get_out } end
-    list[#list + 1] = { "Y", words.hint.map }
+    if self.van:stopped() then list[#list + 1] = { "Y", words.hint.get_out } end
+    list[#list + 1] = { "SELECT", words.hint.map }
     return list
   end
   local a, b = self:actions()
-  if a == "pick" then return { { "Y", words.hint.map } } end -- (the panel has its own buttons)
-  if a then list[#list + 1] = { "A", a == "give" and words.hint.give or a == "load" and words.hint.load or a == "knock" and words.hint.knock or words.hint.talk } end
-  if b then list[#list + 1] = { "B", words.hint.get_in }
+  if a == "pick" then return { { "SELECT", words.hint.map } } end -- (the panel has its own buttons)
+  if a then list[#list + 1] = { "X", a == "give" and words.hint.give or a == "load" and words.hint.load or a == "knock" and words.hint.knock or words.hint.talk } end
+  if b then list[#list + 1] = { "Y", words.hint.get_in }
   elseif state.carrying and self.van:stopped() and self:to_door() < AT_DOOR then list[#list + 1] = { nil, words.hint.load_at_back } end
-  list[#list + 1] = { "Y", words.hint.map }
+  list[#list + 1] = { "SELECT", words.hint.map }
   return list
 end
 

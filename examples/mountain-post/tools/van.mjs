@@ -9,7 +9,7 @@
 // - from the side, front to back: a dark bumper sticking out; a blunt upright nose 0.74 high (45% of the height); a short bonnet (0.46,
 //   16% of the length) rising gently to the base of a big flat windscreen that leans back 12.5 degrees and reaches nearly to the roof;
 //   one flat roof all the way back with a thin overhanging lip; an upright back leaning in 6 cm towards the roof; under it the underside
-//   sweeping UP at 25 degrees from just behind the rear wheel to the dark rear bumper (the step).
+//   sweeping UP at 32 degrees from just behind the rear wheel to the dark rear bumper (the step).
 // - the cab: on the left (the driver's side) an open doorway shaped as the reference's door, no door (the owner, second notes: "We can
 //   also make the truck have no doors"): its front edge leaning with the windscreen pillar, its foot low with a dark step inside, and
 //   rising round the front wheel's well (the owner, after the third play's pictures: "they would go around the wheel well and have a
@@ -17,7 +17,9 @@
 //   passenger side door and just keep it as a window"). The cargo box behind is plain, the lettering on its upper half (FERNHOLLOW
 //   POST, drawn by the game: entities/van.lua).
 // - small dark steel wheels with a small hub (0.54 across, 33% of the height): the front one under the front of the doorway just behind
-//   the bonnet, the rear one at 70% of the length, a long rear overhang; round wells cut in the body with a rolled lip, hollow inside.
+//   the bonnet, the rear one at 77% of the length (the owner's fourth notes: "You can increase the wheelbase of the van a bit. So don't
+//   increase the body length but you can move back the back wheels a bit"; it was at 70%, a long overhang), a short rear overhang
+//   that still sweeps up behind the wheel; round wells cut in the body with a rolled lip, hollow inside.
 // - the front: the windscreen in a thick dark rubber frame with thin pillars, two small square headlamps at the nose's outer corners
 //   with a small amber lamp beside each, a small grille between, a mirror on a stalk at each pillar.
 // - two tones: cream above, sand below, a red band at mid height that swoops down towards the front wheel.
@@ -63,7 +65,7 @@ export const LAMPS = {
 export const L = 2.95, W = 1.34, H = 1.63;        // over the bumpers, over the body, over the roof's lip
 export const HW = W / 2;
 export const R = 0.27;                            // wheel radius (0.54 across)
-export const AXF = 0.72, AXR = -0.59;             // front and rear axle: under the front of the doorway; at 70% of the length
+export const AXF = 0.72, AXR = -0.79;             // front and rear axle: under the front of the doorway; at 77% of the length (was -0.59, 70%)
 export const TR = 0.55;                           // a wheel's middle from the centre line
 export const ZF = 1.40, ZB = -1.42;               // the nose; the foot of the back (its top leans 6 cm in)
 export const Z1 = 1.49, Z0 = -1.48;               // the bumpers' faces (the van's ends)
@@ -116,10 +118,13 @@ const at = (line, z) => {
 const zOfWindscreen = (y) => WS.base[0] + ((WS.top[0] - WS.base[0]) * (y - WS.base[1])) / (WS.top[1] - WS.base[1]);
 
 // SIDE: the top line (roof, windscreen, bonnet to the nose) and the bottom line (the sweep up behind the rear wheel, the flat underside)
+// The sweep begins under the back of the rear wheel (inside its well, so it is already rising where the well ends) and climbs to the
+// rear bumper's foot: with the wheel moved back it is shorter and steeper than it was (25 degrees from z -0.97).
+const SWEEP = { z: AXR - 0.2, deg: 32 };
 const NOSE0 = ZF - END.nose, BACK0 = ZB + BACK_LEAN + END.back + 0.05; // where the two ends' rounding begins
 export const SIDE = {
   top: filleted([[BACK0, ROOF], [WS.top[0], ROOF], WS.base, [NOSE0, NOSE_TOP]], [0, 0.12, 0.09, 0]),
-  bottom: filleted([[BACK0, SILL + (-0.97 - BACK0) * Math.tan((25 * Math.PI) / 180)], [-0.97, SILL], [NOSE0, SILL]], [0, 0.18, 0]),
+  bottom: filleted([[BACK0, SILL + (SWEEP.z - BACK0) * Math.tan((SWEEP.deg * Math.PI) / 180)], [SWEEP.z, SILL], [NOSE0, SILL]], [0, 0.16, 0]),
 };
 // PLAN: the half-width along z (a hair narrower at the nose, as the reference's front corners are)
 export const PLAN = (z) => HW - 0.02 * Math.max(0, Math.min(1, (z - 0.94) / (NOSE0 - 0.94)));
@@ -280,14 +285,16 @@ for (const y of [0.42, 0.47, 0.52]) body.push(bevelled([0, y, ZF + 0.005], [0.36
 // faces turned to look away from a point: a liner seen only from inside
 const sheet = (pts, away, color) => mesh(pts, [[0, 1, 2, 3]], color, { inside: away });
 // the wells' lining: dark faces turned inwards round each axle, so the well reads hollow and the wheel turns inside it
+// (each end's foot follows the underside there, so behind the rear wheel, where it sweeps up, no lining hangs below the body)
 const liner = (az) => {
-  const x = HW - 0.05, y0 = SILL - 0.04, y1 = ARCH_Y + ARCH + 0.02, z0 = az - ARCH - 0.02, z1 = az + ARCH + 0.02, xi = TR - 0.13;
+  const x = HW - 0.05, y1 = ARCH_Y + ARCH + 0.02, z0 = az - ARCH - 0.02, z1 = az + ARCH + 0.02, xi = TR - 0.13;
+  const a0 = Math.max(SILL, at(SIDE.bottom, z0)) - 0.04, a1 = Math.max(SILL, at(SIDE.bottom, z1)) - 0.04;
   return [
     sheet([[-x, y1, z0], [x, y1, z0], [x, y1, z1], [-x, y1, z1]], [0, y1 + 5, az], INK),
-    sheet([[-x, y0, z0], [x, y0, z0], [x, y1, z0], [-x, y1, z0]], [0, (y0 + y1) / 2, z0 - 5], INK),
-    sheet([[-x, y0, z1], [x, y0, z1], [x, y1, z1], [-x, y1, z1]], [0, (y0 + y1) / 2, z1 + 5], INK),
-    sheet([[xi, y0, z0], [xi, y1, z0], [xi, y1, z1], [xi, y0, z1]], [-5, (y0 + y1) / 2, az], INK),
-    sheet([[-xi, y0, z0], [-xi, y1, z0], [-xi, y1, z1], [-xi, y0, z1]], [5, (y0 + y1) / 2, az], INK),
+    sheet([[-x, a0, z0], [x, a0, z0], [x, y1, z0], [-x, y1, z0]], [0, (a0 + y1) / 2, z0 - 5], INK),
+    sheet([[-x, a1, z1], [x, a1, z1], [x, y1, z1], [-x, y1, z1]], [0, (a1 + y1) / 2, z1 + 5], INK),
+    sheet([[xi, a0, z0], [xi, y1, z0], [xi, y1, z1], [xi, a1, z1]], [-5, (a0 + y1) / 2, az], INK),
+    sheet([[-xi, a0, z0], [-xi, y1, z0], [-xi, y1, z1], [-xi, a1, z1]], [5, (a0 + y1) / 2, az], INK),
   ];
 };
 body.push(...liner(AXF), ...liner(AXR));
@@ -459,7 +466,7 @@ export function measures() {
     nose: NOSE_TOP - END.nose * 0.4, bonnet: (NOSE0 + END.nose - WS.base[0]) / (Z1 - Z0),
     windscreen_lean_deg: (Math.atan2(WS.base[0] - WS.top[0], WS.top[1] - WS.base[1]) * 180) / Math.PI,
     rear_wheel_at: (Z1 - AXR) / (Z1 - Z0), wheel_to_height: (2 * R) / (ROOF + 0.03),
-    sweep_deg: 25, doorway: (doorFront(1.0) - DOORWAY.z0) / (Z1 - Z0),
+    sweep_deg: SWEEP.deg, wheelbase: AXF - AXR, rear_overhang: AXR - Z0, doorway: (doorFront(1.0) - DOORWAY.z0) / (Z1 - Z0),
   };
 }
 

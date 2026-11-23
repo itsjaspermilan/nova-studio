@@ -49,7 +49,7 @@ function dialogue.update(dt)
       end
     end
   end
-  if nova.input.pressed("act") then
+  if nova.input.pressed("interact") then -- (X goes on)
     if cur.shown < #text then
       cur.shown = #text
     elseif cur.i < #cur.lines then
@@ -85,7 +85,7 @@ function dialogue.draw(w, h)
   ui.text(x + s(32), y + L.pad_top, text, { size = L.size, width = L.text_w, color = ui.C.ink, line_spacing = L.spacing })
   if cur.shown >= #cur.lines[cur.i] then
     local bob = math.sin(nova.time() * 5) * 2
-    ui.glyph(x + bw - s(34), y + bh - s(32) + bob, "A", s(28), { down = nova.input.down("act") })
+    ui.glyph(x + bw - s(34), y + bh - s(32) + bob, "X", s(28), { down = nova.input.down("interact") })
   end
 end
 

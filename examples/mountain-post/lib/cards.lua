@@ -29,8 +29,9 @@ function cards.update(dt)
       open.choice = 3 - open.choice
       nova.sound.play("tick", { volume = 0.35 })
     end
-    if nova.input.pressed("pause") or nova.input.pressed("van") then cards.close(); return end
-    if nova.input.pressed("act") then
+    -- (Start closes it; A confirms the choice: nothing else does anything here)
+    if nova.input.pressed("pause") then cards.close(); return end
+    if nova.input.pressed("confirm") then
       nova.sound.play("tick", { volume = 0.45, pitch = 1.2 })
       if open.choice == 1 then cards.close() else nova.log("quit"); nova.quit() end
     end
@@ -38,10 +39,10 @@ function cards.update(dt)
   end
   if open.t < 0.25 then return end -- (a press that opened it does not close it)
   if k == "map" then
-    if nova.input.pressed("map") or nova.input.pressed("van") or nova.input.pressed("act") then cards.close() end
+    if nova.input.pressed("map") then cards.close() end -- (Select opens it and closes it)
   elseif k == "ending" then
-    if open.t > 2.5 and nova.input.pressed("act") then cards.close() end
-  elseif nova.input.pressed("act") or nova.input.pressed("van") then
+    if open.t > 2.5 and nova.input.pressed("interact") then cards.close() end
+  elseif nova.input.pressed("interact") then -- (X closes a label or the letter)
     cards.close()
   end
 end
@@ -106,7 +107,7 @@ local function map_card(w, h, t)
   nova.ui.sprite("ui/map", w / 2, y + mh / 2, { w = mw, h = mh, color = { 255, 255, 255, math.floor(255 * k) } })
 end
 
--- The end: the screen goes dark, then a card with the spec's words, and A to go on.
+-- The end: the screen goes dark, then a card with the spec's words, and X to go on.
 local function ending_card(w, h, t)
   local a = math.min(1, t / 1.5)
   -- (not on the top layer: the card's panel is drawn over it, and the scene hides its prompts and corner card under a card)
@@ -120,7 +121,7 @@ local function ending_card(w, h, t)
   ui.panel(x, y, cw, ch, { alpha = ta })
   ui.title_strip(w / 2, y - s(20), words.title, { alpha = ta })
   text(w / 2, y + s(44), words.ending, { size = fs, align = "center", color = ui.alpha(C.ink, ta), bold = true })
-  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("A", words.hint.close) / 2, y + ch + s(18), "A", words.hint.close) end
+  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("X", words.hint.close) / 2, y + ch + s(18), "X", words.hint.close, { down = nova.input.down("interact") }) end
 end
 
 -- Paused: a small card, its two choices as keys (the chosen one red, pressed while A is held).
@@ -133,7 +134,7 @@ local function pause_card(o, w, h)
   for i, label in ipairs({ words.pause.resume, words.pause.quit }) do
     local yy = y + s(52) + (i - 1) * s(76)
     local on = o.choice == i
-    local down = on and nova.input.down("act")
+    local down = on and nova.input.down("confirm")
     ui.key(x + s(46), yy, cw - s(92), s(56), on and C.red or nil, { scale = 0.5 * ui.S, down = down })
     text(w / 2, yy + s(28) - (F.button + 4) * 0.62 + (down and 3 or 0), label, { size = F.button + 4, align = "center", color = on and C.cream or C.ink, bold = on or nil })
   end
@@ -142,9 +143,9 @@ end
 function cards.draw(w, h)
   if not open then return end
   local k, t = open.kind, open.t
-  if k == "label" then label_card(open.data.which, w, h, t); ui.hints({ { "A", words.hint.close } }, w, h)
-  elseif k == "letter" then letter_card(w, h, t); ui.hints({ { "A", words.hint.close } }, w, h)
-  elseif k == "map" then map_card(w, h, t); ui.hints({ { "Y", words.hint.close } }, w, h)
+  if k == "label" then label_card(open.data.which, w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
+  elseif k == "letter" then letter_card(w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
+  elseif k == "map" then map_card(w, h, t); ui.hints({ { "SELECT", words.hint.close } }, w, h)
   elseif k == "ending" then ending_card(w, h, t)
   elseif k == "pause" then pause_card(open, w, h); ui.hints({ { "A", words.hint.choose } }, w, h) end
 end
