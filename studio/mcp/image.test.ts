@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { releaseBinary } from "./binaries";
+import { releaseBinary, stableBinary } from "./binaries";
 import { decodePng } from "./draw";
 import { encode, makeImage, parseColor } from "./image";
 
@@ -14,7 +14,7 @@ beforeEach(() => {
   mkdirSync(join(dir, "sprites"), { recursive: true });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
-const bin = releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "nova");
+const bin = stableBinary(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "nova"));
 const make = (a: Record<string, unknown>) => makeImage(dir, a, existsSync(bin) ? bin : null);
 const px = (r: { w: number; data: Uint8ClampedArray }, x: number, y: number) => Array.from(r.data.subarray((y * r.w + x) * 4, (y * r.w + x) * 4 + 4));
 

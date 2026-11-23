@@ -47,4 +47,24 @@ if [ ! -d "$repo/studio/node_modules" ] && [ -z "${NOVA_NO_CLONE:-}" ]; then
       ;;
   esac
 fi
+# In a git worktree with no target/<profile> yet, the first cargo build would compile every dependency again (a minute and
+# more): it gets a copy-on-write clone of the main checkout's built dependencies first, said in one line (scripts/lib/worktree.sh).
+if [ "$(basename "$1")" = cargo ] && [ -z "${CARGO_TARGET_DIR:-}" ] && [ -z "${NOVA_NO_SEED:-}" ]; then
+  profile=debug
+  prev=""
+  for a in "$@"; do
+    case "$a" in
+      --release|-r) profile=release ;;
+      --profile=*) profile="${a#--profile=}" ;;
+    esac
+    [ "$prev" = --profile ] && profile="$a"
+    prev="$a"
+  done
+  case "$profile" in dev|test) profile=debug ;; bench) profile=release ;; esac
+  if [ ! -e "$repo/target/$profile" ]; then
+    # shellcheck source=lib/worktree.sh
+    . "$repo/scripts/lib/worktree.sh"
+    nova_seed_target "$repo" "$profile"
+  fi
+fi
 exec "$@"

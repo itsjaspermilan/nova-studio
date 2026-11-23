@@ -24,6 +24,7 @@ use crate::gfx::{
     Shadows, Sky, SpriteInstance, Wind,
 };
 use crate::input::Actions;
+use crate::load_cache;
 use crate::mixer::{self, Sample};
 use crate::model::{self, Image, MeshData};
 use crate::project::{AssetKind, Project};
@@ -121,6 +122,9 @@ struct Shared {
     music_playing: Option<(String, u64)>,
     /// Seconds into that track as last reported by the audio thread.
     music_position: Option<f64>,
+    /// Whether playing streamed music starts its decoder (a thread decoding the Ogg ahead). Off only in headless tests that
+    /// never hear the sound (`Game::set_music_decoding`): the music commands are still queued, with no stream to play.
+    music_decoding: bool,
     audio: Vec<mixer::Command>,
     rumble: Vec<Rumble>,
     host_stats: HostStats,
@@ -3276,9 +3280,10 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                         format!("{kind} {name} at volume {}", v.trim_end_matches('0').trim_end_matches('.'))
                     });
                 }
+                let decoding = sh.music_decoding;
                 sh.audio.push(mixer::Command::Play(Box::new(mixer::Play {
                     id,
-                    stream: streamed.map(|src| src.start(looping)),
+                    stream: streamed.filter(|_| decoding).map(|src| src.start(looping)),
                     sample,
                     volume,
                     pan,
@@ -3485,7 +3490,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 plays.push((
                     Box::new(mixer::Play {
                         id,
-                        stream: streamed.map(|src| src.start(true)),
+                        stream: streamed.filter(|_| sh.music_decoding).map(|src| src.start(true)),
                         sample,
                         volume,
                         pan: 0.0,
@@ -3557,7 +3562,9 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let Some((stream, looping)) = sh.current_music.clone() else {
                 return Ok(false); // nothing is playing
             };
-            let feed = stream.map(|src| src.start_at(looping, (seconds * src.rate as f64) as u64));
+            let feed = stream
+                .filter(|_| sh.music_decoding)
+                .map(|src| src.start_at(looping, (seconds * src.rate as f64) as u64));
             sh.audio.push(mixer::Command::SeekMusic { seconds, feed });
             sh.music_position = Some(seconds);
             Ok(true)
@@ -4241,8 +4248,8 @@ impl Game {
             }
         }
 
-        let mut images = Vec::new();
-        let mut fx_images = Vec::new();
+        // (decoded files may be shared with other loads of the same files in this process: crate::load_cache, tests only)
+        let mut image_ids = Vec::new();
         for asset in project.assets_of(AssetKind::Image) {
             // the store's pictures (the launcher icon and the box art) are for the APK and launchers, not for drawing: they stay out of the atlas
             // (and the pictures in `textures/` are for models, which name them in their files: not sprites, so not in the atlas either;
@@ -4253,15 +4260,36 @@ impl Game {
             {
                 continue;
             }
-            let bytes = vfs.read(&asset.id)?;
-            let image = assets::decode_png(&bytes).map_err(|e| format!("{}: {e}", asset.id))?;
-            if asset.id.starts_with(billboard_api::FOLDER) {
-                fx_images.push((asset.id.clone(), image.clone()));
-            }
-            images.push((asset.id.clone(), image));
+            image_ids.push(asset.id.clone());
         }
-        let (atlas, layout) =
-            assets::build_atlas_with(images, assets::MAX_ATLAS, project.manifest.smooth_sprites)?;
+        // the pictures for `nova.billboard` are also kept apart (each frame becomes a textured quad, below)
+        let mut fx_images = Vec::new();
+        for id in &image_ids {
+            if id.starts_with(billboard_api::FOLDER) {
+                fx_images.push((id.clone(), load_cache::image(vfs.as_ref(), id)?));
+            }
+        }
+        let pack = || {
+            let mut images = Vec::with_capacity(image_ids.len());
+            for id in &image_ids {
+                let image = match fx_images.iter().find(|(f, _)| f == id) {
+                    Some((_, image)) => (**image).clone(),
+                    None => Arc::unwrap_or_clone(load_cache::image(vfs.as_ref(), id)?),
+                };
+                images.push((id.clone(), image));
+            }
+            assets::build_atlas_with(images, assets::MAX_ATLAS, project.manifest.smooth_sprites)
+        };
+        let image_files: Option<Vec<_>> = image_ids
+            .iter()
+            .map(|id| load_cache::key(vfs.as_ref(), id).map(|k| (id.clone(), k)))
+            .collect();
+        let (atlas, layout) = load_cache::atlas(
+            image_files,
+            assets::MAX_ATLAS,
+            project.manifest.smooth_sprites,
+            pack,
+        )?;
 
         let mut sheets = HashMap::new();
         for asset in project.assets_of(AssetKind::Sheet) {
@@ -4311,17 +4339,13 @@ impl Game {
             RefCell::new(HashMap::new());
         let missing_pictures: RefCell<Vec<String>> = RefCell::new(Vec::new());
         for asset in project.assets_of(AssetKind::Model) {
-            let bytes = vfs.read(&asset.id)?;
             // (a picture that is not there is a warning, and the model is drawn without it: in its own colours)
             let pictures = |uri: &str| -> Option<Arc<model::Image>> {
                 let found = model::picture_path(&asset.id, uri).and_then(|path| {
                     shared_pictures
                         .borrow_mut()
                         .entry(path)
-                        .or_insert_with_key(|path| {
-                            let bytes = vfs.read(path).ok()?;
-                            assets::decode_png(&bytes).ok().map(Arc::new)
-                        })
+                        .or_insert_with_key(|path| load_cache::image(vfs.as_ref(), path).ok())
                         .clone()
                 });
                 if found.is_none() {
@@ -4336,8 +4360,47 @@ impl Game {
                 }
                 found.or_else(|| model::blank_pictures(uri))
             };
-            let mut mesh = model::import_glb_with(&bytes, &pictures)
-                .map_err(|e| format!("{}: {e}", asset.id))?;
+            // the file each picture the model names is in now (a model shared from an earlier load is read again if one changed)
+            let picture_file = |uri: &str| {
+                model::picture_path(&asset.id, uri).and_then(|p| load_cache::key(vfs.as_ref(), &p))
+            };
+            let read = || -> Result<load_cache::Model, String> {
+                let bytes = vfs.read(&asset.id)?;
+                let named: RefCell<Vec<String>> = RefCell::new(Vec::new());
+                let noting = |uri: &str| {
+                    let mut n = named.borrow_mut();
+                    if !n.iter().any(|u| u == uri) {
+                        n.push(uri.to_string());
+                    }
+                    drop(n);
+                    pictures(uri)
+                };
+                let mesh = model::import_glb_with(&bytes, &noting)
+                    .map_err(|e| format!("{}: {e}", asset.id))?;
+                // The same file as separate parts, used when a script turns parts or plays a clip.
+                let parts = model::import_parts_with(&bytes, &noting);
+                let pictures = named
+                    .into_inner()
+                    .into_iter()
+                    .map(|uri| {
+                        let file = picture_file(&uri);
+                        (uri, file)
+                    })
+                    .collect();
+                Ok(load_cache::Model {
+                    mesh: Arc::new(mesh),
+                    parts: Arc::new(parts),
+                    pictures,
+                })
+            };
+            let read = load_cache::model(vfs.as_ref(), &asset.id, &picture_file, &read)?;
+            // (a model shared from an earlier load asks for its pictures again, so their warnings are given as for a model read now)
+            for (uri, _) in &read.pictures {
+                pictures(uri);
+            }
+            // (not shared, these are the only owners: nothing is copied)
+            let mut mesh = Arc::unwrap_or_clone(read.mesh);
+            let as_parts = Arc::unwrap_or_clone(read.parts);
             // a compressed base colour picture beside the model (`models/car.ktx2` for `models/car.glb`)
             if let Some(stem) = asset.id.strip_suffix(".glb") {
                 let side = format!("{stem}.ktx2");
@@ -4348,9 +4411,8 @@ impl Game {
                     }
                 }
             }
-            // The same file as separate parts, used when a script turns parts or plays a clip. That importer handles skins and
-            // animation clips, so the whole-model importer's notes that it ignores them do not apply when it succeeds.
-            let as_parts = model::import_parts_with(&bytes, &pictures);
+            // The parts importer handles skins and animation clips, so the whole-model importer's notes that it ignores them do
+            // not apply when it succeeds.
             for note in &mesh.notes {
                 let handled = as_parts.is_ok()
                     && (note == "animations are ignored" || note == "skins/bones are ignored");
@@ -4480,8 +4542,7 @@ impl Game {
                 streams.insert(asset.id.clone(), source);
                 continue;
             }
-            let sample = assets::decode_sound(&asset.id, &vfs.read(&asset.id)?)
-                .map_err(|e| format!("{}: {e}", asset.id))?;
+            let sample = load_cache::sound(vfs.as_ref(), &asset.id)?;
             sound_bytes += sample.frames.len() * 4;
             if sound_bytes > assets::MAX_SOUND_BYTES {
                 return Err(format!(
@@ -4490,7 +4551,7 @@ impl Game {
                     asset.id
                 ));
             }
-            sounds.insert(asset.id.clone(), Arc::new(sample));
+            sounds.insert(asset.id.clone(), sample);
         }
 
         let bindings = match &project.manifest.input {
@@ -4544,6 +4605,7 @@ impl Game {
             music_layers: Vec::new(),
             music_playing: None,
             music_position: None,
+            music_decoding: true,
             audio: Vec::new(),
             rumble: Vec::new(),
             host_stats: HostStats::default(),
@@ -5140,6 +5202,13 @@ impl Game {
         v.sort_by(|a, b| b.1.total_cmp(&a.1));
         v.truncate(top);
         (v, p.total_ms)
+    }
+
+    /// Whether streamed music (Ogg in `music/`) starts its decoder thread when played (on unless turned off). A headless test
+    /// that never takes the sound commands (`take_audio`) turns it off: playing music then queues the same commands and logs
+    /// the same `nova.sound_log` lines, with no stream in them, and no thread decodes seconds of music nobody hears.
+    pub fn set_music_decoding(&mut self, on: bool) {
+        self.shared.borrow_mut().music_decoding = on;
     }
 
     /// No worker threads for the voxel world, so that a run does the same thing every time (tests and headless runs).

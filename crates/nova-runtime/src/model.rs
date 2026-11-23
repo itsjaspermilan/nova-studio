@@ -64,7 +64,7 @@ pub struct MorphTarget {
     pub deltas: Vec<[f32; 3]>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct MeshData {
     /// Shape keys, when the file has morph targets: `nova.model(..., { morph = { name = weight } })` blends them in.
     pub morphs: Vec<MorphTarget>,
@@ -727,6 +727,7 @@ fn append_mesh(
 }
 
 /// One node of a model: where it sits in its parent and the triangles that move with it.
+#[derive(Clone)]
 pub struct Part {
     pub name: String,
     /// Index of the parent part (parents always come before their children).
@@ -756,6 +757,7 @@ fn hidden_at_rest(node: &gltf::Node) -> bool {
 pub type Influence = ([u16; 4], [f32; 4]);
 
 /// How a mesh follows the parts it hangs on (glTF skin): up to four joints per vertex.
+#[derive(Clone)]
 pub struct Skin {
     /// The part index of each joint.
     pub joints: Vec<usize>,
@@ -808,6 +810,7 @@ pub enum ClipPath {
 }
 
 /// Keyframes for one transform of one part. Values are xyz (w unused) or an xyzw quaternion.
+#[derive(Clone)]
 pub struct Channel {
     pub part: usize,
     pub path: ClipPath,
@@ -818,6 +821,7 @@ pub struct Channel {
 }
 
 /// A named animation: tracks that move parts over `duration` seconds.
+#[derive(Clone)]
 pub struct Clip {
     pub name: String,
     pub duration: f32,
@@ -1054,6 +1058,7 @@ impl Channel {
 }
 
 /// A model as parts plus its animation clips.
+#[derive(Clone)]
 pub struct ModelParts {
     pub parts: Vec<Part>,
     pub clips: Vec<Clip>,

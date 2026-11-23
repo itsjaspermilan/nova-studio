@@ -32,6 +32,11 @@ pub trait Vfs {
     fn exists(&self, path: &str) -> bool {
         self.read(path).is_ok()
     }
+    /// The file on disk as it is now (full path, length, modification time), when the source is a folder on a disk: what
+    /// `crate::load_cache` knows a decoded file by. None for anything else (never shared).
+    fn file_key(&self, _path: &str) -> Option<crate::load_cache::FileKey> {
+        None
+    }
 }
 
 /// Validates and normalises a project-relative path. Returns the canonical spelling.
@@ -159,6 +164,20 @@ impl DirVfs {
 }
 
 impl Vfs for DirVfs {
+    fn file_key(&self, path: &str) -> Option<crate::load_cache::FileKey> {
+        let path = normalize(path).ok()?;
+        let real = self.root.join(path).canonicalize().ok()?;
+        if !real.starts_with(&self.root) {
+            return None;
+        }
+        let meta = std::fs::metadata(&real).ok()?;
+        Some(crate::load_cache::FileKey {
+            path: real,
+            len: meta.len(),
+            modified: meta.modified().ok()?,
+        })
+    }
+
     fn modified(&self, path: &str) -> Option<SystemTime> {
         let path = normalize(path).ok()?;
         std::fs::metadata(self.root.join(path))

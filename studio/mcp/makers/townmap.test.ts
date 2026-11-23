@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { releaseBinary } from "../binaries";
+import { releaseBinary, stableBinary } from "../binaries";
 import { decodePng } from "../draw";
 import { encode } from "../image";
 import { makeTownMap, type MapLabel } from "./townmap";
 
-const bin = releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), "nova");
+const bin = stableBinary(releaseBinary(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), "nova"));
 const haveBin = existsSync(bin);
 let dir = "";
 

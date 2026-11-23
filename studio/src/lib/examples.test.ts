@@ -2,9 +2,10 @@ import { inflateSync } from "node:zlib";
 import type { Raster } from "./pixels";
 // The studio's editors against real projects: everything in the shipped examples (some made by the MCP server, some by hand)
 // must open in the editor that owns it, save back the same, and, for models, export the same `.glb` that is committed.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { exportGlb } from "./glb";
 import { parseModel, serializeModel } from "./model-doc";
 import { bakeAll, fitPicture } from "./model-uv";
@@ -25,6 +26,56 @@ function files(dir: string): string[] {
   return readdirSync(dir).filter((n) => !n.startsWith(".")).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? files(join(dir, n)) : [join(dir, n)]));
 }
 const text = (p: string) => readFileSync(p, "utf8");
+const sha = (b: string | Uint8Array) => createHash("sha256").update(b).digest("hex");
+
+/// Exports already shown to be the committed `.glb`: re-exporting every model of every example took half a minute a run (most of
+/// it Pine Ridge Rally's cars), though neither the models nor the exporter had changed. An export is known by the hash of its
+/// model file, its painted picture and the exporter itself (every source file of src/lib, the locked packages and Node's
+/// version), and remembers the hash of the `.glb` it made; when that is the committed file's hash, the model is not exported
+/// again. Any change to a model, its picture, its `.glb` or any of src/lib exports it afresh. The record is in the git-ignored
+/// target/test-cache/; NOVA_TEST_NO_CACHE=1 exports everything.
+const exported = (() => {
+  const file = join(root, "../target/test-cache/glb-exports.json");
+  const off = !["", "0", undefined].includes(process.env.NOVA_TEST_NO_CACHE);
+  const lib = new URL(".", import.meta.url).pathname;
+  const sources = readdirSync(lib, { recursive: true })
+    .map(String)
+    .filter((f) => /\.(ts|js|mjs|json)$/.test(f) && !/\.test\.ts$/.test(f))
+    .sort();
+  const tool = sha(
+    [process.version, text(join(lib, "../../package-lock.json")), ...sources.map((f) => `${f}\n${text(join(lib, f))}`)].join("\0"),
+  );
+  let known: Record<string, string> = {};
+  try {
+    if (!off) known = JSON.parse(text(file));
+  } catch {
+    // none yet (or unreadable: start again)
+  }
+  const fresh: Record<string, string> = {};
+  afterAll(() => {
+    if (off || !Object.keys(fresh).length) return;
+    try {
+      // (another run may have written meanwhile: keep its entries too; written whole and renamed into place)
+      let now: Record<string, string> = {};
+      try {
+        now = JSON.parse(text(file));
+      } catch {
+        now = {};
+      }
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(`${file}.${process.pid}`, JSON.stringify({ ...now, ...fresh }));
+      renameSync(`${file}.${process.pid}`, file);
+    } catch {
+      // a cache that cannot be written only means the next run exports again
+    }
+  });
+  return {
+    key: (model: string, picture: Uint8Array | null) => sha(`${tool}\0${sha(model)}\0${picture ? sha(picture) : "none"}`),
+    /// Whether this export was already shown to make the committed bytes.
+    same: (key: string, committed: Uint8Array) => !off && (known[key] ?? fresh[key]) === sha(committed),
+    remember: (key: string, glb: Uint8Array) => void (fresh[key] = sha(glb)),
+  };
+})();
 
 /// An 8-bit RGBA PNG as written by png-encode.ts (no interlacing), read back with Node's zlib.
 function readPng(path: string): Raster {
@@ -80,8 +131,13 @@ describe.each(projects)("the editors on examples/%s", (name) => {
       expect(existsSync(glbPath), `${f} has its glb`).toBe(true);
       // (a painted model exports its own picture; one with no picture yet, its colours baked fresh)
       const png = join(base, f.replace(/\.model\.json$/, ".texture.png"));
+      const committed = readFileSync(glbPath);
+      const key = exported.key(text(join(base, f)), parsed.doc.texture && existsSync(png) ? readFileSync(png) : null);
+      if (exported.same(key, committed)) continue; // (this model, picture and exporter made exactly these bytes before)
       const image = parsed.doc.texture ? fitPicture(parsed.doc, existsSync(png) ? readPng(png) : bakeAll(parsed.doc)) : undefined;
-      expect(Buffer.compare(Buffer.from(exportGlb(parsed.doc, image)), readFileSync(glbPath)), `${f} exports the committed glb`).toBe(0);
+      const glb = exportGlb(parsed.doc, image);
+      expect(Buffer.compare(Buffer.from(glb), committed), `${f} exports the committed glb`).toBe(0);
+      exported.remember(key, glb);
     }
   }, 300_000); // (a game with dozens of 30,000-triangle cars takes most of a minute to export)
 

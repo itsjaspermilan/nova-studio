@@ -24,6 +24,7 @@ pub mod input;
 pub mod inputscript;
 pub mod ktx2;
 pub mod lights;
+pub mod load_cache;
 pub mod meshworld;
 pub mod mixer;
 pub mod model;

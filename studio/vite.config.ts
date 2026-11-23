@@ -11,5 +11,8 @@ export default defineConfig({
   // (only while testing: setting `conditions` replaces Vite's own, and the app needs those)
   ...(process.env.VITEST ? { resolve: { conditions: ["browser"] } } : {}),
   build: { target: "es2022", sourcemap: false },
-  test: { environment: "node", include: ["src/**/*.test.ts", "mcp/**/*.test.ts"], setupFiles: ["src/test/dom.ts"] },
+  // (a test's time limit is there to catch a test that hangs, not to time it: vitest's 5 s default failed tests that take a
+  // second or two alone whenever the machine was busy, as it is when several agents run their suites at once. A test that
+  // needs longer still says so itself.)
+  test: { environment: "node", include: ["src/**/*.test.ts", "mcp/**/*.test.ts"], setupFiles: ["src/test/dom.ts"], testTimeout: 60_000, hookTimeout: 60_000 },
 });

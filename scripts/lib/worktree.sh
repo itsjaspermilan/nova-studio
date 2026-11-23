@@ -8,6 +8,10 @@
 #   nova_pick_bin <repo> <name> <paths> prints the target/release/<name> to use: the worktree's own when it has one; else the
 #                                       main checkout's when it is safe (see below); else nothing, with one line on stderr saying
 #                                       what to run
+#   nova_seed_target <repo> <profile>   gives a worktree that has no target/<profile> yet (debug, release, fast) a copy-on-write
+#                                       clone of the main checkout's built dependencies (not the workspace's own crates), so its
+#                                       first build compiles only Nova's crates: about a minute less for the tests, more for the
+#                                       studio's crate. Cargo still checks every one and rebuilds what does not match.
 #
 # The main checkout's binary is safe when (1) the main checkout has no uncommitted change under <paths>, (2) this worktree's
 # files under <paths> are byte for byte the main checkout's HEAD (no change, nothing untracked) and (3) the binary is newer
@@ -101,4 +105,45 @@ nova_pick_bin() {
   fi
   nova_say "using the main checkout's $name ($main/target/release/$name): this worktree's engine sources are the same as the ones it was built from"
   printf '%s\n' "$main/target/release/$name"
+}
+
+nova_seed_target() {
+  local repo="$1" profile="$2" main from tmp
+  [ -n "${NOVA_NO_SEED:-}" ] && return 0
+  [ -e "$repo/target/$profile" ] && return 0
+  main="$(nova_main_checkout "$repo")"
+  [ -n "$main" ] || return 0
+  from="$main/target/$profile"
+  [ -d "$from/.fingerprint" ] && [ -d "$from/deps" ] || return 0
+  mkdir -p "$repo/target" || return 0
+  tmp="$repo/target/.seeding.$$"
+  rm -rf "$tmp"
+  mkdir -p "$tmp/deps"
+  # The main checkout's files are read while no cargo builds there (a shared hold on its locks for the seconds of the clone;
+  # nothing is written there), so no half-written file is cloned. Copy-on-write (APFS): no extra disk until cargo here rewrites
+  # a file. Only libraries (lib*.rlib, .rmeta, .dylib, .a), build-script outputs and fingerprints: no test binaries, no
+  # incremental caches. The main checkout's own crates come along but never match here (their paths are part of their hash).
+  if perl -e '
+      use Fcntl ":flock";
+      my ($from, $tmp) = @ARGV;
+      my @held;
+      for my $l (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock") {
+        next unless -e "$from/$l";
+        open(my $f, "<", "$from/$l") or exit 3;
+        flock($f, LOCK_SH | LOCK_NB) or exit 4;
+        push @held, $f;
+      }
+      system("cp", "-cRp", "$from/.fingerprint", "$from/build", "$tmp/") == 0 or exit 5;
+      opendir(my $d, "$from/deps") or exit 5;
+      my @libs = map { "$from/deps/$_" } grep { /^lib.*\.(rlib|rmeta|dylib|a|so)$/ } readdir($d);
+      while (my @chunk = splice(@libs, 0, 500)) { system("cp", "-cp", @chunk, "$tmp/deps/") == 0 or exit 5; }
+      exit 0;
+    ' "$from" "$tmp" 2>/dev/null; then
+    if [ -e "$repo/target/$profile" ]; then rm -rf "$tmp"; return 0; fi
+    mv "$tmp" "$repo/target/$profile"
+    nova_say "this worktree had no target/$profile; seeded it with a copy-on-write clone of the main checkout's built dependencies, so only Nova's own crates build (the main checkout is not touched; NOVA_NO_SEED=1 skips this)"
+  else
+    rm -rf "$tmp"
+    nova_say "did not seed target/$profile from the main checkout (a build is running there, or the clone failed): this first build compiles everything"
+  fi
 }

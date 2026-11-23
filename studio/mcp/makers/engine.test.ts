@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { call } from "../server";
+import { unlessPassedBefore } from "../test-cache";
 import { bandFiring, ENGINE_BASES, makeEngine } from "./engine-make";
 import { firingOf } from "./index-engine";
 // @ts-ignore (plain JavaScript)
@@ -13,12 +14,14 @@ import { makeDriving } from "./driving.mjs";
 import { ENGINES as PINE } from "../../../scripts/rally/engines.mjs";
 
 const sounds = new URL("../../../examples/pine-ridge-rally/sounds/", import.meta.url).pathname;
+const recipes = new URL("../../../scripts/rally/engines.mjs", import.meta.url).pathname;
 let dir = "";
 beforeAll(() => (dir = mkdtempSync(join(tmpdir(), "nova-engine-test-"))));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("engine_make", () => {
-  it("makes each of Pine Ridge Rally's engines from its recipe exactly (the first and last band, both layers)", () => {
+  it("makes each of Pine Ridge Rally's engines from its recipe exactly (the first and last band, both layers)", (ctx) => {
+    const passed = unlessPassedBefore(ctx, recipes, sounds);
     expect(Object.keys(PINE).sort()).toEqual([...ENGINE_BASES].sort());
     for (const [id, recipe] of Object.entries(PINE as Record<string, Record<string, unknown>>)) {
       const e = makeEngine(recipe);
@@ -29,9 +32,11 @@ describe("engine_make", () => {
         expect(Buffer.compare(wavBytes(engineLoop(e.spec, e.spec.cycles[j], layer, e.seed + j)), readFileSync(join(sounds, file))), file).toBe(0);
       }
     }
+    passed();
   }, 120_000);
 
-  it("fires at the layout's frequency in every band", () => {
+  it("fires at the layout's frequency in every band", (ctx) => {
+    const passed = unlessPassedBefore(ctx);
     for (const recipe of [{ layout: "three" }, { layout: "four", aspiration: "turbo", character: "raspy" }, { layout: "five", displacement: 3.2 }, { layout: "six", fuel: "diesel", displacement: 6 }, { layout: "v6" }, { layout: "v8", displacement: 7, character: "smooth" }]) {
       const e = makeEngine(recipe), cyl = e.spec.layout.order.length;
       bandFiring(e).forEach((b: { cycles: number; rpm: number; hz: number }, j: number) => {
@@ -45,6 +50,7 @@ describe("engine_make", () => {
         expect(m.firing + m.half, what).toBeGreaterThan(0.5);
       });
     }
+    passed();
   }, 120_000);
 
   it("moves a recipe away from its base, the same each time, and writes the loops and the profile", () => {
@@ -63,7 +69,8 @@ describe("engine_make", () => {
 });
 
 describe("driving_sounds_make", () => {
-  it("makes Pine Ridge Rally's driving sounds with seed 1, and another take with another seed", () => {
+  it("makes Pine Ridge Rally's driving sounds with seed 1, and another take with another seed", (ctx) => {
+    const passed = unlessPassedBefore(ctx, sounds);
     const one: Record<string, Buffer> = {}, two: Record<string, Buffer> = {};
     makeDriving(1, (f: string, b: Uint8Array | string) => (one[f] = Buffer.from(b)));
     for (const [f, b] of Object.entries(one)) expect(Buffer.compare(b, readFileSync(join(sounds, f))), f).toBe(0);
@@ -72,6 +79,7 @@ describe("driving_sounds_make", () => {
     const again: Record<string, Buffer> = {};
     makeDriving(2, (f: string, b: Uint8Array | string) => (again[f] = Buffer.from(b)));
     expect(Buffer.compare(two["pop1.wav"]!, again["pop1.wav"]!)).toBe(0);
+    passed();
   }, 120_000);
 
   // The first gravel had an 8 to 50 Hz flutter on its bed and 228 sharp, ringing grains a second in six narrow bands: heard as separate
