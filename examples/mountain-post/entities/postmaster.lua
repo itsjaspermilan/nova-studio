@@ -37,6 +37,12 @@ local EASE_WALK, EASE_RUN, EASE_STOP = 19, 13, 18
 -- where it faces brings it to a stop first, so it plants and pivots
 local TURN_SLOW, TURN_WALK, TURN_RUN = 13, 8.5, 6
 local CRAB = math.rad(78)
+-- the stretch of floor the body's height is averaged over on steps (metres along the way it faces), and how much slower it goes on
+-- them (a shorter, more careful stride)
+local RAMP = {} for i = -10, 10 do RAMP[#RAMP + 1] = i * 0.02 end
+local STAIR_PACE = 0.8
+local STAIR_GLIDE = 0.65
+local RAMP_LEAD = 0.0 -- (metres the stretch leads going up; half as much it lags going down) -- (m/s the hips rise or fall at most on steps)
 local wrap = function(a) return (a + math.pi) % (2 * math.pi) - math.pi end
 
 -- the gait: Nova's feet-on-the-ground walking (nova.gait), with the postmaster's own bounce and the parts that follow the body
@@ -48,9 +54,9 @@ local GAIT = {
   follow = {
     -- the big head: lags as the body sets off or stops, nods with each step, looks round first into a turn
     { part = "head", stiffness = 90, damping = 0.45, max = 0.45, rx = { fwd = -0.006, up = 0.005 }, ry = { look = 0.55 }, rz = { side = 0.006 } },
-    -- the fox's ears trail a little as it goes and flick as it lands
-    { part = "ear_l", stiffness = 160, damping = 0.35, max = 0.4, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = -0.003 } },
-    { part = "ear_r", stiffness = 160, damping = 0.35, max = 0.4, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = 0.003 } },
+    -- the fox's ears trail a little as it goes and flick as it lands (no further than the holes in the hat leave room for)
+    { part = "ear_l", stiffness = 160, damping = 0.35, max = 0.25, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = -0.003 } },
+    { part = "ear_r", stiffness = 160, damping = 0.35, max = 0.25, rx = { fwd = -0.01, speed = -0.04, up = -0.004 }, rz = { side = 0.01, up = 0.003 } },
     -- the brush: swings out of a turn, bounces with the steps
     { part = "tail", stiffness = 45, damping = 0.3, max = 0.6, ry = { turn = 0.12, side = 0.02 }, rx = { up = -0.006, fwd = 0.01 } },
     -- the mittens follow through at the end of each swing of the arms (and the arms out in the run flutter with the bob)
@@ -150,6 +156,19 @@ function Postmaster:update(dt)
   self.run_held = self.control and nova.input.down("run") or false
   local want = 0
   if len > 0.15 then want = self.run_held and top or STROLL * math.min(1, len / TILT) end
+  -- (on steps: the floor half a metre ahead or behind is a step higher or lower)
+  local on_stairs, near = false, false
+  if not self.indoors and not world.on_bridge(self.x, self.z) then
+    local fx, fz = math.sin(self.face), math.cos(self.face)
+    local here = world.lift(self.x, self.z)
+    local step = function(d) return math.abs(world.lift(self.x + fx * d, self.z + fz * d) - here) > 0.05 end
+    on_stairs = step(0.5) or step(-0.5)
+    near = on_stairs or step(0.9) or step(-0.9)
+  end
+  self.on_stairs = on_stairs
+  -- (and the hips glide up or down them, the legs flexing a little more for a moment, rather than jumping a step at a time: from a
+  -- stride before the first step to a stride after the last)
+  self.walker.o.glide = near and STAIR_GLIDE or nil
   -- (a few points to walk through in turn: a test leading it round the van)
   if not self.walk_to and self.walk_path and #self.walk_path > 0 then self.walk_to = table.remove(self.walk_path, 1) end
   if self.walk_to then
@@ -186,6 +205,7 @@ function Postmaster:update(dt)
   local go = self.face + math.max(-CRAB, math.min(CRAB, self.want_turn or 0))
   self.dir_x, self.dir_z = math.sin(go), math.cos(go)
   -- the speed eases in and out (a critically damped spring: no snap, no overshoot)
+  if on_stairs then want = want * STAIR_PACE end
   local ss = self.speed_spring
   -- (a stop from a run takes a moment longer than one from a walk: the feet need a step or two to plant)
   local ease = want < self.speed - 0.01 and ((want < 0.05 and self.speed > STROLL + 0.2) and EASE_RUN or EASE_STOP) or (want > STROLL + 0.01 or self.speed > STROLL + 0.01) and EASE_RUN or EASE_WALK
@@ -204,7 +224,18 @@ function Postmaster:update(dt)
     self.x, self.z = nx, nz
   end
   self:keep_clear()
-  self.y = self.indoors and 0 or world.lift(self.x, self.z)
+  -- (on steps the body rises and falls along a ramp through them, the floor's height averaged over a stride's length along the way it
+  -- goes, so stepping up reads as climbing, not as a hop onto each tread; the feet still stand on the treads themselves)
+  if self.indoors then self.y = 0 else
+    local fx, fz = math.sin(self.face), math.cos(self.face)
+    -- (the stretch leads the way it climbs, so the body is already rising as a foot reaches for the step above, and lags the way
+    -- it goes down, so it is not already low while the foot behind still stands on the step above)
+    local ahead = world.lift(self.x + fx * 0.5, self.z + fz * 0.5) - world.lift(self.x - fx * 0.5, self.z - fz * 0.5)
+    local lead = ahead > 0.05 and RAMP_LEAD or ahead < -0.05 and -RAMP_LEAD * 0.5 or 0
+    local sum = 0
+    for _, d in ipairs(RAMP) do sum = sum + world.lift(self.x + fx * (d + lead), self.z + fz * (d + lead)) end
+    self.y = sum / #RAMP
+  end
   -- (outdoors it is drawn lifted as one by the ground under it, upright, not each point by the hills under it: on a hillside the
   -- renderer's lift point by point sheared the body with the slope, and on the bridge the creek's bank under the deck bent it; its
   -- feet then stand on the ground's own heights, the hillside's, the deck's or the porch's, where the gait puts them)
@@ -254,7 +285,7 @@ end
 local DUST = { color = { 196, 178, 150, 110 } }
 -- At the wheel: the place in the cab (the van's own metres, tools/van.mjs SEAT less the seated body's depth under its feet's
 -- level), kept with the van as it moves; the clip is the seated one.
-Postmaster.SEAT = { 0.28, 0.425, 0.22 }
+Postmaster.SEAT = { 0.28, 0.4, 0.22 } -- (2.5 cm into the soft seat, so the big hat clears the cab's lining)
 function Postmaster:sit(dt)
   local v = nova.first("van")
   if v then

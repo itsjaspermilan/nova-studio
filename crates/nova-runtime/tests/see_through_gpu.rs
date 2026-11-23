@@ -201,17 +201,39 @@ fn the_hole_shows_what_is_behind_the_wall_and_keeps_its_foot() {
         )
     };
     let only_fade = fade(0.0, 1.0, 16.0);
-    assert_eq!(what(&only_fade, 2.8, 1.5), 'g', "the near fade alone clears the wall inside near_from");
+    assert_eq!(
+        what(&only_fade, 2.8, 1.5),
+        'g',
+        "the near fade alone clears the wall inside near_from"
+    );
     assert_eq!(what(&only_fade, 0.0, 0.15), 'r', "but not under `above`");
     let only_hole = fade(1.0, 0.0, 16.0);
-    assert_eq!(what(&only_hole, 2.8, 1.5), 'r', "no near fade: the wall outside the hole stays");
-    assert_eq!(what(&only_hole, 0.0, 1.5), 'g', "and the hole still shows the board");
+    assert_eq!(
+        what(&only_hole, 2.8, 1.5),
+        'r',
+        "no near fade: the wall outside the hole stays"
+    );
+    assert_eq!(
+        what(&only_hole, 0.0, 1.5),
+        'g',
+        "and the hole still shows the board"
+    );
     let far_from = fade(0.0, 1.0, 5.0);
-    let green = [(2.8f32, 1.5f32), (2.0, 2.0), (-2.5, 1.0), (1.0, 1.2), (-1.0, 2.2), (2.5, 0.8)]
-        .iter()
-        .filter(|(x, y)| what(&far_from, *x, *y) == 'g')
-        .count();
-    assert!((1..=5).contains(&green), "at 15 m between near_from 5 and near 20 the wall is part faded: {green} of 6 spots");
+    let green = [
+        (2.8f32, 1.5f32),
+        (2.0, 2.0),
+        (-2.5, 1.0),
+        (1.0, 1.2),
+        (-1.0, 2.2),
+        (2.5, 0.8),
+    ]
+    .iter()
+    .filter(|(x, y)| what(&far_from, *x, *y) == 'g')
+    .count();
+    assert!(
+        (1..=5).contains(&green),
+        "at 15 m between near_from 5 and near 20 the wall is part faded: {green} of 6 spots"
+    );
     let (mut green, mut all) = (0, 0);
     for dy in -10..10 {
         for dx in -10..10 {

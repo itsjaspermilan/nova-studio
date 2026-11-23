@@ -227,17 +227,68 @@ export function paintTexture(cubes: Map<string, Cube>, painted: Painted[]): { si
   const list = painted.filter((p) => cubes.has(p.name));
   const unwraps = list.map((p) => unwrap(cubes.get(p.name)!));
   // (the smallest picture of a few widths)
-  const packed = [128, 256, 512, 1024].map((w) => packBlocks(unwraps.map((u) => u.size), [w, 8])).filter((q) => q.fits).sort((a, b) => a.size[0] * a.size[1] - b.size[0] * b.size[1] || a.size[0] - b.size[0])[0] ?? { fits: false, at: [], size: [0, 0] as [number, number] };
+  // (each block on a grid of 16 texels with at least 16 see-through texels between two blocks' paint: the game's smaller copies of the
+  // picture average 2, 4, 8 and 16 texels at a time, and without the gutter a dark brow was averaged with the white cheeks in the
+  // block beside it and showed a pale rim at a distance; see-through texels count for nothing in those averages)
+  const CELL = 16, PAD = 8, GAP = 1;
+  const up = (n: number) => Math.ceil((n + 2 * PAD + GAP) / CELL) * CELL - GAP;
+  const sizes = unwraps.map((u) => [up(u.size[0]), up(u.size[1])] as [number, number]);
+  const packed = [128, 256, 512, 1024].map((w) => packBlocks(sizes, [w, 8])).filter((q) => q.fits).sort((a, b) => a.size[0] * a.size[1] - b.size[0] * b.size[1] || a.size[0] - b.size[0])[0] ?? { fits: false, at: [], size: [0, 0] as [number, number] };
   if (!packed.fits) throw new Error("the painted face and clothes do not fit in a 1024 x 1024 texture");
   const [w, h] = packed.size;
   const picture = newRaster(w, h);
   list.forEach((p, k) => {
     const cube = cubes.get(p.name)!;
-    const at = packed.at[k]!;
+    const at: [number, number] = [packed.at[k]![0] + PAD, packed.at[k]![1] + PAD];
     cube.texture = { ...cube.texture!, at };
     paintBlock(picture, cube, unwraps[k]!, at, p);
   });
+  dilate(picture, 16);
   return { size: [w, h], picture };
+}
+
+/// Edge padding: every see-through texel takes the colour of the painted texels next to it (and those beyond them the colour of
+/// those, `passes` texels out), keeping its own zero cover. A filter that blends texels without weighing them by their cover (the
+/// GPU's, between two texels and between two sizes of the picture) then blends an edge with its own colour, never with whatever
+/// colour a see-through texel happened to hold (black where nothing was painted). Texels a painted shape already coloured on
+/// purpose (the colour of the ink nearest them) keep it.
+export function dilate(r: Raster, passes: number): void {
+  const { w, h, data } = r;
+  const known = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (data[i * 4 + 3]! > 0 || data[i * 4]! + data[i * 4 + 1]! + data[i * 4 + 2]! > 0) known[i] = 1;
+  // (first, a see-through texel right beside paint takes that paint's colour, whatever ink it was nearest)
+  const touch: [number, number, number, number][] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (data[i * 4 + 3]! > 0) continue;
+    let rr = 0, gg = 0, bb = 0, n = 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const X = x + dx, Y = y + dy;
+      if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+      const j = (Y * w + X) * 4;
+      if (data[j + 3]! < 128) continue;
+      rr += data[j]!; gg += data[j + 1]!; bb += data[j + 2]!; n++;
+    }
+    if (n) touch.push([i, rr / n, gg / n, bb / n]);
+  }
+  for (const [i, rr, gg, bb] of touch) { data[i * 4] = Math.round(rr); data[i * 4 + 1] = Math.round(gg); data[i * 4 + 2] = Math.round(bb); known[i] = 1; }
+  for (let pass = 0; pass < passes; pass++) {
+    const add: [number, number, number, number][] = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (known[i]) continue;
+      let rr = 0, gg = 0, bb = 0, n = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= w || Y >= h || !known[Y * w + X]) continue;
+        const j = (Y * w + X) * 4;
+        rr += data[j]!; gg += data[j + 1]!; bb += data[j + 2]!; n++;
+      }
+      if (n) add.push([i, rr / n, gg / n, bb / n]);
+    }
+    if (!add.length) break;
+    for (const [i, rr, gg, bb] of add) { data[i * 4] = Math.round(rr); data[i * 4 + 1] = Math.round(gg); data[i * 4 + 2] = Math.round(bb); known[i] = 1; }
+  }
 }
 
 function paintBlock(r: Raster, cube: Cube, uw: ReturnType<typeof unwrap>, at: [number, number], p: Painted) {

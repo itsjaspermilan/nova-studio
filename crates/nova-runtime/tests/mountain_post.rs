@@ -3983,7 +3983,8 @@ function FP_STEP(name)
     if feet[i].planted then FP.err = math.max(FP.err, math.sqrt((t.x - feet[i].x) ^ 2 + (t.y - feet[i].y) ^ 2 + (t.z - feet[i].z) ^ 2)) end
     local lo, lj = math.huge, 1
     for j = 1, #PTS do local _, y = place(t, j); if y < lo then lo, lj = y, j end end
-    local ground = p.on_deck and (W.height(t.x, t.z) - nova.terrain_height(p.x, p.z)) or W.lift(t.x, t.z)
+    local gx, _, gz = place(t, lj)
+    local ground = p.on_deck and (W.height(gx, gz) - nova.terrain_height(p.x, p.z)) or W.lift(gx, gz)
     t.low, t.j, t.h = lo, lj, lo - ground
     T[i] = t
   end
@@ -7585,12 +7586,20 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
         r#"{ "start_scene": "valley", "lua": "CAM = require('lib.camera'); OCC = require('lib.occluders'); LAST = nil; local orig = nova.see_through; nova.see_through = function(o) LAST = o and { near = o.near, near_from = o.near_from, near_amount = o.near_amount, amount = o.amount } or nil; return orig(o) end; PUT = function(x, z) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, 0; p.walk_to = nil; p.walk_path = nil; nova.named('van'):teleport(x + 300, z + 300, 0); CAM.reset(0) end",
         "steps": [ { "wait": 5 }, { "lua": "PUT(150, 36)" }, { "wait": 80 } ] }"#,
     );
-    assert_eq!(lua(&g, "tostring(LAST ~= nil)"), "true", "the near fade is asked for in the open");
+    assert_eq!(
+        lua(&g, "tostring(LAST ~= nil)"),
+        "true",
+        "the near fade is asked for in the open"
+    );
     assert_eq!(num(&g, "LAST.near"), 4.0);
     assert_eq!(num(&g, "LAST.near_from"), 2.0, "wholly gone within 2 m");
     assert_eq!(num(&g, "LAST.near_amount"), 1.0);
     assert_eq!(num(&g, "LAST.amount"), 0.0, "and the circle is off");
-    assert_eq!(num(&g, "CAM.state.pull"), 1.0, "the boom is whole in the open");
+    assert_eq!(
+        num(&g, "CAM.state.pull"),
+        1.0,
+        "the boom is whole in the open"
+    );
     // under a big pine's crown the eye comes in
     play(
         &mut g,
@@ -7600,6 +7609,385 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
     assert!(pull < 1.0 && pull >= 0.55, "the boom came in: {pull}");
     let _ = inside;
     // the room: nothing
-    play(&mut g, r#"{ "steps": [ { "lua": "nova.goto_scene('office')" }, { "wait": 30 } ] }"#);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.goto_scene('office')" }, { "wait": 30 } ] }"#,
+    );
     assert_eq!(lua(&g, "tostring(LAST)"), "nil", "no near fade indoors");
+}
+
+// ---- the owner after the sixth play's cast (2026-11-23): "I like the yellow outfit. Make the hat much bigger though. Fix the
+// weakpoints" -------------------------------------------------------------------------------------------------------------------
+
+/// The postmaster's bucket hat is a big soft one (its brim well past the head, its crown down over the head to just above the brows
+/// and up over the top), the fox's ears come up through holes in it (taller than the crown), and the game's springs swing them no
+/// further than the holes are cut for (character3d_make cuts each a little wider than the ear and the swing of its spring;
+/// studio/mcp/makers/makers3d.test.ts checks every ear triangle against the hat's at those swings).
+#[test]
+fn the_postmasters_bucket_hat_is_big_and_the_ears_come_through_it() {
+    let m = cast_model("postmaster");
+    let file = game_dir().join("models/postmaster.model.json");
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    let k = doc["scale"].as_f64().unwrap();
+    fn find<'a>(ps: &'a Value, name: &str) -> Option<&'a Value> {
+        for p in ps.as_array().unwrap() {
+            if p["name"] == name {
+                return Some(p);
+            }
+            if let Some(f) = find(&p["children"], name) {
+                return Some(f);
+            }
+        }
+        None
+    }
+    let head = find(&doc["parts"], "head").unwrap();
+    let hat = head["cubes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["color"] == "#b5503f")
+        .expect("the hat");
+    let pts: Vec<[f64; 3]> = hat["verts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| {
+            let f = |i: usize| v[i].as_f64().unwrap() * k;
+            [f(0), f(1), f(2)]
+        })
+        .collect();
+    let shell = &m["head"].points;
+    let head_w = shell.iter().map(|p| p[0].abs()).fold(0.0, f64::max);
+    let head_top = shell.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
+    let head_low = shell
+        .iter()
+        .filter(|p| p[0].abs() > 0.15)
+        .map(|p| p[1])
+        .fold(f64::MAX, f64::min);
+    let hat_w = pts.iter().map(|p| p[0].abs()).fold(0.0, f64::max);
+    // (over the face: the front of the hat, its brim tipped up there, comes down to just over the brows; behind it droops lower)
+    let hat_low = pts
+        .iter()
+        .filter(|p| p[2] > 0.1 && p[0].abs() < 0.12)
+        .map(|p| p[1])
+        .fold(f64::MAX, f64::min);
+    let hat_top = pts.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
+    assert!(
+        hat_w > head_w * 1.25,
+        "the brim reaches well past the head: {hat_w:.3} against {head_w:.3}"
+    );
+    let middle = (head_top + head_low) / 2.0;
+    assert!(
+        hat_low < middle + (head_top - middle) * 0.65 && hat_low > middle,
+        "the hat comes down over the head to above its middle (the brows): {hat_low:.3} (the head {head_low:.3} to {head_top:.3})"
+    );
+    assert!(
+        hat_top > head_top + 0.02,
+        "a soft crown over the top: {hat_top:.3} over {head_top:.3}"
+    );
+    for ear in ["ear_l", "ear_r"] {
+        let e = &m[ear];
+        let tip = e.points.iter().map(|p| p[1]).fold(f64::MIN, f64::max) + e.origin[1];
+        assert!(
+            tip > hat_top,
+            "{ear} stands up through its hole, over the crown: {tip:.3} against {hat_top:.3}"
+        );
+    }
+    let pm_lua = std::fs::read_to_string(game_dir().join("entities/postmaster.lua")).unwrap();
+    let mut springs = 0;
+    for line in pm_lua.lines().filter(|l| l.contains("part = \"ear_")) {
+        let max: f64 = line
+            .split("max = ")
+            .nth(1)
+            .unwrap()
+            .split(',')
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        springs += 1;
+        assert!(
+            max <= 0.32,
+            "an ear's spring swings it {max} rad, past what its hole allows: {line}"
+        );
+    }
+    assert_eq!(springs, 2, "both ears hang on springs");
+    // at the wheel the hat and the ears' tips are in the cab, under its lining (1.48 m: tools/van.mjs)
+    let ear_top = ["ear_l", "ear_r"]
+        .iter()
+        .map(|e| m[*e].points.iter().map(|p| p[1]).fold(f64::MIN, f64::max) + m[*e].origin[1])
+        .fold(f64::MIN, f64::max);
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let head_y = num(
+        &g,
+        "(function() local P = nova.named('postmaster'); local sit = nova.model_pose('postmaster', { clip = 'sit', time = 0 }); return P.SEAT[2] + sit.head.y end)()",
+    );
+    let top = head_y + hat_top.max(ear_top);
+    assert!(
+        (1.2..1.48).contains(&top),
+        "seated, the hat's crown and the ears reach {top:.3} m: in the cab, under the lining"
+    );
+}
+
+/// The painted clothes and faces keep clean edges at every distance: every block of paint in the model's picture is set 8 texels
+/// into a cell of 16 (the game's smaller copies average up to 16 texels at a time: a dark brow beside the white cheeks' block came
+/// out grey), and every see-through texel beside paint carries a colour close to that paint (edge padding: the GPU's blend between
+/// texels does not weigh them by cover).
+#[test]
+fn the_painted_edges_stay_clean_in_the_casts_pictures() {
+    for who in ["postmaster", "hazel", "pip"] {
+        let png = std::fs::read(game_dir().join(format!("models/{who}.texture.png"))).unwrap();
+        let img = nova_runtime::assets::decode_png(&png).unwrap();
+        let (w, h) = (img.width as i64, img.height as i64);
+        let px = |x: i64, y: i64| {
+            let i = ((y * w + x) * 4) as usize;
+            [
+                img.rgba[i],
+                img.rgba[i + 1],
+                img.rgba[i + 2],
+                img.rgba[i + 3],
+            ]
+        };
+        let (mut edges, mut bad) = (0, 0);
+        for y in 0..h {
+            for x in 0..w {
+                let p = px(x, y);
+                if p[3] != 0 {
+                    continue;
+                }
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                        continue;
+                    }
+                    let q = px(nx, ny);
+                    if q[3] < 200 {
+                        continue;
+                    }
+                    edges += 1;
+                    let d = (0..3)
+                        .map(|i| (p[i] as i32 - q[i] as i32).abs())
+                        .max()
+                        .unwrap();
+                    if d > 90 {
+                        bad += 1;
+                    }
+                }
+            }
+        }
+        assert!(edges > 100, "{who}: painted edges found ({edges})");
+        assert!(
+            (bad as f64) < edges as f64 * 0.02,
+            "{who}: {bad} of {edges} see-through texels beside paint carry a colour far from it"
+        );
+        let doc: Value = serde_json::from_str(
+            &std::fs::read_to_string(game_dir().join(format!("models/{who}.model.json"))).unwrap(),
+        )
+        .unwrap();
+        fn walk(ps: &Value, out: &mut Vec<(i64, i64)>) {
+            for p in ps.as_array().unwrap() {
+                for c in p["cubes"].as_array().unwrap() {
+                    if let Some(at) = c["texture"]["at"].as_array() {
+                        out.push((at[0].as_i64().unwrap(), at[1].as_i64().unwrap()));
+                    }
+                }
+                walk(&p["children"], out);
+            }
+        }
+        let mut blocks = Vec::new();
+        walk(&doc["parts"], &mut blocks);
+        blocks.sort();
+        blocks.dedup();
+        assert!(blocks.len() > 5, "{who}: painted blocks ({})", blocks.len());
+        for &(x, y) in &blocks {
+            assert!(
+                x % 16 == 8 && y % 16 == 8,
+                "{who}: a block at {x}, {y} is not set 8 texels into a 16-texel cell (the gutter round it)"
+            );
+        }
+    }
+}
+
+/// Up and down the porch steps the body climbs: the hips follow a smooth line through the steps (no more than 1.2 cm in a frame, no
+/// jolt in how fast they rise), and the walk slows a little on them. On the steepest hillside, walked across it and up it, each
+/// standing foot lies along the slope (tipped and rolled with it), so no point of a sole goes more than a centimetre into the ground,
+/// and the body stays upright.
+#[test]
+fn the_porch_steps_are_climbed_smoothly_and_feet_lie_on_the_hillside() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    let probe: Vec<&str> = SOLE_PROBE
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("--"))
+        .collect();
+    assert_eq!(
+        lua(
+            &g,
+            &format!("(function() {} return 'ok' end)()", probe.join(" "))
+        ),
+        "ok"
+    );
+    assert_eq!(
+        lua(
+            &g,
+            "(function() HP = { ys = {}, all = {}, flat = {}, slow = 0 }; function HP_STEP() local p = nova.named('postmaster'); \
+               local pose = nova.model_pose('postmaster', { layers = p.anim:layers(), parts = p.walker:parts({}) }); \
+               local y = (p.y or 0) + pose.hips.y; HP.all[#HP.all + 1] = y; if p.on_stairs then HP.slow = HP.slow + 1; HP.ys[#HP.ys + 1] = y elseif p.speed > 1 then HP.flat[#HP.flat + 1] = y end end; return 'ok' end)()"
+        ),
+        "ok"
+    );
+    for (dir, from, there, sg) in [("up", 6.0, 1.4, -1.0), ("down", 1.4, 6.0, 1.0)] {
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.x, p.z = d.x + fx * {from}, d.z + fz * {from}; p.face = math.atan({sg} * fx, {sg} * fz); p.walk_to, p.walk_path = nil, nil" }}, {{ "wait": 20 }} ] }}"#
+            ),
+        );
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "each_frame": "HP_STEP()", "steps": [ {{ "lua": "HP.ys = {{}}; HP.all = {{}}; HP.flat = {{}}; HP.slow = 0; local p = nova.named('postmaster'); local d = nova.named('office_door'); local fx, fz = math.sin(d.ry or 0), math.cos(d.ry or 0); p.walk_path = {{ {{ d.x + fx * {there}, d.z + fz * {there} }} }}; p.walk_pace = 1.6" }}, {{ "wait": 240 }} ] }}"#
+            ),
+        );
+        let series = |name: &str| -> Vec<f64> {
+            lua(&g, &format!("table.concat(HP.{name}, ' ')"))
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse().unwrap())
+                .collect()
+        };
+        // (the most the hips move in a frame, and the most that changes from one frame to the next)
+        let measure = |ys: &[f64]| {
+            let step = ys
+                .windows(2)
+                .map(|w| (w[1] - w[0]).abs())
+                .fold(0.0, f64::max);
+            let jerk = ys
+                .windows(3)
+                .map(|w| (w[2] - 2.0 * w[1] + w[0]).abs())
+                .fold(0.0, f64::max);
+            (step, jerk)
+        };
+        let (all, stairs, flat) = (series("all"), series("ys"), series("flat"));
+        let climb = (all[all.len() - 1] - all[0]).abs();
+        let (step, jerk) = measure(&stairs);
+        let (flat_step, flat_jerk) = measure(&flat);
+        println!(
+            "porch {dir}: climb {climb:.3}; on the steps most a frame {step:.4}, jolt {jerk:.4}; walking on the flat {flat_step:.4}, {flat_jerk:.4}"
+        );
+        assert!(
+            climb > 0.3,
+            "{dir}: the hips went {dir} the steps ({climb:.2} m)"
+        );
+        // (near the walk's own bob on the flat, the dip as each foot lands, 1.6 cm a frame at most and 1.8 cm a frame of change:
+        // on the steps 2.6 cm at most, where the hips jumped 7.8 cm in a frame onto each step before they glided)
+        assert!(flat.len() > 20, "{dir}: walked on the flat too");
+        assert!(
+            step < 0.03,
+            "{dir}: the hips moved {step:.3} m in one frame on the steps (a hop; {flat_step:.3} on the flat)"
+        );
+        assert!(
+            jerk < 0.035,
+            "{dir}: how fast the hips rise changed by {jerk:.4} m a frame in one frame on the steps (a jolt; {flat_jerk:.4} on the flat)"
+        );
+        assert!(num(&g, "HP.slow") > 20.0, "{dir}: it knew it was on steps");
+    }
+    let spot = lua(
+        &g,
+        "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
+           local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
+    );
+    let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (x, z, gx, gz) = (v[0], v[1], v[2], v[3]);
+    let s = gx.hypot(gz);
+    for (name, ux, uz) in [("across", -gz / s, gx / s), ("up", gx / s, gz / s)] {
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = {}, {}, math.atan({ux}, {uz}); p.walk_to, p.walk_path = nil, nil" }}, {{ "wait": 20 }},
+                   {{ "lua": "SP.tag = 'hill {name}'; TILTS = 0; local p = nova.named('postmaster'); p.walk_path = {{ {{ {}, {} }} }}; p.walk_pace = 1.6" }} ] }}"#,
+                x - ux * 2.5,
+                z - uz * 2.5,
+                x + ux * 2.5,
+                z + uz * 2.5
+            ),
+        );
+        play(
+            &mut g,
+            r#"{ "each_frame": "SP_STEP('postmaster'); for _, f in ipairs(nova.named('postmaster').walker:feet()) do if f.planted and math.abs(f.roll or 0) + math.abs(f.pitch or 0) > 0.08 then TILTS = TILTS + 1 end end", "steps": [ { "wait": 120 } ] }"#,
+        );
+        let poke = num(&g, &format!("SP.tags['hill {name}'] or -1"));
+        println!("hillside {s:.2} {name}: {poke:.4}");
+        assert!(
+            poke > -1.0 && poke < 0.01,
+            "on the {s:.2} hillside, {name}: a sole went {poke:.3} m into the ground ({})",
+            lua(&g, &format!("SP.info['hill {name}']"))
+        );
+        assert!(
+            num(&g, "TILTS") > 20.0,
+            "{name}: the standing feet tip with the slope"
+        );
+        assert_eq!(
+            lua(&g, "tostring(nova.named('postmaster').draw_opts.lift)"),
+            "origin",
+            "the body upright"
+        );
+    }
+}
+
+/// "Let's angle the fox tail a little higher": the postmaster's brush sweeps up behind him, its tip well above its root and curling
+/// up, still a part of its own that the clips and the spring swing; at the wheel it is put away (so it never meets the seat), and the
+/// parcel he carries is in front of him, never near it.
+#[test]
+fn the_fox_tail_sweeps_up_behind() {
+    let m = cast_model("postmaster");
+    let t = &m["tail"];
+    let (root_y, root_z) = (t.origin[1], t.origin[2]);
+    let tip = t.points.iter().fold(
+        [0.0, f64::MIN, 0.0],
+        |a, p| if p[1] > a[1] { *p } else { a },
+    );
+    assert!(
+        tip[1] > 0.2,
+        "the tip rises {:.3} m over the root ({root_y:.3}, {root_z:.3})",
+        tip[1]
+    );
+    assert!(
+        tip[2] < -0.3,
+        "and reaches back behind him ({:.3} m)",
+        tip[2]
+    );
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let follows = lua(
+        &g,
+        "(function() for _, f in ipairs(nova.named('postmaster').walker.followers) do if f.part == 'tail' then return 'yes' end end return 'no' end)()",
+    );
+    assert_eq!(follows, "yes", "the tail still swings on its spring");
+    let pm_lua = std::fs::read_to_string(game_dir().join("entities/postmaster.lua")).unwrap();
+    assert!(
+        pm_lua.contains("parts.tail.visible = false"),
+        "at the wheel the tail is put away"
+    );
+    // the parcel is carried at the chest, in front: its middle at least 25 cm ahead of the hips, the tail all behind them
+    let ahead = num(
+        &g,
+        "(function() local p = nova.named('postmaster'); local x, _, z = p:hands(); return (x - p.x) * math.sin(p.face) + (z - p.z) * math.cos(p.face) end)()",
+    );
+    assert!(ahead > 0.25, "the parcel is held {ahead:.2} m in front");
+    let front = t.points.iter().map(|p| p[2]).fold(f64::MIN, f64::max) + root_z;
+    assert!(
+        front < 0.05,
+        "no part of the tail reaches in front of the hips ({front:.3})"
+    );
 }

@@ -183,6 +183,9 @@ M.rolled = rolled
 local Gait = {}
 Gait.__index = Gait
 
+-- how much further a leg may shorten or lengthen while the hips glide on a stair (times `squash` and `stretch`)
+local FLEX_SQUASH, FLEX_STRETCH = 0.72, 1.32
+
 local DEFAULTS = {
   stance = { { 0, 0.6 }, { 1.0, 0.54 }, { 1.6, 0.5 }, { 3.0, 0.36 } }, -- the share of a cycle each foot is down, by speed (below a half: a run)
   lift = { { 0, 0.025 }, { 1.6, 0.045 }, { 3.0, 0.08 } }, -- how high a foot is lifted as it swings (metres)
@@ -201,6 +204,7 @@ local DEFAULTS = {
   turn = 0.6,                                             -- or one turned further than this (radians) from the body
   teleport = 1.0,                                         -- moved further than this in a step: put down where it is, no walk
   max_drop = 0.1,                                         -- the hips never squat lower than this below where they stand
+  glide = nil,                                            -- (m/s) the most the hips rise or fall (on a stair: a leg flexes more instead)
   idle = true,                                            -- standing a while: a look round now and then, a shift of weight
 }
 
@@ -277,6 +281,7 @@ function Gait:reset(e)
   self.px, self.pz, self.face0 = e.x, e.z, face
   self.speed, self.vx, self.vz, self.ax, self.az, self.cadence = 0, 0, 0, 0, 0, 0
   self.ready = true
+  self.hw = nil
   self.level:set(0)
   self.last_y = e.y or 0
   self.reset_phase = true
@@ -366,6 +371,16 @@ function Gait:update(dt, e, anim, extra)
     if ph < stance then
       if not L.planted then
         L.planted, L.x, L.z, L.yaw = true, L.sx or L.x, L.sz or L.z, L.syaw or face
+        -- (set down short of where it was going, it may still be over the edge of a step: moved onto one tread as it lands)
+        if o.ground then
+          local yf, yz = sin(L.yaw), cos(L.yaw)
+          local toe, heel = L.sole.forward + L.sole.half + 0.04, L.sole.half - L.sole.forward + 0.04
+          for _ = 1, 10 do
+            if riser(self, L.x, L.z, yf, yz, toe) then L.x, L.z = L.x - yf * 0.02, L.z - yz * 0.02
+            elseif riser(self, L.x, L.z, yf, yz, -heel) then L.x, L.z = L.x + yf * 0.02, L.z + yz * 0.02
+            else break end
+          end
+        end
         L.steps = L.steps + 1
         L.landed = true
         L.land_roll = min(0, L.pitch or 0) -- (it lands heel first and rolls down onto the sole)
@@ -396,7 +411,7 @@ function Gait:update(dt, e, anim, extra)
       -- would hang into the riser of the step behind, moves the landing back or forward, a little at a time, until it is clear)
       if o.ground then
         -- (with room for the toe as the foot rolls up onto it before it lifts: the ankle goes forward over the toe)
-        local toe, heel = L.sole.forward + L.sole.half + 0.04, L.sole.half - L.sole.forward
+        local toe, heel = L.sole.forward + L.sole.half + 0.04, L.sole.half - L.sole.forward + 0.04
         for _ = 1, 10 do
           if riser(self, tx, tz, fs, fc, toe) then tx, tz = tx - fs * 0.02, tz - fc * 0.02
           elseif riser(self, tx, tz, fs, fc, -heel) then tx, tz = tx + fs * 0.02, tz + fc * 0.02
@@ -411,6 +426,9 @@ function Gait:update(dt, e, anim, extra)
       -- a foot goes up a step with the lift of its swing rather than jumping onto it)
       local g0, g1 = L.g0 or ground_w(self, L.fx, L.fz), ground_w(self, tx, tz)
       L.step_up = g1 > g0 + 0.03
+      L.g1w = g1
+      -- (a foot going up onto the next step lifts higher, a step's own arc)
+      if L.step_up then L.lift = L.lift + min(0.05, (g1 - g0) * 0.35) * sin(pi * u) end
       L.clear = L.clear or M.spring { stiffness = 900, damping = 1, value = g0 }
       -- (the ground under the whole sole, toe to heel, so the toe of a foot swinging up a stair clears the riser ahead of it)
       -- (only where the ground jumps, a step: on a slope the ground under the ankle is the one to follow)
@@ -496,6 +514,22 @@ function Gait:update(dt, e, anim, extra)
     end
     return low
   end
+  -- (the slope of the ground under a foot at (ax, az) in the model's space: how far to tip it toe up (a negative pitch) and roll it,
+  -- up to 0.35 rad; none across a step, which is a jump and not a slope)
+  local function slope_tilt(L, ax_, az_)
+    if not o.ground then return 0, 0 end
+    local fx, fz = sin(L.myaw), cos(L.myaw)
+    local rx_, rz_ = fz, -fx
+    local wx, wz = e.x + ax_ * c + az_ * s, e.z - ax_ * s + az_ * c
+    local wfx, wfz = fx * c + fz * s, -fx * s + fz * c
+    local wrx, wrz = rx_ * c + rz_ * s, -rx_ * s + rz_ * c
+    if riser(self, wx, wz, wfx, wfz, 0.08) or riser(self, wx, wz, wfx, wfz, -0.08) or riser(self, wx, wz, wrx, wrz, 0.06) or riser(self, wx, wz, wrx, wrz, -0.06) then return 0, 0 end
+    local g = function(dx, dz) return ground_at(self, e, wx + dx, wz + dz) end
+    local along = (g(wfx * 0.06, wfz * 0.06) - g(-wfx * 0.06, -wfz * 0.06)) / 0.12
+    local side = (g(wrx * 0.04, wrz * 0.04) - g(-wrx * 0.04, -wrz * 0.04)) / 0.08
+    local lim = 0.35
+    return max(-lim, min(lim, -math.atan(along))), max(-lim, min(lim, math.atan(side)))
+  end
   for _, L in ipairs(self.legs) do
     local S = pose[L.hip]
     local lx, ly, lz = qrot(qconj(qa), S.x - H0.x, S.y - H0.y, S.z - H0.z)
@@ -558,17 +592,54 @@ function Gait:update(dt, e, anim, extra)
   end
   -- (and never squatting further than max_drop: past that a foot is left a little short rather than the body folding up)
   dy = max(dy, self.rest_hips + step_off - o.max_drop - H0.y)
-  self.drop = self.rest_hips + step_off - (H0.y + dy) -- (how far the hips are below where they stand)
+  -- (on a stair the hips glide: they rise and fall at most `glide` m/s, so a foot set on the step above or below is met by a leg
+  -- shortened or lengthened a little more for a moment, never by a jump of the whole body; never so far that a standing foot is out of
+  -- the flexed leg's reach, or a foot set down would be pushed into its step)
+  local hw = (e.y or 0) + H0.y + dy
+  self.flex = false
+  if self.hw and o.glide then
+    local most = o.glide * dt
+    local want = max(self.hw - most, min(self.hw + most, hw))
+    -- (how low and how high the hips may be with the legs flexed: FLEX_SQUASH and FLEX_STRETCH times the usual limits)
+    local lo, hi = -math.huge, math.huge
+    for _, L in ipairs(self.legs) do
+      local w = L.planted and 1 or smooth(max(0, min(1, ((L.u or 0) - 0.4) / 0.6)))
+      if w > 0.5 then
+        local sx, sy, sz = socket(L, dy)
+        local ex, ey, ez = ankle(L, 0)
+        local h2 = (ex - sx) ^ 2 + (ez - sz) ^ 2
+        local short = (L.length * o.squash * FLEX_SQUASH) ^ 2 - h2
+        lo = max(lo, ey + (short > 0 and sqrt(short) or 0) - sy)
+        if L.planted then
+          local fwd = (L.mx - sx) * sin(L.myaw) + (L.mz - sz) * cos(L.myaw)
+          local tx, ty, tz = ankle(L, fwd < 0 and o.toe_roll or -o.heel_roll)
+          local reach = (L.length * o.stretch * FLEX_STRETCH) ^ 2 - (tx - sx) ^ 2 - (tz - sz) ^ 2
+          hi = min(hi, ty + (reach > 0 and sqrt(reach) or 0) - sy)
+        end
+      end
+    end
+    -- (lo and hi are how far the hips may move from where the feet put them)
+    -- (where no glide fits, the hips stay where the feet put them, the legs still allowed the extra flex)
+    if lo <= hi then want = max(hw + lo, min(hw + hi, want)) else want = hw; self.flex = true end
+    if abs(want - hw) > 1e-4 then self.flex = true end
+    dy = dy + (want - hw)
+  end
+  -- (going up a stair the legs may always flex that much more: a foot left on the step below is still reached, not dragged)
+  if o.glide and self.ey_prev and (e.y or 0) > self.ey_prev + 1e-4 then self.flex = true end
+  self.ey_prev = e.y or 0
+  self.hw = (e.y or 0) + H0.y + dy
+  self.drop =self.rest_hips + step_off - (H0.y + dy) -- (how far the hips are below where they stand)
   -- the roll a foot needs at its place to be reached from its socket (0 when it is within reach flat)
   local function need(L, sx, sy, sz)
     local fwd = (L.mx - sx) * sin(L.myaw) + (L.mz - sz) * cos(L.myaw)
     local lim = fwd < 0 and o.toe_roll or -o.heel_roll
     local function dist(r) local x, y, z = ankle(L, r); return sqrt((x - sx) ^ 2 + (y - sy) ^ 2 + (z - sz) ^ 2) end
-    if dist(0) <= Lmax(L) then return 0 end
+    local reach = (self.flex and fwd < 0) and L.length * o.stretch * FLEX_STRETCH * 0.98 or Lmax(L)
+    if dist(0) <= reach then return 0 end
     local lo, hi = 0, lim
     for _ = 1, 18 do
       local mid = (lo + hi) / 2
-      if dist(mid) > Lmax(L) then lo = mid else hi = mid end
+      if dist(mid) > reach then lo = mid else hi = mid end
     end
     return hi
   end
@@ -585,6 +656,10 @@ function Gait:update(dt, e, anim, extra)
       if a <= 0 then a = min(a, L.land_roll) end
       L.pitch, L.pivot = a, a > 1e-4 and "toe" or a < -1e-4 and "heel" or "flat"
       axx, axy, axz = ankle(L, a)
+      -- (on a hillside the sole lies along the ground under it: tipped toe up or down and rolled to the side with the slope, and
+      -- set down so its lowest point just meets the ground)
+      L.tilt, L.troll = slope_tilt(L, axx, axz)
+      if abs(L.tilt) + abs(L.troll) > 0.02 then axy = sole_floor(L, axx, axz, a + L.tilt) end
     else
       -- (swinging: rolled off the toe at first, reaching forward to land on the heel, as it must or a little)
       local u = L.u or 0
@@ -592,6 +667,10 @@ function Gait:update(dt, e, anim, extra)
       L.pitch, L.pivot = (L.fpitch or 0) * (1 - smooth(u)) + land * smooth(u), "air"
       axx, axy, axz = ankle(L, L.pitch)
       axy = axy + (L.lift or 0)
+      -- (in the air the foot eases flat at the top of its swing and back to the slope as it comes down)
+      local tp, tr = slope_tilt(L, axx, axz)
+      local keep = 1 - sin(pi * u)
+      L.tilt, L.troll = tp * keep, tr * keep
       -- (going up a step: a foot under the body cannot be lifted onto the tread above by a straight leg, however short it is made,
       -- and would hang into the riser; the leg kicks it forward instead, the way a short straight leg goes up a stair, until it is
       -- long enough to hold the foot that high)
@@ -623,13 +702,14 @@ function Gait:update(dt, e, anim, extra)
     end
     L.ax, L.ay, L.az = axx, axy, axz
     local nx, ny, nz, len = norm(axx - sx, axy - sy, axz - sz)
-    local kx = max(o.squash, min(o.stretch, len / L.length))
+    local kx = self.flex and max(o.squash * FLEX_SQUASH, min(o.stretch * FLEX_STRETCH, len / L.length)) or max(o.squash, min(o.stretch, len / L.length))
     -- (a standing foot the leg cannot reach, left behind on the step below as the body goes up onto the next, hangs short of its
     -- place, and its toe would go into the riser in front of it: the leg swings it back and up instead, pushing off, as little as
     -- it must for the whole sole to be clear of the ground, until its step comes)
     -- (the same for a foot just lifted from the step behind, going down: out of reach up there, it is swung back clear of it)
-    if o.ground and len > L.length * o.stretch + 0.004 then
-      local r = L.length * o.stretch
+    local stretch = self.flex and o.stretch * FLEX_STRETCH or o.stretch
+    if o.ground and len > L.length * stretch + 0.004 then
+      local r = L.length * stretch
       local pitch = max(-0.2, min(0.75, L.pitch))
       if sole_floor(L, sx + nx * r, sz + nz * r, pitch) > sy + ny * r + 0.004 then
         local bx, bz = -sin(L.myaw), -cos(L.myaw)
@@ -653,7 +733,7 @@ function Gait:update(dt, e, anim, extra)
     L.scale = kx
     local hx, hy, hz = qrot(qhc, nx, ny, nz)
     local ql = qarc(0, -1, 0, hx, hy, hz)
-    local qf = qmul(qconj(qmul(qh, ql)), qmul(qaxis(0, 1, 0, L.myaw), qaxis(1, 0, 0, L.pitch)))
+    local qf = qmul(qconj(qmul(qh, ql)), qmul(qaxis(0, 1, 0, L.myaw), qmul(qaxis(1, 0, 0, L.pitch + (L.tilt or 0)), qaxis(0, 0, 1, L.troll or 0))))
     local turn = qmul(qconj(L.qclip), ql)
     local a = out[L.hip] or {}
     out[L.hip] = a
@@ -743,7 +823,7 @@ function Gait:extra(list) return list or {} end
 function Gait:feet()
   local list = {}
   for i, L in ipairs(self.legs) do
-    list[i] = { x = L.wx, y = L.wy, z = L.wz, planted = L.planted, pivot = L.pivot, pitch = L.pitch, steps = L.steps, yaw = L.planted and L.yaw or L.syaw, sole = L.sole, part = L.foot }
+    list[i] = { x = L.wx, y = L.wy, z = L.wz, planted = L.planted, pivot = L.pivot, pitch = L.pitch + (L.tilt or 0), roll = L.troll or 0, steps = L.steps, yaw = L.planted and L.yaw or L.syaw, sole = L.sole, part = L.foot }
   end
   return list
 end
