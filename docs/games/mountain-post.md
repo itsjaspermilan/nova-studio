@@ -688,3 +688,30 @@ straight legs swung so that the foot on the ground was the one coming forward.
 
 Decided by the coordinator where the notes left room: "up" a gear moves toward P (P R N D L, as a real column shifter reads
 top to bottom), "down" toward L; the horn, displaced from X, moves to the left stick click (L3) while driving.
+
+### Sixth play, the UI half (notes 1, 4, 12, 13 and the minimap's rim)
+
+- **The van's panel floats over the doors (1):** `lib/ui.lua` `ui.van_panel`, placed by `Valley:panel_anchor`: the point in the middle of
+  the rear doorway 0.3 m over the roof line (van metres 0, 1.9, -1.45) is projected to the screen every frame by `camera.project`
+  (`lib/camera.lua`: the eye, target and lens the frame was set with; no engine call was needed) and the panel stands on it, bottom
+  centre, a small tail pointing down, clamped whole on the screen, the anchor eased (16 per second) so it does not jitter. Seen from
+  the front, where the point would land on the postmaster, it stands over their head instead. Same text sizes, a thinner frame
+  (scale 0.34), no title strip: a small red "Van 2/4" tag (held over capacity) on its corner. Three states: parcels in the van (one
+  line, the name and the street, "A Take", with more than one "1 of 2" and L1 / R1), a parcel in the arms ("X Load package"), and an
+  empty van ("The van is empty", "Van 0/4"). The bottom-right "Load package" chip is gone while the panel is up. Nothing is locked.
+- **Capacity 4:** `state.VAN_HOLDS = 4` (an upgrade will raise it). A fifth parcel is refused when X is pressed: the panel's line turns
+  red, "The van is full", for about two seconds, a low tick, and the parcel stays in the arms.
+- **Nobody is cut (4):** residents, the postmaster, the driver and what they carry are drawn with `see_through = false`, like the
+  van (the scene sets it on the residents' and the postmaster's option tables when it starts: their own files stay as they were);
+  only scenery is cut. The camera's dodge (`camera.DODGE`) now also treats each resident as a cylinder (0.42 m, 1.7 m) between the eye
+  and the postmaster, and lifts or swings round them as it does for the van.
+- **Start and Select stop the world (12, 13):** the cause was that nothing ever called `nova.pause`: the card was drawn and the
+  scene's update went on running everything. Now while the pause menu or the paper map is open (valley and post office) the scene
+  calls `nova.pause(true)` (entities, animations, the engine's clock: wind, clouds, water) and returns early from its own update: the
+  stick and the camera are not read, the scene's clock, the ambience's timers (the birds), the doors and the panel's fade stand, the
+  van's engine is silenced. The music goes on, **ducked** (its `quiet` level, 0.8 of the usual: 0.24 outdoors), not stopped; its
+  layer timers do not advance (its `quiet` input already holds them). Closing the card resumes from the same moment.
+- **Minimap rim:** the roads were cut flat at the meadow's edge. They are now cut a little further out (62) and the disc's rim
+  (`sprites/ui/minimap_rim.png`, made by `tools/art.mjs minimap`: the paper edge and the wood, nothing inside) is drawn over them, so
+  they run under the frame.
+- Pictures (made by the agent, not committed): `examples/mountain-post/build/gallery/final/`. Not checked on the Retroid.

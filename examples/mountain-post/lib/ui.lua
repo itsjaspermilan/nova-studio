@@ -9,7 +9,7 @@
 --   ui.chip         a prompt: a small panel with a button and its word; ui.hints lays them out at the bottom right
 --   ui.title_strip  a heading on a red key; ui.tag a name tag in a speaker's colour; ui.rule a groove under a heading
 --   ui.slip         a parcel's label (white, the post's red double edge); ui.cycler: L1  1 of 2  R1
---   ui.parcel_card  the one card in the top-left corner; ui.picker the van's parcel panel; ui.dim, ui.fade
+--   ui.parcel_card  the one card in the top-left corner; ui.van_panel the van's floating panel; ui.dim, ui.fade
 --   ui.text         all words: the rounded face (Fredoka) in two weights; ui.s(n) a length of the first design, scaled by ui.S
 -- (The minimap is its own painted disc, lib/ui.lua's ui.minimap, made in the same palette by tools/art.mjs.)
 local world = require("lib.world")
@@ -206,19 +206,23 @@ function ui.slip(x, y, w, h, opts)
   nova.ui.panel(KIT .. "slip", x, y, w, h, SLIP)
 end
 
--- "L1  1 of 2  R1": going round a list, centred on x (its middle at y).
+-- "L1  1 of 2  R1": going round a list, centred on x (its middle at y). `opts.size` the keys' size, `opts.half` the room between the
+-- count and each key, `opts.plain`: without the chevrons beside the keys (the van's small panel).
 function ui.cycler(x, y, i, n, opts)
   opts = opts or {}
   local a = opts.alpha or 1
   local count = i .. " of " .. n
   local fs = F.small + 1
   local tw = text_width(count, fs)
-  local half = tw / 2 + s(40)
-  ui.shoulder(x - half, y, "L1", s(22), { down = held("L1"), alpha = a })
-  ui.shoulder(x + half, y, "R1", s(22), { down = held("R1"), alpha = a })
-  local ch = { w = s(13), h = s(13), color = tint(C.slate, math.floor(255 * a)) }
-  nova.ui.sprite(KIT .. "chev_l", x - half - s(30), y - 1, ch)
-  nova.ui.sprite(KIT .. "chev_r", x + half + s(30), y - 1, ch)
+  local half = tw / 2 + (opts.half or s(40))
+  local size = opts.size or s(22)
+  ui.shoulder(x - half, y, "L1", size, { down = held("L1"), alpha = a })
+  ui.shoulder(x + half, y, "R1", size, { down = held("R1"), alpha = a })
+  if not opts.plain then
+    local ch = { w = s(13), h = s(13), color = tint(C.slate, math.floor(255 * a)) }
+    nova.ui.sprite(KIT .. "chev_l", x - half - s(30), y - 1, ch)
+    nova.ui.sprite(KIT .. "chev_r", x + half + s(30), y - 1, ch)
+  end
   text(x, y - fs * 0.62, count, { size = fs, align = "center", color = alpha(opts.colour or C.faint, a) })
 end
 
@@ -263,36 +267,81 @@ function ui.parcel_card(which, where, i, n, opts)
   end
 end
 
--- The panel at the van's open back, a light overlay low in the middle of the screen (it never takes the stick or stops anything: see
--- Valley:fade_picker): the parcels in the van shown one at a time (the label: name and street), "1 of 2" and L1 / R1 to go round
--- them when there is more than one, and A to take the one shown. With one parcel: the same panel, without the count and the
--- shoulder buttons. `a` (0 to 1) is how far it has faded up; it slides up a little as it comes.
-function ui.picker(list, i, w, h, a)
-  if not list or #list == 0 then return end
-  a = a or 1
-  local which = list[i] or list[1]
-  local name, street = ui.label_lines(which)
-  local many = #list > 1
-  local cw, ch = s(430), s(many and 176 or 156)
-  local x, y = (w - cw) / 2, h - ch - s(24) + (1 - a) * s(26)
-  local o = { alpha = a }
-  ui.panel(x, y, cw, ch, o)
-  ui.title_strip(w / 2, y - s(16), words.picker.title, { size = sz(22, 15), alpha = a })
-  -- the label: a slip with the parcel's icon beside the name and the street
-  local sy = y + s(28)
-  ui.slip(x + s(20), sy, cw - s(40), s(78), o)
-  nova.ui.sprite("ui/parcel_icon", x + s(66), sy + s(39), { w = s(54), h = s(45), color = { 255, 255, 255, math.floor(255 * a) } })
-  text(x + s(104), sy + s(10), name, { size = sz(27, 15), color = alpha(C.ink, a), bold = true })
-  text(x + s(104), sy + s(43), street, { size = F.line + 1, color = alpha(C.faint, a) })
-  local by = sy + s(78) + s(9)
-  if many then
-    ui.cycler(w / 2, by + s(11), i, #list, o)
-    by = by + s(24)
+-- The van's panel: a small panel floating above the van's open back doors (the owner, sixth play: "The popup currently blocks the
+-- player. Let's have the UI appear a little smaller ... but make it appear floating above the truck doors. So it'll technically move
+-- with the camera to remain above the doors."). The scene projects a point just over the doors to the screen every frame (lib/camera.lua,
+-- camera.project) and the panel stands on it, bottom-centre, a small tail pointing down to the doors; clamped to stay on the screen.
+-- It is a light overlay: it never takes the stick or stops anything (see Valley:fade_picker). One of
+--   "pick"   parcels in the van, empty hands: one parcel line (its name and street), "A Take", and with more than one "1 of 2" and
+--            L1 and R1 to go round them
+--   "load"   a parcel in the arms at the back: "X Load package" (once refused: "The van is full")
+--   "empty"  nothing in the van and nothing carried: "The van is empty"
+-- under a small red tag "Van 2/4" (parcels in the van over what it holds). `d`: mode, list (the parcels), i (the one shown), count,
+-- cap, note (0 to 1: how strongly the refusal's note shows), ax, ay (where the doors are on the screen), a (0 to 1: faded up).
+-- `dt` eases the anchor, so the panel does not jitter with the van's springs.
+local TAIL = s(9)
+ui.float = nil -- (the eased anchor; nil: the next frame starts at the anchor itself)
+function ui.van_panel_reset() ui.float = nil end
+
+-- A little tail pointing down, its tip at (x, y + len): wood edge, paper inside.
+local function tail(x, y, hw, len, a)
+  local n = math.max(2, math.floor(len))
+  for pass = 1, 2 do
+    local col = pass == 1 and alpha(C.wood, a) or alpha(C.paper, a)
+    local grow = pass == 1 and 1.8 or 0
+    for i = 0, n - 1 do
+      local ww = (hw + grow) * 2 * (1 - i / n)
+      nova.ui.rect(x - ww / 2, y + i + (pass == 1 and 0 or -1), ww, 1.5, col)
+    end
   end
-  -- A takes it
-  local tw = ui.chip_width("A", words.hint.take)
-  ui.glyph(w / 2 - tw / 2 + s(22), by + s(19), "A", s(25), { down = held("A"), alpha = a })
-  text(w / 2 - tw / 2 + s(42), by + s(19) - F.hint * 0.62, words.hint.take, { size = F.hint, color = alpha(C.ink, a), bold = true })
+end
+
+function ui.van_panel(d, w, h, dt)
+  local a = d.a or 1
+  local mode = d.mode
+  local many = mode == "pick" and #d.list > 1
+  local cw = mode == "pick" and s(262) or s(222)
+  local ch = mode == "pick" and s(92) or s(42)
+  -- the anchor, eased
+  local f = ui.float
+  if not f then f = { x = d.ax, y = d.ay }; ui.float = f
+  else
+    local k = 1 - math.exp(-(dt or 1 / 60) * 16)
+    f.x, f.y = f.x + (d.ax - f.x) * k, f.y + (d.ay - f.y) * k
+  end
+  local pad = s(10)
+  local x = math.max(pad, math.min(w - pad - cw, f.x - cw / 2))
+  local y = math.max(s(26), math.min(h - pad - ch - TAIL, f.y - TAIL - ch)) + (1 - a) * s(8)
+  local note = d.note or 0
+  if note > 0 then x = x + math.sin(note * 38) * s(2.5) * note end
+  ui.panel(x, y, cw, ch, { alpha = a, scale = 0.34 })
+  tail(math.max(x + s(16), math.min(x + cw - s(16), f.x)), y + ch - s(3), s(6), TAIL + s(3), a)
+  -- the tag: "Van 2/4"
+  local tag = words.van.tag .. " " .. d.count .. "/" .. d.cap
+  local tw, th = text_width(tag, F.small, true) + s(22), s(22)
+  local tx, ty = x + s(12), y - th * 0.55
+  ui.key(tx, ty, tw, th, C.red, { scale = 0.25 * S, alpha = a })
+  text(tx + tw / 2, ty + th / 2 - F.small * 0.62 - 1, tag, { size = F.small, align = "center", color = alpha(C.cream, a), bold = true })
+  local mid = y + ch / 2 + s(4)
+  if mode == "pick" then
+    local which = d.list[d.i] or d.list[1]
+    local name, street = ui.label_lines(which)
+    nova.ui.sprite("ui/parcel_icon", x + s(34), y + s(34), { w = s(42), h = s(35), color = { 255, 255, 255, math.floor(255 * a) } })
+    text(x + s(62), y + s(17), name, { size = F.name, color = alpha(C.ink, a), bold = true })
+    text(x + s(62), y + s(39), street, { size = F.line, color = alpha(C.faint, a) })
+    local by = y + ch - s(19)
+    ui.glyph(x + s(26), by, "A", s(21), { down = held("A"), alpha = a })
+    text(x + s(42), by - F.hint * 0.62, words.hint.take, { size = F.hint, color = alpha(C.ink, a), bold = true })
+    if many then ui.cycler(x + cw - s(72), by, d.i, #d.list, { alpha = a, size = s(18), half = s(24), plain = true }) end
+  elseif mode == "load" then
+    ui.glyph(x + s(28), mid, "X", s(23), { down = held("X"), alpha = a })
+    local msg, col = words.hint.load, C.ink
+    if note > 0 then msg, col = words.van.full, C.red end
+    text(x + s(48), mid - F.name * 0.62, msg, { size = F.name, color = alpha(col, a), bold = true })
+  else
+    text(x + cw / 2, mid - F.name * 0.62, words.van.empty, { size = F.name, align = "center", color = alpha(C.faint, a), bold = true })
+  end
+  ui.van_panel_box = { x = x, y = y, w = cw, h = ch, tail_x = f.x, anchor_y = f.y } -- (for the tests: where the panel is)
 end
 
 -- The minimap: a small disc in the bottom-left corner with the roads right round you (about 90 m each way) and you in the middle.
@@ -310,7 +359,8 @@ function ui.minimap(px, pz, heading, w, h, yaw)
   yaw = yaw or 0
   local cx, cy = 24 + MM.r + 4, h - 24 - MM.r - 4
   nova.ui.sprite("ui/minimap_disc", cx, cy, { w = (MM.r + 8) * 2, h = (MM.r + 8) * 2 })
-  local r, k = MM.r - 4, MM.scale
+  -- (a road is cut at 62, a little past the meadow's edge (61.2) and under the frame's rim, drawn over the roads below: no flat end shows)
+  local r, k = MM.r - 2, MM.scale
   -- (seen from above with the camera's look up the screen: its right is (-cos yaw, sin yaw) in x, z and its look (sin yaw, cos yaw);
   -- at yaw 0 screen x is east = -x and screen y is south = -z, as on the paper map)
   local fs, fc = math.sin(yaw), math.cos(yaw)
@@ -371,6 +421,8 @@ function ui.minimap(px, pz, heading, w, h, yaw)
       end
     end
   end
+  -- the frame's rim over the roads' ends (the disc's own paper edge and wood, with nothing inside): the roads go under the frame
+  nova.ui.sprite("ui/minimap_rim", cx, cy, { w = (MM.r + 8) * 2, h = (MM.r + 8) * 2 })
   -- north: a red tab on the rim, its letter upright, going round as the camera turns
   nova.ui.sprite("ui/minimap_north", cx + fs * MM.north_r, cy - 1.4 - fc * MM.north_r, { w = 21, h = 21 })
   -- you: pointing the way you face against the way the camera looks (heading 0 faces north; a heading towards +x, the west, turns it

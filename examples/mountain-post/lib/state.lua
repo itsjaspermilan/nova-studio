@@ -15,8 +15,9 @@ function state.reset()
 end
 state.reset()
 
--- The van holds this many parcels (both of the slice's; the postmaster still carries one at a time).
-state.VAN_HOLDS = 2
+-- The van holds this many parcels (the owner, sixth play: "The maximum capacity for the truck storage should be 4 parcels for now.
+-- We'll work on upgrades later."): an upgrade will raise it. The postmaster still carries one at a time.
+state.VAN_HOLDS = 4
 
 -- Is this parcel in the van? Takes it out (true) when asked to.
 function state.in_van(which, take)

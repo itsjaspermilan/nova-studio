@@ -28,6 +28,8 @@ function Office:enter()
   nova.shadows { radius = 7, strength = 0.75, softness = 1.2 }
   nova.look { ao = 0.6, ao_radius = 0.6, saturation = 1.05, vignette = 0.3, bloom = 0.25, bloom_threshold = 0.8 }
   nova.wind()
+  nova.pause(false)
+  self.paused = false
   self.p = nova.named("postmaster")
   self.p.indoors = true
   self.t = 0
@@ -69,7 +71,24 @@ function Office:action()
   return nil
 end
 
+function Office:leave() nova.pause(false) end
+
+-- Start and Select stop the room too (as in the valley, scenes/valley.lua): the postmaster, the shelf and the dust stand still, the
+-- music goes on ducked, and closing the card carries on from the same moment.
 function Office:update(dt)
+  local kind = cards.kind()
+  local paused = kind == "pause" or kind == "map"
+  if paused ~= self.paused then
+    self.paused = paused
+    nova.pause(paused)
+    nova.log(paused and "paused" or "resumed")
+  end
+  if paused then
+    cards.update(dt)
+    music.update(dt, { quiet = true })
+    self.hint = nil
+    return
+  end
   self.t = self.t + dt
   music.update(dt, { quiet = cards.active() and not state.ended })
   self.fade_in = math.max(0, self.fade_in - dt / FADE)
@@ -149,7 +168,7 @@ end
 -- the sunlight through the window: a few warm motes turning slowly in the beam
 local MOTE = { color = { 255, 244, 214, 150 } }
 function Office:draw()
-  camera.apply(1 / 60)
+  camera.apply(self.paused and 0 or 1 / 60)
   nova.point_light(-2.6, 1.8, 0, { radius = 6, color = { 255, 214, 160 } })
   nova.point_light(0.9, 1.8, 2.0, { radius = 4, color = { 255, 226, 180 } })
   for i = 1, 26 do

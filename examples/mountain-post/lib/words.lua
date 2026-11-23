@@ -64,8 +64,8 @@ words.hint = {
   map = "Map", close = "Close", next = "Next", put_back = "Put back", go_in = "Go in", go_out = "Go out",
   load = "Load package", load_at_back = "Load it at the back", choose = "Choose",
 }
--- the panel at the van's open back that shows its parcels one at a time
-words.picker = { title = "In the van" }
+-- the panel floating over the van's open back doors (lib/ui.lua ui.van_panel)
+words.van = { tag = "Van", empty = "The van is empty", full = "The van is full" }
 words.pause = { title = "Paused", resume = "Resume", quit = "Quit" }
 -- the card in the corner: where the parcel it shows is
 words.card = { hands = "carrying", van = "in the van" }
