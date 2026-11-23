@@ -443,3 +443,14 @@ These replace the matching lines above where they differ (the UI theme, the musi
   than the cab floor, level from its back until it meets the front wheel's well and then rising round it 7 cm clear of the lip; its
   front edge leans with the windscreen pillar, its top corners round. The right side has no doorway: one window (0.48 x 0.44 m, at
   the windscreen's height) in a dark frame with a tinted pane, the panel and the band unbroken below it.
+
+## The owner's fourth round of notes (2026-11-22)
+
+- **Van doors:** "they wouldn't be square, they would go around the wheel well and have a step in them too. We can remove the
+  passenger side door and just keep it as a window." (Done.) "You can increase the wheelbase of the van a bit. So don't increase
+  the body length but you can move back the back wheels a bit."
+- **Controls** (letters as engraved on the Retroid), replacing the slice spec's:
+  X: interact, continue conversation. Y: enter/exit vehicle. A: confirm items in menus. B: hold to run while walking, hold for
+  handbrake while driving.
+- **Walking and running:** "Walking the player shouldn't have their arms out. For running they will and turning will also tilt
+  them slightly in the direction that they're turning in."
