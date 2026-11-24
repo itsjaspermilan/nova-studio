@@ -207,8 +207,16 @@ impl Flora {
             .clamp(1.0, MAX_FLORA_PER_TILE as f32) as u32
     }
 
+    /// How many of the square `(i, j)`'s plants are drawn when its nearest point is `d` metres from the eye: every plant that
+    /// `vs_flora` would show any of, wherever in the square it stands. A plant's own distance is jittered by up to 10% either way
+    /// (so they thin with no ring), so the square counts as if 11% nearer than its nearest point (it was 9%, a hair under the
+    /// jitter; no plant was seen to be cut by it, but the count must never be what decides whether a plant is there).
+    pub fn drawn_in(&self, i: i32, j: i32, d: f32) -> u32 {
+        let per = self.per_tile_in(i, j);
+        ((per as f32 * self.share(d * 0.89) * 1.4).ceil() as u32).min(per)
+    }
     /// The share of a square's plants kept at `d` metres: all to a third of the distance, then thinning (the same curve is
-    /// `flora_share` in grass.wgsl).
+    /// in `vs_flora`, grass.wgsl).
     pub fn share(&self, d: f32) -> f32 {
         let near = self.distance * 0.35;
         if d <= near { 1.0 } else { (near / d).powf(0.7) }
@@ -407,6 +415,8 @@ fn flora_here(grass: &Grass, f: &Flora, x: f32, z: f32, h: f32) -> (f32, u32) {
 
 pub struct GrassGpu {
     flora_pipeline: wgpu::RenderPipeline,
+    flora_soft_pipeline: wgpu::RenderPipeline,
+    flora_indices: wgpu::Buffer,
     flora_sampler: wgpu::Sampler,
     flora_loaded: Option<Arc<FloraPicture>>,
     a2c: bool,
@@ -593,10 +603,14 @@ impl GrassGpu {
             ],
             immediate_size: 0,
         });
-        // (with multisampling a fading blade or plant, and a picture's edge, are drawn by coverage: soft, never a hard cut-out;
-        // without it, by a fixed screen-door)
+        // (with multisampling a fading blade is drawn by coverage: soft, never a hard cut-out; without it, by a fixed screen-door.
+        // The flora blends its edges and fades instead: see fs_flora)
         let a2c = samples > 1;
-        let make = |label: &'static str, vs: &'static str, fs: &'static str| {
+        let make = |label: &'static str,
+                    vs: &'static str,
+                    fs: &'static str,
+                    coverage: bool,
+                    soft: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&pipeline_layout),
@@ -612,7 +626,7 @@ impl GrassGpu {
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: world_format,
-                        blend: None,
+                        blend: soft.then_some(wgpu::BlendState::ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::COLOR, // (the alpha is the coverage, not kept)
                     })],
                 }),
@@ -622,22 +636,33 @@ impl GrassGpu {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: depth_format,
-                    depth_write_enabled: Some(true),
+                    depth_write_enabled: Some(!soft),
                     depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
                 multisample: wgpu::MultisampleState {
                     count: samples,
-                    alpha_to_coverage_enabled: a2c,
+                    alpha_to_coverage_enabled: coverage,
                     ..Default::default()
                 },
                 multiview_mask: None,
                 cache: None,
             })
         };
-        let pipeline = make("grass", "vs_grass", "fs_grass");
-        let flora_pipeline = make("flora", "vs_flora", "fs_flora");
+        let pipeline = make("grass", "vs_grass", "fs_grass", a2c, false);
+        // (the flora in two passes, with or without multisampling: the solid inside of each picture, then its edges and the fading
+        // plants blended over it; see fs_flora)
+        let flora_pipeline = make("flora", "vs_flora", "fs_flora", false, false);
+        let flora_soft_pipeline = make("flora soft", "vs_flora", "fs_flora_soft", false, true);
+        let flora_indices = wgpu::util::DeviceExt::create_buffer_init(
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("flora quad"),
+                contents: bytemuck::cast_slice(&[0u32, 1, 2, 1, 3, 2]),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        );
         let flora_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("flora sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -677,6 +702,8 @@ impl GrassGpu {
         );
         Self {
             flora_pipeline,
+            flora_soft_pipeline,
+            flora_indices,
             flora_sampler,
             flora_loaded: None,
             a2c,
@@ -797,10 +824,7 @@ impl GrassGpu {
                 let count =
                     ((per_tile as f32 * grass.share(d * 0.91) * 1.2).ceil() as u32).min(per_tile);
                 let flora_count = match flora {
-                    Some(f) if d < flora_reach => {
-                        let per = f.per_tile_in(i, j);
-                        ((per as f32 * f.share(d * 0.91) * 1.4).ceil() as u32).min(per)
-                    }
+                    Some(f) if d < flora_reach => f.drawn_in(i, j, d),
                     _ => 0,
                 };
                 if count == 0 && flora_count == 0 {
@@ -914,12 +938,18 @@ impl GrassGpu {
             pass.draw_indexed(0..BLADES * BLADE_TRIANGLES * 3, 0, r.clone());
         }
         if !frame.flora.is_empty() {
+            pass.set_index_buffer(self.flora_indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.set_pipeline(&self.flora_pipeline);
             for r in &frame.flora {
-                pass.draw(0..6, r.clone());
+                pass.draw_indexed(0..6, 0, r.clone());
+            }
+            // (the blended part from the furthest square in: nearer edges over further ones)
+            pass.set_pipeline(&self.flora_soft_pipeline);
+            for r in frame.flora.iter().rev() {
+                pass.draw_indexed(0..6, 0, r.clone());
             }
         }
-        (frame.draws.len() + frame.flora.len()) as u32
+        (frame.draws.len() + frame.flora.len() * 2) as u32
     }
 }
 
@@ -941,6 +971,65 @@ mod tests {
         )
         .validate(&module)
         .expect("grass.wgsl validates");
+    }
+
+    /// Which plants are drawn never depends on more than each plant's own place and the eye: every plant `vs_flora` shows any of
+    /// (its `grow` above nothing, worked out here as the shader does) is within the count the square draws, for eyes all round and
+    /// across the squares, so no plant comes and goes as a square's count steps with the camera.
+    #[test]
+    fn every_plant_the_shader_would_show_is_drawn() {
+        let f = Flora {
+            picture: Arc::new(FloraPicture::new(4, 4, vec![255; 64], 1)),
+            kinds: 1,
+            density: 0.7,
+            size: 0.5,
+            distance: 28.0,
+            patch: 7.0,
+            cover: 0.34,
+            spots: vec![[3.0, 5.0, 1.8, 4.0]],
+        };
+        let (mut checked, mut missed) = (0, Vec::new());
+        for e in 0..400 {
+            let eye = (
+                (hash(e, 1) - 0.5) * 70.0 + 4.0,
+                (hash(e, 2) - 0.5) * 70.0 + 4.0,
+            );
+            for (i, j) in [(0, 0), (-1, 0), (0, 1), (2, -1), (-3, 2)] {
+                let (x, z) = (i as f32 * TILE, j as f32 * TILE);
+                let d = (eye.0.clamp(x, x + TILE) - eye.0).hypot(eye.1.clamp(z, z + TILE) - eye.1);
+                if d >= f.distance * 1.1 {
+                    continue;
+                }
+                let drawn = f.drawn_in(i, j, d);
+                let seed = tile_seed(i, j);
+                let su = (seed * 16_777_216.0) as u32;
+                let off = [(seed * 3.7 + 0.31).fract(), (seed * 5.3 + 0.67).fract()];
+                let local = f.per_tile_in(i, j) as f32;
+                for k in 0..f.per_tile_in(i, j) {
+                    let p = (
+                        x + (off[0] + k as f32 * 0.754_877_7).fract() * TILE,
+                        z + (off[1] + k as f32 * 0.569_840_3).fract() * TILE,
+                    );
+                    let dist = (p.0 - eye.0).hypot(p.1 - eye.1)
+                        * (1.0 + 0.2 * (hash(k, su.wrapping_add(53)) - 0.5));
+                    let near = f.distance * 0.35;
+                    let share = if dist <= near {
+                        1.0
+                    } else {
+                        (near / dist).powf(0.7)
+                    };
+                    let grow = local * share * 1.4 - k as f32;
+                    if grow > 0.0 {
+                        checked += 1;
+                        if k >= drawn {
+                            missed.push((i, j, k, drawn, eye));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(checked > 1000, "plants looked at: {checked}");
+        assert!(missed.is_empty(), "plants shown but not drawn: {missed:?}");
     }
 
     #[test]

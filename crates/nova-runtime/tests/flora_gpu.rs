@@ -32,6 +32,11 @@ fn gfx() -> Option<Gfx> {
 
 /// A flat square of grey ground `size` metres across.
 fn ground(size: f32) -> MeshData {
+    ground_coloured(size, [70, 70, 70, 255])
+}
+
+/// The same in a colour.
+fn ground_coloured(size: f32, color: [u8; 4]) -> MeshData {
     let n = 20u32;
     let step = size / n as f32;
     let mut vertices = Vec::new();
@@ -45,7 +50,7 @@ fn ground(size: f32) -> MeshData {
                     -size / 2.0 + j as f32 * step,
                 ],
                 normal: [0.0, 1.0, 0.0],
-                color: [70, 70, 70, 255],
+                color,
                 uv: [0.0, 0.0],
                 emissive: 0.0,
             });
@@ -413,5 +418,368 @@ fn a_ribbon_is_soft_and_see_through_with_faint_edges_kept() {
             lit >= 8 && faint >= 4,
             "msaa {msaa}: its edges fall off softly ({lit} pixels lit, {faint} of them faint): {lift:?}"
         );
+    }
+}
+
+// ---- flicker: the owner on the device, "The flowers flicker for some reason." ------------------------------------------------------
+
+/// The game's own flower picture (examples/mountain-post/textures/flora.png, five kinds) in a meadow like its valley's, flowers in
+/// patches everywhere, low green blades among them.
+fn meadow() -> Grass {
+    let bytes = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-post/textures/flora.png"),
+    )
+    .expect("the game's flora picture");
+    let img = nova_runtime::assets::decode_png(&bytes).unwrap();
+    let picture = Arc::new(FloraPicture::new(img.width, img.height, img.rgba, 5));
+    Grass {
+        color: [0.05, 0.16, 0.03],
+        height: 0.3,
+        width: 0.07,
+        density: 10.0,
+        distance: 32.0,
+        flora: Some(Flora {
+            picture,
+            kinds: 5,
+            density: 1.0,
+            size: 0.5,
+            distance: 28.0,
+            patch: 7.0,
+            cover: 1.0,
+            spots: Vec::new(),
+        }),
+        ..Default::default()
+    }
+}
+
+const FW: u32 = 640;
+const FH: u32 = 360;
+
+/// Where a frame of the meadow is seen from: the eye, which way it looks (radians about y; 15 degrees down) and how far the boards
+/// casting their shadows across the flowers have moved along x (metres).
+#[derive(Clone, Copy)]
+struct Look {
+    eye: glam::Vec3,
+    yaw: f32,
+    boards: f32,
+}
+
+/// A frame of the meadow, with the game's lens (42 degrees) and the valley's shadows (`nova.shadows { radius = 40, near = 6,
+/// softness = 1.4, far = 110 }`: a fine map for the view's first 6 metres, the wide one beyond it): boards 1.5 m wide and 3 m tall
+/// stand among the flowers, their shadows falling across them towards the camera.
+fn meadow_shot(
+    gfx: &mut Gfx,
+    (mesh, post): (usize, usize),
+    grass: &Grass,
+    look: Look,
+    msaa: u32,
+    scale: u32,
+) -> Vec<u8> {
+    let mut draws = vec![ModelDraw {
+        casts: false,
+        mesh,
+        instance: ModelInstance {
+            matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            tint: [1.0; 4],
+        },
+    }];
+    for k in 0..6 {
+        draws.push(ModelDraw {
+            casts: true,
+            mesh: post,
+            instance: ModelInstance {
+                matrix: (glam::Mat4::from_translation(glam::Vec3::new(
+                    -8.0 + k as f32 * 3.1 + look.boards,
+                    0.0,
+                    -3.0 - (k % 3) as f32 * 3.0,
+                )) * glam::Mat4::from_scale(glam::Vec3::new(6.0, 1.0, 1.0)))
+                .to_cols_array_2d(),
+                tint: [1.0; 4],
+            },
+        });
+    }
+    let (s, c) = look.yaw.sin_cos();
+    let pitch = 15f32.to_radians();
+    let fwd = glam::Vec3::new(-s * pitch.cos(), -pitch.sin(), -c * pitch.cos());
+    let input = FrameInput {
+        clear: [0.5, 0.6, 0.8, 1.0],
+        camera: Camera {
+            eye: look.eye,
+            target: look.eye + fwd * 10.0,
+            fov_y_degrees: 42.0,
+        },
+        sprites_back: &[],
+        models: &draws,
+        joints: &[],
+        mesh_ops: &[],
+        shaded_models: &[],
+        shaded_sprites: &[],
+        post: None,
+        texture_ops: &[],
+        time: 0.0,
+        ui_models: &[],
+        lighting: Lighting {
+            direction: [0.45, -0.75, 0.35],
+            color: [1.0, 0.95, 0.85],
+            ambient: [0.45, 0.48, 0.55],
+            grass: Some(grass.clone()),
+            shadows: Some(nova_runtime::gfx::Shadows {
+                radius: 40.0,
+                strength: 0.72,
+                near: 6.0,
+                softness: 1.4,
+                far: 110.0,
+            }),
+            quality: Quality {
+                msaa,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        sprites_front: &[],
+        text: &[],
+        world_height: 0,
+    };
+    shrink(&gfx.capture((FW * scale, FH * scale), &input), scale)
+}
+
+/// A post 0.25 m square and 3 m tall (a shadow to fall across the flowers).
+fn post_mesh() -> MeshData {
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    let (a, h) = (0.125f32, 3.0f32);
+    let faces: [([f32; 3], [[f32; 3]; 4]); 5] = [
+        (
+            [1.0, 0.0, 0.0],
+            [[a, 0.0, -a], [a, h, -a], [a, h, a], [a, 0.0, a]],
+        ),
+        (
+            [-1.0, 0.0, 0.0],
+            [[-a, 0.0, a], [-a, h, a], [-a, h, -a], [-a, 0.0, -a]],
+        ),
+        (
+            [0.0, 0.0, 1.0],
+            [[a, 0.0, a], [a, h, a], [-a, h, a], [-a, 0.0, a]],
+        ),
+        (
+            [0.0, 0.0, -1.0],
+            [[-a, 0.0, -a], [-a, h, -a], [a, h, -a], [a, 0.0, -a]],
+        ),
+        (
+            [0.0, 1.0, 0.0],
+            [[-a, h, -a], [-a, h, a], [a, h, a], [a, h, -a]],
+        ),
+    ];
+    for (n, q) in faces {
+        let b = vertices.len() as u32;
+        for p in q {
+            vertices.push(MeshVertex {
+                position: p,
+                normal: n,
+                color: [90, 70, 50, 255],
+                uv: [0.0, 0.0],
+                emissive: 0.0,
+            });
+        }
+        // (both windings: whichever way the mesh pipeline culls, the post is solid)
+        indices.extend_from_slice(&[
+            b,
+            b + 1,
+            b + 2,
+            b,
+            b + 2,
+            b + 3,
+            b,
+            b + 2,
+            b + 1,
+            b,
+            b + 3,
+            b + 2,
+        ]);
+    }
+    MeshData {
+        vertices,
+        indices,
+        ..Default::default()
+    }
+}
+
+/// How much the flowers flicker over a run of frames (`with`: the meadow with flowers, `without`: the same frames without them):
+/// the mean second difference in time, |I(t) - (I(t-1) + I(t+1)) / 2| (0 to 255, the three channels' mean), over the pixels the
+/// flowers change in any of the three frames. A flower that slides smoothly by less than a pixel a frame changes a pixel almost
+/// linearly (little); a pixel that comes and goes for one frame, or a whole flower's light that jumps, counts in full. Also the
+/// share of those pixels that flash (come or go for a single frame by more than 60), and the flower pixels a frame.
+fn flicker(measured: &[Vec<u8>], with: &[Vec<u8>], without: &[Vec<u8>]) -> (f64, f64, usize) {
+    let (mut sum, mut n, mut flashes) = (0.0, 0usize, 0usize);
+    for t in 1..with.len() - 1 {
+        let (a, b, c) = (&measured[t - 1], &measured[t], &measured[t + 1]);
+        for i in (0..a.len()).step_by(4) {
+            let mut flower = false;
+            for s in t - 1..=t + 1 {
+                let (f, g) = (&with[s], &without[s]);
+                let d: i32 = (0..3)
+                    .map(|k| (f[i + k] as i32 - g[i + k] as i32).abs())
+                    .sum();
+                flower |= d > 45;
+            }
+            if !flower {
+                continue;
+            }
+            let (mut d, mut up, mut down) = (0.0, true, true);
+            for k in 0..3 {
+                let (x, y, z) = (a[i + k] as f64, b[i + k] as f64, c[i + k] as f64);
+                d += (y - (x + z) / 2.0).abs();
+                up &= y - x > 60.0 && y - z > 60.0;
+                down &= x - y > 60.0 && z - y > 60.0;
+            }
+            sum += d / 3.0;
+            n += 1;
+            flashes += usize::from(up || down);
+        }
+    }
+    (
+        sum / n.max(1) as f64,
+        flashes as f64 / n.max(1) as f64,
+        n / (with.len() - 2),
+    )
+}
+
+/// With NOVA_FLICKER_DIR set, the frames are written there to look at (`name_000.png` ...).
+fn save_frames(name: &str, frames: &[Vec<u8>]) {
+    let Ok(dir) = std::env::var("NOVA_FLICKER_DIR") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (k, f) in frames.iter().enumerate() {
+        let file = std::fs::File::create(dir.join(format!("{name}_{k:03}.png"))).unwrap();
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), FW, FH);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header().unwrap().write_image_data(f).unwrap();
+    }
+}
+
+/// Renders `frames` frames of `at(t)`, with and without the flowers, and measures their flicker.
+fn flicker_run(
+    gfx: &mut Gfx,
+    name: &str,
+    msaa: u32,
+    frames: usize,
+    at: impl Fn(usize) -> Look,
+) -> Flicker {
+    let meshes = (
+        gfx.upload_mesh(&ground_coloured(200.0, [45, 95, 30, 255])),
+        gfx.upload_mesh(&post_mesh()),
+    );
+    let grass = meadow();
+    let bare = Grass {
+        flora: None,
+        ..grass.clone()
+    };
+    let (mut with, mut without, mut truth) = (Vec::new(), Vec::new(), Vec::new());
+    for t in 0..frames {
+        let look = at(t);
+        with.push(meadow_shot(gfx, meshes, &grass, look, msaa, 1));
+        without.push(meadow_shot(gfx, meshes, &bare, look, msaa, 1));
+        // (the same frame drawn four times as wide and high, and averaged down: what the frame would be with no aliasing at all)
+        truth.push(meadow_shot(gfx, meshes, &grass, look, 4, 4));
+    }
+    save_frames(&format!("{name}_msaa{msaa}"), &with);
+    let (pixels, ideal) = (
+        flicker(&with, &with, &without),
+        flicker(&truth, &with, &without),
+    );
+    let f = Flicker {
+        pixels: pixels.0 - ideal.0,
+        flashing: pixels.1,
+        cover: pixels.2,
+    };
+    eprintln!(
+        "{name} msaa {msaa}: flicker over the ideal {:.2} ({:.2}, ideal {:.2}), flashing {:.4}, {} flower pixels a frame",
+        f.pixels, pixels.0, ideal.0, f.flashing, f.cover
+    );
+    f
+}
+
+/// A frame `scale` times as wide and high averaged down to [`FW`] x [`FH`].
+fn shrink(big: &[u8], scale: u32) -> Vec<u8> {
+    if scale == 1 {
+        return big.to_vec();
+    }
+    let mut out = vec![0u8; (FW * FH * 4) as usize];
+    for y in 0..FH {
+        for x in 0..FW {
+            for k in 0..4 {
+                let mut sum = 0u32;
+                for dy in 0..scale {
+                    for dx in 0..scale {
+                        sum += big
+                            [(((y * scale + dy) * FW * scale + x * scale + dx) * 4 + k) as usize]
+                            as u32;
+                    }
+                }
+                out[((y * FW + x) * 4 + k) as usize] = (sum / (scale * scale)) as u8;
+            }
+        }
+    }
+    out
+}
+
+/// What a run measured: how much more the flowers flicker than the same frames drawn without aliasing (the second difference in
+/// time, 0 to 255), the share of flower pixels that flash for one frame, and the flower pixels a frame.
+struct Flicker {
+    pixels: f64,
+    flashing: f64,
+    cover: usize,
+}
+
+/// The owner on the device: "The flowers flicker for some reason." A camera turning where it stands (a fiftieth of a degree a frame)
+/// and walking (0.3 m/s, and at a walk, 1.4 m/s, at 60 frames a second) through a meadow of the game's own flowers, and the shadows
+/// of boards sliding across them (a crown swaying, the van passing): the frames change hardly more than the same frames drawn four
+/// times as wide and high and averaged down (no aliasing) do, and hardly a pixel of the flowers flashes on or off for one frame (no
+/// plant chosen again, no stem or petal that comes and goes, no plant lit or darkened all at once). Before 2026-11-24 the flowers'
+/// edges and fades were drawn by coverage and their shadow was one look in one map: over the ideal by 3.0 (turn), 1.9 and 1.6
+/// (walks) with multisampling, 6.4, 4.1 and 8.4 without; now 1.3, 0.7, 0.4 and 2.8, 1.5, 3.1 (most of what is left is the blades').
+#[test]
+fn flowers_hold_steady_as_the_camera_turns_and_walks() {
+    let Some(mut gfx) = gfx() else { return };
+    let eye = glam::Vec3::new(0.0, 3.4, 6.0);
+    // (what, degrees a frame the camera turns, metres a second it walks, metres a second the boards move, and the most it may
+    // flicker over the ideal with multisampling and without)
+    let runs = [
+        ("slow turn", 0.02f32, 0.0f32, 0.0f32, 2.0, 4.5),
+        ("slow walk", 0.0, 0.3, 0.0, 1.2, 2.8),
+        ("walk", 0.0, 1.4, 0.0, 1.0, 5.5),
+        ("shadows", 0.0, 0.0, 0.6, 0.3, 0.5),
+    ];
+    for msaa in [4, 1] {
+        for (what, degrees, speed, boards, most4, most1) in runs {
+            let f = flicker_run(&mut gfx, &what.replace(' ', "_"), msaa, 10, |t| {
+                let t = t as f32;
+                Look {
+                    eye: eye + glam::Vec3::new(0.0, 0.0, -speed / 60.0 * t),
+                    yaw: 0.15 + t * degrees.to_radians(),
+                    boards: boards / 60.0 * t,
+                }
+            });
+            assert!(
+                f.cover > 2000,
+                "msaa {msaa}, {what}: flowers in view: {} pixels",
+                f.cover
+            );
+            let most = if msaa > 1 { most4 } else { most1 };
+            assert!(
+                f.pixels < most,
+                "msaa {msaa}, {what}: the flowers flicker {:.2} over the same frames without aliasing (at most {most})",
+                f.pixels
+            );
+            assert!(
+                f.flashing < if msaa > 1 { 0.0005 } else { 0.004 },
+                "msaa {msaa}, {what}: {:.4} of the flowers' pixels flash for a frame",
+                f.flashing
+            );
+        }
     }
 }

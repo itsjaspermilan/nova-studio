@@ -357,10 +357,8 @@ fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     let h4 = grass_hash(k, su + 157u);
     // a fading plant is smaller too: it comes up out of the grass rather than appearing
     let size = grass.flora.z * (0.7 + 0.6 * h2) * mix(0.55, 1.0, fade);
-    var corners = array<vec2<f32>, 6>(
-        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
-        vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0));
-    let q = corners[vi];
+    // (the quad's four corners: GrassGpu's index list makes the two triangles)
+    let q = vec2<f32>(f32(vi & 1u), f32(vi >> 1u));
     let to_eye = globals.eye.xz - p;
     let el = length(to_eye);
     let dir = select(vec2<f32>(0.0, 1.0), to_eye / el, el > 1e-3);
@@ -398,7 +396,11 @@ fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     // lit as the ground under it, the sun wrapping round a little, darker at its foot among the blades
     let n = safe_normalize(vec3<f32>(-ground.y, 1.0, -ground.z));
     let to_sun = safe_normalize(-globals.light_dir.xyz);
-    let visible = mix(1.0 - globals.shadow.w, 1.0, grass_sun(vec3<f32>(p.x, ground.x + size * 0.5, p.y)));
+    // (the sun on the plant's middle as the ground's own shadow has it: filtered over a few texels, and blended from one map to the
+    // next where the fine near map ends. One unfiltered look in whichever map the point fell in lit or darkened the whole plant at
+    // once: a plant at a shadow's edge blinked as a crown's shadow swayed, as the shadow maps stepped with the camera, and as the
+    // camera's turn moved it from the near map to the wide one)
+    let visible = mix(1.0 - globals.shadow.w, 1.0, sun_visibility(vec3<f32>(p.x, ground.x + size * 0.5, p.y), n));
     let diffuse = max((dot(n, to_sun) + 0.3) / 1.3, 0.0) * visible;
     out.light = (globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb)) * mix(0.72, 1.0, t);
     let u = select(q.x, 1.0 - q.x, h4 < 0.5);
@@ -408,22 +410,46 @@ fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     return out;
 }
 
+// How much of the picture covers this pixel (0 to 1), before the plant's fade.
+fn flora_cover(alpha: f32, uv: vec2<f32>) -> f32 {
+    // texels of the picture a pixel spans (more than 1: the picture is drawn smaller than it is, from its smaller levels)
+    let span = uv * vec2<f32>(textureDimensions(flora_picture, 0));
+    let texels = max(length(dpdx(span)), length(dpdy(span)));
+    // where it is drawn larger than it is, the blurred edge of the magnified picture is sharpened back to about a pixel; where it
+    // is drawn smaller, its filtered alpha already is the share of the pixel the plant covers (a thin stem is a faint line), so it
+    // is given nearly as it is (at most twice as steep round the cut). Sharpening that too made every texel-thin stem and petal
+    // edge a hard cut that came and went as the pixels slid over it.
+    let edge = max(fwidth(alpha), mix(1e-3, 0.5, clamp(texels - 1.0, 0.0, 1.0)));
+    return clamp((alpha - 0.45) / edge + 0.5, 0.0, 1.0);
+}
+
+// What is drawn solid (writing the depth) from what is blended over the rest: covered at least this much.
+const FLORA_SOLID: f32 = 0.95;
+
+// The flora is drawn in two passes (the owner on the device: "The flowers flicker for some reason"; tests/flora_gpu.rs,
+// flowers_hold_steady_as_the_camera_turns_and_walks). First what is solid, the inside of each picture, writing the depth; then
+// everything else blended over it, without writing the depth: the edges of the pictures, their thin stems and petals, and whole
+// plants fading in or out with the distance. Before, the edges and the fades were drawn by coverage (alpha-to-coverage, the
+// pixel's four samples): a pixel that a petal's edge covers by a share can only take 0, 1, 2, 3 or 4 of them, so as the camera
+// moved each edge pixel stepped by a quarter of the flower's contrast with the grass, and a thin stem or a fading plant (a
+// dissolve over the screen's own pattern without multisampling) crawled. Blended, a pixel changes as smoothly as the share
+// does. The blended part is not sorted among the plants: two edges over one pixel are rare and both faint.
 @fragment
 fn fs_flora(in: FloraOut) -> @location(0) vec4<f32> {
     let c = textureSample(flora_picture, flora_sampler, in.uv);
-    let edge = max(fwidth(c.a), 1e-3);
-    let rgb = fog_over(in.world, c.rgb * in.light);
-    if (grass.flora_c.y > 0.5) {
-        // the picture's edge sharpened to about a pixel at every size, then given as coverage: smooth edges, and a fade that
-        // dissolves softly
-        let a = clamp((c.a - 0.45) / edge + 0.5, 0.0, 1.0) * in.fade;
-        if (a < 0.01) {
-            discard;
-        }
-        return vec4<f32>(rgb, a);
-    }
-    if (c.a < 0.45 || in.fade < grass_door(in.position.xy)) {
+    let a = flora_cover(c.a, in.uv) * in.fade;
+    if (a < FLORA_SOLID) {
         discard;
     }
-    return vec4<f32>(rgb, 1.0);
+    return vec4<f32>(fog_over(in.world, c.rgb * in.light), 1.0);
+}
+
+@fragment
+fn fs_flora_soft(in: FloraOut) -> @location(0) vec4<f32> {
+    let c = textureSample(flora_picture, flora_sampler, in.uv);
+    let a = flora_cover(c.a, in.uv) * in.fade;
+    if (a < 0.004 || a >= FLORA_SOLID) {
+        discard;
+    }
+    return vec4<f32>(fog_over(in.world, c.rgb * in.light), a);
 }

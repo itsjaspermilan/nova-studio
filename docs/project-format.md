@@ -290,16 +290,22 @@ nova.grass { ..., flowers = {
 
 Each plant stands upright on the ground and turns to face the camera (turned a little back towards an eye that looks down on it, so
 the van's camera does not see it edge on), sways in the wind with the blades' own swell and flutter, bends away from the bending points,
-is lit like the ground under it (with one shadow lookup) and darker at its foot. Patches grow only where the map is full (255, give or
-take: so never on a road's or a path's thinning edge, by the water or on a porch); a spot's plants grow where the map has any grass.
-`Grass::flora_places(i, j)` is the CPU's copy of where the plants of a square stand (for tests and tools). With `"msaa": 4` the
-pictures' edges are drawn by coverage (smooth, about a pixel wide at every size); without it they are cut at half alpha.
+is lit like the ground under it (its shadow is the ground's own at the plant's middle: filtered, and blended from the near map to the
+wide one) and darker at its foot. Patches grow only where the map is full (255, give or take: so never on a road's or a path's thinning
+edge, by the water or on a porch); a spot's plants grow where the map has any grass. `Grass::flora_places(i, j)` is the CPU's copy of
+where the plants of a square stand (for tests and tools), and `Flora::drawn_in` how many of a square's plants are drawn (every one the
+shader shows any of). The plants are drawn in two passes, with or without multisampling: the solid inside of each picture, writing the
+depth, then its edges, its thin stems and petals, and whole plants fading with the distance blended over it (about a pixel wide when
+the picture is drawn larger than it is; as its smaller copies have them when smaller). Since 2026-11-24 (the owner on the device: "The
+flowers flicker for some reason"): drawn by coverage before, an edge pixel could only step by a quarter of the flower's contrast with
+the grass as the camera moved, and the whole plant's light came from one unfiltered shadow look, so a plant at a swaying shadow's
+edge blinked (`tests/flora_gpu.rs`, `flowers_hold_steady_as_the_camera_turns_and_walks`).
 
 **Fading in and out** (since 2026-11-23, the owner's eighth play: "The pop in of grass and stuff is quite evident"). Nothing appears
 or vanishes in a frame. A clump's (or a plant's) own distance is jittered by its number (by up to 9%, 10% for a plant), so the grass
 neither thins nor ends along a ring; as the share of clumps kept falls with the distance, the clumps past it come up out of the ground
 one after another over 40% of the count (a few metres of a walk); and over the last quarter of `distance` (a third for the plants)
-what is left also dissolves, by coverage with multisampling (soft) or by a fixed screen-door without it. The squares are only what
+what is left also dissolves, by coverage with multisampling (soft) or by a fixed screen-door without it (a plant: blended). The squares are only what
 is drawn; every blade fades by its own distance from the camera, never a whole square at once. Scenery with its own `max_distance`
 (the scattered tufts, ferns and other small pieces) fades the same way: each piece ends at its own distance (up to 12% nearer, by
 where it stands) and dissolves over the last 30% of it (it was the last 12%, all at the same distance).
@@ -314,7 +320,7 @@ vertex number, reads the map and the colour grid, leans it outwards, with the wi
 the wind, a quicker flutter, and a sheen where a gust bends it) and away from the bending points, and lights each point: the
 ground's light, softened towards the tip, with one filtered shadow lookup. The fragment shader only writes the colour (and the
 coverage of a fading blade). The squares are drawn nearest first, after the solid models, and the flowers after them (one
-instanced draw a square, six vertices a plant, no vertex buffer).
+instanced draw a square in each of the flowers' two passes, four corners a plant, no vertex buffer).
 
 **Cost** (Retroid Pocket 6, Fernhollow's meadow, 1280 by 720, MSAA 4x): see `docs/games/mountain-post.md`, "The seventh play:
 grass, trees and shadows".
