@@ -1799,3 +1799,10 @@ garden at a crawl; it is in the "over the ideal" numbers above). Nothing here is
 from the Mac's exactly where the last two fixes aim. To look on the device, from the Mac: `scripts/build-linux-arm64.sh --release
 --project examples/mountain-post`, copy it as usual, then walk the postmaster through the garden by the post office with the camera
 tilted up (right stick) and watch the flowers at the feet.
+
+### Tenth notes: the high walking camera reverted (2026-11-24)
+
+The owner: "Let's revert the top down camera outside of buildings". On foot outdoors the camera is the third play's low view again
+(26 degrees down from 8 m, a 42 degree lens, the horizon along the top), and the porch exit is back to 4 m. Kept from the tenth
+notes: the quicker swing behind (1.65 times on foot, 1.3 in the van), the eased change getting in and out (0.9 s and 0.8 s, the eye
+kept over the ground and out of the van), and the van's low chase view. The office keeps its own fixed high view.

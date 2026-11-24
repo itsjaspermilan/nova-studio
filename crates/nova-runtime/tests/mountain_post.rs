@@ -1187,21 +1187,18 @@ fn going_through_the_post_office_door_is_a_short_fade_and_no_forced_walk() {
         &g,
         "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.sqrt((p.x - d.x)^2 + (p.z - d.z)^2) end)()",
     );
-    // (a little way down the path from the foot of the porch since the tenth notes' high walking camera: scenes/valley.lua OUT_OF_DOOR)
-    assert!(
-        (6.1..6.9).contains(&d),
-        "out past the foot of the porch: {d}"
-    );
+    // (at the foot of the porch since the third play's lower camera: lib/camera.lua PORCH)
+    assert!((3.6..4.4).contains(&d), "out at the foot of the porch: {d}");
     let away = num(
         &g,
         "(function() local p, d = nova.named('postmaster'), nova.named('office_door'); return math.abs((p.face - (d.ry or 0) + math.pi) % (2 * math.pi) - math.pi) end)()",
     );
     assert!(away < 0.05, "facing away from the door: {away}");
     // and straight back in: the same short fade, standing just inside, free at once (the camera is behind them, looking out from the
-    // building: back in is towards it, down on the stick; 6.5 m and the porch steps since the tenth notes, so up to 6 s)
+    // building: back in is towards it, down on the stick)
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["move_y=1"], "until": "nova.current_scene() == 'office'", "max": 360 }, { "wait": 1 } ] }"#,
+        r#"{ "steps": [ { "hold": ["move_y=1"], "until": "nova.current_scene() == 'office'", "max": 240 }, { "wait": 1 } ] }"#,
     );
     let log = r.log();
     let entered = log
@@ -2805,10 +2802,9 @@ fn the_van_is_never_cut_away() {
 }
 
 /// "I think we can tilt the camera down a bit while walking out and driving" (asked: lower and more behind, more level, the road and
-/// the horizon ahead): driving the boom rises 14 to 18 degrees. On foot, since the owner's tenth notes ("I like the 'top down' camera
-/// of the indoor areas. Let's keep that for the player every time they're walking even outside"), it rises 44 to 50 degrees from 10
-/// to 12 m with a lens about the office's 33 degrees, the view looking down a little less than the boom and no horizon (the third
-/// play's was 24 to 28 degrees from 8 to 9 m). Each still tilts with the right stick round its default.
+/// the horizon ahead). On foot the boom rises 24 to 28 degrees from 8 to 9 m with a lens about 40 degrees, the view looking down
+/// less (the horizon in the top of the picture); driving it rises 14 to 18 degrees. Each still tilts with the right stick round
+/// the new default.
 #[test]
 fn the_cameras_are_lower_and_more_behind() {
     let mut g = game();
@@ -2822,17 +2818,17 @@ fn the_cameras_are_lower_and_more_behind() {
     );
     let v: Vec<f64> = foot.split(' ').map(|s| s.parse().unwrap()).collect();
     assert!(
-        (44.0..=50.0).contains(&v[0]),
+        (24.0..=28.0).contains(&v[0]),
         "on foot {} degrees down ({foot})",
         v[0]
     );
     assert!(
-        (10.0..=12.0).contains(&v[1]) && (31.0..=37.0).contains(&v[2]),
-        "10 to 12 m, a lens about 33 ({foot})"
+        (8.0..=9.0).contains(&v[1]) && (38.0..=44.0).contains(&v[2]),
+        "8 to 9 m, a lens about 40 ({foot})"
     );
     assert!(
-        v[3] < v[0] && v[3] > v[2] / 2.0,
-        "the view looks down less than the boom and more than half the lens: no horizon ({foot})"
+        v[3] < 21.0 * 0.95,
+        "the view looks down less than half the lens, so the horizon shows ({foot})"
     );
     assert!(
         (14.0..=18.0).contains(&v[4]),
@@ -2843,18 +2839,18 @@ fn the_cameras_are_lower_and_more_behind() {
         v[5] < v[0] && v[6] > v[0],
         "the stick tilts both ways round the default ({foot})"
     );
-    // the eye stands that far behind and high above the postmaster, looking down on them
+    // the eye stands that far behind and above the postmaster, looking out past them
     let eye = lua(
         &g,
         "(function() local c, p = require('lib.camera').state, nova.named('postmaster'); local g = require('lib.world').height(p.x, p.z); local dx, dz = c.eye[1] - p.x, c.eye[3] - p.z; return string.format('%.2f %.2f %.2f', math.sqrt(dx * dx + dz * dz), c.eye[2] - g, math.deg(math.atan(c.eye[2] - c.at[2], math.sqrt((c.at[1] - c.eye[1])^2 + (c.at[3] - c.eye[3])^2)))) end)()",
     );
     let e: Vec<f64> = eye.split(' ').map(|s| s.parse().unwrap()).collect();
     assert!(
-        (6.5..8.5).contains(&e[0]) && (8.0..10.0).contains(&e[1]),
+        (6.5..8.5).contains(&e[0]) && (3.5..5.0).contains(&e[1]),
         "behind and above: {eye}"
     );
     assert!(
-        (38.0..46.0).contains(&e[2]),
+        (13.0..18.0).contains(&e[2]),
         "looking down {} degrees",
         e[2]
     );
@@ -12817,78 +12813,7 @@ fn d_to_r_and_back_to_d_at_speed_carries_on_and_a_pending_shift_cannot_hang() {
     );
 }
 
-// ---- the owner's tenth notes 1 and 2 (2026-11-23): the office's high view outdoors on foot, the low chase view in the van, a quicker swing --
-
-/// "I like the 'top down' camera of the indoor areas. Let's keep that for the player every time they're walking even outside." On foot
-/// outdoors the eye stands to the postmaster as the office's fixed eye stands to the room's middle: within 3 degrees of its look down,
-/// within 15 % of its distance, its lens within 3 degrees; the postmaster a little below the middle of the picture, and on flat ground
-/// at least 10 m of ground ahead of them shows below the top edge.
-#[test]
-fn walking_outdoors_the_camera_looks_down_like_the_office() {
-    let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "steps": [ { "wait": 3, "lua": "nova.named('van'):teleport(300, 300, 0); local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -125, 0; require('lib.camera').reset(0)" }, { "wait": 40 } ] }"#,
-    );
-    assert_eq!(
-        num(&g, "require('lib.camera').state.pull"),
-        1.0,
-        "nothing pulls the boom in here"
-    );
-    let room: Vec<f64> = lua(
-        &g,
-        "(function() local R = require('lib.camera').ROOM; local dy = R.eye[2] - R.at[2]; local h = math.sqrt((R.eye[1] - R.at[1])^2 + (R.eye[3] - R.at[3])^2); return string.format('%.3f %.3f %.3f', math.deg(math.atan(dy, h)), math.sqrt(dy * dy + h * h), R.fov) end)()",
-    )
-    .split(' ')
-    .map(|s| s.parse().unwrap())
-    .collect();
-    // eye to the boom's point over the postmaster (0.6 m up): its angle down and length; the lens; the view's own look down; the eye's
-    // height over the ground under the postmaster; how far it stands behind them on the ground
-    let foot: Vec<f64> = lua(
-        &g,
-        "(function() local c, p, W = require('lib.camera').state, nova.named('postmaster'), require('lib.world'); local base = W.height(p.x, p.z) + 0.6; local dx, dz = c.eye[1] - p.x, c.eye[3] - p.z; local h = math.sqrt(dx * dx + dz * dz); local dy = c.eye[2] - base; local lh = math.sqrt((c.at[1] - c.eye[1])^2 + (c.at[3] - c.eye[3])^2); return string.format('%.3f %.3f %.3f %.3f %.3f %.3f', math.deg(math.atan(dy, h)), math.sqrt(dy * dy + h * h), c.fov, math.deg(math.atan(c.eye[2] - c.at[2], lh)), c.eye[2] - W.height(p.x, p.z), h) end)()",
-    )
-    .split(' ')
-    .map(|s| s.parse().unwrap())
-    .collect();
-    assert!(
-        (foot[0] - room[0]).abs() < 3.0,
-        "on foot {:.1} degrees down to the postmaster, the office {:.1}",
-        foot[0],
-        room[0]
-    );
-    assert!(
-        (foot[1] / room[1] - 1.0).abs() < 0.15,
-        "{:.2} m from the postmaster, the office {:.2} m from the room's middle",
-        foot[1],
-        room[1]
-    );
-    assert!(
-        (foot[2] - room[2]).abs() <= 3.0,
-        "a lens of {} against the office's {}",
-        foot[2],
-        room[2]
-    );
-    // the view looks down a little less than the boom: the postmaster a little below the middle, more ground ahead
-    assert!(
-        foot[3] < foot[0] && foot[3] > foot[0] - 9.0,
-        "the view {:.1} degrees down, the boom {:.1}",
-        foot[3],
-        foot[0]
-    );
-    let sy = num(
-        &g,
-        "(function() local p, W = nova.named('postmaster'), require('lib.world'); local _, y = require('lib.camera').project(p.x, W.height(p.x, p.z) + 0.5, p.z, 1280, 720); return y end)()",
-    );
-    assert!(
-        (360.0..504.0).contains(&sy),
-        "the postmaster at {sy} of 720: a little below the middle"
-    );
-    // the top edge of the picture meets flat ground this far ahead of the postmaster
-    let top = (foot[3] - foot[2] / 2.0).to_radians();
-    let ahead = foot[4] / top.tan() - foot[5];
-    assert!(ahead > 10.0, "{ahead:.1} m of ground ahead of them shows");
-}
+// ---- the owner's tenth notes (2026-11-23): the low chase view in the van, an eased change, a quicker swing (the high walking view was tried and reverted) --
 
 /// "When the player gets in the van we can move the camera closer to the ground, similar to what it's at now while driving." Driving,
 /// the chase view is the low one it was: the eye under 5 m over the ground, 8 to 11 m behind the van, the view looking down under 12
@@ -12912,20 +12837,10 @@ fn driving_keeps_the_low_chase_camera() {
     assert!(v[0] < 5.0, "the eye {:.2} m over the ground", v[0]);
     assert!((8.0..11.0).contains(&v[1]), "{:.2} m behind the van", v[1]);
     assert!(v[2] < 12.0, "looking down {:.1} degrees", v[2]);
-    assert!(
-        v[3] > num(&g, "require('lib.camera').FOOT.fov") + 5.0,
-        "the wider lens: {}",
-        v[3]
-    );
-    let foot_pitch = num(&g, "math.deg(require('lib.camera').FOOT.pitch)");
-    let van_pitch = num(&g, "math.deg(require('lib.camera').VAN.pitch)");
-    assert!(
-        van_pitch < foot_pitch - 20.0,
-        "driving {van_pitch} degrees, walking {foot_pitch}"
-    );
+    assert!(v[3] >= 40.0, "the wider lens: {}", v[3]);
 }
 
-/// Getting in and out of the van the view eases between the high walking view and the low chase view: it takes most of a second
+/// Getting in and out of the van the view eases between the walking view and the low chase view: it takes most of a second
 /// (camera.GET_IN, GET_OUT), the eye's step from one frame to the next is never more than 0.25 m (no snap; the whole move is about 5 m
 /// down and 2 m back), and on every frame of it the eye is a metre over the ground and outside the van's body.
 #[test]
@@ -12943,7 +12858,7 @@ fn getting_in_and_out_of_the_van_eases_between_the_two_cameras() {
     let high = num(&g, "HIGH");
     let seated = num(&g, "SEATED");
     assert!(
-        high > 7.5 && seated < 5.0,
+        seated < 5.0,
         "from {high:.2} m up on foot to {seated:.2} m in the van"
     );
     for (what, step, moving) in [

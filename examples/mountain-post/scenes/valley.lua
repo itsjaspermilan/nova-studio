@@ -28,7 +28,7 @@ local Valley = nova.scene {}
 -- side), and behind the back, clear of the doors as they swing out to the sides.
 Valley.DOOR = { 1.12, 0, 0.5 }   -- beside the left doorway (tools/van.mjs DOORWAY), the van's own metres
 Valley.BACK = { 0, 0, -2.05 }   -- behind the rear doors
-Valley.OUT_OF_DOOR = 6.5        -- metres out of the post office's door they stand on coming out (Valley:enter)
+Valley.OUT_OF_DOOR = 4.0        -- metres out of the post office's door they stand on coming out (Valley:enter)
 local DOOR, BACK = Valley.DOOR, Valley.BACK
 local BACK_OPEN, BACK_SHUT = 2.1, 2.6  -- the rear doors open as the postmaster comes this near the back, and shut again past the other
 -- near enough to load or take: once the doors are open (BACK_OPEN), all but at once (with 1.35 m the doors swung open as the
@@ -81,9 +81,8 @@ function Valley:enter()
   if state.van then self.van:teleport(state.van.x, state.van.z, state.van.heading) end
   -- out of the office's door: standing at the foot of the porch, facing away from the door, free to go at once; the camera
   -- straight behind them at the default (the owner: "We can have the camera start behind the player while on foot and exiting a
-  -- building"); they stand OUT_OF_DOOR metres out, a little way down the path from the foot of the porch: the high walking camera
-  -- (lib/camera.lua FOOT, since the tenth notes) then looks down past the porch's roof and its name board, not through them (at 4 m
-  -- out the roof and the board filled the lower half of the picture); what is still near it is cut away (lib/camera.lua NEAR)
+  -- building"); they stand at the foot of the porch, OUT_OF_DOOR metres out, the porch roof and posts cut away round the low camera
+  -- (lib/camera.lua NEAR)
   local door = nova.named("office_door")
   -- (by the post office's door more is cut away round the camera, which stands over the building behind them: lib/camera.lua NEAR)
   camera.NEAR = { { door.x, door.z, r = camera.PORCH.r, near = camera.PORCH.near } }

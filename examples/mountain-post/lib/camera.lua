@@ -9,11 +9,10 @@
 --   swing it round (the drift dies away as the way of travel comes to face it), and turning on the spot leaves it nearly still (the
 --   way of travel is the postmaster's smoothed velocity, which a turn on the spot hardly moves). Reversing the van turns it round
 --   only after REVERSE seconds of reversing. The tilt eases back to the default with the drift.
--- - On foot, high and behind like the office (the owner's tenth notes: "I like the 'top down' camera of the indoor areas. Let's keep
---   that for the player every time they're walking even outside. When the player gets in the van we can move the camera closer to the
---   ground, similar to what it's at now while driving"): 47 degrees down from 11 m with a 34 degree lens (the office's fixed view is
---   47.5 degrees down from 11.2 m with 33), the postmaster a little below the middle and the ground about 13 m ahead along the top, no
---   horizon. (From the third play to the tenth notes it was low, 26 degrees from 8 m, with the horizon.) Driving stays low: 16
+-- - Low and behind (the owner, third play: "I think we can tilt the camera down a bit while walking out and driving", and asked, lower
+--   and more behind, more level, with the road and the horizon ahead): on foot 26 degrees down from 8 m with a 42 degree lens, the
+--   postmaster in the lower middle, the sky and the far hills along the top. (The tenth notes tried the office's high view outdoors,
+--   47 degrees from 11 m; the owner asked for it back: "Let's revert the top down camera outside of buildings".) Driving 16
 --   degrees down, the van in the lower third and the road and the horizon ahead. What stands between the camera and the postmaster
 --   or the van is cut away round them only while it really hides them (tree crowns, a roof, the porch: lib/occluders.lua, CUT below);
 --   only the ground lifts the camera, smoothly.
@@ -38,18 +37,15 @@ camera.state = cam
 -- stick), the point it hangs on (`look` metres above the ground, `ahead` along the view), the lens, and how steeply the camera looks
 -- down (`view`, less than the boom's rise: the postmaster sits in the lower middle and the horizon shows along the top); the drift
 -- (`rate` rad/s at most at `full` m/s, `accel` rad/s^2 for easing its speed)
--- (the owner's tenth notes: "I like the 'top down' camera of the indoor areas. Let's keep that for the player every time they're
--- walking even outside": the room's look, ROOM below, 47.5 degrees down from 11.2 m with a 33 degree lens, taken outdoors: the boom
--- rises 47 degrees, 11 m long, a 34 degree lens; the view looks down 42, a touch less than the boom, so the postmaster stands a little
--- below the middle and the ground about 13 m ahead of them shows along the top. The drift is quicker than the third play's 0.55 rad/s,
--- gain 1.1 and 0.6 rad/s^2: "The camera can rotate a little faster when the player turns", 1.65 times each)
-camera.FOOT = { dist = 11.0, pitch = math.rad(47), view = math.rad(42), low = math.rad(30), high = math.rad(64), fov = 34, look = 0.6, ahead = 0,
-  rate = 0.9, full = 2.3, gain = 1.8, accel = 1.0, still = 0.5, pull_min = 0.8 }
+-- (the drift is quicker than the third play's 0.55 rad/s, gain 1.1 and 0.6 rad/s^2 since the tenth notes: "The camera can rotate a
+-- little faster when the player turns", 1.65 times each)
+camera.FOOT = { dist = 8.0, pitch = math.rad(26), view = math.rad(15), low = math.rad(6), high = math.rad(52), fov = 42, look = 0.6, ahead = 0,
+  rate = 0.9, full = 2.3, gain = 1.8, accel = 1.0, still = 0.5 }
 -- The van: further and lower, a wider lens, looking out down the road; a quicker drift that grows with speed (also quicker since the
 -- tenth notes, 1.3 times: it was 0.5 + 0.12 rad/s a m/s up to 1.7, gain 2.6, 3.0 rad/s^2)
 camera.VAN = { dist = 9.6, pitch = math.rad(16), view = math.rad(7), low = math.rad(3), high = math.rad(45), fov = 44, look = 1.0, ahead = 0.4,
   rate = 0.65, per = 0.16, top_rate = 2.2, gain = 3.4, accel = 3.9, still = 0.6 }
--- Getting in and out of the van: the view eases between the high walking view and the low chase view over these seconds (the eye
+-- Getting in and out of the van: the view eases between the walking view and the chase view over these seconds (the eye
 -- kept over the ground and out of the van's body all the way: camera.apply)
 camera.GET_IN, camera.GET_OUT = 0.9, 0.8
 -- Doors whose building stands behind the camera (the scene lists them in camera.NEAR as { x, z, r = , near = }): the post office's.
@@ -189,7 +185,7 @@ local function place(dt, C, x, base, z, look_at, van)
   cam.view_yaw = yaw
   local ex, ey, ez, tx, ty, tz = boom(C, yaw, pitch, f)
   -- (an eye inside a crown: the boom comes in toward the postmaster, as far as the first length that is clear and never closer than
-  -- PULL.min of it (C.pull_min on foot: the high walking eye is among the crowns often, and a long pull in is a zoom; what is near it
+  -- PULL.min of it (or C.pull_min where a view sets one; what is near it
   -- fades out whole instead, NEAR_FADE), held PULL.hold seconds after the crown is clear so it does not flicker, and eased both ways)
   local P = camera.PULL
   local want = 1
