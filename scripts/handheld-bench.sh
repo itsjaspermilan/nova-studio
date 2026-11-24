@@ -37,7 +37,7 @@ ssh -o ConnectTimeout=10 "$host" "test -f nova/$id/game.npk" || { echo "install 
 scp -q "$out/$id" "$host:nova/$id/${id}_bench"
 scp -q "$out/game.npk" "$host:nova/$id/game_bench.npk"
 scp -q "$route" "$host:nova/bench-route.json"
-ssh "$host" "cd nova/$id && NOVA_FRAME_LOG=../bench-frames.txt DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 timeout 120 ./${id}_bench run --pak game_bench.npk --start-scene $scene --input ../bench-route.json --frames $frames > ../bench-run.log 2>&1; grep -E 'windowed:|adapter:' ../bench-run.log"
+ssh "$host" "cd nova/$id && NOVA_FRAME_LOG=../bench-frames.txt DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1000 timeout 120 ./${id}_bench run --pak game_bench.npk --no-audio --start-scene $scene --input ../bench-route.json --frames $frames > ../bench-run.log 2>&1; grep -E 'windowed:|adapter:' ../bench-run.log"
 mkdir -p build/bench
 scp -q "$host:nova/bench-frames.txt" build/bench/frames.txt
 scripts/env.sh node scripts/lib/frame-log.mjs build/bench/frames.txt

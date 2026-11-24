@@ -72,3 +72,9 @@ quarter of the frames start 25 ms after the last and the next 8 ms after that. T
 as they were, so a turning camera jumped; `pacing.rs` now gives each frame whole display periods (23.5% uneven frames before,
 0.3-0.5% after, on `scripts/bench/fernhollow-camera-turn.json`). The valley costs about 3.5 ms of Lua (p95 6.7 ms), 1.2 ms of
 render recording and 5.3 ms of GPU a frame there, so the rest of a frame is spent waiting for the display.
+
+Measured 2026-11-23 on the Retroid Pocket 6 (Fernhollow at 0b364f05, with grass, far shadows, painted sky, haze and floating life;
+camera-turn route, `--no-audio`): 60 fps with every frame stepped exactly one display period (0 uneven frames out of 1,879), GPU
+10.4 ms mean (13.0 ms worst second, was about 5.3 ms before the seventh-play graphics), Lua 3.0 ms median (4.6 ms p95), render
+recording 1.2 ms, about 380k triangles and 254 draws a frame. About 4 ms of GPU headroom is left at 60 fps; not measured over a long
+session (thermals).
