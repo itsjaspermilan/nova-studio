@@ -1361,3 +1361,20 @@ Device: 60 fps holds (GPU 10.4 ms, about 4 ms headroom). The owner's notes, in t
 9. "There should be a driveway at the homes and buildings. Right now we're just driving on grass."
 10. "The player kind of looks like he's shuffling when he's walking."
 11. "I liked the post master cap that we had earlier. The bucket hat makes the character look like some kind of explorer."
+
+### What the eighth play changed: no button chips, a Controls page (note 7)
+
+"I still see 'Y to exit' and 'Select' for map. I also don't see the control menu." (From the feedback for later: "remove the button
+chips from the UI entirely ... a 'Controls' option in the main menu.")
+
+- **No button is drawn in play.** `ui.chip`, `ui.hints`, the Select key, the L1/R1 keys, the dialogue's X cap, the cap over the office's
+  free tile and the "A Take" / "X Load package" rows are gone (also `Valley:hints`, `Office:hints`, `gear_hud.hints_floor`). What stays is
+  information: the van's panel (tag, name and street, "1 of 2" between two slate arrows, "Load package" / "The van is full" / "The van is
+  empty" in plain words), the pickup tip (name and street), the corner card (its count between the same arrows), the dialogue's "next"
+  (a small slate arrow bobbing at the box's corner) and the PRNDL instrument while driving. A test (`no_button_prompts_are_drawn_in_play...`)
+  refuses any button cap or hint word on foot, at the van's back, driving, in the office and in a conversation.
+- **Controls** is the second choice of the title menu (Start, Controls) and of the pause menu (Resume, Controls, Quit): plain red / paper
+  keys, no glyphs. The page (`cards.controls_layout`, rows in `words.controls_rows`) has two columns, "On foot" and "Driving", each row
+  the button as engraved on the Retroid (A, B, X, Y in the kit's caps; L1, R1, R2, L2, L3, Select, Start and the sticks on slate keys)
+  and what it does, and a foot line for menus (D-pad, A, B). It is the one place the game draws buttons. B or Start goes back (to the
+  pause menu, or the title). A test checks every row's buttons against `nova.json` and that every action the game reads is on the page.

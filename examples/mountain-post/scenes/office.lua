@@ -129,7 +129,6 @@ function Office:update(dt)
   if paused then
     cards.update(dt)
     music.update(dt, { quiet = true })
-    self.hint = nil
     return
   end
   self.t = self.t + dt
@@ -196,7 +195,7 @@ function Office:update(dt)
     end
   end
   camera.room(dt)
-  self.hint = self:hints()
+  self:aim()
   -- the tip fades out when what it is over is no longer the one to pick up, then comes up over the new one
   local want = self.pick
   if self.tip_for ~= want then
@@ -207,13 +206,12 @@ function Office:update(dt)
   end
 end
 
-function Office:hints()
+-- What is about to be picked up (the tip and the outline) or put back (the free tile's marker): no button is named on the screen.
+function Office:aim()
   self.target = nil
   self.pick = nil
-  if cards.active() or self.leaving then return nil end
+  if cards.active() or self.leaving then return end
   local what, it = self:action()
-  local list = {}
-  self.target = nil
   local tx, ty, tz = self:prompt_at(what, it)
   -- the tip and the outline are for what is about to be picked up (a parcel to take, the letter to read); a free tile to put back on
   -- keeps its marker and button
@@ -221,11 +219,6 @@ function Office:hints()
   elseif what == "read" then
     for _, i in ipairs(nova.all("item")) do if i.item == "letter" then self.pick = i end end
   elseif tx then self.target = { tx, ty, tz } end
-  if what == "read" then list[#list + 1] = { "X", words.hint.read }
-  elseif what == "take" then list[#list + 1] = { "X", words.hint.take }
-  elseif what == "put_back" then list[#list + 1] = { "X", words.hint.put_back } end
-  list[#list + 1] = { "SELECT", words.hint.map }
-  return list
 end
 
 -- the sunlight through the window: a few warm motes turning slowly in the beam
@@ -274,13 +267,6 @@ function Office:draw_ui()
   local w, h = nova.view("exact")
   if not cards.active() then
     parcels.draw()
-    ui.hints(self.hint, w, h)
-    -- the prompt at the tile: the interact button floating over it
-    local t = self.target
-    if t and not self.leaving then
-      local sx, sy = camera.project(t[1], t[2] + 0.5 + 0.03 * math.sin(self.t * 4), t[3], w, h)
-      if sx then ui.glyph(sx, sy, "X", ui.s(26)) end
-    end
     -- the floating tip over the parcel (or the letter) about to be picked up
     local it = self.tip_for
     if it and (self.tip_a or 0) > 0.01 and not self.leaving then
@@ -289,7 +275,7 @@ function Office:draw_ui()
         local letter = it.item == "letter"
         local name, street
         if letter then name = words.tip.letter else name, street = ui.label_lines(it.item) end
-        ui.tip({ id = it, ax = sx, ay = sy, name = name, street = street, key = "X", word = letter and words.hint.read or words.hint.take, a = self.tip_a }, w, h, self.dt)
+        ui.tip({ id = it, ax = sx, ay = sy, name = name, street = street, a = self.tip_a }, w, h, self.dt)
       end
     end
   end
