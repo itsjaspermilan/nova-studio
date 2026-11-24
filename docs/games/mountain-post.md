@@ -1559,3 +1559,17 @@ way does not yet take its fallen tree or gates away.
     (a 20 degree climb, descent and side slopes, full lock, a kerb: against the engine's posing) and `..._over_the_bridge`. Pictures:
     `tools/routes/van-wheels.json` (out `build/gallery/van-wheels`). Weak point: the postmaster and the camera still stand on
     terrain_height, which on those banks is not quite the drawn grass.
+
+## The owner's ninth notes (2026-11-23)
+
+1. "The flowers flicker for some reason."
+2. "We should add a floating tooltip when the character is near another character. It should just say 'Talk' with a small chip in
+   the bottom right with the X button. The text boxes should have an arrow at the bottom when the player is done speaking that
+   line, letting the user know that there is more text. There can also be an X chip in the bottom right."
+3. "Similar to #2 we should have a button in the van storage view that says 'Take' or 'Store' (depending on if the char is holding
+   a package or not). There should be a small chip in the bottom right with the A button."
+4. "All roads should just be gravel honestly. We should add some dust that comes up but not too much. The double lines that appear
+   in the gravel shouldn't be there I think. We should think of another way to add texture to the gravel roads."
+5. "The windscreen on the van should be a little shorter vertically."
+6. "We can remove the Neutral gear and the Lower Gear." (The lever is P R D.)
+7. "The driveways should be closer to the homes. Especially for the post office."
