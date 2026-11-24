@@ -1671,3 +1671,49 @@ the van's ride on Post Road now rumbles like a lane (1.8 cm of bumps; the juncti
 - "The camera can rotate a little faster when the player turns so that way the player doesn't have to use the Right Stick as often."
 - "Camera: I like the 'top down' camera of the indoor areas. Let's keep that for the player every time they're walking even outside. when the player gets in the van we can move the camera closer to the ground, similar to what it's at now while driving."
 - "We can be more lenient with the van gearing. If the player is max speed in Drive, and goes to R or P, the car should just brake hard to get the user there."
+## The owner's tenth notes (2026-11-23): the Enter tip, the A pillar, a lenient lever
+
+1. "We should add the floating tooltip to the van 'Enter' then the Y chip in the bottom right of the tooltip."
+2. "Van door: The side that's closer to the windscreen can be trimmed to allow for a larger A pillar."
+3. "We can be more lenient with the van gearing. If the player is max speed in Drive, and goes to R or P, the car should just brake
+   hard to get the user there."
+
+**Note 1: the Enter tip** (scenes/valley.lua `Valley:fade_enter_tip`, `Valley.ENTER_AT`; words.talk.enter). Y is the van action
+(`"van": ["pad:north", "key:KeyF"]` in nova.json, north = Y on the Nintendo layout), so the chip is Y and nothing was rebound. The tip
+is the Talk tip's own (`ui.tip`, the same paper panel, tail and `ui.corner_chip` on its bottom-right corner), saying "Enter", floating
+over the cab's roof at the driver's doorway (van metres 0.7, 1.85, 0.5). It shows exactly when Y would get in (`Valley:actions`'
+"get_in": van stopped, at the doorway, nothing in the arms), fades in over 0.18 s and out over 0.12 s like the Talk tip, and goes with
+the card, a conversation or the fade out. Against the other two floating things: the Talk tip is only offered away from the van (so
+never at the same time), and the rear panel (2.5 m behind it, over the open doors) wins the screen if both reach at once: the Enter tip
+waits while the panel is up (`panel_mode`). The no-chips test now allows four chips: the Talk X, the dialogue's X, the panel's A and
+this Y.
+
+**Note 2: a wider A pillar** (tools/van.mjs `A_PILLAR`). The model has no door; the "door" is the driver's doorway cut in the skin
+(one smooth body, cut-outs). Its front edge followed the windscreen's lean 0.10 m behind the glass; now 0.20 m (`doorFront`): the body
+strip between the glass and the doorway, the A pillar, is twice as wide, and the doorway 10 cm shorter at the front, where its edge now
+meets the wheel well's rim nearer the apex. The cab's inside faces, the step and the windscreen are unchanged (they key off the same
+edge or the glass). Regenerated: models/van.model.json and van.glb. Pictures: `build/gallery/van-door-before-*` and `van-door-after-*`
+(side, three-quarter, front three-quarter).
+
+**Note 3: a lenient lever** (entities/van.lua `Van:shift`, `Van:engage`, `Van.SHIFT`; lib/gear_hud.lua). Nothing is refused any more.
+Choosing a gear that does not suit the speed (P above 1 m/s either way, R going forwards above 1 m/s, D going backwards above it) is
+taken at once and held as `want`: the lever stays where it was, the pedals are ignored, the creep is off and the van brakes at
+`Van.SHIFT.decel` = 7 m/s^2 (full speed in D, 11 m/s, stops in about 1.6 s) with its brake lamps on; when it is all but stopped
+(`engage` 0.35 m/s) the gear takes with its clunk (R then starts creeping back, P holds). A second press goes on from the pending gear
+(D, X, X is P); pressing back to the gear it is still in cancels, so D to R to D at speed never braked and carries on. `timeout` 6 s:
+if it somehow never slows enough, the gear takes anyway, so it cannot hang; getting out (`Van:park`) clears it. The instrument shows
+the chosen gear at once on its red key, breathing softer while pending (the engaged letter stays plain), the slip beside it says
+"Slowing to shift" (`hint` "slow"), and the key goes solid as the gear takes; `hud.shown` is still the engaged gear, `hud.pending`
+the waiting one. The old refusal ("Stop to shift", the click) is gone from the lever; the slip's "stop" text stays in `HINTS`. The
+autopilot is unchanged (it brakes before it shifts anyway).
+
+Tests (crates/nova-runtime/tests/mountain_post.rs, new ones at the end): `the_enter_tip_shows_only_in_reach_of_the_doorway_with_a_y_chip`,
+`the_a_pillar_beside_the_doorway_is_wider`, `shifting_to_r_or_p_at_full_speed_brakes_hard_and_then_engages`,
+`d_to_r_and_back_to_d_at_speed_carries_on_and_a_pending_shift_cannot_hang`. Changed in place: `no_button_prompts_are_drawn_in_play_and_the_instrument_stays`
+(one chip, "Enter", at the door), `the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move` (the rolling part: pending,
+no refusal).
+
+Weak points: the braking is felt only in the numbers and pictures here, not on the device; 7 m/s^2 on gravel may dip the nose a lot
+(the suspension takes the pitch). The Enter tip's spot is over the roof, so a low camera behind the van may put it off the top of the
+screen (the tip keeps itself on screen). Pressing X at speed no longer clicks to refuse, so nothing "tells" the player the shift
+is waiting beyond the breathing key and the slip.

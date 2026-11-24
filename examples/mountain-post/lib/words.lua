@@ -65,7 +65,7 @@ words.tip = { letter = "Letter from the Mayor" }
 -- the panel floating over the van's open back doors (lib/ui.lua ui.van_panel)
 words.van = { tag = "Van", empty = "The van is empty", full = "The van is full", take = "Take", store = "Store" }
 -- the small tips over a resident close enough to talk to (lib/ui.lua ui.tip, an X chip on its corner)
-words.talk = { talk = "Talk", give = "Hand over" }
+words.talk = { talk = "Talk", give = "Hand over", enter = "Enter" }
 words.pause = { title = "Paused", resume = "Resume", controls = "Controls", quit = "Quit" }
 -- the title menu's second choice, and the Controls page (lib/cards.lua: cards.CONTROLS lists the rows)
 words.controls = { title = "Controls", foot = "On foot", van = "Driving", back = "Back", choose = "Choose", move = "Move" }

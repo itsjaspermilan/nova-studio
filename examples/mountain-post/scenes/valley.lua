@@ -368,6 +368,7 @@ function Valley:update(dt)
   self:back_doors()
   self:fade_picker(dt)
   self:fade_talk_tip(dt)
+  self:fade_enter_tip(dt)
   -- what is open over the game first: a card, then a conversation
   if cards.active() then
     cards.update(dt)
@@ -467,6 +468,22 @@ function Valley:fade_talk_tip(dt)
   end
 end
 
+-- The tip over the van's cab ("Enter", a Y chip on its corner; the owner's tenth notes: "We should add the floating tooltip to the van
+-- 'Enter' then the Y chip in the bottom right of the tooltip"): shown exactly when Y would get the postmaster in (Valley:actions'
+-- "get_in": stopped, at the driver's doorway, nothing in the arms), fading like the talk tip. It floats over the cab's roof at the
+-- doorway, the rear doors' panel being 2.5 m behind it; if that panel is up (the open back and the doorway can both be in reach near
+-- the corner) the panel has the screen and the tip waits. The talk tip never competes: a resident is only offered away from the van.
+Valley.ENTER_AT = { 0.7, 1.85, 0.5 }
+function Valley:fade_enter_tip(dt)
+  local want = false
+  if not cards.active() and not dialogue.active() and not self.leaving then
+    local _, b = self:actions()
+    want = b == "get_in" and self:panel_mode() == nil
+  end
+  local ta = self.enter_a or 0
+  self.enter_a = want and math.min(1, ta + dt / 0.18) or math.max(0, ta - dt / 0.12)
+end
+
 -- What the panel at the van's open back is for now: "pick" (parcels in the van, empty hands), "load" (a parcel in the arms) or "empty"
 -- (nothing either way); nil away from the open back.
 function Valley:panel_mode()
@@ -561,6 +578,12 @@ function Valley:draw_ui()
     if who and (self.tip_a or 0) > 0.01 and not dialogue.active() and not self.leaving then
       local sx, sy = camera.project(who.x, world.height(who.x, who.z) + Valley.TIP_HEIGHT, who.z, w, h)
       if sx then ui.tip({ id = who, ax = sx, ay = sy, name = self.tip_word, chip = "X", a = self.tip_a }, w, h, self.dt) end
+    end
+    -- the "Enter" tip over the van's cab, a Y chip on its corner
+    if (self.enter_a or 0) > 0.01 and not dialogue.active() and not self.leaving and self.mode == "foot" then
+      local x, y, z = v:to_world(Valley.ENTER_AT[1], Valley.ENTER_AT[2], Valley.ENTER_AT[3])
+      local sx, sy = camera.project(x, y + nova.terrain_height(v.x, v.z), z, w, h)
+      if sx then ui.tip({ id = "van_enter", ax = sx, ay = sy, name = words.talk.enter, chip = "Y", a = self.enter_a }, w, h, self.dt) end
     end
   end
   dialogue.draw(w, h)

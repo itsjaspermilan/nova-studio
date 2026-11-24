@@ -5653,8 +5653,8 @@ fn the_hold_floor_is_one_closed_board_and_the_roof_has_no_slab() {
 
 /// The lever (the owner's sixth play: "a real automatic with PRNDL gear selection"; on the buttons: A towards D, X towards P; and
 /// "We can remove the brake requirement honestly"; the ninth notes took N and L away: P R D). Getting in, it is in P; A steps P, R, D with no pedal, X steps back, each
-/// at once with its clunk; nothing beyond D; the one guard: never into P, nor into R, while going forwards faster than about
-/// 1 m/s (refused with a soft click and "Stop to shift"); getting out leaves it in P; the next time in, P again.
+/// at once with its clunk; nothing beyond D; on the move, P or R (faster than about 1 m/s) is no longer refused (the tenth notes):
+/// it waits for the van to brake to a stop; getting out leaves it in P; the next time in, P again.
 #[test]
 fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
     let mut g = game();
@@ -5703,21 +5703,25 @@ fn the_lever_starts_in_p_moves_at_once_and_only_refuses_p_or_r_on_the_move() {
         &mut g,
         r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 } ] }"#,
     );
-    // rolling forwards in D: the lever may not go back to R, nor on to P ("Stop to shift")
+    // rolling forwards in D: since the tenth notes the lever takes R or P all the same (pending: the van brakes hard first, see
+    // `shifting_to_r_or_p_at_full_speed_brakes_hard_and_then_engages`); it used to refuse ("Stop to shift")
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "lua": "local v = nova.named('van'); ROLLING = v.speed; TO_R = v:shift(-1); v.gear = 'R'; TO_P = v:shift(-1); v.gear = 'D'" }, { "wait": 2 } ] }"#,
+        r#"{ "steps": [ { "hold": ["go"], "frames": 200 }, { "lua": "local v = nova.named('van'); ROLLING = v.speed; TO_R = v:shift(-1); WANT_R = v.want; v:shift(1); CANCELLED = tostring(v.want); TO_P = v:shift(-1); v:shift(-1); WANT_P = v.want" }, { "wait": 2 } ] }"#,
     );
     assert!(num(&g, "ROLLING") > 3.0);
-    assert_eq!(lua(&g, "tostring(TO_R)"), "false");
-    assert_eq!(lua(&g, "tostring(TO_P)"), "false");
+    assert_eq!(lua(&g, "tostring(TO_R)"), "true");
+    assert_eq!(lua(&g, "WANT_R"), "R");
+    assert_eq!(lua(&g, "CANCELLED"), "nil");
+    assert_eq!(lua(&g, "WANT_P"), "P");
+    assert!(!logged(&r).iter().any(|l| l.starts_with("shift refused")));
     assert!(
         logged(&r)
             .iter()
-            .any(|l| l == "shift refused: D to R, rolling")
+            .any(|l| l == "shift pending: D to R, braking")
     );
-    assert_eq!(lua(&g, "nova.named('van').hint"), "stop");
-    assert_eq!(r.drawn_count("ui_text", Some("Stop to shift")), 1);
+    assert_eq!(lua(&g, "nova.named('van').hint"), "slow");
+    assert_eq!(r.drawn_count("ui_text", Some("Slowing to shift")), 1);
     // stopped, Y gets out: it is left in P; in again, P
     play(
         &mut g,
@@ -10151,8 +10155,9 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
 /// The owner's eighth play, note 7 ("I still see 'Y to exit' and 'Select' for map. I also don't see the control menu"): no button
 /// chip, button cap or button word is drawn in normal play, on foot, at the van's back, driving or in the office; the instrument
 /// stays while driving; the dialogue's "next" is a small arrow. (The owner's ninth notes brought back exactly three small chips: the
-/// talk tip's X, the dialogue box's X while a line is complete, and the van panel's A beside "Take" / "Store": a chip is allowed only
-/// where `chips` says; the tests below the Controls page check each.)
+/// talk tip's X, the dialogue box's X while a line is complete, and the van panel's A beside "Take" / "Store"; the tenth notes added a
+/// fourth, the "Enter" tip's Y over the van's cab by its doorway: a chip is allowed only where `chips` says; the tests below the
+/// Controls page check each.)
 #[test]
 fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
     let mut g = game();
@@ -10196,7 +10201,9 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
         r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
         "steps": [ { "wait": 5, "lua": "T.to_van('door')" }, { "until": "not T.walking()", "max": 900 }, { "wait": 30 } ] }"#,
     );
-    check(&r, "on foot");
+    // (the tenth notes' fourth chip: the "Enter" tip's Y over the van's cab, beside the driver's doorway)
+    check_n(&r, "on foot by the van's door", 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Enter")), 1);
     let r = play(
         &mut g,
         r#"{ "steps": [ { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
@@ -12513,5 +12520,295 @@ fn each_driveway_ends_by_its_buildings_door_and_the_van_starts_beside_the_post_o
             "(function() local W = require('lib.world') local n = 0 for _, y in ipairs(W.yards) do if W.play_edge(y.x, y.z) > 8 then n = n + 1 end end return n end)()"
         ),
         "3"
+    );
+}
+
+// ---- the owner's tenth notes (2026-11-23), notes 1 to 3: the van's Enter tip, a wider A pillar, a lenient lever -----------------------
+
+/// Note 1: "We should add the floating tooltip to the van 'Enter' then the Y chip in the bottom right of the tooltip." Beside the
+/// driver's doorway, stopped, nothing in the arms, a small tip floats over the cab saying "Enter" with a Y chip on its bottom-right
+/// corner: shown exactly when Y would get in (Valley:actions' "get_in"), not far away, not carrying a parcel, not at the open back
+/// (where the panel has the screen), and gone once in the van.
+#[test]
+fn the_enter_tip_shows_only_in_reach_of_the_doorway_with_a_y_chip() {
+    let mut g = game();
+    // far from the van: nothing
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Enter")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    // at the doorway: "Enter", one Y chip on the tip's bottom-right corner
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "(select(2, nova.scene_now():actions()))"),
+        "get_in",
+        "Y would get in here"
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Enter")), 1);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "Y");
+    let at = |what: &str| {
+        num(
+            &g,
+            &format!(
+                "(function() local b, t = require('lib.ui').chip_box, require('lib.ui').tip_box; return {what} end)()"
+            ),
+        )
+    };
+    assert!(
+        (at("b.x + b.w / 2 - (t.x + t.w)").abs() < 12.0)
+            && (at("b.y + b.h / 2 - (t.y + t.h)").abs() < 12.0),
+        "the chip sits on the tip's bottom-right corner"
+    );
+    // it floats over the van, above the doorway, not over the open back's panel spot
+    let (tx, ty) = (at("t.tail_x"), at("t.anchor_y"));
+    let (px, py) = (
+        num(&g, "(select(1, nova.scene_now():panel_anchor(960, 540)))"),
+        num(&g, "(select(2, nova.scene_now():panel_anchor(960, 540)))"),
+    );
+    assert!(
+        (tx - px).hypot(ty - py) > 40.0,
+        "the Enter tip's point ({tx}, {ty}) is clear of the rear panel's ({px}, {py})"
+    );
+    // carrying a parcel: the doorway does not take it, so no tip
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "require('lib.state').carrying = 'hazel'" }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Enter")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "require('lib.state').carrying = nil" }, { "wait": 40 } ] }"#,
+    );
+    // a van that is not stopped is not one to climb into
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local v = nova.named('van'); v.velx, v.velz = 4 * math.sin(v.heading), 4 * math.cos(v.heading); v.speed = 4" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Enter")) + r.drawn_count("ui_sprite", Some("round")),
+        0
+    );
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local v = nova.named('van'); v.velx, v.velz, v.speed = 0, 0, 0" }, { "wait": 40 } ] }"#,
+    );
+    // at the open back with a parcel inside: the panel (an A chip) and no Enter tip
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local S = require('lib.state'); S.on_shelf.hazel = false; S.van_load = { 'hazel' }; T = require('lib.testkit'); T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Enter")),
+        0,
+        "the panel has the screen"
+    );
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "A");
+    // back at the doorway, Y gets in at once and the tip is gone
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" }, { "wait": 40 } ] }"#,
+    );
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "press": "van" }, { "wait": 30 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.scene_now().mode"), "van");
+    assert_eq!(r.drawn_count("ui_text", Some("Enter")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+}
+
+/// Note 2: "Van door: The side that's closer to the windscreen can be trimmed to allow for a larger A pillar." The left doorway's front
+/// edge stood 10 cm behind the windscreen's face (at each height); it now stands 20 cm behind it: the strip of body between the glass
+/// and the doorway, the A pillar, is twice as wide, still one surface of the body (a cut-out in the skin, no part added).
+#[test]
+fn the_a_pillar_beside_the_doorway_is_wider() {
+    let model = van_model();
+    let scale = model["scale"].as_f64().unwrap();
+    let body = &model["parts"][0];
+    let door: Vec<(f64, f64)> = body["cubes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["modifiers"].as_array())
+        .flatten()
+        .filter(|m| m["type"] == "cutout")
+        .flat_map(|m| m["cuts"].as_array().unwrap().iter())
+        .filter(|c| c["view"] == "side" && c["remove"] == Value::Bool(true) && c["only"] == "+x")
+        .flat_map(|c| c["points"].as_array().unwrap().iter())
+        .map(|p| {
+            (
+                p[0].as_f64().unwrap() * scale,
+                p[1].as_f64().unwrap() * scale,
+            )
+        })
+        .collect();
+    assert!(door.len() > 10, "the doorway's outline");
+    // the windscreen's face at a height (tools/van.mjs WS: base (0.94, 0.88), top (0.78, 1.62))
+    let glass = |y: f64| 0.94 + (0.78 - 0.94) * (y - 0.88) / (1.62 - 0.88);
+    // the doorway's front edge: its points from the windscreen's foot up to where the top corner rounds off (1.30 m)
+    let edge: Vec<(f64, f64)> = door
+        .iter()
+        .copied()
+        .filter(|&(z, y)| (0.88..=1.30).contains(&y) && z > 0.5)
+        .collect();
+    assert!(edge.len() >= 2, "the front edge's points: {edge:?}");
+    for (z, y) in edge {
+        let pillar = glass(y) - z;
+        assert!(
+            (pillar - 0.20).abs() < 0.01,
+            "the A pillar at {y:.2} m is {pillar:.3} m wide (it was 0.10)"
+        );
+    }
+    // the doorway is still one cut in the skin: no separate pillar part or glued strip was added (the body's shapes are the skin, the
+    // cab's inside faces, the step, the glass and the lamps, as before)
+    assert_eq!(model["parts"][0]["name"], "body");
+}
+
+/// Note 3: "We can be more lenient with the van gearing. If the player is max speed in Drive, and goes to R or P, the car should just
+/// brake hard to get the user there." At full speed in D, X (towards P) takes at once: the lever's gear stays D, the pending R shows
+/// (`want`, and on the instrument), the van brakes at about 6 to 8 m/s^2 with its lamps lit and the pedals ignored, and R engages once
+/// it is all but stopped; a second X on the way chooses P instead.
+#[test]
+fn shifting_to_r_or_p_at_full_speed_brakes_hard_and_then_engages() {
+    let mut g = game();
+    let go = r#"local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); local v = nova.named('van'); v:teleport(4.5, -190, 0); v.gear = 'D'; GH = require('lib.gear_hud')"#;
+    play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 5, "lua": "{go}" }}, {{ "hold": ["go"], "frames": 600 }} ] }}"#
+        ),
+    );
+    let v0 = num(&g, "nova.named('van').speed");
+    assert!(v0 > 10.0, "at full speed in D: {v0} m/s");
+    // X: R is chosen, with the pedal held down it is still ignored; the van brakes, lamps on
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["go"], "press": "interact", "frames": 3 },
+        { "lua": "local v = nova.named('van'); GEAR1, WANT1, V1 = v.gear, v.want, v.speed; HUD1 = GH.pending" },
+        { "wait": 1, "lua": "LAMP = nova.named('van').braking" } ] }"#,
+    );
+    assert_eq!(lua(&g, "GEAR1"), "D", "still in D while it brakes");
+    assert_eq!(lua(&g, "WANT1"), "R", "R is chosen at once");
+    assert_eq!(lua(&g, "HUD1"), "R", "and the instrument shows it pending");
+    assert!(
+        logged(&r)
+            .iter()
+            .any(|l| l.starts_with("shift pending: D to R"))
+    );
+    assert!(!logged(&r).iter().any(|l| l.starts_with("shift refused")));
+    assert_eq!(lua(&g, "tostring(LAMP)"), "true", "brake lamps on");
+    assert_eq!(r.drawn_count("ui_text", Some("Slowing to shift")), 1);
+    // until R engages: time it and measure the braking (pedal held: it must not matter)
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "T0, N, PEAK = 0, 0, 0; V0 = nova.named('van').speed; LASTV = V0" },
+        { "hold": ["go"], "until": "nova.named('van').gear == 'R'", "max": 300,
+          "always": "local v = nova.named('van'); N = N + 1; local a = (LASTV - v.speed) * 60; if v.gear == 'D' and a > PEAK then PEAK = a end; LASTV = v.speed" } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('van').gear"), "R");
+    assert_eq!(lua(&g, "tostring(nova.named('van').want)"), "nil");
+    let t = num(&g, "N") / 60.0;
+    let avg = (num(&g, "V0") - num(&g, "nova.named('van').speed")) / t;
+    assert!(
+        (5.5..8.5).contains(&avg),
+        "braked at {avg:.2} m/s^2 on average (peak {:.2}), took {t:.2} s",
+        num(&g, "PEAK")
+    );
+    assert!(
+        num(&g, "PEAK") < 10.5,
+        "firm, not violent: peak {}",
+        num(&g, "PEAK")
+    );
+    assert!(
+        num(&g, "nova.named('van').speed").abs() < 0.6,
+        "all but stopped when R takes"
+    );
+    // R then does what R does: with the pedals up it creeps backwards
+    play(&mut g, r#"{ "steps": [ { "wait": 90 } ] }"#);
+    assert!(num(&g, "nova.named('van').speed") < -0.3, "reversing in R");
+    // P the same way: at speed in D, X twice goes R then P (pending), brakes, then holds
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.named('van').gear = 'D'" }, { "hold": ["go"], "frames": 600 } ] }"#,
+    );
+    assert!(num(&g, "nova.named('van').speed") > 10.0);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 1 },
+        { "lua": "local v = nova.named('van'); GEAR2, WANT2 = v.gear, v.want" },
+        { "until": "nova.named('van').gear == 'P'", "max": 300 }, { "wait": 30 } ] }"#,
+    );
+    assert_eq!(lua(&g, "GEAR2"), "D");
+    assert_eq!(lua(&g, "WANT2"), "P");
+    assert_eq!(lua(&g, "nova.named('van').gear"), "P");
+    assert!(
+        num(&g, "nova.named('van').speed").abs() < 0.05,
+        "P holds it"
+    );
+    // and the other way: backing up fast in R, A towards D brakes then drives on in D
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local v = nova.named('van'); v.gear = 'R'; v.speed = 0" }, { "hold": ["go"], "frames": 240 } ] }"#,
+    );
+    assert!(num(&g, "nova.named('van').speed") < -2.0);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 1, "lua": "local v = nova.named('van'); GEAR3, WANT3 = v.gear, v.want" },
+        { "until": "nova.named('van').gear == 'D'", "max": 300 }, { "wait": 90 } ] }"#,
+    );
+    assert_eq!(lua(&g, "GEAR3"), "R");
+    assert_eq!(lua(&g, "WANT3"), "D");
+    assert!(num(&g, "nova.named('van').speed") > 0.3, "creeping on in D");
+}
+
+/// A quick back-and-forth at speed (D to R and straight back to D) is nothing: the pending R is cancelled, the van never really
+/// braked and carries on in D; and a shift that somehow never gets the van slow enough still takes after Van.SHIFT.timeout.
+#[test]
+fn d_to_r_and_back_to_d_at_speed_carries_on_and_a_pending_shift_cannot_hang() {
+    let mut g = game();
+    let go = r#"local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); local v = nova.named('van'); v:teleport(4.5, -190, 0); v.gear = 'D'"#;
+    play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 5, "lua": "{go}" }}, {{ "hold": ["go"], "frames": 600 }} ] }}"#
+        ),
+    );
+    let v0 = num(&g, "nova.named('van').speed");
+    assert!(v0 > 10.0);
+    play(
+        &mut g,
+        r#"{ "steps": [ { "hold": ["go"], "press": "interact", "frames": 2 }, { "hold": ["go"], "press": "confirm", "frames": 2 }, { "hold": ["go"], "frames": 30 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('van').gear"), "D");
+    assert_eq!(lua(&g, "tostring(nova.named('van').want)"), "nil");
+    let v1 = num(&g, "nova.named('van').speed");
+    assert!(
+        v1 > v0 - 1.0,
+        "it carried on: {v0:.2} m/s before, {v1:.2} after the back-and-forth"
+    );
+    // the timeout: with the engage speed made impossible (the van is held at a speed it never gets under), the gear still takes
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "SH = nova.named('van').SHIFT; SAVED = SH.engage; SH.engage = -1; N2 = 0" },
+        { "press": "interact" }, { "until": "nova.named('van').gear == 'R'", "max": 600, "always": "N2 = N2 + 1" }, { "lua": "SH.engage = SAVED" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "nova.named('van').gear"),
+        "R",
+        "it took, after at most the timeout"
+    );
+    let waited = num(&g, "N2") / 60.0;
+    assert!(
+        waited <= num(&g, "nova.named('van').SHIFT.timeout") + 0.5,
+        "took {waited:.1} s"
     );
 }

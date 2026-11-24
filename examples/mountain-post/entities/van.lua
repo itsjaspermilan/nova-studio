@@ -100,9 +100,11 @@ Van.TUNE.creep_band = 0.8    -- m/s: under the creep speed by this much, the ful
 Van.TUNE.creep_build = 0.12  -- s: how quickly it builds in and dies away (two first-order eases in a row, each this long: 90 % in about 0.3 s; it was one of 0.45 s, 95 % in 1.35 s: the owner's "the creep should start sooner")
 Van.TUNE.creep_brake = 0.03  -- the least brake pedal that takes the creep away
 Van.ORDER = { "P", "R", "D" }
--- Shifting: never into P moving faster than `speed` m/s, nor into R going forwards faster than it; refused, the hint shows `hint` s.
+-- Shifting: a gear that does not suit a speed over `speed` m/s (P either way, R forwards, D backwards) waits for the van to brake to a stop.
 -- `beep`: the reversing beeper's period (s).
-Van.SHIFT = { speed = 1.0, hint = 1.8, beep = 1.2 }
+-- `decel`: the hard braking of a shift that waits for the van to slow (m/s^2: firm, not violent: 11 m/s stops in under 2 s); `engage`: the
+-- speed (m/s) at which that shift takes; `timeout`: the longest it waits (s).
+Van.SHIFT = { speed = 1.0, hint = 1.8, beep = 1.2, decel = 7, engage = 0.35, timeout = 6 }
 local FEEL = Van.TUNE
 local GEARS = { 4, 7.5, 11 }           -- the speed at which each of the gearbox's own ratios runs out in D (for the engine's note only)
 -- The body against the world and the walkers: three circles along it (from the model's middle, along +z), each of this radius.
@@ -264,33 +266,50 @@ end
 
 function Van:stopped() return math.abs(self.speed) < 0.6 end
 
--- The lever one gear along Van.ORDER (P R D): `dir` 1 towards D (A), -1 towards P (X). It moves at once, with no pedal (the
--- owner: "We can remove the brake requirement honestly"; it needed L2 held among P, R and D). One guard against nonsense: not into
--- P while moving faster than Van.SHIFT.speed either way, nor into R while going forwards faster than that; refused, it stays, with
--- a soft click, and the gear display says "Stop to shift" for a moment (`hint` "stop"). Says whether it moved.
+-- The lever one gear along Van.ORDER (P R D): `dir` 1 towards D (A), -1 towards P (X), from the gear it is heading for (a shift still
+-- pending counts: two presses go two gears). It moves at once, with no pedal (the owner: "We can remove the brake requirement
+-- honestly"). On the move it is lenient (the owner's tenth notes: "If the player is max speed in Drive, and goes to R or P, the car
+-- should just brake hard to get the user there"): a gear that does not suit the speed (P faster than Van.SHIFT.speed either way, R going
+-- forwards faster than it, D going backwards faster than it) is ACCEPTED all the same: `want` holds it, the brake of Van:drive
+-- slows the van at Van.SHIFT.decel with the pedals ignored (brake lamps on), and the gear engages once it is all but stopped
+-- (Van.SHIFT.engage m/s; after at most Van.SHIFT.timeout s, so it can never hang). Choosing the gear it is still in cancels the pending
+-- one (D to R to D at speed just carries on in D). Says whether the press was taken (false only at the ends of the lever).
 function Van:shift(dir)
+  local base = self.want or self.gear
   local i = 1
-  for k, g in ipairs(Van.ORDER) do if g == self.gear then i = k end end
+  for k, g in ipairs(Van.ORDER) do if g == base then i = k end end
   local to = Van.ORDER[i + dir]
   if not to then return false end
-  local fast = (to == "P" and math.abs(self.speed) > Van.SHIFT.speed) or (to == "R" and self.speed > Van.SHIFT.speed)
-  if fast then
-    self.hint, self.hint_t = "stop", Van.SHIFT.hint
-    nova.sound.play("gear_refuse", { volume = 0.55 })
-    nova.log("shift refused: " .. self.gear .. " to " .. to .. ", rolling")
-    return false
+  if to == self.gear then
+    -- (back to what it is in: nothing to wait for)
+    if self.want then nova.sound.play("tick", { volume = 0.35 }); nova.log("shift cancelled, stays " .. to) end
+    self.want, self.want_t, self.hint_t = nil, 0, 0
+    return true
   end
-  self.gear = to
-  self.hint_t = 0
+  local v = self.speed or 0
+  local fits = not ((to == "P" and math.abs(v) > Van.SHIFT.speed) or (to == "R" and v > Van.SHIFT.speed) or (to == "D" and v < -Van.SHIFT.speed))
+  if not fits then
+    self.want, self.want_t = to, 0
+    self.hint, self.hint_t = "slow", 0.3
+    nova.sound.play("tick", { volume = 0.35 })
+    nova.log("shift pending: " .. self.gear .. " to " .. to .. ", braking")
+    return true
+  end
+  self:engage(to)
+  return true
+end
+
+-- The gear takes (at once, or when the brake of a pending shift has stopped the van): the clunk, the reversing beeper's first beat.
+function Van:engage(to)
+  self.gear, self.want, self.want_t, self.hint_t = to, nil, 0, 0
   nova.sound.play("gear_shift", { volume = 0.5, vary = 0.04 })
   if to == "R" then self.beep_t = 0.35 end
   nova.log("gear " .. to)
-  return true
 end
 
 -- Into P at once (getting in, and getting out of a van that has stopped), with no sound of its own.
 function Van:park()
-  self.gear = "P"
+  self.gear, self.want, self.want_t = "P", nil, 0
   self.hint_t = 0
 end
 
@@ -312,6 +331,9 @@ function Van:drive(dt)
   local c = self.ctl
   local live = self.driven
   local go, brake, steer_in = live and c.go or 0, live and c.brake or 0, live and c.steer or 0
+  -- (a shift waiting for the van to slow: the pedals are ignored, the brake of Van.SHIFT.decel does the stopping)
+  local pend = live and self.want ~= nil
+  if pend then go, brake = 0, 0 end
   local hb = live and (c.handbrake or 0) > 0.5
   self.handbrake = hb
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
@@ -367,7 +389,7 @@ function Van:drive(dt)
   end
   -- the creep: in D and R, eased in and out (`creep_k`, 0 to 1), gone the moment the brake or the handbrake is on
   local target = FEEL.creep[gear]
-  local creeping = live and target ~= nil and brake < FEEL.creep_brake and not hb
+  local creeping = live and target ~= nil and brake < FEEL.creep_brake and not hb and not pend
   if not creeping and (brake >= FEEL.creep_brake or hb) then self.creep_k, self.creep_j = 0, 0 end
   -- (two eases one after the other: the pull starts at once, within a third of a second, yet its start is smooth, no jolt)
   local ease = math.min(1, dt / FEEL.creep_build)
@@ -390,6 +412,14 @@ function Van:drive(dt)
   if hb then
     vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.handbrake * dt)
     self.braking = true
+  end
+  -- a shift that waits for the van to slow: the brake, firm, the lamps lit, until it is all but stopped (or too long) and the gear takes
+  if pend then
+    vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), Van.SHIFT.decel * dt)
+    self.braking = true
+    self.want_t = (self.want_t or 0) + dt
+    self.hint, self.hint_t = "slow", 0.3
+    if math.abs(vf) < Van.SHIFT.engage or self.want_t > Van.SHIFT.timeout then self:engage(self.want) end
   end
   -- P: the parking pawl holds the wheels
   if live and gear == "P" then vf = vf - (vf >= 0 and 1 or -1) * math.min(math.abs(vf), FEEL.park * dt) end

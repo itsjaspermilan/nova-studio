@@ -1,0 +1,21 @@
+{
+  "start_scene": "valley",
+  "out": "build/gallery/tenth",
+  "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel = false; S.van_load = { 'hazel' }; FACE = function(dx) local p, v = nova.named('postmaster'), nova.named('van'); p.face = v.heading + dx; require('lib.camera').reset(p.face) end; GO_VAN = function() local v = nova.named('van'); v:teleport(4.5, -190, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); v.gear = 'D' end",
+  "print": ["nova.named('van').gear", "tostring(nova.named('van').want)", "nova.named('van').speed"],
+  "route": [
+    { "wait": 5, "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 1.7, 0, 0.5 }); FACE(-math.pi / 2)" },
+    { "wait": 60, "capture": "enter-tip: beside the driver's doorway, Enter with the Y chip over the cab" },
+    { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 1.2, 0, 0.5 }); FACE(-math.pi * 0.75)" },
+    { "wait": 60, "capture": "enter-tip: closer, from the front three-quarter" },
+    { "lua": "T.to_van('back')" },
+    { "until": "not T.walking()", "max": 900 },
+    { "until": "nova.scene_now():picker() ~= nil", "max": 200 },
+    { "wait": 40, "capture": "van panel at the open back: the A chip, and no Enter tip (the panel has the screen)" },
+    { "lua": "GO_VAN()" },
+    { "hold": ["go"], "frames": 600, "capture": "driving in D at speed" },
+    { "hold": ["go"], "press": "interact", "frames": 6, "capture": "X at speed: R lit on its key, still in D, braking, 'Slowing to shift'" },
+    { "hold": ["go"], "frames": 12, "capture": "braking, the key breathing" },
+    { "hold": ["go"], "until": "nova.named('van').gear == 'R'", "max": 300, "capture": "R has taken" }
+  ]
+}
