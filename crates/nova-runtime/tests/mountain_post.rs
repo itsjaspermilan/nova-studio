@@ -2319,7 +2319,7 @@ fn walking_a_circle_moves_the_postmaster_and_the_camera_smoothly() {
         &mut g,
         &format!(
             r#"{{ "start_scene": "valley", {setup}, "steps": [
-            {{ "wait": 10, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 4.5, -150, 0; require('lib.camera').reset(0)" }},
+            {{ "wait": 10, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 3.5, -133, 0; require('lib.camera').reset(0)" }},
             {{ "wait": 20, "lua": "STICK_ON = true" }},
             {{ "wait": 30 }},
             {{ "always": "T.smooth_step({{ body = 0.004, eye = 0.006, yaw = 0.0012 }})", "wait": 600 }},
@@ -3745,11 +3745,13 @@ fn the_music_rule_is_piano_on_foot_layers_while_driving_and_they_follow_the_spee
 fn the_valley_plays_the_stems_and_driving_brings_in_the_layers() {
     let mut g = game();
     let status = "(function() local s = require('lib.music').status(); return s.earned .. ' ' .. table.concat(s.levels, ',') end)()";
+    // (the circle is driven where the van used to wait, beside Post Road in the open: since the eighth play it starts in the post
+    // office's yard, between the house and the trees)
     let r = play(
         &mut g,
         &format!(
             r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 30 }},
-            {{ "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); nova.named('van').gear = 'D'" }},
+            {{ "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); nova.named('van').gear = 'D'; nova.named('van'):teleport(6.5, -177, 0)" }},
             {{ "hold": ["go", "steer=0.5"], "frames": 740, "record": "{status} --driving" }},
             {{ "hold": ["brake"], "frames": 150 }}, {{ "hold": ["brake"], "frames": 120 }},
             {{ "hold": ["brake"], "frames": 60, "record": "{status} --stopped" }},
@@ -4503,7 +4505,7 @@ fn feet_stay_on_the_ground_on_a_hillside_the_porch_steps_and_the_bridge() {
         &g,
         "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
            local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
-           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 and W.play_edge(x, z) > 4 and not W.pond_at(x, z, 8) then best, bx, bz = s, x, z end end end; \
            local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
     );
     let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
@@ -4875,8 +4877,9 @@ fn valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron() {
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
     );
-    assert_eq!(lua(&g, "#require('lib.road_junctions')"), "2");
-    let junctions: Vec<(f32, f32, f32, String)> = (1..=2)
+    // (Fern Lane, Kettle Creek Road and, since the eighth play, the post office's drive)
+    assert_eq!(lua(&g, "#require('lib.road_junctions')"), "3");
+    let junctions: Vec<(f32, f32, f32, String)> = (1..=3)
         .map(|i| {
             let j = format!("require('lib.road_junctions')[{i}]");
             (
@@ -4917,7 +4920,7 @@ fn valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron() {
             "the junction with {road}"
         );
         let far = format!(
-            "(function() local W = require('lib.world'); for _, r in ipairs(W.roads) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 2) ^ 2 then return W.surface(p[1], p[2]) end end end end end)()"
+            "(function() local W = require('lib.world'); for _, list in ipairs({{ W.roads, W.drives }}) do for _, r in ipairs(list) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 2) ^ 2 then return W.surface(p[1], p[2]) end end end end end end)()"
         );
         assert_eq!(lua(&g, &far), "gravel", "{road} past its apron");
     }
@@ -4933,7 +4936,7 @@ fn valley_roads_junctions_are_level_and_the_van_drives_through_them_smoothly() {
         &mut g,
         r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
     );
-    for i in 1..=2 {
+    for i in 1..=3 {
         let j = format!("require('lib.road_junctions')[{i}]");
         let (x, z) = (
             num(&g, &format!("{j}.at[1]")),
@@ -5057,6 +5060,7 @@ fn valley_roads_nothing_placed_stands_on_a_road() {
         let kind = o["kind"].as_str().unwrap().to_string();
         let name = o["name"].as_str().unwrap_or("");
         if name == "barrier"
+            || name.starts_with("south_gate_")
             || ["bridge", "van", "postmaster", "hazel", "pip"].contains(&kind.as_str())
         {
             continue;
@@ -5180,7 +5184,8 @@ fn the_vans_panel_floats_above_the_open_doors_and_follows_the_camera() {
     // the doors' point is over the van's roof line at the back: 0.3 m over, and it is where the model's roof edge is on the screen
     assert!(num(&g, "nova.scene_now().PANEL_AT[2]") > 1.6 + 0.25);
     // orbited both ways: the panel's anchor moves with the doors on the screen, the panel stays whole
-    let mut last = ax;
+    // (each way from the first view: orbited the same amount right and left the doors can come back to one place on the screen)
+    let last = ax;
     for (turn, what) in [(0.9, "orbited right"), (-1.8, "orbited left")] {
         play(
             &mut g,
@@ -5191,7 +5196,6 @@ fn the_vans_panel_floats_above_the_open_doors_and_follows_the_camera() {
         on_screen(&g, what);
         let now = num(&g, &format!("(function() {probe} return ax end)()"));
         let moved = (now - last).abs();
-        last = now;
         assert!(
             moved > 10.0,
             "{what}: the doors moved on the screen by {moved:.0}"
@@ -6771,7 +6775,7 @@ fn no_toe_goes_into_a_step_and_the_cast_stands_upright_on_a_hillside() {
         &g,
         "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
            local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
-           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 and W.play_edge(x, z) > 4 and not W.pond_at(x, z, 8) then best, bx, bz = s, x, z end end end; \
            local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
     );
     let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
@@ -7565,7 +7569,7 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
     // under a big pine's crown the eye comes in
     play(
         &mut g,
-        r#"{ "steps": [ { "lua": "PUT(-19.72, -229.2)" }, { "wait": 120 }, { "lua": "local e = CAM.state.eye; INSIDE = OCC.inside(e[1], e[2], e[3]) and 1 or 0" } ] }"#,
+        r#"{ "steps": [ { "lua": "PUT(-19.72, -223.4)" }, { "wait": 120 }, { "lua": "local e = CAM.state.eye; INSIDE = OCC.inside(e[1], e[2], e[3]) and 1 or 0" } ] }"#,
     );
     let (pull, inside) = (num(&g, "CAM.state.pull"), num(&g, "INSIDE"));
     assert!((0.55..1.0).contains(&pull), "the boom came in: {pull}");
@@ -7878,7 +7882,7 @@ fn the_porch_steps_are_climbed_smoothly_and_feet_lie_on_the_hillside() {
         &g,
         "(function() local W = require('lib.world'); local bx, bz, best = 0, 0, 0; for x = -36, 44, 2 do for z = -160, -90, 2 do \
            local gx, gz = nova.terrain_slope(x, z); local s = math.sqrt(gx * gx + gz * gz); \
-           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 then best, bx, bz = s, x, z end end end; \
+           if s > best and not W.blocked(x, z, 2.0) and not nova.scenery.push(x, z, 2.0) and W.lift(x, z) == 0 and W.play_edge(x, z) > 4 and not W.pond_at(x, z, 8) then best, bx, bz = s, x, z end end end; \
            local gx, gz = nova.terrain_slope(bx, bz); return string.format('%.3f %.3f %.4f %.4f', bx, bz, gx, gz) end)()",
     );
     let v: Vec<f64> = spot.split(' ').map(|s| s.parse().unwrap()).collect();
@@ -11187,6 +11191,565 @@ fn wind_curls_are_soft_see_through_ribbons_and_come_often() {
             rb.color[2] > rb.color[0] && rb.color[0] > 0.8,
             "a white a little towards blue: {:?}",
             rb.color
+        );
+    }
+}
+
+// ---- the owner's eighth play (2026-11-23): ponds, the playable area and its edge, driveways ----------------------------------------------
+
+/// The valley scene's objects, as tools/scene.mjs wrote them.
+fn eighth_objects() -> Vec<Value> {
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(game_dir().join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    scene["objects"].as_array().unwrap().clone()
+}
+
+fn eighth_points(v: &Value) -> Vec<(f64, f64)> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+        .collect()
+}
+
+fn eighth_inside(poly: &[(f64, f64)], (x, z): (f64, f64)) -> bool {
+    let mut c = false;
+    let mut j = poly.len() - 1;
+    for i in 0..poly.len() {
+        let ((xi, zi), (xj, zj)) = (poly[i], poly[j]);
+        if (zi > z) != (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi {
+            c = !c;
+        }
+        j = i;
+    }
+    c
+}
+
+/// "We should add some lakes throughout the map because the hills look barren." Three still ponds (Reed Pond in the hollow west of
+/// Post Road, Alder Pond east of it, Tarn Pond on a shelf above Hazel's): each a rounded shore of a fair size, carved into the ground
+/// (its middle well under the water, the ground at the shore at the water's level, the bank above it all round), its water laid as
+/// still water, no grass in it (terrain/grass.png), no tree, wall or hedge standing in it, and a walker kept out of it, except on Reed
+/// Pond's jetty, which you can walk out on.
+#[test]
+fn the_ponds_are_carved_and_filled_with_no_grass_or_trees_in_them_and_a_walker_stays_out() {
+    let objects = eighth_objects();
+    let ponds: Vec<&Value> = objects.iter().filter(|o| o["kind"] == "pond").collect();
+    assert_eq!(ponds.len(), 3, "three ponds");
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let map = g
+        .frame_input(720)
+        .lighting
+        .grass
+        .clone()
+        .expect("the valley grows grass")
+        .map
+        .expect("by its map");
+    let grass_at = |x: f64, z: f64| -> u8 {
+        let i = ((x - map.x0 as f64) / map.cell as f64).round() as usize;
+        let j = ((z - map.z0 as f64) / map.cell as f64).round() as usize;
+        map.texels[j * map.width as usize + i]
+    };
+    let standing = [
+        "pine",
+        "pine2",
+        "pine3",
+        "larch",
+        "larch_small",
+        "birch",
+        "forest_long",
+        "forest_tall",
+        "forest_round",
+        "hedge",
+        "fence",
+        "stone_wall",
+        "outcrop",
+        "bush",
+        "bush2",
+        "bench",
+        "log",
+        "stump",
+    ];
+    for p in &ponds {
+        let name = p["name"].as_str().unwrap();
+        let level = p["props"]["level"].as_f64().unwrap();
+        let shore = eighth_points(&p["props"]["shore"]);
+        let (cx, cz) = (p["x"].as_f64().unwrap(), p["z"].as_f64().unwrap());
+        let mut area = 0.0;
+        for i in 0..shore.len() {
+            let (a, b) = (shore[i], shore[(i + 1) % shore.len()]);
+            area += a.0 * b.1 - b.0 * a.1;
+        }
+        let area = area.abs() / 2.0;
+        assert!(
+            (150.0..1500.0).contains(&area),
+            "{name}: a small pond, {area:.0} m2"
+        );
+        assert!(
+            eighth_inside(&shore, (cx, cz)),
+            "{name}: its middle is water"
+        );
+        let h = |x: f64, z: f64| num(&g, &format!("nova.terrain_height({x}, {z})"));
+        assert!(
+            h(cx, cz) < level - 0.5,
+            "{name}: carved, its middle {:.2} m under the water ({level})",
+            level - h(cx, cz)
+        );
+        let (mut off_level, mut low_bank) = (0, 0);
+        for (k, &(x, z)) in shore.iter().enumerate() {
+            if (h(x, z) - level).abs() > 0.3 {
+                off_level += 1;
+            }
+            let (dx, dz) = (x - cx, z - cz);
+            let l = dx.hypot(dz);
+            if h(x + dx / l * 4.0, z + dz / l * 4.0) < level + 0.05 {
+                low_bank += 1;
+            }
+            // no grass in the water: a metre in from the shore toward the middle
+            let (ix, iz) = (x - dx / l * 1.0, z - dz / l * 1.0);
+            if eighth_inside(&shore, (ix, iz)) {
+                assert!(
+                    grass_at(ix, iz) <= 10,
+                    "{name}: grass in the water at {ix:.1}, {iz:.1} (shore point {k})"
+                );
+            }
+        }
+        assert!(
+            off_level * 20 <= shore.len(),
+            "{name}: the shore is at the water's level ({off_level} of {} points off)",
+            shore.len()
+        );
+        assert!(
+            low_bank * 20 <= shore.len(),
+            "{name}: the bank rises above the water all round ({low_bank} of {} low)",
+            shore.len()
+        );
+        for o in &objects {
+            let k = o["kind"].as_str().unwrap();
+            if standing.contains(&k) {
+                let at = (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap());
+                assert!(
+                    !eighth_inside(&shore, at),
+                    "{name}: a {k} stands in the water at {at:?}"
+                );
+            }
+        }
+        // its still water is made, and the game knows it is water
+        assert_eq!(
+            lua(&g, &format!("tostring(nova.named('{name}').mesh ~= nil)")),
+            "true",
+            "{name}: its water is laid"
+        );
+        assert_eq!(
+            lua(
+                &g,
+                &format!("tostring(require('lib.world').pond_at({cx}, {cz}) ~= nil)")
+            ),
+            "true"
+        );
+        // a walker going straight at it from 8 m out, along every fourth bearing, stops on the bank
+        let stuck = lua(
+            &g,
+            &format!(
+                "(function() local W = require('lib.world'); local wet = {{}}; for a = 0, 6.2, 0.4 do \
+                   local x, z = {cx} + math.cos(a) * 30, {cz} + math.sin(a) * 30; \
+                   local p, d, sx, sz, ox, oz = W.pond_at(x, z, 40); x, z = sx + ox * 8, sz + oz * 8; \
+                   if not W.on_pier(x, z, 1) and W.play_inside(x, z) then \
+                     for i = 1, 400 do x, z = W.move(x, z, -ox * 0.05, -oz * 0.05, 0.26) end; \
+                     if W.pond_at(x, z, 0.2) and not W.on_pier(x, z) then wet[#wet + 1] = string.format('%.1f,%.1f', x, z) end end end; \
+                   return table.concat(wet, ' ') end)()"
+            ),
+        );
+        assert!(stuck.is_empty(), "{name}: walked into the water at {stuck}");
+    }
+    // Reed Pond's jetty: you walk on its boards, over the water
+    let lift = num(
+        &g,
+        "(function() local j = nova.named('jetty_end'); return require('lib.world').lift(j.x, j.z) end)()",
+    );
+    assert!(lift > 0.2, "on the jetty's boards: {lift} m over the bed");
+    assert_eq!(
+        lua(
+            &g,
+            "(function() local j = nova.named('jetty_end'); return tostring(require('lib.world').blocked(j.x, j.z, 0.26)) end)()"
+        ),
+        "false",
+        "the jetty is walkable"
+    );
+}
+
+/// "There should be a driveway at the homes and buildings. Right now we're just driving on grass." A gravel drive to the post office's
+/// yard (off Post Road at a junction with its tarmac apron), and on from Fern Lane's and Kettle Creek Road's ends to Hazel's and Pip's
+/// yards: each part of the one road surface (every point along it and over its yard covered, no gap at a join), gravel to the wheel,
+/// the van starting in the post office's yard on the gravel, and no mailbox or signpost on any of them.
+#[test]
+fn the_driveways_are_joined_to_the_roads_without_gaps_and_read_as_gravel() {
+    let objects = eighth_objects();
+    let drives: Vec<&Value> = objects.iter().filter(|o| o["kind"] == "driveway").collect();
+    assert_eq!(drives.len(), 3, "three driveways");
+    let tris = valley_road_triangles();
+    let cover = |x: f32, z: f32| -> Option<i32> {
+        tris.iter().find_map(|t| {
+            let (ax, az, bx, bz, cx, cz) = (t[0][0], t[0][2], t[1][0], t[1][2], t[2][0], t[2][2]);
+            let d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+            if d.abs() < 1e-9 {
+                return None;
+            }
+            let w0 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d;
+            let w1 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d;
+            (w0 >= -1e-4 && w1 >= -1e-4 && w0 + w1 <= 1.0001).then(|| {
+                let u = (t[0][3] + t[1][3] + t[2][3]) / 3.0;
+                (u * 1024.0 / 192.0).floor() as i32
+            })
+        })
+    };
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    for d in &drives {
+        let name = d["name"].as_str().unwrap();
+        let pts = eighth_points(&d["props"]["points"]);
+        let yard = eighth_points(&Value::Array(vec![d["props"]["yard"]["at"].clone()]))[0];
+        let r = d["props"]["yard"]["radius"].as_f64().unwrap();
+        let mut gaps = vec![];
+        for &(x, z) in &pts {
+            if cover(x as f32, z as f32).is_none() {
+                gaps.push(format!("{x:.1},{z:.1}"));
+            }
+        }
+        for k in 0..12 {
+            let a = k as f64 / 12.0 * std::f64::consts::TAU;
+            for f in [0.0, 0.5, 0.9] {
+                let (x, z) = (yard.0 + a.cos() * r * f, yard.1 + a.sin() * r * f);
+                match cover(x as f32, z as f32) {
+                    None => gaps.push(format!("yard {x:.1},{z:.1}")),
+                    Some(c) => assert_eq!(c, 2, "{name}: its yard is gravel at {x:.1},{z:.1}"),
+                }
+            }
+        }
+        assert!(
+            gaps.is_empty(),
+            "{name}: not covered by the road surface at {gaps:?}"
+        );
+        // gravel to the wheel: the yard, and the drive's last stretch (past any tarmac apron)
+        let surface = |x: f64, z: f64| lua(&g, &format!("require('lib.world').surface({x}, {z})"));
+        assert_eq!(surface(yard.0, yard.1), "gravel", "{name}: its yard");
+        for &(x, z) in pts.iter().rev().take(4) {
+            assert_eq!(surface(x, z), "gravel", "{name} at {x:.1},{z:.1}");
+        }
+        // nothing to trip over on it
+        for o in objects.iter().filter(|o| {
+            o["kind"] == "mailbox" || o["kind"] == "signpost" || o["kind"] == "gate_post"
+        }) {
+            let at = (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap());
+            let near = pts
+                .iter()
+                .map(|p| (p.0 - at.0).hypot(p.1 - at.1))
+                .fold(f64::MAX, f64::min);
+            assert!(
+                near > d["props"]["width"].as_f64().unwrap() / 2.0 + 0.4
+                    && (yard.0 - at.0).hypot(yard.1 - at.1) > r + 0.6,
+                "{name}: a {} stands on it at {at:?}",
+                o["kind"]
+            );
+        }
+    }
+    // the post office's drive is a junction of its own, its tarmac apron short of the yard
+    let n = num(&g, "#require('lib.road_junctions')") as usize;
+    let po = (1..=n)
+        .find(|i| lua(&g, &format!("require('lib.road_junctions')[{i}].road")) == "po_drive")
+        .expect("the post office's drive joins Post Road at a junction");
+    let paved = num(&g, &format!("require('lib.road_junctions')[{po}].paved"));
+    assert!(paved < 18.0, "the tarmac runs {paved} m up the drive");
+    // the van starts in the post office's yard, on the gravel
+    let d0 = drives.iter().find(|d| d["name"] == "po_drive").unwrap();
+    let yard = eighth_points(&Value::Array(vec![d0["props"]["yard"]["at"].clone()]))[0];
+    let (vx, vz) = (
+        num(&g, "nova.named('van').x"),
+        num(&g, "nova.named('van').z"),
+    );
+    assert!(
+        (vx - yard.0).hypot(vz - yard.1) < 1.0,
+        "the van starts in the post office's yard: {vx:.1}, {vz:.1}"
+    );
+    assert_eq!(
+        lua(
+            &g,
+            "require('lib.world').surface(nova.named('van').x, nova.named('van').z)"
+        ),
+        "gravel"
+    );
+    assert_eq!(
+        lua(&g, "nova.named('van').surface"),
+        "gravel",
+        "the van hears gravel"
+    );
+}
+
+/// "What can you think of to keep the player on the road and not get stuck in the 'empty' areas?" The playable area (the scene's
+/// `playable`) holds them, from every side: round its whole edge, a walker heading out (straight and at a slant) and the van driven
+/// out at full speed (straight and at a slant) never leave it; the van is slowed over the rough ground before the edge, so it comes
+/// to it gently (no knock); and the owner's own way out, off the road's end at BRIDGE OUT and down the gorge's bank, is closed.
+#[test]
+fn the_postmaster_and_the_van_cannot_leave_the_playable_area_from_any_side() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let n = num(&g, "#require('lib.world').playable.areas[1]") as usize;
+    assert!(n > 300, "the outline: {n} points");
+    // (a point of the outline, its way in, the way along it)
+    let setup = "W = require('lib.world'); A = W.playable.areas[1]; N = #A; \
+      AT = function(k) local q, a, b = A[k], A[(k - 2) % N + 1], A[k % N + 1]; local tx, tz = b[1] - a[1], b[2] - a[2]; \
+        local l = math.sqrt(tx * tx + tz * tz); tx, tz = tx / l, tz / l; local nx, nz = -tz, tx; \
+        if not W.play_inside(q[1] + nx * 2, q[2] + nz * 2) then nx, nz = -nx, -nz end; return q[1], q[2], nx, nz, tx, tz end";
+    let walker = lua(
+        &g,
+        &format!(
+            "(function() {setup}; local out, tried, worst = {{}}, 0, 99; for k = 1, N, 3 do local qx, qz, nx, nz, tx, tz = AT(k); \
+               for _, s in ipairs({{ 0, 0.8, -0.8 }}) do local x, z = qx + nx * 3, qz + nz * 3; \
+                 if W.play_edge(x, z) > 1 and not W.blocked(x, z, 0.26) and not nova.scenery.push(x, z, 0.26) then tried = tried + 1; \
+                   local dx, dz = -nx + s * tx, -nz + s * tz; local l = math.sqrt(dx * dx + dz * dz); dx, dz = dx / l, dz / l; \
+                   for i = 1, 300 do x, z = W.move(x, z, dx * 0.05, dz * 0.05, 0.26); local e = W.play_edge(x, z); worst = math.min(worst, e); \
+                     if e < 0.24 then out[#out + 1] = string.format('%.1f,%.1f', x, z); break end end end end end; \
+               return tried .. ' ' .. string.format('%.3f', worst) .. ' ' .. table.concat(out, ' ') end)()"
+        ),
+    );
+    let mut w = walker.split(' ');
+    let tried: usize = w.next().unwrap().parse().unwrap();
+    let worst: f64 = w.next().unwrap().parse().unwrap();
+    let out: Vec<&str> = w.filter(|s| !s.is_empty()).collect();
+    assert!(tried > 400, "walks tried round the edge: {tried}");
+    assert!(
+        out.is_empty(),
+        "the postmaster got past the edge at {out:?}"
+    );
+    assert!(
+        worst >= 0.24,
+        "the postmaster came within {worst} m of the line"
+    );
+    // the van: from 16 m in, in D with the pedal down at 11 m/s (40 km/h), straight out and at a slant, six seconds each
+    let van = lua(
+        &g,
+        &format!(
+            "(function() {setup}; local v = nova.named('van'); v.driven, v.engine_on, v.gear = true, true, 'D'; \
+               local out, tried, fast, knock = {{}}, 0, 0, 0; local B = v.BODY or {{ offs = {{ 0.83, 0, -0.83 }}, r = 0.66 }}; \
+               for k = 1, N, 12 do local qx, qz, nx, nz, tx, tz = AT(k); \
+                 for _, s in ipairs({{ 0, 0.6 }}) do local x, z = qx + nx * 16, qz + nz * 16; \
+                   if W.play_edge(x, z) > 8 and not W.blocked(x, z, 2) and not nova.scenery.push(x, z, 2) then tried = tried + 1; \
+                     local dx, dz = -nx + s * tx, -nz + s * tz; local l = math.sqrt(dx * dx + dz * dz); dx, dz = dx / l, dz / l; \
+                     v:teleport(x, z, math.atan(dx, dz)); v.velx, v.velz, v.speed = dx * 11, dz * 11, 11; v.knock = 0; \
+                     v.ctl = {{ go = 1, brake = 0, steer = 0, handbrake = 0 }}; local edge_speed = nil; \
+                     for i = 1, 360 do v:drive(1 / 60); v.ctl = {{ go = 1, brake = 0, steer = 0, handbrake = 0 }}; \
+                       local sh, ch = math.sin(v.heading), math.cos(v.heading); local least = 99; \
+                       for _, o in ipairs(B.offs) do least = math.min(least, (W.play_edge(v.x + sh * o, v.z + ch * o))) end; \
+                       if least < B.r + 0.6 and not edge_speed then edge_speed = math.abs(v.speed) end; \
+                       if least < B.r - 0.05 then out[#out + 1] = string.format('%.1f,%.1f:%.2f@%d', v.x, v.z, least, i); break end end; \
+                     if edge_speed and edge_speed > 6 then fast = fast + 1; out[#out + 1] = string.format('fast:%.1f,%.1f:%.1f', v.x, v.z, edge_speed) end; if v.knock > 0 then knock = knock + 1 end end end end; \
+               return tried .. ' ' .. fast .. ' ' .. knock .. ' ' .. table.concat(out, ' ') end)()"
+        ),
+    );
+    let mut v = van.split(' ');
+    let tried: usize = v.next().unwrap().parse().unwrap();
+    let fast: usize = v.next().unwrap().parse().unwrap();
+    let knock: usize = v.next().unwrap().parse().unwrap();
+    let (fasts, out): (Vec<&str>, Vec<&str>) = v
+        .filter(|s| !s.is_empty())
+        .partition(|s| s.starts_with("fast:"));
+    assert!(tried > 60, "drives tried round the edge: {tried}");
+    assert!(out.is_empty(), "the van got past the edge at {out:?}");
+    assert!(
+        fast * 10 <= tried,
+        "the rough ground slows the van before the edge: {fast} of {tried} came to it faster than 6 m/s: {fasts:?}"
+    );
+    assert!(
+        knock * 10 <= tried,
+        "{knock} of {tried} knocked against the edge itself"
+    );
+    // the owner's way down the gorge's bank: off the road's end at BRIDGE OUT, either side of the barrier, full speed for 8 s
+    for (x0, aim) in [(28.0, -0.5), (12.0, 0.5), (34.0, -0.2), (4.0, 0.25)] {
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "steps": [ {{ "lua": "local v = nova.named('van'); v.driven, v.engine_on, v.gear = true, true, 'D'; v:teleport({x0}, 196, {aim}); v.velx, v.velz = math.sin({aim}) * 11, math.cos({aim}) * 11; nova.named('postmaster').seated = true; nova.scene_now().mode = 'van'" }},
+                {{ "hold": ["go"], "frames": 480 }} ] }}"#
+            ),
+        );
+        let (x, z) = (
+            num(&g, "nova.named('van').x"),
+            num(&g, "nova.named('van').z"),
+        );
+        let ground = num(
+            &g,
+            "nova.terrain_height(nova.named('van').x, nova.named('van').z)",
+        );
+        assert!(
+            z < 220.5 && ground > 24.0,
+            "from {x0}, 196 the van went over the gorge's lip: at {x:.1}, {z:.1}, ground {ground:.1} m"
+        );
+    }
+}
+
+/// The places that matter stay inside the playable area, well clear of its edge: every road and drive, every house's door, the post
+/// office's door and the van's yard, the mailboxes, the bridge's deck, the BRIDGE OUT barrier and its view, the picnic spot, the overlook,
+/// Reed Pond's bench and jetty; the postmaster walks from Post Road to the jetty's end. The secret ways are in the data, closed, each
+/// standing on the edge, and opening one adds the land beyond it.
+#[test]
+fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways_are_closed() {
+    let objects = eighth_objects();
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit')", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let edge =
+        |g: &Game, x: f64, z: f64| num(g, &format!("(require('lib.world').play_edge({x}, {z}))"));
+    for o in objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline" || o["kind"] == "driveway")
+    {
+        let key = o["props"]["key"].as_str().unwrap();
+        let half = o["props"]["width"].as_f64().unwrap() / 2.0;
+        for (x, z) in eighth_points(&o["props"]["points"]) {
+            // (Post Road's last few metres run on past the locked gates at its south end and past the barrier at its north end)
+            if key == "post_road" && (z < -232.0 || z > 213.0) {
+                continue;
+            }
+            let e = edge(&g, x, z);
+            assert!(
+                e > half + 1.0,
+                "{key} at {x:.1}, {z:.1} is {e:.1} m inside the edge"
+            );
+        }
+    }
+    let mut places: Vec<(String, f64, f64)> = vec![];
+    for o in &objects {
+        let (k, n) = (
+            o["kind"].as_str().unwrap(),
+            o["name"].as_str().unwrap_or(""),
+        );
+        if [
+            "office_door",
+            "door_hazel",
+            "door_pip",
+            "bridge_out_view",
+            "jetty_end",
+            "pond_bench",
+            "picnic",
+            "overlook",
+            "van",
+        ]
+        .contains(&n)
+            || [
+                "post_office",
+                "cabin_hazel",
+                "cabin_pip",
+                "mailbox",
+                "bridge",
+            ]
+            .contains(&k)
+        {
+            places.push((
+                format!("{k} {n}"),
+                o["x"].as_f64().unwrap(),
+                o["z"].as_f64().unwrap(),
+            ));
+        }
+        if k == "bridge" {
+            for end in ["a", "b"] {
+                let p = &o["props"][end];
+                places.push((
+                    format!("the bridge's end {end}"),
+                    p[0].as_f64().unwrap(),
+                    p[1].as_f64().unwrap(),
+                ));
+            }
+        }
+        if n == "barrier" {
+            // (its front, the side the road comes from)
+            places.push((
+                "the BRIDGE OUT barrier's front".into(),
+                o["x"].as_f64().unwrap(),
+                o["z"].as_f64().unwrap() - 1.0,
+            ));
+        }
+    }
+    assert!(places.len() >= 16, "{places:?}");
+    for (what, x, z) in &places {
+        let e = edge(&g, *x, *z);
+        let need = if what.contains("barrier") || what.contains("jetty") {
+            0.3
+        } else {
+            2.0
+        };
+        assert!(
+            e > need,
+            "{what} at {x:.1}, {z:.1}: {e:.1} m inside the edge"
+        );
+    }
+    // the walk to Reed Pond's jetty: from Post Road over the meadow (south of the clump by the road), past the bench, out along the boards
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local W = require('lib.world'); local p = nova.named('postmaster'); local j = nova.named('jetty_end'); local d; for _, q in ipairs(W.decks) do if q.pier then d = q end end; p.x, p.z = 2, -4; p.walk_to = nil; p.walk_path = { { 2, -6 }, { 25, -6 }, { d.x - d.s * 4.5, d.z - d.c * 4.5 }, { j.x, j.z } }; p.walk_pace = 2.8" },
+          { "until": "not T.walking()", "max": 1500 }, { "wait": 10 } ] }"#,
+    );
+    let off = num(
+        &g,
+        "(function() local p, j = nova.named('postmaster'), nova.named('jetty_end'); return math.sqrt((p.x - j.x) ^ 2 + (p.z - j.z) ^ 2) end)()",
+    );
+    assert!(off < 0.8, "walked out to the jetty's end: {off:.2} m short");
+    assert!(
+        num(
+            &g,
+            "require('lib.world').lift(nova.named('postmaster').x, nova.named('postmaster').z)"
+        ) > 0.2,
+        "standing on the jetty's boards"
+    );
+    // the secret ways: in the data, closed, each on the edge, and opening one lets you through
+    let playable = objects
+        .iter()
+        .find(|o| o["kind"] == "playable")
+        .expect("a playable area");
+    let secrets = playable["props"]["secrets"].as_array().unwrap();
+    assert!(secrets.len() >= 2, "{secrets:?}");
+    for (i, s) in secrets.iter().enumerate() {
+        let id = s["id"].as_str().unwrap();
+        assert_eq!(s["closed"], true, "{id} is closed for now");
+        let at = eighth_points(&Value::Array(vec![s["at"].clone()]))[0];
+        assert!(
+            edge(&g, at.0, at.1).abs() < 3.0,
+            "{id}'s {} stands on the edge",
+            s["kind"]
+        );
+        assert!(
+            objects.iter().any(|o| o["props"]["secret"] == id),
+            "{id}: its {} is in the scene",
+            s["kind"]
+        );
+        let area = eighth_points(&s["area"]);
+        let (mx, mz) = (
+            area.iter().map(|p| p.0).sum::<f64>() / area.len() as f64,
+            area.iter().map(|p| p.1).sum::<f64>() / area.len() as f64,
+        );
+        assert!(edge(&g, mx, mz) < 0.0, "{id}: the land beyond is shut");
+        assert_eq!(
+            lua(
+                &g,
+                &format!("tostring(require('lib.world').open_secret('{id}'))")
+            ),
+            "true"
+        );
+        assert!(
+            edge(&g, mx, mz) > 0.0,
+            "{id}: opened, the land beyond joins the playable area ({i})"
         );
     }
 }

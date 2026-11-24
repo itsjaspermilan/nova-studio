@@ -40,6 +40,8 @@ Van.TUNE = {
   coast = 0.5,          -- m/s^2 rolling and engine braking with nothing pressed
   drag = 0.004,         -- the air, per (m/s)^2
   grass = 0.6,          -- m/s^2 more rolling on the grass (the soft ground holds it back; with the starting van's pull it still gets going)
+  edge = 22,            -- m/s^2 more at the playable area's very edge, growing over the last twelve metres of grass before it (world.rough: tussocks, roots,
+                        -- stones), so the van comes up to the edge slowly and stops there without a knock (the owner's eighth play, note 6)
   gravel = 0.12,        -- and on a gravel lane
   -- the front wheels at full lock, at a crawl: a 10 m kerb-to-kerb circle on the 1.51 m wheelbase (the rear axle moved back in the
   -- owner's fourth notes; on the old 1.31 m one it was 18.3 degrees: the same tan(lock) / wheelbase keeps the same circle)
@@ -351,6 +353,16 @@ function Van:drive(dt)
   if live and k > 0 and coast > FEEL.roll then coast = FEEL.roll + (coast - FEEL.roll) * (1 - k) end
   if live and low and vf > low_top then coast = coast + (vf - low_top) * 1.5 end
   coast = coast + (self.surface == "grass" and FEEL.grass or self.surface == "gravel" and FEEL.gravel or 0)
+  -- (near the playable area's edge the ground gets rough: harder going the nearer the edge and the faster it goes, but only heading
+  -- out towards it: along it or back in, the van drives away as it would anywhere on the grass; a road is never rough)
+  local rough = world.rough(self.x, self.z)
+  self.rough = rough
+  if rough > 0 and self.surface == "grass" and math.abs(vf) > 0.05 then
+    local _, ix, iz = world.play_edge(self.x, self.z)
+    local sp = math.sqrt(self.velx * self.velx + self.velz * self.velz)
+    local out = sp > 0.05 and math.max(0, -(self.velx * ix + self.velz * iz) / sp) or 0
+    coast = coast + FEEL.edge * rough * out * math.min(1, 0.35 + math.abs(vf) / 6)
+  end
   vf = vf - sign * math.min(math.abs(vf), (coast + FEEL.drag * vf * vf) * dt)
   local gx, gz = nova.terrain_slope(self.x, self.z)
   if not world.on_bridge(self.x, self.z) then vf = vf - (gx * sinh + gz * cosh) * FEEL.hill * dt end
@@ -369,7 +381,7 @@ function Van:drive(dt)
   local hit = 0
   for _, off in ipairs(Van.BODY.offs) do
     local px, pz = nx + sinh * off, nz + cosh * off
-    local mx, mz, stopped = world.move(px, pz, 0, 0, Van.BODY.r)
+    local mx, mz, stopped, edge = world.move(px, pz, 0, 0, Van.BODY.r)
     if stopped then
       local ox, oz = mx - px, mz - pz
       nx, nz = nx + ox, nz + oz
@@ -378,8 +390,10 @@ function Van:drive(dt)
         local ux, uz = ox / l, oz / l
         local into = self.velx * ux + self.velz * uz
         if into < 0 then
-          self.velx, self.velz = self.velx - ux * into * 1.15, self.velz - uz * into * 1.15
-          hit = math.max(hit, -into)
+          -- (against the playable area's edge alone it just stops going that way: no bounce, no knock)
+          local k = edge and 1.0 or 1.15
+          self.velx, self.velz = self.velx - ux * into * k, self.velz - uz * into * k
+          if not edge then hit = math.max(hit, -into) end
         end
       end
     end

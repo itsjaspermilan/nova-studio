@@ -731,6 +731,7 @@ tool(
     water: { type: "object", description: '{ kind: "water", names: { creek: "Kettle Creek" } }.' },
     water_below: { type: "number", description: "Metres: the terrain below this is a lake." },
     water_areas: { type: "array", items: { type: "array", items: { type: "number" } }, description: "[[x0, z0, x1, z1], ...] in metres: open water beyond the terrain (a lake, the sea)." },
+    ponds: { type: "object", description: '{ kind: "pond" }: objects whose props.shore ([[x, z], ...]) rings still water (a pond, a small lake).' },
     trees: { type: "object", description: "{ pine: [kinds], round: [kinds] }." },
     forest: { type: "object", description: "{ kinds: [kinds], radius: 12 }: a mass of trees round each." },
     places: { type: "object", description: `{ <kind>: { icon, label? } }; icons: ${MAP_ICONS.join(", ")}.` },

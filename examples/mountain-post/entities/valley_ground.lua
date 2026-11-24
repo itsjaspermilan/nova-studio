@@ -55,7 +55,8 @@ function ValleyGround:build()
         local level = nova.terrain_height(wx, wz) + (ww.depth or 0.35)
         y = math.min(y, level - 0.15 - nova.terrain_height(x, z))
       end
-      banked[#banked + 1] = (ww and wd < world.bank_of(ww)) or false
+      -- (and round a pond: entities/pond.lua lays its own finer ground there)
+      banked[#banked + 1] = (ww and wd < world.bank_of(ww)) or world.pond_zone(x, z) or false
       pos[#pos + 1] = x; pos[#pos + 1] = y; pos[#pos + 1] = z
       local r, g, b = world.ground_color(x, z, i, j)
       col[#col + 1] = math.floor(r); col[#col + 1] = math.floor(g); col[#col + 1] = math.floor(b); col[#col + 1] = 255

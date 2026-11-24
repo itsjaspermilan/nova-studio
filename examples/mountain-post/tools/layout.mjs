@@ -75,7 +75,7 @@ export const PADS = [
 
 // The houses: where the building stands and which way its door faces (toward its road), the gate and mailbox, the door's step.
 export const PLACES = {
-  post_office: { building: [-21, -186], face: [1, 0], door: [-15.4, -186], parking: [-6.5, -177], parking_face: [0, 1] },
+  post_office: { building: [-21, -186], face: [1, 0], door: [-15.4, -186] }, // (the van parks in its drive's yard: DRIVES)
   hazel: { name: "Hazel Brock", number: 3, street: "Fern Lane", building: [-162, 54], face: [0.75, -0.66], door: [-158, 49.5], gate: [-147, 41], mailbox: [-144, 38], resident: [-155, 45], sawhorse: [-152, 52] },
   pip: { name: "Pip Tansy", number: 7, street: "Kettle Creek Road", building: [192, 114], face: [-0.62, -0.78], door: [188.5, 109.5], gate: [177, 101], mailbox: [174, 98], resident: [186, 106], mast: [199, 104] },
 };
@@ -92,3 +92,41 @@ export const SIGNS = [
   { at: [-15.5, -72], arms: [{ text: "FERN LANE", road: "fern_lane", dir: 1 }, { text: "POST ROAD", road: "post_road", dir: -1 }, { text: "POST ROAD", road: "post_road", dir: 1 }] },
   { at: [17, 16.5], arms: [{ text: "KETTLE CREEK RD", road: "kettle_creek_road", dir: 1 }, { text: "POST ROAD", road: "post_road", dir: -1 }, { text: "POST ROAD", road: "post_road", dir: 1 }] },
 ];
+
+// ---- the driveways (the owner's eighth play, note 9: "There should be a driveway at the homes and buildings. Right now we're just
+// driving on grass") -------------------------------------------------------------------------------------------------------------------
+// Short gravel drives, part of the one road network (tools/roads.mjs: the junction builder joins each, with fillets and, off Post Road,
+// the tarmac apron and its ragged edge into the gravel), each ending in a round gravel yard where a van turns and parks (`yard`: its middle
+// and radius, the carriageway's; the verge runs a little past it). The post office's drive leaves Post Road at a shallow angle south-west
+// to the yard between the porch and the road, where the van starts (`park`, facing back up the drive); Hazel's and Pip's carry on from the
+// end of their lane through the gate into the yard in front of the house (a lane's last stretch and its drive are one road, narrowing).
+// `from` snaps a drive's first point onto that road's middle line (a T junction); `after` names the lane whose end it starts at.
+export const DRIVES = [
+  { id: "po_drive", name: "the post office's drive", from: "post_road", control: [[0.5, -161], [-8, -162.4], [-16, -164.6], [-22.8, -167.4]], width: 3.6, yard: { at: [-25, -168.2], radius: 3.6 }, park: [-25, -168.2], park_face: [0.94, 0.33] },
+  { id: "hazel_drive", name: "Hazel's drive", after: "fern_lane", control: [[-148, 40], [-150.3, 42.8], [-152.4, 45.4]], width: 3.4, yard: { at: [-152.6, 45.6], radius: 3.3 } },
+  { id: "pip_drive", name: "Pip's drive", after: "kettle_creek_road", control: [[176, 102], [178.8, 102.8], [181.4, 103.5]], width: 3.4, yard: { at: [181.6, 103.5], radius: 3.3 } },
+];
+
+// ---- the ponds (the owner's eighth play, note 5: "We should add some lakes throughout the map because the hills look barren") -----------
+// Three small still ponds where the valley has a hollow or a shelf, none on a road's line: each is a level plot (a terrain pad, its own
+// height, `plot`, in the terrain recipe's metres) with a bowl carved in it by a few overlapping strokes (`lobes`: [from, to, width] in metres east and north), which gives a
+// rounded, irregular shore. The water stands `fill` metres over the bowl's flat bed (the bank rises 1 in `bank`); tools/scene.mjs finds the
+// shoreline from the made ground and writes it into the scene (a `pond` object), and entities/pond.lua lays the still water and its banks.
+// Reed Pond, in the hollow between Post Road and Fern Lane's bend, is the one to walk to: a short jetty and a bench on its east shore,
+// inside the playable area. Alder Pond, east of Post Road, is seen from Post Road and Kettle Creek Road across the meadow; Tarn Pond sits
+// on a shelf cut into the valley's west side above Hazel's, outside the playable area: seen over the shelf's lip from the edge behind
+// her cabin, where a fallen tree lies across the old track up to it (a secret way, tools/scene.mjs).
+export const PONDS = [
+  { id: "reed_pond", name: "Reed Pond", at: [-56, -4], plot: 1.2, depth: 1.5, fill: 0.95, bank: 2.6, blend: 14, reach: true,
+    lobes: [[[-66, -12], [-52, -3], 10], [[-54, -8], [-44, 4], 9], [[-62, 1], [-55, 8], 8]],
+    jetty: { dir: [1, -0.1], length: 6 }, bench: true },
+  { id: "alder_pond", name: "Alder Pond", at: [48, -22], plot: 2.6, depth: 1.4, fill: 0.9, bank: 2.6, blend: 14,
+    lobes: [[[39, -28], [53, -19], 9], [[48, -15], [57, -22], 8]] },
+  { id: "tarn_pond", name: "Tarn Pond", at: [-206, 104], plot: 7.6, depth: 1.4, fill: 0.9, bank: 2.4, blend: 16,
+    lobes: [[[-212, 96], [-203, 108], 9], [[-206, 104], [-199, 99], 7]] },
+];
+// (a pond's plot: round its lobes, with room for the bank)
+export const pondRadius = (p) => Math.max(...p.lobes.flatMap(([a, b, w]) => [a, b].map((q) => Math.hypot(q[0] - p.at[0], q[1] - p.at[1]) + w / 2))) + p.fill * p.bank + 3;
+
+// (the jetty at Reed Pond: its deck, metres; tools/edge-models.mjs makes it)
+export const JETTY = { length: 6, width: 1.6 };

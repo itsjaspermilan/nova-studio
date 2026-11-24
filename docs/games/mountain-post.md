@@ -1495,3 +1495,50 @@ Retroid.**
 **Weak points**: the flower beds, window boxes, pots and Pip's plot are still 3D blobs (they are the houses' models, `tools/models.mjs`);
 the lupines read as soft spikes rather than bells; the motes still fade by a screen-door (a dotted disc as one fades); the cost on the
 device is not measured.
+
+### What the eighth play changed: ponds, the playable area and its edge, driveways (notes 5, 6 and 9)
+
+**Ponds** (note 5). Three small still ponds, none on a road's line (tools/layout.mjs `PONDS`): **Reed Pond** in the hollow between Post
+Road and Fern Lane's bend (the one to walk to: a meadow runs down to it from Post Road, a 6 m jetty you can walk out on and a bench on its
+east bank), **Alder Pond** east of Post Road (seen from Post Road and Kettle Creek Road; the playable area's edge crosses it, so the water
+is the edge there), **Tarn Pond** on a shelf cut into the valley's west side above Hazel's (outside the playable area, seen over the shelf's lip
+from the edge behind her cabin, where the old track up to it is a secret way, below; not seen from the road). Each is a level plot (a terrain pad at its own height) with a bowl carved by two or three
+overlapping strokes, so the shore is rounded and irregular; tools/scene.mjs finds the shoreline on the made ground and writes it into the
+scene (`pond`: `level`, `shore`). entities/pond.lua lays the water as **still water** (`nova.mesh.make { paint = "water", still = true }`,
+an engine addition: round ripples that only shimmer, more sky in them, a softer foam line, the shallows lighter) and 1 m ground cells round
+it instead of the valley's 4 m squares (smooth waterline, the bank darker where wet). Reeds in runs along the shores, rafts of lily pads,
+a few rocks. No grass in the water (tools/grass.mjs), no tree, wall or hedge in it; a walker is kept on the bank (lib/world.lua), except
+on the jetty's boards (a `deck` with its own `level` and `pier`). The paper map draws them (map_make's new `ponds: { kind: "pond" }`).
+The minimap draws only roads, so not the ponds.
+
+**The playable area** (note 6; and the owner driving off the BRIDGE OUT end down the gorge's bank to the river). The scene's `playable`
+object holds one outline (tools/bounds.mjs, made from shapes and traced on a 1 m grid): 26 m either side of Post Road's middle, 23 m of a
+lane's, 14 m of a drive's, a round meadow at each house and yard, the picnic spot, the overlook, the bridge, Reed Pond with its meadow,
+Alder Pond's near shore; never past the gorge's lip (N 220.5, just behind the BRIDGE OUT barrier) or into the map's rim. lib/world.lua
+keeps the van and the postmaster inside it (`world.play_edge`, `world.push_out`, `world.move`): a walker's step outward is eased over the
+last two metres; the van meets **rough ground** over the last 12 m of grass heading out (up to 22 m/s^2 more rolling, only when heading
+out, never on a road: entities/van.lua `edge`), so it comes up to the edge slowly and stops there without a bounce or a knock. Its edge is
+always something you can see (tools/scene.mjs, walking round the outline): along the gorge a split-rail fence on from the barrier, rock
+outcrops below it; where the ground beyond rises or falls steeply, rock outcrops with pines; by Hazel's and the post office a hedge, by
+Pip's a rail fence; at the water nothing; elsewhere, in stretches of about 45 m, mostly a forest edge (trees 4.6 m apart with bushes
+under them and a forest mass behind), now and then a low stone wall or a run of hedge. Forest masses now fill the land beyond the edge
+(each wholly outside it). **Secret ways** (`playable.secrets`, closed now, each with the land it opens): `tarn_track`, a fallen tree
+across the old track to Tarn Pond, and `south_road`, a pair of locked field gates across Post Road's south end; `world.open_secret(id)`
+adds the land beyond (its model is still to be taken away when one opens).
+
+**Driveways** (note 9). tools/layout.mjs `DRIVES`, part of the one road network (tools/roads.mjs): the post office's leaves Post Road at
+a junction of its own (filleted, its tarmac apron running 15 m up it with the ragged edge into the gravel) and bends into a gravel yard
+north of the office, where **the van now starts** (facing back up the drive); Hazel's and Pip's carry on from their lane's end, narrowing,
+through the gate into a round gravel yard in front of the house. The game reads them as gravel (`driveway` objects: world.surface, the
+van's tyres), the grass is off them, the mailboxes, gate posts and signposts are off them. The junction data has three junctions now.
+
+Tests (crates/nova-runtime/tests/mountain_post.rs, at its end): `the_ponds_are_carved_and_filled_with_no_grass_or_trees_in_them_and_a_walker_stays_out`,
+`the_driveways_are_joined_to_the_roads_without_gaps_and_read_as_gravel`, `the_postmaster_and_the_van_cannot_leave_the_playable_area_from_any_side`
+(every third point of the outline, a walker straight out and at two slants; every twelfth, the van at 40 km/h straight and slanted;
+the owner's way down the gorge's bank from four places), `the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways_are_closed`.
+Pictures: tools/routes/eighth.mjs (`build/gallery/eighth/`). Tools: `tools/edge-models.mjs` (hedge, field gate, fallen tree, reeds, lily
+pads, jetty, outcrop), `tools/heights.mjs` (the made ground, read back), `tools/plan.mjs` (a plan from above with the playable area's edge).
+
+Weak points: the edge adds about 80 trees, 110 hedges and 40 outcrops (513 trees, 73 forest masses in all): the device's frame time is
+not measured. The ponds' foam line is drawn by the water shader's depth, so a very shallow shore can look a little white. Opening a secret
+way does not yet take its fallen tree or gates away.

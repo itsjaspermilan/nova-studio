@@ -2,7 +2,7 @@
 // `roads`), the roads as one network with proper junctions (road_make with `roads`: models/road_valley.glb), and the textured ground under
 // them (land_make). Prints the nova.terrain line that
 // scenes/valley.lua uses.
-import { BOUNDS_EN, CREEK, GORGE, LAKE, PADS, ROADS, xz } from "./layout.mjs";
+import { BOUNDS_EN, CREEK, DRIVES, GORGE, LAKE, PADS, PONDS, ROADS, pondRadius, xz } from "./layout.mjs";
 import { put, tool } from "./lib.mjs";
 import { NETWORK, roads } from "./roads.mjs";
 
@@ -12,13 +12,19 @@ const answer = tool("terrain_write", {
   // (x = -E: the east edge is the smaller x)
   bounds: [-B.e1, B.n0, -B.e0, B.n1],
   roads: ROADS.map((r) => ({ control: r.control.map(xz), profile: r.profile, flat: r.width / 2 + 2.5, blend: 36 })),
-  pads: PADS.map((p) => ({ at: xz(p.at), radius: p.radius, blend: p.blend })),
+  // (the drives' yards, level with the road nearest them; the drives run over the house plots or between a yard and its road at one
+  // level. And each pond's plot: level ground at its `plot` height, the recipe's own height of the ground there, round the bowl)
+  pads: [...PADS.map((p) => ({ at: xz(p.at), radius: p.radius, blend: p.blend })),
+    ...DRIVES.map((d) => ({ at: xz(d.yard.at), radius: d.yard.radius + 2, blend: 16 })),
+    ...PONDS.map((p) => ({ at: xz(p.at), radius: pondRadius(p), blend: p.blend, height: p.plot }))],
   carve: [
     { points: CREEK.points.map(xz), profile: CREEK.profile, width: CREEK.width, bank: CREEK.bank },
     // (its bank stops at Post Road's level ground: the road ends at the BRIDGE OUT barrier on firm ground, not down the bank)
     { points: GORGE.points.map(xz), profile: GORGE.profile, width: GORGE.width, bank: GORGE.bank, spare_roads: true },
     // the lake beyond the far bank: a wide flat bed along the north edge (the ground past the map keeps its height, so the lake runs on)
     { points: LAKE.points.map(xz), profile: LAKE.profile, width: LAKE.width, bank: LAKE.bank },
+    // the ponds' bowls: each lobe a short stroke `depth` under its level plot, the bank rising 1 in `bank` (layout.mjs PONDS)
+    ...PONDS.flatMap((p) => p.lobes.map(([a, b, w]) => ({ points: [xz(a), xz(b)], profile: [[0, p.plot - p.depth], [100, p.plot - p.depth]], width: w, bank: p.bank }))),
   ],
   rim: { height: 22, width: 55, edges: ["x0", "x1", "z0"] },
   hills: 16, hill_wavelength: 170, cell: 2, seed: 7, max_grade: 0.11,

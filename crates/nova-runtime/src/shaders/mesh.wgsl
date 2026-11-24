@@ -385,20 +385,27 @@ fn paint_foliage(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>,
 // `depth_in` (0 to 1) its colour's alpha, how deep it is there. Ripples stretched along the flow move downstream; the sky shows in
 // them at a slant, the sun glints on them; the shallows are lighter and foam gathers along the waterline (a mesh makes a place shallow
 // to put foam there: round a post).
-fn paint_water(rgb: vec3<f32>, world: vec3<f32>, flow: vec2<f32>, fx: vec2<f32>, fy: vec2<f32>, depth_in: f32, footprint: f32) -> Painted {
+fn paint_water(rgb: vec3<f32>, world: vec3<f32>, flow: vec2<f32>, fx: vec2<f32>, fy: vec2<f32>, depth_in: f32, footprint: f32, still: f32) -> Painted {
     var o: Painted;
     let t = globals.wind.w;
     let calm = 1.0 - smoothstep(0.05, 0.25, footprint);
     let x = vec2<f32>(1.0, 0.0);
     let z = vec2<f32>(0.0, 1.0);
-    // (the time moves the reading downstream: `off` carries it, so the derivatives stay the flow's own)
-    let w1 = paint_read(flow, fx, fy, paint_axes(x, z, 1.3, 0.42), vec2<f32>(0.0, -t * 0.55 * 0.42 / 16.0));
-    let w2 = paint_read(flow, fx, fy, paint_axes(x, z, 2.6, 0.9), vec2<f32>(0.25, -t * 0.95 * 0.9 / 16.0));
+    // (the time moves the reading downstream: `off` carries it, so the derivatives stay the flow's own). Still water (a pond: `still`
+    // 1) has round ripples, not stretched, that drift a few centimetres a second two different ways, so they only shimmer
+    let a1 = mix(vec2<f32>(1.3, 0.42), vec2<f32>(0.9, 0.9), still);
+    let a2 = mix(vec2<f32>(2.6, 0.9), vec2<f32>(1.9, 1.9), still);
+    let o1 = mix(vec2<f32>(0.0, -t * 0.55 * 0.42 / 16.0), vec2<f32>(t * 0.05, -t * 0.03) * 0.9 / 16.0, still);
+    let o2 = mix(vec2<f32>(0.25, -t * 0.95 * 0.9 / 16.0), vec2<f32>(0.25 - t * 0.04, t * 0.06) * 1.9 / 16.0, still);
+    let w1 = paint_read(flow, fx, fy, paint_axes(x, z, a1.x, a1.y), o1);
+    let w2 = paint_read(flow, fx, fy, paint_axes(x, z, a2.x, a2.y), o2);
     let r1 = w1.r;
     let r2 = w2.a;
     let wave = r1 * 0.6 + r2 * 0.4;
-    // the ripples' slope: the other two noises of the first read, the across one stronger (ripples lie across the flow)
-    let n = safe_normalize(vec3<f32>((w1.g - 0.5) * 0.9 * calm, 1.0, (w1.b - 0.5) * 0.5 * calm));
+    // the ripples' slope: the other two noises of the first read, the across one stronger (ripples lie across the flow); on still
+    // water gentler and the same both ways, so it mirrors more of the sky
+    let tilt = mix(vec2<f32>(0.9, 0.5), vec2<f32>(0.35, 0.35), still);
+    let n = safe_normalize(vec3<f32>((w1.g - 0.5) * tilt.x * calm, 1.0, (w1.b - 0.5) * tilt.y * calm));
     var c = rgb * (0.96 + 0.22 * (wave - 0.5) * calm);
     // how deep it is here (the mesh's alpha: 0 is 0.2 m above the bed, 1 is 0.6 m deep or more): lighter and a little warmer where
     // the bed comes up, and a line of foam where it meets the bank, broken by the ripples
@@ -417,8 +424,8 @@ fn paint_water(rgb: vec3<f32>, world: vec3<f32>, flow: vec2<f32>, fx: vec2<f32>,
     let h = safe_normalize(v + to_sun);
     let glint = pow(max(dot(n, h), 0.0), 120.0) * 0.9 * calm;
     let streak = smoothstep(0.6, 0.85, wave) * 0.25 * calm;
-    o.extra = sky * (fres * 0.3 + streak * 0.45) + globals.light_color.rgb * glint;
-    o.rgb = mix(c, vec3<f32>(0.84, 0.88, 0.86), foam * 0.8);
+    o.extra = sky * (fres * mix(0.3, 0.5, still) + streak * mix(0.45, 0.2, still)) + globals.light_color.rgb * glint;
+    o.rgb = mix(c, vec3<f32>(0.84, 0.88, 0.86), foam * mix(0.8, 0.45, still));
     o.extra = o.extra * (1.0 - foam);
     o.normal = vec3<f32>(0.0, 1.0, 0.0);
     o.wrap = 0.0;
@@ -1009,7 +1016,10 @@ fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
             let gy = wy.xz;
             p = paint_ground(surface, in.world, geo, gx, gy, max(max(abs(gx.x) + abs(gy.x), abs(gx.y) + abs(gy.y)), 1e-5));
         } else if (paint < 4.5) {
-            p = paint_water(surface, in.world, in.uv, ux, uy, deep, max(abs(ux.x) + abs(uy.x), abs(ux.y) + abs(uy.y)));
+            // (a water point's glow says it is still water, model.rs STILL_WATER: never a glow)
+            let still = step(0.25, glow);
+            glow = 0.0;
+            p = paint_water(surface, in.world, in.uv, ux, uy, deep, max(abs(ux.x) + abs(uy.x), abs(ux.y) + abs(uy.y)), still);
         } else {
             p = paint_building(surface, in.local.xyz, lx, ly, geo, paint);
         }

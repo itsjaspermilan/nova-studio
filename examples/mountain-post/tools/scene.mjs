@@ -4,11 +4,14 @@
 // the bend on Fern Lane that hides Hazel's cabin until you are round it) and close the map's edges with thick wood.
 // Also the office's scene (scenes/office.scene.json) and the one-line entity files of the static props.
 import { centreline } from "../../../scripts/lib/trackgen.mjs";
-import { BOUNDS_EN, BRIDGE, CREEK, DECK_ENDS, GORGE, LAKE, PADS, PLACES, ROADS, SIGNS, ry_facing, xz } from "./layout.mjs";
+import { BOUNDS_EN, BRIDGE, CREEK, DECK_ENDS, DRIVES, GORGE, LAKE, PADS, PLACES, PONDS, ROADS, SIGNS, pondRadius, ry_facing, xz } from "./layout.mjs";
 import { rng } from "./geo.mjs";
 import { put, tool } from "./lib.mjs";
 import { placedFootprint } from "./footprint.mjs";
-import { roads } from "./roads.mjs";
+import { driveControl, roads } from "./roads.mjs";
+import { ground } from "./heights.mjs";
+import { edgeDistance, insidePoly, playableOutline } from "./bounds.mjs";
+import { JETTY } from "./layout.mjs";
 import { DOOR, GRID, PLACED, ROOM, SURFACES, TILE_COL0, TILE_Z, TILES, TOP, WALL_H, WALL_STEP, WINDOW, tileX, worldOf } from "./office-layout.mjs";
 
 // ---- nothing stands on a road ------------------------------------------------------------------------------------------------------
@@ -18,7 +21,7 @@ import { DOOR, GRID, PLACED, ROOM, SURFACES, TILE_COL0, TILE_Z, TILES, TOP, WALL
 // one by one are moved off the road until they are clear; scattered ones (trees, rocks, bushes) are simply not put there. Only the
 // BRIDGE OUT barrier stands across its road's end, as it must (the bridge's deck carries the road, the ribbon stops at it).
 const CLEAR = { signpost: 0.8, mailbox: 0.6 };
-const ON_ROAD_ALLOWED = new Set(["barrier"]); // (by name)
+const ON_ROAD_ALLOWED = new Set(["barrier", "south_gate_a", "south_gate_b"]); // (by name: the BRIDGE OUT barrier; the locked gates across Post Road's south end)
 const clearOf = (kind, en, ry = 0, sx = 1) => {
   const pts = placedFootprint(kind, en, ry, sx);
   return Math.min(...(pts.length ? pts : [en]).map((p) => roads().clearance(p)));
@@ -62,6 +65,42 @@ obj("water", [0, 0], { key: "creek", width: CREEK.width + 1.2, depth: 0.35, poin
 obj("water", [0, 0], { key: "gorge", width: GORGE.width + 2, depth: 1.0, points: line(GORGE.points.map(xz), 6).map(([x, z]) => [r2(x), r2(z)]) }, "gorge");
 obj("lake", [0, 300], { z0: 285, level: LAKE.level }, "lake");
 obj("limits", [0, 0], { bounds: [-BOUNDS_EN.e1, BOUNDS_EN.n0, -BOUNDS_EN.e0, BOUNDS_EN.n1], edge: 26, gorge: 236 }, "limits");
+// the driveways (layout.mjs DRIVES): their middle lines and their yards, for the surface under a wheel (gravel), the minimap and the
+// autopilot (`joins`: the road a drive leaves or carries on from). The paper map leaves them out (their own kind, not a roadline).
+const driveLines = {};
+for (const d of DRIVES) {
+  const pts = driveControl(d);
+  driveLines[d.id] = line(pts);
+  obj("driveway", [0, 0], { key: d.id, label: d.name, surface: "gravel", width: d.width, joins: d.from ?? d.after, points: line(pts.map(xz), 1).map(([x, z]) => [r2(x), r2(z)]),
+    yard: { at: xz(d.yard.at), radius: d.yard.radius } }, d.id);
+}
+
+// ---- the ponds (layout.mjs PONDS): the shore found on the made ground, where it rises over the water's level -----------------------------
+const G = ground();
+const hEN = ([e, n]) => G.height(-e, n);
+const PONDS_AT = PONDS.map((p) => {
+  // (the bowl's bed is flat: the lowest ground along the first lobe's line)
+  const [a, b] = p.lobes[0];
+  let bed = Infinity;
+  for (let t = 0; t <= 1; t += 0.05) bed = Math.min(bed, hEN([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]));
+  const level = Math.round((bed + p.fill) * 100) / 100;
+  // the shore: out from the middle every 4 degrees, to where the ground first rises over the water (a tenth of a metre at a time),
+  // the radii then eased a little round the ring so the shore is a soft curve
+  const N = 90, rad = [];
+  for (let k = 0; k < N; k++) {
+    const an = (k / N) * Math.PI * 2, d = [Math.cos(an), Math.sin(an)];
+    let r = 0;
+    while (r < 40 && hEN([p.at[0] + d[0] * r, p.at[1] + d[1] * r]) < level) r += 0.1;
+    rad.push(r);
+  }
+  const soft = rad.map((_, k) => (rad[(k + N - 1) % N] + 2 * rad[k] + rad[(k + 1) % N]) / 4);
+  const shore = soft.map((r, k) => { const an = (k / N) * Math.PI * 2; return [p.at[0] + Math.cos(an) * r, p.at[1] + Math.sin(an) * r]; });
+  return { ...p, level, shore, rad: soft };
+});
+const inPond = (q, margin = 0) => PONDS_AT.some((p) => insidePoly(p.shore, q) || (margin > 0 && edgeDistance(p.shore, q) < margin));
+for (const p of PONDS_AT) {
+  obj("pond", p.at, { key: p.id, label: p.name, level: p.level, reach: p.reach ?? false, shore: p.shore.map((q) => xz(q).map(r2)) }, p.id);
+}
 
 // distances, for the planting rules
 const distTo = (pts, [e, n]) => {
@@ -118,9 +157,10 @@ obj("spot", at(po.building, po.face, 0, 3.55), { ry: r2(ry_facing(...po.face)) }
 deck(po.building, po.face, 0, 4.3, 3.9, 1.1, 0.45);
 deck(po.building, po.face, 0, 5.6, 1.1, 0.25, 0.3);
 deck(po.building, po.face, 0, 5.9, 1.1, 0.2, 0.15);
-obj("van", po.parking, { ry: r2(ry_facing(...po.parking_face)) }, "van");
+// (the van starts on the post office's drive, in its yard, facing back up the drive to Post Road: layout.mjs DRIVES)
+obj("van", DRIVES[0].park, { ry: r2(ry_facing(...DRIVES[0].park_face)) }, "van");
 obj("postmaster", at(po.building, po.face, 0, 7.6), { ry: r2(ry_facing(1, 0)) }, "postmaster");
-take(po.parking, 4);
+for (const d of DRIVES) take(d.yard.at, d.yard.radius + 2.5);
 // (lived in, models.mjs: the side door is in the -x end wall; the bicycle leans on the +x end, flower beds flank the steps)
 detail("bicycle", po, 4.5 + 0.55, -0.9, { dir: [0, 1], turn: Math.PI / 2, r: 1.2 });
 detail("crates", po, -4.5 - 1.55, -1.5, { dir: [-1, 0], r: 1.2 });
@@ -260,6 +300,110 @@ take(ov, 8);
 for (let i = 0; i < 6; i++) { const at = [-46 + i * 3.6, 66 + i * 1.2]; if (i !== 3) obj("stone_wall", at, { ry: r2(ry_facing(1, 0.33) + Math.PI / 2) }); take(at, 2); }
 obj("log", [-40, 70], { ry: 1.1 }); obj("stump", [-38, 61]);
 
+// ---- at the ponds: reeds in runs along the shore, rafts of lily pads, a few rocks; at Reed Pond a jetty and a bench -------------------------
+const PR = rng(23);
+let JETTY_AT = null;
+for (const p of PONDS_AT) {
+  const N = p.shore.length, c = p.at;
+  let skip = -1;
+  if (p.jetty) {
+    // the jetty runs out from the east shore (the side the road is on), from a metre up the bank, into the water; its deck stands 0.3 m
+    // over the water and you walk on it (a `deck` at that level: lib/world.lua); the bench sits on the bank behind it, facing the water
+    p.shore.forEach((q, i) => { if (skip < 0 || q[0] > p.shore[skip][0]) skip = i; });
+    const sh = p.shore[skip], dir = norm([c[0] - sh[0], c[1] - sh[1]]);
+    const start = [sh[0] - dir[0] * 1.2, sh[1] - dir[1] * 1.2], ry = ry_facing(dir[0], dir[1]), top = r2(p.level + 0.3);
+    const j = obj("jetty", start, { ry: r2(ry) }, "jetty");
+    j.y = r2(top - hEN(start));
+    const mid = [start[0] + (dir[0] * JETTY.length) / 2, start[1] + (dir[1] * JETTY.length) / 2];
+    obj("deck", mid, { ry: r2(ry), hw: JETTY.width / 2, hl: JETTY.length / 2, level: top, pier: true }, "jetty_deck");
+    take(mid, 3.5);
+    const end = [start[0] + dir[0] * (JETTY.length - 0.6), start[1] + dir[1] * (JETTY.length - 0.6)];
+    obj("spot", end, { ry: r2(ry) }, "jetty_end");
+    const b = [start[0] - dir[0] * 3.4 - dir[1] * 2.2, start[1] - dir[1] * 3.4 + dir[0] * 2.2];
+    obj("bench", b, { ry: r2(ry_facing(dir[0], dir[1])) }, "pond_bench");
+    take(b, 1.8);
+    JETTY_AT = { start, end, dir };
+  }
+  // reeds: clumps a little into the water in runs along the shore, with open water between (none at the jetty)
+  for (let k = 0; k < N; k += 1 + Math.floor(PR() * 3)) {
+    if (skip >= 0 && Math.min(Math.abs(k - skip), N - Math.abs(k - skip)) < 7) continue;
+    if (Math.sin(k * 0.45 + p.level) < -0.2) continue; // (the open stretches of shore)
+    const sh = p.shore[k], d = norm([c[0] - sh[0], c[1] - sh[1]]), w = 0.2 + PR() * 0.7;
+    obj("reeds", [sh[0] + d[0] * w, sh[1] + d[1] * w], { ry: r2(PR() * 6.28), sx: r2(0.75 + PR() * 0.55) });
+  }
+  // lily pads: rafts floating out from the reeds, half-way to the middle
+  for (let i = 0; i < 3; i++) {
+    const k = Math.floor(PR() * N);
+    if (skip >= 0 && Math.min(Math.abs(k - skip), N - Math.abs(k - skip)) < 10) continue;
+    const an = (k / N) * Math.PI * 2, r = p.rad[k] * (0.45 + PR() * 0.2), at = [c[0] + Math.cos(an) * r, c[1] + Math.sin(an) * r];
+    const o = obj("lily_pads", at, { ry: r2(PR() * 6.28) });
+    o.y = r2(p.level - hEN(at));
+  }
+  // a few rocks on the bank
+  for (let i = 0; i < 4; i++) {
+    const k = Math.floor(PR() * N);
+    if (skip >= 0 && Math.min(Math.abs(k - skip), N - Math.abs(k - skip)) < 8) continue;
+    const sh = p.shore[k], d = norm([sh[0] - c[0], sh[1] - c[1]]), at = [sh[0] + d[0] * (0.6 + PR()), sh[1] + d[1] * (0.6 + PR())];
+    if (free(at, 1.2)) { obj(PR() < 0.5 ? "rock" : "rock_small", at, { ry: r2(PR() * 6.28), sx: r2(0.5 + PR() * 0.4) }); take(at, 1.2); }
+  }
+}
+
+// ---- where the player may go: the playable area (tools/bounds.mjs) and its edge, dressed with what you can see ---------------------------
+// A band either side of every road (26 m from Post Road's middle, 23 from a lane's, 14 from a drive's), a round meadow at each house and
+// yard, the picnic spot, the overlook and the bridge, Reed Pond with a meadow down to it from Post Road, Alder Pond's near shore; never past
+// the gorge's bank (north of N 220.5, its lip: the owner drove down it from the BRIDGE OUT end), nor into the map's rim. The van and the postmaster
+// stay inside it (lib/world.lua): the van slows on rough ground over the last metres, then the edge holds both, softly.
+const B0 = BOUNDS_EN;
+const nearestOn = (pts, q) => { let b = pts[0], bd = Infinity; for (const p of pts) { const d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d < bd) (bd = d), (b = p); } return b; };
+const REED = PONDS_AT.find((p) => p.id === "reed_pond"), ALDER = PONDS_AT.find((p) => p.id === "alder_pond"), TARN = PONDS_AT.find((p) => p.id === "tarn_pond");
+const maxRad = (p) => Math.max(...p.rad);
+const bridgeMid = [(BRIDGE.a[0] + BRIDGE.b[0]) / 2, (BRIDGE.a[1] + BRIDGE.b[1]) / 2];
+const GORGE_EDGE = 220.5; // (the lip of the gorge's bank by the road's end: the ground falls away past N 220; the barrier stands at 220.6)
+const AREA = playableOutline({
+  lines: [
+    ...Object.entries(roadLines).map(([id, pts]) => ({ pts, r: id === "post_road" ? 26 : 23 })),
+    ...Object.values(driveLines).map((pts) => ({ pts, r: 14 })),
+    { pts: [REED.at, nearestOn(roadLines.post_road, REED.at)], r: 13 },
+    { pts: [ALDER.at, nearestOn(roadLines.post_road, ALDER.at)], r: 9 },
+  ],
+  discs: [
+    { at: po.building, r: 32 }, { at: hz.building, r: 30 }, { at: pp.building, r: 30 }, ...DRIVES.map((d) => ({ at: d.yard.at, r: 13 })),
+    { at: pic, r: 24 }, { at: ov, r: 16 }, { at: bridgeMid, r: 16 }, { at: REED.at, r: maxRad(REED) + 9 }, { at: ALDER.at, r: maxRad(ALDER) * 0.55 },
+  ],
+  cuts: [(e, n) => n > GORGE_EDGE, (e, n) => n < B0.n0 + 28, (e, n) => e < B0.e0 + 27 || e > B0.e1 - 27],
+}, B0, 3);
+// (the outline goes round counter-clockwise with north up: the inside is on its left, the outside on its right)
+const AN = AREA.length;
+const tangentAt = (k) => norm([AREA[(k + 1) % AN][0] - AREA[(k + AN - 1) % AN][0], AREA[(k + 1) % AN][1] - AREA[(k + AN - 1) % AN][1]]);
+const outAt = (k) => { const t = tangentAt(k); return [t[1], -t[0]]; };
+const edgeVertex = (q) => { let b = 0, bd = Infinity; AREA.forEach((p, k) => { const d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d < bd) (bd = d), (b = k); }); return b; };
+// the secret ways out, closed for now (they open in a later update: each names the land beyond it, which joins the playable area then)
+const SECRETS = [];
+{
+  // the old track up to Tarn Pond: a fallen tree lies across it where the edge comes nearest the tarn
+  const k = edgeVertex(TARN.at), t = tangentAt(k), o = outAt(k), at = [AREA[k][0] + o[0] * 1.6, AREA[k][1] + o[1] * 1.6];
+  SECRETS.push({ id: "tarn_track", kind: "fallen_tree", at, ry: ry_facing(o[0], o[1]), beyond: TARN.at, r: maxRad(TARN) + 14, from: AREA[k] });
+  // the old road south out of the valley: Post Road's far end, closed by a pair of locked gates across it, on the edge
+  const pts = roadLines.post_road;
+  let i = 0;
+  while (pts[i + 1] && pts[i + 1][1] < B0.n0 + 27.6) i++;
+  const p = pts[i], d = norm([pts[i + 1][0] - p[0], pts[i + 1][1] - p[1]]);
+  SECRETS.push({ id: "south_road", kind: "field_gate", at: p, ry: ry_facing(d[0], d[1]), beyond: [p[0], p[1] - 20], r: 16, from: p, road: d });
+}
+const nearSecret = (q, r) => SECRETS.some((s) => Math.hypot(s.at[0] - q[0], s.at[1] - q[1]) < r);
+for (const s of SECRETS) {
+  if (s.kind === "field_gate") {
+    // two leaves across the road, each 4.2 m (edge-models.mjs): the road's 9 m closed; a hedge on from each post
+    const across = [-s.road[1], s.road[0]];
+    for (const [k, side] of [["a", -1], ["b", 1]]) obj("field_gate", [s.at[0] + across[0] * side * 2.15, s.at[1] + across[1] * side * 2.15], { ry: r2(s.ry), secret: s.id }, `south_gate_${k}`);
+    for (const side of [-1, 1]) for (let q = 0; q < 3; q++) {
+      const at = [s.at[0] + across[0] * side * (5.9 + q * 2.7), s.at[1] + across[1] * side * (5.9 + q * 2.7)];
+      obj("hedge", at, { ry: r2(s.ry) }); take(at, 1);
+    }
+  } else obj(s.kind, s.at, { ry: r2(s.ry), secret: s.id }, s.id);
+  take(s.at, 3);
+}
+
 // ---- the trees ----------------------------------------------------------------------------------------------------------------------------
 // A toy diorama's planting, not a forest of thousands (the owner, 2026-11-22: "Can we cut the trees a bit? Or do it in a different
 // way?"): near the roads and the houses, deliberate clumps of three to seven chunky trees with open grass between them; one big
@@ -270,8 +414,8 @@ obj("log", [-40, 70], { ry: 1.1 }); obj("stump", [-38, 61]);
 const R = rng(11);
 const roadsAll = Object.values(roadLines);
 const B = BOUNDS_EN;
-const placeCentres = [po.building, hz.building, pp.building, pic, ov, PLACES.post_office.parking];
-const dRoadOf = (p) => Math.min(...roadsAll.map((l) => distTo(l, p)));
+const placeCentres = [po.building, hz.building, pp.building, pic, ov, ...DRIVES.map((d) => d.yard.at)];
+const dRoadOf = (p) => Math.min(...roadsAll.map((l) => distTo(l, p)), ...Object.values(driveLines).map((l) => distTo(l, p)));
 const dPlaceOf = (p) => Math.min(...placeCentres.map((c) => Math.hypot(c[0] - p[0], c[1] - p[1])));
 const inGorge = (p) => p[1] > 232 && (p[1] < 266 || p[1] > 288);
 const picnicView = (p) => p[0] > pic[0] && p[0] < pic[0] + 70 && Math.abs(p[1] - pic[1]) < 26;
@@ -312,7 +456,7 @@ const crownOf = (kind, size) => (CROWN[kind] ?? 2) * size * 1.05 + 0.3; // (with
 const hidesSign = (p, r) => SIGHT.some((l) => Math.hypot(p[0] - l[1][0], p[1] - l[1][1]) > 1 && segDist(l, p) < r);
 // one tree, where it may stand: chunky (a little larger than before), never with its crown over a road, never in a signpost's sight line
 const tree = (p, kind, grow = 1) => {
-  if (inGorge(p) || distTo(creekLine, p) < 5 || !free(p, 2.2) || dPlaceOf(p) < 13) return false;
+  if (inGorge(p) || distTo(creekLine, p) < 5 || inPond(p, 3) || !free(p, 2.2) || dPlaceOf(p) < 13) return false;
   const size = grow * (kind.startsWith("pine") ? 1.9 + R() * 1.0 : kind === "birch" ? 1.3 + R() * 0.4 : 1.0 + R() * 0.45);
   if (dRoadOf(p) < 6.5 + size * (kind.startsWith("pine") ? 1.6 : kind === "birch" ? 2.0 : 1.2)) return false;
   if (hidesSign(p, crownOf(kind, size))) return false;
@@ -332,7 +476,7 @@ const clump = (c, n, spread = 5) => {
   }
   if (placed && R() < 0.5) {
     const ang = R() * 6.28, p = [c[0] + Math.sin(ang) * (spread + 3), c[1] + Math.cos(ang) * (spread + 3)];
-    if (free(p, 1.2) && dRoadOf(p) > 5) obj(R() < 0.5 ? "bush" : "bush2", p, { sx: r2(0.9 + R() * 0.5) });
+    if (free(p, 1.2) && dRoadOf(p) > 5 && !inPond(p, 1.5)) obj(R() < 0.5 ? "bush" : "bush2", p, { sx: r2(0.9 + R() * 0.5) });
   }
 };
 // clumps along each road, on either side, with stretches of open grass between them; a second, sparser row further out
@@ -370,6 +514,16 @@ for (const at of [...SIGNS_AT.map((s) => s.at), hz.gate, pp.gate]) {
 }
 // (a mass is a capsule along its own x, as nature.mjs makes it: length L, depth D; its puffs reach 0.6 D)
 const MASS_SIZE = { forest_long: [42, 13], forest_tall: [28, 15], forest_round: [20, 16] };
+// (a mass wholly outside the playable area, its puffs `gap` metres or more past the edge, off the roads and the water)
+const massClear = (kind, p, ry, sx, gap) => {
+  const [L, D] = MASS_SIZE[kind], half = (L / 2 - D * 0.4) * sx, ax = [-Math.cos(ry), -Math.sin(ry)], reach = D * 0.6 * sx;
+  for (let k = -3; k <= 3; k++) {
+    const q = [p[0] + (ax[0] * half * k) / 3, p[1] + (ax[1] * half * k) / 3];
+    if (insidePoly(AREA, q) || edgeDistance(AREA, q) < reach + gap || dRoadOf(q) < reach + 8 || inPond(q, reach + 2) || distTo(creekLine, q) < reach + 4) return false;
+  }
+  return true;
+};
+
 const hidesBridge = (kind, p, ry, sx) => {
   const [L, D] = MASS_SIZE[kind], half = (L / 2 - D * 0.4) * sx, ax = [-Math.cos(ry), -Math.sin(ry)];
   const a = [p[0] - ax[0] * half, p[1] - ax[1] * half], b = [p[0] + ax[0] * half, p[1] + ax[1] * half];
@@ -380,16 +534,97 @@ const hidesBridge = (kind, p, ry, sx) => {
   }
   return false;
 };
+// ---- the edge of the playable area, dressed: you always see where it is, and it is never a bare wall ---------------------------------------
+// Walking round the outline, each stretch gets what suits it: along the gorge a split-rail fence on from the BRIDGE OUT barrier with rock
+// outcrops on the bank's lip below it; where the ground beyond rises or falls steeply, rock outcrops with pines among them; by Hazel's
+// and the post office a hedge, by Pip's his kind of rail fence; at the water nothing (the creek and the ponds are the edge); elsewhere, in
+// stretches of about 45 m, mostly a forest edge (trees close together with bushes under them, a forest mass behind), now and then a low
+// stone wall with a tree behind it or a run of hedge. The secret ways (a fallen tree, the locked gates) stand in the line themselves.
+const EDGE = { forest: 0, wall: 0, hedge: 0, fence: 0, rail: 0, rocks: 0, water: 0 };
+const ER = rng(91);
+{
+  const chunkKind = new Map();
+  const kindAt = (k, s) => {
+    const p = AREA[k], o = outAt(k);
+    if (inPond(p, 3) || inPond([p[0] + o[0] * 3, p[1] + o[1] * 3]) || distTo(creekLine, p) < CREEK.width / 2 + 4) return "water";
+    if (p[1] > GORGE_EDGE - 9) return "rail";
+    let steep = 0;
+    for (const d of [4, 7, 10]) steep = Math.max(steep, Math.abs(hEN([p[0] + o[0] * d, p[1] + o[1] * d]) - hEN(p)) / d);
+    if (steep > 0.32) return "rocks";
+    const dHouse = (b) => Math.hypot(p[0] - b[0], p[1] - b[1]);
+    if (dHouse(hz.building) < 45 || dHouse(po.building) < 45) return "hedge";
+    if (dHouse(pp.building) < 45) return "fence";
+    const c = Math.floor(s / 45);
+    if (!chunkKind.has(c)) { const r = ER(); chunkKind.set(c, r < 0.66 ? "forest" : r < 0.84 ? "wall" : "hedge"); }
+    return chunkKind.get(c);
+  };
+  // (one thing on the edge: not on a road, the water, a secret's place, nor on another thing)
+  // (`force`: the gorge's rail runs on through the room kept round the BRIDGE OUT barrier, right up to it)
+  const put = (kind, q, ry, sx = 1, r = 0.8, force = false) => {
+    if (nearSecret(q, 5) || inPond(q, 1) || distTo(creekLine, q) < CREEK.width / 2 + 1.5 || (!force && !free(q, r))) return false;
+    if (clearOf(kind, q, ry, sx) < (force ? 0.4 : 0.6)) return false;
+    obj(kind, q, { ry: r2(ry), ...(sx !== 1 ? { sx: r2(sx) } : {}) });
+    take(q, r);
+    return true;
+  };
+  const SPACE = { forest: 4.6, wall: 4.05, hedge: 2.75, fence: 3.05, rail: 3.05, rocks: 6.5, water: 3 };
+  let s = 0, was = null, next = 0, count = 0, massNext = 0;
+  for (let k = 0; k < AN; k++) {
+    const p = AREA[k], q = AREA[(k + 1) % AN], seg = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const kind = kindAt(k, s);
+    if (kind !== was) { next = s + 0.5; was = kind; }
+    const t = tangentAt(k), o = outAt(k), along = ry_facing(t[0], t[1]) + Math.PI / 2;
+    for (let u = 0; u < seg; u += 0.5) {
+      if (s + u < next) continue;
+      const f = u / seg, at = (off, side = 0) => [p[0] + (q[0] - p[0]) * f + o[0] * off + t[0] * side, p[1] + (q[1] - p[1]) * f + o[1] * off + t[1] * side];
+      count++;
+      if (kind === "fence" || kind === "rail") {
+        if (put("fence", at(0.9), along, 1, 0.6, kind === "rail")) EDGE[kind]++;
+        // (on the gorge's lip, outcrops below the rail every third panel)
+        if (kind === "rail" && count % 3 === 0) put("outcrop", at(4.5 + ER() * 1.5), ry_facing(o[0], o[1]) + (ER() - 0.5), 0.8 + ER() * 0.4, 2.5);
+      } else if (kind === "hedge") {
+        if (put("hedge", at(1.1), along, 1, 0.6)) EDGE.hedge++;
+      } else if (kind === "wall") {
+        if (put("stone_wall", at(1.0), along, 1, 0.6)) EDGE.wall++;
+        if (count % 3 === 0) tree(at(4.5 + ER() * 2), ER() < 0.5 ? "larch" : "pine");
+      } else if (kind === "rocks") {
+        if (put("outcrop", at(2.8), ry_facing(o[0], o[1]) + (ER() - 0.5) * 0.6, 0.75 + ER() * 0.45, 2.4)) EDGE.rocks++;
+        if (count % 2 === 0) tree(at(6 + ER() * 2, 3), ER() < 0.6 ? "pine" : "pine3");
+      } else if (kind === "forest") {
+        const species = ["pine", "pine2", "larch", "pine3", "larch_small", "birch"][Math.floor(ER() * 6)];
+        if (tree(at(2.4 + (count % 2) * 1.8), species)) EDGE.forest++;
+        const b = at(1.2, 2.3);
+        if (ER() < 0.8 && free(b, 0.9) && !nearSecret(b, 5) && clearOf("bush", b) > 0.6 && !inPond(b, 1)) { obj(ER() < 0.5 ? "bush" : "bush2", b, { sx: r2(0.9 + ER() * 0.5), ry: r2(ER() * 6.28) }); take(b, 0.9); }
+      }
+      next = s + u + SPACE[kind];
+    }
+    // a forest mass behind the edge every 70 m or so, wherever one fits wholly outside
+    if (s >= massNext && kind !== "water" && p[1] < GORGE_EDGE - 12) {
+      const mk = ["forest_long", "forest_tall", "forest_round"][Math.floor(ER() * 3)], sx = r2(0.9 + ER() * 0.4), [, D] = MASS_SIZE[mk];
+      const m = [p[0] + o[0] * (D * 0.6 * sx + 7), p[1] + o[1] * (D * 0.6 * sx + 7)], ry = r2(ry_facing(o[0], o[1]));
+      if (massClear(mk, m, ry, sx, 4) && free(m, 8) && !hidesBridge(mk, m, ry, sx)) { obj(mk, m, { ry, sx }); take(m, 10); masses++; massNext = s + 70; }
+    }
+    s += seg;
+  }
+  console.log(`playable area: ${AN} points, ${Math.round(s)} m round; its edge: ${Object.entries(EDGE).map(([k, v]) => `${v} ${k}`).join(", ")}`);
+}
+obj("playable", [0, 0], {
+  areas: [AREA.map((q) => xz(q).map(r2))], rough: 12,
+  secrets: SECRETS.map((s) => ({ id: s.id, kind: s.kind, at: xz(s.at).map(r2), closed: true, from: xz(s.from).map(r2),
+    area: Array.from({ length: 16 }, (_, i) => { const a = (i / 16) * Math.PI * 2; return xz([s.beyond[0] + Math.cos(a) * s.r, s.beyond[1] + Math.sin(a) * s.r]).map(r2); }) })),
+}, "playable");
 // the forest masses where nobody goes: away from the roads and the houses, the far bank, the map's edges
 for (let n = B.n0 + 20; n < B.n1 + 10; n += 46) for (let e = B.e0 + 10; e < B.e1; e += 48) {
   const p = [e + (R() - 0.5) * 22, n + (R() - 0.5) * 22];
   const farBank = p[1] > 268 && p[1] < 286;
   if (inGorge(p) && !farBank) continue;
   const dRoad = dRoadOf(p), dWater = distTo(creekLine, p), edge = Math.min(p[0] - B.e0, B.e1 - p[0], p[1] - B.n0);
-  if (!farBank && (dRoad < 48 || dPlaceOf(p) < 60 || dWater < 16 || picnicView(p))) continue;
+  // (since the playable area: anywhere outside it, the whole mass clear of its edge; before, 48 m from any road)
+  if (!farBank && (dRoad < 40 || dPlaceOf(p) < 50 || dWater < 16 || picnicView(p) || inPond(p, 18))) continue;
   if (!farBank && edge > 60 && R() < 0.35) continue; // (an open meadow here and there inside the valley)
   const kind = ["forest_long", "forest_tall", "forest_round"][Math.floor(R() * 3)];
   const ry = r2(R() * 6.28), sx = r2(1.0 + R() * 0.5);
+  if (!farBank && !massClear(kind, p, ry, sx, 3)) continue;
   if (hidesBridge(kind, p, ry, sx)) continue; // (the bridge's far half stays in view from the barrier)
   obj(kind, p, { ry, sx });
   take(p, 14);
@@ -407,7 +642,7 @@ for (let n = B.n0 + 20; n < B.n1 + 10; n += 46) for (let e = B.e0 + 10; e < B.e1
 }
 for (let i = 0; i < 14; i++) {
   const p = [B.e0 + 40 + R() * (B.e1 - B.e0 - 80), B.n0 + 40 + R() * 260];
-  if (Math.min(...roadsAll.map((l) => distTo(l, p))) > 12 && distTo(creekLine, p) > 6 && free(p, 3)) obj(R() < 0.5 ? "log" : "stump", p, { ry: r2(R() * 6.28) });
+  if (Math.min(...roadsAll.map((l) => distTo(l, p))) > 12 && distTo(creekLine, p) > 6 && !inPond(p, 2) && free(p, 3)) obj(R() < 0.5 ? "log" : "stump", p, { ry: r2(R() * 6.28) });
 }
 // rocks in the creek's banks
 for (let d = 20; d < lengthOf(creekLine) - 30; d += 13) {
@@ -431,14 +666,14 @@ const ring = [[0, 900, 2.6], [-420, 820, 2.2], [380, 860, 2.4], [-820, 420, 2.0]
 ring.forEach(([e, n, s], i) => obj("far_mountain", [e, n], { ry: r2(i * 1.7), sx: s }));
 
 {
-  const SCATTERED = new Set(["pine", "pine2", "pine3", "larch", "larch_small", "birch", "rock", "rock_big", "rock_small", "bush", "bush2", "log", "stump", "flowers"]);
-  const UNPLACED = new Set(["valley_ground", "roadline", "water", "lake", "limits", "groundcover", "far_mountain", "spot", "van", "postmaster", "hazel", "pip", "deck", "bridge"]);
+  const SCATTERED = new Set(["pine", "pine2", "pine3", "larch", "larch_small", "birch", "rock", "rock_big", "rock_small", "bush", "bush2", "log", "stump", "flowers", "reeds", "lily_pads", "outcrop", "hedge"]);
+  const UNPLACED = new Set(["valley_ground", "roadline", "driveway", "water", "pond", "playable", "lake", "limits", "groundcover", "far_mountain", "spot", "van", "postmaster", "hazel", "pip", "deck", "bridge"]);
   let dropped = 0;
   for (let i = objects.length - 1; i >= 0; i--) {
     const o = objects[i];
     if (UNPLACED.has(o.kind) || ON_ROAD_ALLOWED.has(o.name)) continue;
     const en = [-o.x, o.z], c = clearOf(o.kind, en, o.props?.ry ?? 0, o.props?.sx ?? 1), want = CLEAR[o.kind] ?? 0.4;
-    if (c >= want - 0.01) continue;
+    if (c >= want - 0.02) continue; // (a thing moved off to exactly its clearance, then its place rounded to the centimetre)
     if (SCATTERED.has(o.kind)) { objects.splice(i, 1); dropped++; continue; }
     throw new Error(`${o.name ?? o.kind} at ${o.x}, ${o.z} stands ${c.toFixed(2)} m from the road surface (it needs ${want} m)`);
   }
@@ -489,6 +724,8 @@ const statics = {
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
   forest_long: ", max_distance = 1500", forest_tall: ", max_distance = 1500", forest_round: ", max_distance = 1500",
+  // (the edges and the ponds: tools/edge-models.mjs)
+  hedge: ", sway = 0.01" + UP, field_gate: "", fallen_tree: "", outcrop: "", reeds: ", sway = 0.25" + UP, lily_pads: RIGID, jetty: RIGID,
   rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02" + UP, bush2: ", sway = 0.02" + UP, log: "", stump: UP,
 };
 for (const [kind, extra] of Object.entries(statics)) put(`entities/${kind}.lua`, `-- Scenery (tools/scene.mjs writes this file): drawn near the camera, never moves.\nreturn nova.entity { model = "${kind}", static = true${extra} }\n`);

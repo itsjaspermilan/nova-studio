@@ -1,0 +1,187 @@
+{
+ "size": "1280x720",
+ "start_scene": "valley",
+ "lua": "CAM = require('lib.camera')",
+ "route": [
+  {
+   "wait": 30,
+   "lua": "nova.named('van'):teleport(300, 300, 0); nova.named('postmaster').x = 300"
+  },
+  {
+   "lua": "CAM.pinned = { -0.27899982175163496, nova.terrain_height(-0.27899982175163496, -16.958775773423763) + 3.4, -16.958775773423763, 56, nova.terrain_height(56, -4) + 0, -4, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "reed_pond driving"
+  },
+  {
+   "lua": "CAM.pinned = { 37.48450169335947, nova.terrain_height(37.48450169335947, -8.263369847525734) + 1.9, -8.263369847525734, 56, nova.terrain_height(56, -4) + 0, -4, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "reed_pond walking"
+  },
+  {
+   "lua": "CAM.pinned = { 56, nova.terrain_height(56, -4.5) + 63.19198064745632, -4.5, 56, nova.terrain_height(56, -4) + 0, -4, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "reed_pond from above"
+  },
+  {
+   "lua": "CAM.pinned = { -39.62443582452443, nova.terrain_height(-39.62443582452443, 27.211648215107704) + 3.4, 27.211648215107704, -48, nova.terrain_height(-48, -22) + 0, -22, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "alder_pond driving"
+  },
+  {
+   "lua": "CAM.pinned = { -44.81214033298208, nova.terrain_height(-44.81214033298208, -3.269341956476797) + 1.9, -3.269341956476797, -48, nova.terrain_height(-48, -22) + 0, -22, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "alder_pond walking"
+  },
+  {
+   "lua": "CAM.pinned = { -48, nova.terrain_height(-48, -22.5) + 63.19198064745632, -22.5, -48, nova.terrain_height(-48, -22) + 0, -22, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "alder_pond from above"
+  },
+  {
+   "lua": "CAM.pinned = { 175.31351491690094, nova.terrain_height(175.31351491690094, 73.39699933026341) + 3.6, 73.39699933026341, 206, nova.terrain_height(206, 104) + 0.3, 104, 50 }"
+  },
+  {
+   "wait": 3,
+   "capture": "tarn_pond from the walking camera at the old track"
+  },
+  {
+   "lua": "CAM.pinned = { 206, nova.terrain_height(206, 103.5) + 63.19198064745632, 103.5, 206, nova.terrain_height(206, 104) + 0, 104, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "tarn_pond from above"
+  },
+  {
+   "lua": "CAM.pinned = { 40.77, nova.terrain_height(40.77, 2.78) + 1.6, 2.78, 56, nova.terrain_height(56, -4) + 0, -4, 60 }"
+  },
+  {
+   "wait": 3,
+   "capture": "reed_pond from the jetty's end"
+  },
+  {
+   "lua": "CAM.pinned = { 34.83, nova.terrain_height(34.83, -2.6500000000000004) + 2.2, -2.6500000000000004, 40.77, nova.terrain_height(40.77, 2.78) + 0.4, 2.78, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "reed_pond's jetty and bench"
+  },
+  {
+   "lua": "CAM.pinned = { 20.45194566505224, nova.terrain_height(20.45194566505224, -116.36178211498665) + 1.8, -116.36178211498665, 34.44, nova.terrain_height(34.44, -116.94) + 0.8, -116.94, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: forest"
+  },
+  {
+   "lua": "CAM.pinned = { -19.29109692747318, nova.terrain_height(-19.29109692747318, -237.87700333219965) + 1.8, -237.87700333219965, -33.05, nova.terrain_height(-33.05, -235.29) + 0.8, -235.29, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: rocks"
+  },
+  {
+   "lua": "CAM.pinned = { 15.343138721432627, nova.terrain_height(15.343138721432627, -142.73254846126247) + 1.8, -142.73254846126247, 29.15, nova.terrain_height(29.15, -145.05) + 0.8, -145.05, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: hedge by the post office"
+  },
+  {
+   "lua": "CAM.pinned = { -173.58308738782216, nova.terrain_height(-173.58308738782216, 103.61726212860262) + 1.8, 103.61726212860262, -184.53, nova.terrain_height(-184.53, 94.89) + 0.8, 94.89, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: fence by Pip's"
+  },
+  {
+   "lua": "CAM.pinned = { 98.84773435454963, nova.terrain_height(98.84773435454963, -0.3021724202406668) + 1.8, -0.3021724202406668, 85.97, nova.terrain_height(85.97, 5.19) + 0.8, 5.19, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: stone wall"
+  },
+  {
+   "lua": "CAM.pinned = { 20, nova.terrain_height(20, 205) + 1.8, 205, 20, nova.terrain_height(20, 230) + 0.5, 230, 60 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: the gorge's rail by the BRIDGE OUT barrier"
+  },
+  {
+   "lua": "CAM.pinned = { 14, nova.terrain_height(14, 196) + 3.4, 196, 22, nova.terrain_height(22, 228) + 0.3, 228, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: the gorge's rail, driving"
+  },
+  {
+   "lua": "CAM.pinned = { -10.14, nova.terrain_height(-10.14, -223.75) + 3.4, -223.75, -10.14, nova.terrain_height(-10.14, -239.75) + 0.8, -239.75, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "secret: the locked gates at Post Road's south end"
+  },
+  {
+   "lua": "CAM.pinned = { 173.5052107786206, nova.terrain_height(173.5052107786206, 70.42685285550877) + 1.8, 70.42685285550877, 181.17, nova.terrain_height(181.17, 79.66) + 0.8, 79.66, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "secret: the fallen tree on the old track to Tarn Pond"
+  },
+  {
+   "lua": "CAM.pinned = { -8.958880984581922, nova.terrain_height(-8.958880984581922, -159.3693301854021) + 3.2, -159.3693301854021, 25, nova.terrain_height(25, -168.2) + 0.3, -168.2, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "po_drive from the road"
+  },
+  {
+   "lua": "CAM.pinned = { 12.455, nova.terrain_height(12.455, -165.05) + 57.87616911280899, -165.05, 12.455, nova.terrain_height(12.455, -164.55) + 0, -164.55, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "po_drive from above"
+  },
+  {
+   "lua": "CAM.pinned = { 142.28955959450585, nova.terrain_height(142.28955959450585, 33.043645324216165) + 3.2, 33.043645324216165, 152.6, nova.terrain_height(152.6, 45.6) + 0.3, 45.6, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "hazel_drive from the road"
+  },
+  {
+   "lua": "CAM.pinned = { 150.3, nova.terrain_height(150.3, 42.3) + 41.212161291819335, 42.3, 150.3, nova.terrain_height(150.3, 42.8) + 0, 42.8, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "hazel_drive from above"
+  },
+  {
+   "lua": "CAM.pinned = { -167.33964644934846, nova.terrain_height(-167.33964644934846, 99.55086211541342) + 3.2, 99.55086211541342, -181.6, nova.terrain_height(-181.6, 103.5) + 0.3, 103.5, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "pip_drive from the road"
+  },
+  {
+   "lua": "CAM.pinned = { -178.8, nova.terrain_height(-178.8, 102.25) + 41.212161291819335, 102.25, -178.8, nova.terrain_height(-178.8, 102.75) + 0, 102.75, 40 }"
+  },
+  {
+   "wait": 3,
+   "capture": "pip_drive from above"
+  }
+ ],
+ "out": "build/gallery/eighth"
+}
