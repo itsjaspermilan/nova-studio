@@ -1532,7 +1532,8 @@ fn the_valley_has_clumps_of_trees_and_forest_masses_not_thousands_of_trees() {
     let trees = count("^pine") + count("^larch") + count("^birch$");
     assert!((400.0..=600.0).contains(&trees), "{trees} trees");
     let masses = count("^forest_");
-    assert!((20.0..=80.0).contains(&masses), "{masses} forest masses");
+    // (82 since the ninth notes moved the yards beside the houses, which moved the playable area's edge a little)
+    assert!((20.0..=90.0).contains(&masses), "{masses} forest masses");
     let plants = num(
         &g,
         "(function() local n = 0 for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind == 'groundcover' then for _, p in ipairs(o.props.plants) do n = n + p.count end end end return n end)()",
@@ -2288,14 +2289,15 @@ fn the_camera_holds_where_it_was_put_then_drifts_behind_slowly_while_moving() {
     );
 }
 
-/// Driving, the same rule, quicker: orbited round to the side, the view comes back behind the van as it drives on.
+/// Driving, the same rule, quicker: orbited round to the side, the view comes back behind the van as it drives on. (On Post Road: since
+/// the owner's ninth notes the van starts nose in by the post office's porch and backs out first.)
 #[test]
 fn driving_the_camera_returns_to_the_rear_view_after_orbiting() {
     let mut g = game();
     play(
         &mut g,
         r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit')", "steps": [
-        { "wait": 5, "lua": "T.board(); T.drive('hazel')" }, { "wait": 400 }, { "hold": ["look_x=1"], "frames": 45 } ] }"#,
+        { "wait": 5, "lua": "T.board(); nova.named('van'):teleport(4.5, -150, 0); T.drive('hazel')" }, { "wait": 400 }, { "hold": ["look_x=1"], "frames": 45 } ] }"#,
     );
     let off = "math.abs((require('lib.camera').state.yaw - nova.named('van').heading + math.pi) % (2 * math.pi) - math.pi)";
     let side = num(&g, off);
@@ -3286,7 +3288,7 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
         after.to_degrees()
     );
 
-    // standing on a slope: in N (no creep) with nothing pressed it rolls; on the handbrake it stays
+    // standing on a slope with nothing pressed it rolls; on the handbrake it stays
     let out = lua(
         &g,
         "(function() local v = nova.named('van'); local W = require('lib.world'); local dt = 1 / 60; local bx, bz, best = 0, 0, 0; \
@@ -3299,8 +3301,9 @@ fn the_handbrake_slows_and_holds_and_lets_the_tail_step_out_gently() {
     );
     let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
     assert!(v[0] > 0.08, "a slope to stand on: {out}");
+    // (gravel everywhere since the ninth notes rolls a little less freely than the old tarmac: 0.88 m in five seconds)
     assert!(
-        v[1] > 1.0,
+        v[1] > 0.5,
         "it rolls down the slope without the handbrake: {out}"
     );
     assert!(v[2] < 0.02, "held still on the handbrake: {out}");
@@ -4845,87 +4848,6 @@ fn valley_roads_are_one_surface_with_no_gap_and_no_overlap() {
     );
 }
 
-/// "If the road surface changes, there should be a logical transition between the two surfaces." Where a gravel lane leaves the
-/// tarmac road, tarmac (the asphalt column of the road sheet) meets gravel (its gravel column) only in a band at the end of the
-/// junction's apron, at each of the two junctions: nowhere else do the two surfaces touch. And the game hears it so: tarmac on
-/// the junction, gravel past the apron.
-#[test]
-fn valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron() {
-    use std::collections::HashMap;
-    let tris = valley_road_triangles();
-    // (the sheet's columns, 192 of 1024 texels each: asphalt first, gravel third; the paint strips from 960. A triangle's column
-    // is where the middle of its corners' u falls: a corner on the outer edge sits on the column's border)
-    let kind = |t: &[[f32; 4]; 3]| {
-        let u = (t[0][3] + t[1][3] + t[2][3]) / 3.0;
-        let c = (u * 1024.0 / 192.0).floor() as i32;
-        (c < 5).then_some(c)
-    };
-    type Key = (u32, u32);
-    let mut edges: HashMap<(Key, Key), Vec<Option<i32>>> = HashMap::new();
-    for t in &tris {
-        for e in 0..3 {
-            let p = (t[e][0].to_bits(), t[e][2].to_bits());
-            let q = (t[(e + 1) % 3][0].to_bits(), t[(e + 1) % 3][2].to_bits());
-            edges
-                .entry(if p < q { (p, q) } else { (q, p) })
-                .or_default()
-                .push(kind(t));
-        }
-    }
-    let mut g = game();
-    play(
-        &mut g,
-        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
-    );
-    // (Fern Lane, Kettle Creek Road and, since the eighth play, the post office's drive)
-    assert_eq!(lua(&g, "#require('lib.road_junctions')"), "3");
-    let junctions: Vec<(f32, f32, f32, String)> = (1..=3)
-        .map(|i| {
-            let j = format!("require('lib.road_junctions')[{i}]");
-            (
-                num(&g, &format!("{j}.at[1]")) as f32,
-                num(&g, &format!("{j}.at[2]")) as f32,
-                num(&g, &format!("{j}.paved")) as f32,
-                lua(&g, &format!("{j}.road")),
-            )
-        })
-        .collect();
-    let mut meets = vec![0; junctions.len()];
-    for ((p, _), kinds) in &edges {
-        if kinds.len() == 2 && kinds[0].is_some() && kinds[1].is_some() && kinds[0] != kinds[1] {
-            let (x, z) = (f32::from_bits(p.0), f32::from_bits(p.1));
-            let at = junctions
-                .iter()
-                .position(|(jx, jz, paved, _)| {
-                    let d = ((x - jx).powi(2) + (z - jz).powi(2)).sqrt();
-                    d < paved + 3.0 && d > paved - 4.0
-                })
-                .unwrap_or_else(|| {
-                    panic!("tarmac meets gravel at {x:.1}, {z:.1}, away from any junction's apron")
-                });
-            meets[at] += 1;
-        }
-    }
-    for (k, (_, _, paved, road)) in junctions.iter().enumerate() {
-        assert!(
-            meets[k] > 10,
-            "{road}: the tarmac apron ({paved:.1} m) ends in a ragged band ({} edges)",
-            meets[k]
-        );
-    }
-    for (x, z, paved, road) in &junctions {
-        assert_eq!(
-            lua(&g, &format!("require('lib.world').surface({x}, {z})")),
-            "road",
-            "the junction with {road}"
-        );
-        let far = format!(
-            "(function() local W = require('lib.world'); for _, list in ipairs({{ W.roads, W.drives }}) do for _, r in ipairs(list) do if r.id == '{road}' then for _, p in ipairs(r.points) do if (p[1] - {x}) ^ 2 + (p[2] - {z}) ^ 2 > ({paved} + 2) ^ 2 then return W.surface(p[1], p[2]) end end end end end end)()"
-        );
-        assert_eq!(lua(&g, &far), "gravel", "{road} past its apron");
-    }
-}
-
 /// The ground under each junction is one level where the roads meet (within 4.5 m of the node it varies by less than 15 cm), and
 /// the van drives from Post Road through the Fern Lane junction to Hazel's and on through Kettle Creek Road's to Pip's with its body
 /// shaken no more within 25 m of a junction than anywhere else on the roads (its vertical acceleration).
@@ -5134,10 +5056,12 @@ fn valley_roads_nothing_placed_stands_on_a_road() {
 #[test]
 fn the_vans_panel_floats_above_the_open_doors_and_follows_the_camera() {
     let mut g = game();
+    // (the van in the open meadow north of the post office, near where it started until the owner's ninth notes put its yard beside
+    // the porch: in the yard the postmaster comes to the doors from straight behind, and an orbit about them barely moves them on the screen)
     play(
         &mut g,
         r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
-        "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        "steps": [ { "wait": 5, "lua": "nova.named('van'):teleport(14, -168, -1.23); T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
         { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
     );
     let probe = "local w, h = nova.view('exact'); local b = require('lib.ui').van_panel_box; local ax, ay = nova.scene_now():panel_anchor(w, h);";
@@ -8557,7 +8481,8 @@ fn the_valley_grows_grass_off_the_roads_water_and_porches_and_trees_keep_far_sha
         );
         *kinds.entry(p[2].to_string()).or_insert(0) += 1;
     }
-    for k in ["road", "gravel", "water", "porch", "house"] {
+    // (every road is gravel since the owner's ninth notes: there is no tarmac, "road", to check)
+    for k in ["gravel", "water", "porch", "house"] {
         assert!(
             kinds.get(k).copied().unwrap_or(0) > 0,
             "the {k} was checked: {kinds:?}"
@@ -12241,4 +12166,352 @@ fn the_van_panel_offers_take_or_store_with_an_a_chip_and_a_does_both() {
     assert_eq!(r.drawn_count("ui_text", Some("The van is empty")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
     assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+}
+
+// ---- the owner's ninth notes: every road gravel, dust, the driveways by the homes (notes 4 and 7) ---------------------------------------
+
+/// "All roads should just be gravel honestly ... The double lines that appear in the gravel shouldn't be there." The valley's road
+/// model is one gravel surface: every triangle reads the road sheet's gravel column (none the asphalt column, none a paint strip: no
+/// centre or edge lines anywhere, no tarmac apron), and the gravel column is drawn without wheel ruts (the two dark strips the owner
+/// saw: the sheet's darkest band across the carriageway is no darker than its mean). The game hears it so: every road line says
+/// gravel, every junction is gravel with no apron, the surface under every point of every road and drive is gravel (or the bridge's
+/// deck), and the van on Post Road plays its gravel sound.
+#[test]
+fn valley_roads_are_all_gravel_with_no_tarmac_paint_or_apron() {
+    let tris = valley_road_triangles();
+    let (mut gravel, mut other) = (0, vec![]);
+    for t in &tris {
+        let u = (t[0][3] + t[1][3] + t[2][3]) / 3.0;
+        if (u * 1024.0 / 192.0).floor() as i32 == 2 && u < 960.0 / 1024.0 {
+            gravel += 1;
+        } else if other.len() < 5 {
+            other.push(format!("u {u:.3} at {:.1}, {:.1}", t[0][0], t[0][2]));
+        }
+    }
+    assert!(
+        other.is_empty(),
+        "{} gravel triangles, and some not: {other:?}",
+        gravel
+    );
+    // the sheet's gravel column: no dark strips along it (the old ruts were 20 % darker than the crown, a metre and a half out)
+    let sheet = nova_runtime::assets::decode_png(
+        &std::fs::read(game_dir().join("textures/road.png")).unwrap(),
+    )
+    .expect("textures/road.png");
+    let (w, h) = (sheet.width, sheet.height);
+    assert_eq!((w, h), (1024, 1024));
+    // (across the carriageway only, to 3.6 m of the column's 12: the luminance of each texel column averaged along the whole sheet)
+    let cols: Vec<f64> = (2 * 192 + 96 - 57..2 * 192 + 96 + 57)
+        .map(|x| {
+            (0..h)
+                .map(|y| {
+                    let p = &sheet.rgba[((y * w + x) * 4) as usize..];
+                    0.3 * p[0] as f64 + 0.59 * p[1] as f64 + 0.11 * p[2] as f64
+                })
+                .sum::<f64>()
+                / h as f64
+        })
+        .collect();
+    let mean = cols.iter().sum::<f64>() / cols.len() as f64;
+    let darkest = cols.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(
+        darkest > mean * 0.96,
+        "no rut along the gravel: its darkest band {darkest:.1} against a mean of {mean:.1}"
+    );
+
+    let objects = eighth_objects();
+    for o in objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline" || o["kind"] == "driveway")
+    {
+        assert_eq!(o["props"]["surface"], "gravel", "{}", o["props"]["key"]);
+    }
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let n = num(&g, "#require('lib.road_junctions')") as usize;
+    assert_eq!(n, 3);
+    for i in 1..=n {
+        let j = format!("require('lib.road_junctions')[{i}]");
+        assert_eq!(lua(&g, &format!("{j}.surface")), "gravel");
+        assert_eq!(
+            lua(&g, &format!("#{j}.apron")),
+            "0",
+            "junction {i}: no apron"
+        );
+        let at = (
+            num(&g, &format!("{j}.at[1]")),
+            num(&g, &format!("{j}.at[2]")),
+        );
+        assert_eq!(
+            lua(
+                &g,
+                &format!("require('lib.world').surface({}, {})", at.0, at.1)
+            ),
+            "gravel"
+        );
+    }
+    let kinds = lua(
+        &g,
+        "(function() local W = require('lib.world'); local seen = {} \
+           for _, list in ipairs({ W.roads, W.drives }) do for _, r in ipairs(list) do for _, p in ipairs(r.points) do \
+             local s = W.surface(p[1], p[2]); seen[s] = (seen[s] or 0) + 1 end end end \
+           local o = {} for k, v in pairs(seen) do o[#o + 1] = k .. '=' .. v end table.sort(o) return table.concat(o, ' ') end)()",
+    );
+    let words: Vec<&str> = kinds
+        .split(' ')
+        .map(|k| k.split('=').next().unwrap())
+        .collect();
+    assert!(
+        words.iter().all(|w| *w == "gravel" || *w == "bridge") && words.contains(&"gravel"),
+        "every road and drive is gravel (or the bridge's deck): {kinds}"
+    );
+    // the van on Post Road: its surface and the sound's
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local v = nova.named('van'); v:teleport(4.5, -150, 0); v.driven = true; v.engine_on = true; v.gear = 'D'; v.ctl.go = 1" }, { "wait": 30 } ] }"#,
+    );
+    assert_eq!(lua(&g, "nova.named('van').surface"), "gravel");
+    assert!(
+        num(&g, "math.abs(nova.named('van').speed)") > 0.5,
+        "it rolled"
+    );
+}
+
+/// "We should add some dust that comes up but not too much." The van raises soft sandy dust behind its rear wheels on gravel only,
+/// more the faster it goes: none when slow, a light trail at a cruise, more braking hard and more again sliding on the handbrake; at
+/// most sixteen puffs alive; none on the grass or the bridge's deck; each drifts off with the wind and is gone within two seconds.
+#[test]
+fn the_vans_dust_rises_only_on_gravel_at_speed_and_is_capped() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    // (the dust alone: the van held at a speed, its pedals as given, for `n` frames at x, z facing `h`; then how many puffs are
+    // alive, the most at once, and how far the first one has drifted)
+    lua(
+        &g,
+        "(function() local v = nova.named('van'); v.driven = true; v.engine_on = true \
+           RUN = function(x, z, h, speed, brake, hb, n) v:teleport(x, z, h); v.dusts = {}; v.dust_t = 0; v.ctl.brake = brake; v.handbrake = hb; \
+             local most, first, fx, fz = 0, nil, 0, 0 \
+             for i = 1, n do v.x, v.z, v.heading = x, z, h; v.speed = speed; v.velx, v.velz = math.sin(h) * speed, math.cos(h) * speed; \
+               v:dust(1 / 60); most = math.max(most, v:dust_count()); if not first and v.dusts[1] then first = v.dusts[1]; fx, fz = first.x, first.z end end \
+             local drift = first and math.sqrt((first.x - fx) ^ 2 + (first.z - fz) ^ 2) or 0 \
+             return string.format('%d %d %.3f', v:dust_count(), most, drift) end \
+           STILL = function(n) v.speed, v.velx, v.velz = 0, 0, 0; v.ctl.brake = 0; v.handbrake = false; for i = 1, n do v:dust(1 / 60) end; return v:dust_count() end end)()",
+    );
+    let run =
+        |g: &Game, x: f64, z: f64, h: f64, speed: f64, brake: f64, hb: bool| -> (f64, f64, f64) {
+            let out = lua(
+                g,
+                &format!("RUN({x}, {z}, {h}, {speed}, {brake}, {hb}, 180)"),
+            );
+            let v: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+            (v[0], v[1], v[2])
+        };
+    // on Post Road (gravel): none at a walking pace or a crawl
+    for slow in [0.0, 1.0, 2.5] {
+        assert_eq!(
+            run(&g, 4.5, -150.0, 0.0, slow, 0.0, false).1,
+            0.0,
+            "no dust at {slow} m/s"
+        );
+    }
+    // a light trail at a cruise (about 30 km/h), more braking hard, more again on the handbrake, never over sixteen
+    let (cruise, cruise_most, drift) = run(&g, 4.5, -150.0, 0.0, 8.3, 0.0, false);
+    assert!(
+        (3.0..=12.0).contains(&cruise),
+        "a light trail at a cruise: {cruise} puffs"
+    );
+    assert!(drift > 0.5, "a puff drifts off: {drift:.2} m");
+    let (braking, _, _) = run(&g, 4.5, -150.0, 0.0, 8.3, 1.0, false);
+    assert!(
+        braking > cruise,
+        "more braking hard: {braking} against {cruise}"
+    );
+    let (slide, slide_most, _) = run(&g, 4.5, -150.0, 0.0, 11.0, 1.0, true);
+    assert!(slide >= braking, "more sliding on the handbrake: {slide}");
+    assert!(
+        cruise_most <= 16.0 && slide_most <= 16.0,
+        "capped: {slide_most}"
+    );
+    // on the grass, and on the bridge's deck: none
+    assert_eq!(
+        run(&g, 40.0, -150.0, 0.0, 9.0, 0.0, false).1,
+        0.0,
+        "no dust on the grass"
+    );
+    let (bx, bz, bh) = (
+        num(
+            &g,
+            "(function() local b = require('lib.world').bridge return b.ax + b.dx * b.len * 0.5 end)()",
+        ),
+        num(
+            &g,
+            "(function() local b = require('lib.world').bridge return b.az + b.dz * b.len * 0.5 end)()",
+        ),
+        num(
+            &g,
+            "(function() local b = require('lib.world').bridge return math.atan(b.dx, b.dz) end)()",
+        ),
+    );
+    assert_eq!(
+        run(&g, bx, bz, bh, 9.0, 0.0, false).1,
+        0.0,
+        "no dust on the bridge's deck"
+    );
+    // stopped, what is in the air is gone within two seconds
+    run(&g, 4.5, -150.0, 0.0, 9.0, 0.0, false);
+    assert!(num(&g, "nova.named('van'):dust_count()") > 0.0);
+    assert_eq!(lua(&g, "STILL(120)"), "0", "gone in two seconds");
+    // and it is drawn: puffs of the frame reach the renderer as soft ribbons of one point (nova.puff)
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local v = nova.named('van'); v:teleport(4.5, -150, 0); v.dusts = {}; v.ctl.brake = 0; v.handbrake = false; v.speed = 9; v.velx, v.velz = 0, 9; for i = 1, 60 do v.x, v.z, v.heading, v.speed = 4.5, -150, 0, 9; v:dust(1 / 60) end; v.speed, v.velx, v.velz = 0, 0, 0; v.x, v.z = 4.5, -150" }, { "wait": 1 } ] }"#,
+    );
+    let input = g.frame_input(720);
+    let puffs = input
+        .lighting
+        .ribbons
+        .iter()
+        .filter(|r| r.points.len() == 1)
+        .count();
+    assert!(puffs > 0, "the dust is drawn as puffs");
+}
+
+/// "The driveways should be closer to the homes. Especially for the post office." Each drive ends in its yard right by its building:
+/// the yard's gravel within six metres of the door (the post office's beside the north end of its porch, Hazel's and Pip's in front of
+/// their porches); the van starts in the post office's yard, its back to the drive (open ground behind it to load from), a few metres
+/// from the porch; nothing stands in a yard; and the way from each door to its yard is clear (no prop within half a metre of the line
+/// from the foot of the steps to the yard).
+#[test]
+fn each_driveway_ends_by_its_buildings_door_and_the_van_starts_beside_the_post_office() {
+    let objects = eighth_objects();
+    let spot = |name: &str| {
+        let o = objects
+            .iter()
+            .find(|o| o["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"));
+        (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap())
+    };
+    let mut yards = vec![];
+    for (drive, door) in [
+        ("po_drive", "office_door"),
+        ("hazel_drive", "door_hazel"),
+        ("pip_drive", "door_pip"),
+    ] {
+        let d = objects
+            .iter()
+            .find(|o| o["kind"] == "driveway" && o["name"] == drive)
+            .unwrap();
+        let yard = eighth_points(&Value::Array(vec![d["props"]["yard"]["at"].clone()]))[0];
+        let r = d["props"]["yard"]["radius"].as_f64().unwrap();
+        let at = spot(door);
+        let gap = (yard.0 - at.0).hypot(yard.1 - at.1) - r;
+        assert!(
+            gap < 6.0,
+            "{drive}: its yard's gravel is {gap:.1} m from the door"
+        );
+        // the way from the door to the yard: nothing solid on it (props by their place; the porch and its steps are decks)
+        for o in &objects {
+            let kind = o["kind"].as_str().unwrap();
+            if [
+                "deck",
+                "spot",
+                "driveway",
+                "roadline",
+                "van",
+                "postmaster",
+                "hazel",
+                "pip",
+                "groundcover",
+                "valley_ground",
+                "water",
+                "pond",
+                "limits",
+                "playable",
+                "lake",
+                "post_office",
+                "cabin_hazel",
+                "cabin_pip",
+                "flowers",
+            ]
+            .contains(&kind)
+            {
+                continue;
+            }
+            let p = (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap());
+            // (from 2.6 m out of the door, past the porch's steps, to the yard's edge)
+            let (dx, dz) = (yard.0 - at.0, yard.1 - at.1);
+            let l = dx.hypot(dz);
+            let (ux, uz) = (dx / l, dz / l);
+            let t = ((p.0 - at.0) * ux + (p.1 - at.1) * uz).clamp(2.6, l - r);
+            let near = (p.0 - at.0 - ux * t).hypot(p.1 - at.1 - uz * t);
+            assert!(
+                near > 0.5,
+                "{drive}: a {kind} at {p:?} is on the way from the door to the yard"
+            );
+            assert!(
+                (p.0 - yard.0).hypot(p.1 - yard.1) > r + 0.3,
+                "{drive}: a {kind} at {p:?} stands in the yard"
+            );
+        }
+        yards.push((drive, yard, r));
+    }
+    // the van starts in the post office's yard, its back to the drive and the road, a few metres from the porch
+    let van = objects.iter().find(|o| o["kind"] == "van").unwrap();
+    let (vx, vz) = (van["x"].as_f64().unwrap(), van["z"].as_f64().unwrap());
+    let (_, po_yard, po_r) = yards[0];
+    assert!(
+        (vx - po_yard.0).hypot(vz - po_yard.1) < po_r,
+        "the van starts in the yard"
+    );
+    let door = spot("office_door");
+    let to_door = (vx - door.0).hypot(vz - door.1);
+    assert!(
+        to_door < 9.0,
+        "the van starts {to_door:.1} m from the office's door"
+    );
+    // (its back faces the road: the van's forward, (sin ry, cos ry), points away from Post Road, which is east, -x... the road is at
+    // smaller x than the van)
+    let ry = van["props"]["ry"].as_f64().unwrap();
+    let (fx, _) = (ry.sin(), ry.cos());
+    let road = eighth_points(
+        &objects
+            .iter()
+            .find(|o| o["kind"] == "roadline" && o["props"]["key"] == "post_road")
+            .unwrap()["props"]["points"],
+    );
+    let near_road = road
+        .iter()
+        .min_by(|a, b| (a.1 - vz).abs().partial_cmp(&(b.1 - vz).abs()).unwrap())
+        .unwrap();
+    assert!(
+        fx * (near_road.0 - vx) < 0.0,
+        "the van faces the house, its back to Post Road"
+    );
+    // (the old yards were 19 m from the post office's door, 6 m from Hazel's and 9 m from Pip's)
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    assert_eq!(
+        lua(
+            &g,
+            "require('lib.world').surface(nova.named('van').x, nova.named('van').z)"
+        ),
+        "gravel"
+    );
+    // the playable area holds every yard with room round it (8 m from its edge at least)
+    assert_eq!(
+        lua(
+            &g,
+            "(function() local W = require('lib.world') local n = 0 for _, y in ipairs(W.yards) do if W.play_edge(y.x, y.z) > 8 then n = n + 1 end end return n end)()"
+        ),
+        "3"
+    );
 }

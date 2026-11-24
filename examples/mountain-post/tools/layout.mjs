@@ -23,7 +23,7 @@ export const BOUNDS_EN = { e0: -250, e1: 250, n0: -265, n1: 300 };
 // The roads, each from its start; elevations in metres along it (the terrain recipe holds the grade under 12 %).
 export const ROADS = [
   {
-    id: "post_road", name: "Post Road", surface: "road_asphalt", width: 6.4,
+    id: "post_road", name: "Post Road", surface: "road_gravel", width: 6.4,
     control: [[8, -240], [4, -205], [0, -160], [-6, -110], [-9, -66], [-2, -18], [10, 24], [12, 62], [2, 108], [-14, 152], [-20, 190], [-20, 226]],
     profile: [[0, 4], [80, 4.5], [180, 9], [260, 8], [330, 9.5], [420, 15], [480, 15.5]],
   },
@@ -76,8 +76,8 @@ export const PADS = [
 // The houses: where the building stands and which way its door faces (toward its road), the gate and mailbox, the door's step.
 export const PLACES = {
   post_office: { building: [-21, -186], face: [1, 0], door: [-15.4, -186] }, // (the van parks in its drive's yard: DRIVES)
-  hazel: { name: "Hazel Brock", number: 3, street: "Fern Lane", building: [-162, 54], face: [0.75, -0.66], door: [-158, 49.5], gate: [-147, 41], mailbox: [-144, 38], resident: [-155, 45], sawhorse: [-152, 52] },
-  pip: { name: "Pip Tansy", number: 7, street: "Kettle Creek Road", building: [192, 114], face: [-0.62, -0.78], door: [188.5, 109.5], gate: [177, 101], mailbox: [174, 98], resident: [186, 106], mast: [199, 104] },
+  hazel: { name: "Hazel Brock", number: 3, street: "Fern Lane", building: [-162, 54], face: [0.75, -0.66], door: [-158, 49.5], gate: [-147, 41], mailbox: [-144, 38], resident: [-151.5, 49.4], sawhorse: [-152, 52] },
+  pip: { name: "Pip Tansy", number: 7, street: "Kettle Creek Road", building: [192, 114], face: [-0.62, -0.78], door: [188.5, 109.5], gate: [177, 101], mailbox: [174, 98], resident: [190.6, 104.6], mast: [199, 104] },
 };
 
 
@@ -95,16 +95,21 @@ export const SIGNS = [
 
 // ---- the driveways (the owner's eighth play, note 9: "There should be a driveway at the homes and buildings. Right now we're just
 // driving on grass") -------------------------------------------------------------------------------------------------------------------
-// Short gravel drives, part of the one road network (tools/roads.mjs: the junction builder joins each, with fillets and, off Post Road,
-// the tarmac apron and its ragged edge into the gravel), each ending in a round gravel yard where a van turns and parks (`yard`: its middle
-// and radius, the carriageway's; the verge runs a little past it). The post office's drive leaves Post Road at a shallow angle south-west
-// to the yard between the porch and the road, where the van starts (`park`, facing back up the drive); Hazel's and Pip's carry on from the
-// end of their lane through the gate into the yard in front of the house (a lane's last stretch and its drive are one road, narrowing).
+// Short gravel drives, part of the one road network (tools/roads.mjs: the junction builder joins each, with fillets), each ending in a
+// round gravel yard where a van turns and parks (`yard`: its middle and radius, the carriageway's; the verge runs a little past it).
+// Since the owner's ninth notes (7: "The driveways should be closer to the homes. Especially for the post office") each yard is right
+// by its building. The post office's drive runs straight in from Post Road (14 m) to a yard beside the north end of the porch, its
+// gravel 3.4 m from the foot of the porch steps and 5.8 m from the door, where the van starts (`park`: nose in, its back doors to the
+// drive, so the postmaster loads it in the open and backs out to the road; the way from the steps down to the road stays open south of
+// it). That yard is as close as the builder allows: the drive's own corners are 3.6 m (`kerb`) so they do not meet the yard's verge,
+// and the yard's verge keeps 0.4 m off the building's footprint (the porch's corner). Hazel's and Pip's carry on from the end of their
+// lane through the gate to a yard about 2 m from the front of the porch (a lane's last stretch and its drive are one road, narrowing),
+// Hazel and Pip standing beside it.
 // `from` snaps a drive's first point onto that road's middle line (a T junction); `after` names the lane whose end it starts at.
 export const DRIVES = [
-  { id: "po_drive", name: "the post office's drive", from: "post_road", control: [[0.5, -161], [-8, -162.4], [-16, -164.6], [-22.8, -167.4]], width: 3.6, yard: { at: [-25, -168.2], radius: 3.6 }, park: [-25, -168.2], park_face: [0.94, 0.33] },
-  { id: "hazel_drive", name: "Hazel's drive", after: "fern_lane", control: [[-148, 40], [-150.3, 42.8], [-152.4, 45.4]], width: 3.4, yard: { at: [-152.6, 45.6], radius: 3.3 } },
-  { id: "pip_drive", name: "Pip's drive", after: "kettle_creek_road", control: [[176, 102], [178.8, 102.8], [181.4, 103.5]], width: 3.4, yard: { at: [181.6, 103.5], radius: 3.3 } },
+  { id: "po_drive", name: "the post office's drive", from: "post_road", control: [[1.8, -179], [-3.4, -179], [-11.9, -179]], width: 3.6, kerb: 3.6, yard: { at: [-12.2, -179], radius: 3 }, park: [-12.4, -179], park_face: [-1, 0] },
+  { id: "hazel_drive", name: "Hazel's drive", after: "fern_lane", control: [[-148, 40], [-151.3, 43.5], [-154.4, 46.7]], width: 3.4, yard: { at: [-154.6, 46.9], radius: 3.5 } },
+  { id: "pip_drive", name: "Pip's drive", after: "kettle_creek_road", control: [[176, 102], [181.2, 104.4], [186.1, 106.7]], width: 3.4, yard: { at: [186.3, 106.8], radius: 3.5 } },
 ];
 
 // ---- the ponds (the owner's eighth play, note 5: "We should add some lakes throughout the map because the hills look barren") -----------

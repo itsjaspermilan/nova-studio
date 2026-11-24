@@ -149,7 +149,14 @@ junction's surface 3 m into the lane (its apron, without a centre line; markings
 along a ragged broken edge with dust over the last metre and a half; "apron" makes that edge straight; "hard" cuts at the mouth.
 A sharp Y's gore ends in a rounded nose of at least 0.6 m (`MIN_NOSE`). The junction patch's picture is the through road's strip
 carried on across its cut-back edge, blending into the joining road's own toward its mouth (each clamped to its carriageway, so no
-repair patch or crack repeats and there is no seam against either road). `surfaceIndex(mesh)` says where the surface is
+repair patch or crack repeats and there is no seam against either road). Three opt-ins (added 2026-11-23 for Fernhollow Post's
+all-gravel valley, the owner's ninth notes): `colours` ({ road_gravel: { road, line, verge } }, linear 0 to 1) replaces a kind's vertex
+colours (the carriageway, the band at its edge, the verge); `even: true` gives a loose road an even picture, the junction patch carrying
+the through road's picture on past its edge mirrored instead of blending two roads' pictures (a blend draws gravel's stones out into
+streaks; the two meet along the mouth, where even stones hide the join), a road narrower than 12 m running its picture along it as much
+faster as it is squeezed across (so stones stay round on a 4 m lane), the strips round a yard and a corner running theirs by their own
+length, and a yard's patch laid along the road into it, folded only past its carriageway; and a road's own `kerb` (metres) is its corners'
+radius where it joins another road, before the surface's (a short drive between a main road and its yard). `surfaceIndex(mesh)` says where the surface is
 (`clearance(x, z)` from its outline, negative on it, and `away(x, z)`), and each junction record carries its `area` and its apron's
 outline (`apron`), so a game can keep its props off the road and know the surface under a wheel exactly (Fernhollow's
 `tools/roads.mjs` and `tools/footprint.mjs`: every placed thing's ground footprint, from its model, 0.4 m clear, a signpost a metre
@@ -1404,6 +1411,13 @@ and `nova.burst(x, y, z, spec)`. Then `y` is up, `dir = { x, y, z }` is the dire
 cone's full width in radians (default a quarter turn); `speed` and `size` are in metres, `gravity` pulls along `y` (use a
 negative number to fall), `area = { w, h, d }` spawns across a box and `color` tints the model (its alpha fades it).
 `image`, `angle` and `screen` are for flat games. `spin` turns the model about the vertical.
+
+**Soft puffs.** `nova.puff(x, y, z, radius [, { r, g, b, a }])` (from `draw`, each frame; added 2026-11-23 for Fernhollow Post's dust)
+draws a soft round blob facing the camera, its alpha falling smoothly to nothing at its rim, drawn blended with the wind curls in their
+own pass (`gfx/ribbon.rs`: a ribbon of one point), so nothing of it is cut: a billboard drops pixels under 0.3 of alpha, which cuts a
+faint puff hard. `y` is its height above the ground (the hills lift it), the colour is sRGB with `a` its strength; it is lit a little by
+the day and fogged, casts no shadow, and up to 512 are drawn a frame. Fernhollow's van raises its dust with it (`entities/van.lua`
+`Van:dust`).
 
 **Soft sprites.** `sprite = "fx/puff"` (instead of `model`) draws each particle as a picture that always faces the camera: a PNG in
 `sprites/fx/` (only that folder; a sheet is a `.sprite.json` beside the PNG, as for any sprite). It is drawn blended after the solid things,

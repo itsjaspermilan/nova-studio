@@ -157,7 +157,7 @@ obj("spot", at(po.building, po.face, 0, 3.55), { ry: r2(ry_facing(...po.face)) }
 deck(po.building, po.face, 0, 4.3, 3.9, 1.1, 0.45);
 deck(po.building, po.face, 0, 5.6, 1.1, 0.25, 0.3);
 deck(po.building, po.face, 0, 5.9, 1.1, 0.2, 0.15);
-// (the van starts on the post office's drive, in its yard, facing back up the drive to Post Road: layout.mjs DRIVES)
+// (the van starts in the post office's yard beside the porch, nose in, its back doors to the drive: layout.mjs DRIVES)
 obj("van", DRIVES[0].park, { ry: r2(ry_facing(...DRIVES[0].park_face)) }, "van");
 obj("postmaster", at(po.building, po.face, 0, 7.6), { ry: r2(ry_facing(1, 0)) }, "postmaster");
 for (const d of DRIVES) take(d.yard.at, d.yard.radius + 2.5);
@@ -165,11 +165,11 @@ for (const d of DRIVES) take(d.yard.at, d.yard.radius + 2.5);
 detail("bicycle", po, 4.5 + 0.55, -0.9, { dir: [0, 1], turn: Math.PI / 2, r: 1.2 });
 detail("crates", po, -4.5 - 1.55, -1.5, { dir: [-1, 0], r: 1.2 });
 detail("flower_bed", po, -3.5, 6.35, { r: 2 });
-detail("flower_bed", po, 4.4, 6.35, { r: 2 });
+detail("flower_bed", po, 4.5 + 0.6, 2.4, { dir: [1, 0], r: 2 }); // (along the north end wall: the yard is in front of that end of the porch now)
 detail("watering_can", po, -1.7, 6.35, { turn: 0.6, r: 0.4 });
 obj("bench", [-8.5, -197], { ry: r2(ry_facing(1, 0.3)) });
 obj("woodpile", [-27, -177], { ry: r2(ry_facing(0, -1)) });
-obj("flowers", [-11.5, -191]); obj("flowers", [-11.8, -181]); obj("bush", [-14, -195.5]); obj("bush2", [-28, -195]);
+obj("flowers", [-11.5, -191]); obj("flowers", [-13.6, -173.6]); obj("bush", [-14, -195.5]); obj("bush2", [-28, -195]);
 for (let i = 0; i < 4; i++) obj("fence", [-30 + i * 3.05, -199], { ry: r2(ry_facing(0, 1) + Math.PI / 2) });
 
 // ---- No. 3, Hazel's ---------------------------------------------------------------------------------------------------------------------
@@ -199,7 +199,7 @@ detail("chopping_block", hz, -6.2, 5.2, { r: 1.2 });
 detail("woodpile", hz, -8.2, -0.7, { r: 1.4 });
 detail("ladder", hz, -3.75 - 0.75, -0.2, { dir: [-1, 0], r: 0.9 });
 detail("rain_barrel", hz, -3.75 - 0.8, 2.3, { r: 0.7 });
-obj("flowers", [hz.building[0] + 4, hz.building[1] - 4.5]);
+obj("flowers", [hz.building[0] + 1.5, hz.building[1] - 7.5]); // (beside the yard, not on it)
 obj("bush", [hz.building[0] - 5, hz.building[1] - 3]);
 // the low stone wall on the left of Fern Lane, going up, along its last stretch: right at the edge, where everyone clips it
 {
@@ -237,7 +237,7 @@ detail("watering_can", pp, 8.4, 4.4, { turn: 1.1, r: 0.4 });
   const line = detail("washing_line", pp, -4.3, -5.4, { r: 2.6, dir: [0, 1], turn: Math.PI / 2 + 0.25 });
   detail("cloths", pp, -4.3, -5.4, { r: 0.1, dir: [0, 1], turn: Math.PI / 2 + 0.25, y: 1.3 });
 }
-obj("flowers", [pp.building[0] - 4, pp.building[1] - 3.6]); obj("flowers", [pp.building[0] + 3.5, pp.building[1] - 4.2]);
+obj("flowers", [pp.building[0] - 6.5, pp.building[1] - 1.5]); obj("flowers", [pp.building[0] + 3.5, pp.building[1] - 4.2]);
 obj("bush2", [pp.building[0] + 5, pp.building[1] + 1]);
 obj("woodpile", [pp.building[0] - 4.5, pp.building[1] + 2.5], { ry: r2(ry_facing(...pp.face)) });
 
@@ -368,6 +368,8 @@ const AREA = playableOutline({
   ],
   discs: [
     { at: po.building, r: 32 }, { at: hz.building, r: 30 }, { at: pp.building, r: 30 }, ...DRIVES.map((d) => ({ at: d.yard.at, r: 13 })),
+    // (the meadow north of the post office, where its yard and drive were until the owner's ninth notes moved them beside the porch: open as before)
+    { at: [-24, -162], r: 18 },
     { at: pic, r: 24 }, { at: ov, r: 16 }, { at: bridgeMid, r: 16 }, { at: REED.at, r: maxRad(REED) + 9 }, { at: ALDER.at, r: maxRad(ALDER) * 0.55 },
   ],
   cuts: [(e, n) => n > GORGE_EDGE, (e, n) => n < B0.n0 + 28, (e, n) => e < B0.e0 + 27 || e > B0.e1 - 27],

@@ -2164,6 +2164,13 @@
   "group": "3D"
  },
  {
+  "name": "nova.puff",
+  "kind": "function",
+  "signature": "nova.puff(x, y, z, radius [, color])",
+  "doc": "Draws a soft round puff for this frame (dust, steam, a breath): a blob of `radius` metres facing the camera, its alpha falling smoothly to nothing at its rim, tinted by color = { r, g, b, a } (0-255; a fades it). y is its height above the ground (the hills lift it). Drawn blended with the wind curls after the see-through things, depth-tested, unlit but for a little of the day's light, in the haze; nothing of it is cut, so a faint puff stays faint (a billboard drops pixels under 0.3 of alpha). Call it from draw each frame; up to 512 a frame.",
+  "group": "3D"
+ },
+ {
   "name": "nova.ambient",
   "kind": "function",
   "signature": "nova.ambient{ radius = 30, seed = 1, leaves = { count, trees = { {x, z, h}, ... }, colors }, streaks = { count, every = 3, hills }, motes = { count }, butterflies = { count, flowers = { {x, z}, ... }, colors }, birds = { count, every = 30, perches = { {x, z}, ... } } }",

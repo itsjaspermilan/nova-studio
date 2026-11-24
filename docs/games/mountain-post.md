@@ -1607,3 +1607,58 @@ its bottom, so it overlaps the corner a little), and nothing else in play draws 
   `confirm` for "load" as well as "pick", and X no longer loads). A full van shows just the plain note "The van is full" and an empty
   one "The van is empty": no button, no chip. The Controls page's on-foot A row reads "Take or store at the van"; the slice's route
   file presses A to store.
+
+### What the ninth notes changed: every road gravel, the dust, the driveways by the homes (notes 4 and 7)
+
+**All gravel** (note 4). Post Road is gravel like the lanes (tools/layout.mjs), so the valley has no tarmac left: no painted centre or
+edge lines, no tarmac aprons at the junctions and no ragged edge where tarmac met gravel; the junctions, the drives and the yards are the
+same gravel, and the bridge's deck stays timber. The "double lines" the owner saw were the gravel column of the road sheet: two wheel
+ruts 1.45 m either side of the middle (20 % darker, with washboard ripples), which on a 4.6 m lane read as two dark lines. The new look
+(surface_make's road option `gravel: "soft"`, studio/mcp/makers/surface.mjs `softGravel`; tools/terrain.mjs makes textures/road.png
+with it; the sheet's other columns, and Pine Ridge's sheet, are as before): over the carriageway an even gravel with a slightly lighter
+crown, stones at two sizes (about 12 and 25 cm, each lit on one side with a soft shadow on the other; the grain picture carries the grit
+under them), fewer larger pebbles, warm and cool patches, and worn wheel paths that are only a little smoother and darker and come and
+go every 10 to 30 m, each side on its own (never two lines); past the carriageway grass tufts creep in over the edge band and the ragged
+edge runs into a soft olive verge near the meadow's colour. The colours are tools/roads.mjs `GRAVEL` (the road builder's opt-in
+`colours`: a warm light gravel, its edge band a little darker, no pale stripe). The road builder's opt-in `even` (scripts/lib/roadnet.mjs)
+keeps the stones round everywhere: a junction's patch carries the through road's picture on mirrored instead of blending two pictures
+(which drew the stones out into swirls), a narrow road runs its picture along faster by as much as it is squeezed across, the strips
+round a yard and a corner run theirs by their own length (they were stretched to meet, which drew rings round the yards), and a yard is
+laid along the road into it. The lanes' junctions keep the 6 m corners they had as tarmac (`kerb`). Sampled from the sheet, the gravel's
+darkest band along it is within 4 % of its mean (the ruts were 20 % under the crown). The game hears every road as gravel
+(lib/world.lua, the scene's road lines, lib/road_junctions.lua), so the van's tyres and engine sound read gravel everywhere; a junction's
+gravel rides as smoothly as its tarmac did (entities/van.lua BUMPS `packed`: braking into a junction on the lanes' 1.8 cm of bumps
+drove the front springs into their stops) and the extra rolling on gravel is 0.05 m/s2 (it was 0.12 on the lanes; the van was tuned on
+Post Road's tarmac, and its creep in D is still 1.2 m/s there).
+
+**The dust** (note 4, "some dust that comes up but not too much"). entities/van.lua `Van:dust` (self-contained, from update) and
+`Van:draw_dust` (from draw), `Van.DUST`: soft sandy puffs from just behind each rear wheel in turn while it rolls on gravel; none under
+3 m/s (11 km/h), growing to full at 9.5 m/s (34 km/h): about 5 alive at a cruise, more braking hard (+55 %), more again sliding on the
+handbrake (+90 %); at most 16 alive (the oldest gives way); each rises 0.3 m/s, swells to about 1 m across, drifts with the valley's
+wind (60 degrees, a breeze) and fades over 1.6 s; none on the grass or the bridge's deck. They are drawn with a new engine call,
+`nova.puff(x, y, z, radius, color)` (docs/project-format.md, Particles): a soft round blob drawn blended in the wind curls' pass, its alpha
+falling smoothly to nothing at the rim, because a billboard drops pixels under 0.3 of alpha and cut a faint puff hard.
+
+**The driveways by the homes** (note 7). Each yard is now right by its building (tools/layout.mjs DRIVES): the post office's drive runs
+straight in from Post Road (14 m, its own 3.6 m corners) to a yard beside the north end of the porch, its gravel 3.4 m from the foot of
+the steps and 5.8 m from the door (it was 19 m), where the van starts nose in with its back doors to the drive (the postmaster loads it
+in the open, the camera behind him, and backs out to the road; the way down the steps to the road stays open south of it; a slice
+played through by the autopilot backs out and turns as a driver would). Hazel's and Pip's drives carry on through their gates to a yard
+about 2 m from the front of the porch (the gravel 3.1 m and 2.8 m from the doors; they were 6 and 9 m), Hazel and Pip standing beside
+it (`resident`). The yards lie on their houses' plots, so they need no level pads of their own. The meadow north of the post office
+where the old yard was stays in the playable area; the flower bed that stood where the yard is now runs along the north end wall, and
+the flowers and the post office's north flower spot moved off the yards. The grass map, the occluders, the paper map and the junctions'
+data were made again.
+
+Tests (crates/nova-runtime/tests/mountain_post.rs, at its end): `valley_roads_are_all_gravel_with_no_tarmac_paint_or_apron`,
+`the_vans_dust_rises_only_on_gravel_at_speed_and_is_capped`, `each_driveway_ends_by_its_buildings_door_and_the_van_starts_beside_the_post_office`;
+`valley_roads_tarmac_meets_gravel_only_at_the_end_of_each_junctions_apron` is gone with the tarmac. Pictures: tools/routes/ninth-roads.mjs
+(Post Road, the Fern Lane junction, Fern Lane and each drive from the driving and the walking camera, the post office's yard from above
+and from Post Road; `build/gallery/ninth-roads`, the same views before in `build/gallery/ninth-before`, not committed) and
+tools/routes/dust.json (pulling away, a cruise from behind and beside, braking, the handbrake, the dust drifting off).
+
+Weak points: the stones are in the 64 m road sheet (6 cm a texel): close up from the walking camera they are soft, and the pattern
+repeats every 64 m along a road; the grain picture carries the finest grit. A junction's patch meets the joining lane's picture along
+the mouth: even gravel hides the join, but a careful look can find it. The post office's yard is small (6 m across): the van backs out
+of it rather than turning in it. The dust is not seen on the device yet (16 blended puffs at most; their overdraw is not measured), and
+the van's ride on Post Road now rumbles like a lane (1.8 cm of bumps; the junctions are packed smooth).

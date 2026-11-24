@@ -152,6 +152,8 @@ struct Shared {
     mesh_ids: HashMap<String, usize>,
     /// `nova.ambient`: the life floating round the camera (`game/ambient_api.rs`).
     ambient: ambient_api::Ambient,
+    /// `nova.puff`: this frame's soft puffs, drawn with the ribbons (`game/billboard_api.rs`).
+    puffs: Vec<crate::gfx::Ribbon>,
     /// Shape keys of the loaded models and the blended copies made of them (`game/morph_api.rs`).
     morph: morph_api::Variants,
     /// Point lights asked for this frame, and what the last frames made of them (which are lit, how far each has faded in).
@@ -4788,6 +4790,7 @@ impl Game {
             save: store,
             mesh_ids: HashMap::new(),
             ambient: ambient_api::Ambient::default(),
+            puffs: Vec::new(),
             morph: morph_variants,
             known_models: model_ids,
             fx_sprites,
@@ -5255,6 +5258,9 @@ impl Game {
                 &mut ribbons,
             );
             sh.ambient = ambient;
+            // (and the frame's puffs, `nova.puff`: drawn with the ribbons)
+            let puffs = std::mem::take(&mut sh.puffs);
+            ribbons.extend(puffs);
             sh.lighting.ribbons = ribbons;
         }
         self.shading.models = std::mem::take(&mut sh.shading.models);

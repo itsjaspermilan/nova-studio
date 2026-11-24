@@ -125,8 +125,9 @@ function world.lift(x, z)
 end
 function world.height(x, z) return nova.terrain_height(x, z) + world.lift(x, z) end
 
--- The junctions (lib/road_junctions.lua, made with the roads by tools/terrain.mjs): where a lane joins Post Road the junction's tarmac
--- fills the corners and runs a few metres up the lane. On it: that surface's word ("road"), else nil.
+-- The junctions (lib/road_junctions.lua, made with the roads by tools/terrain.mjs): where a lane joins Post Road the junction's surface
+-- fills the corners (gravel, as every road since the owner's ninth notes; a tarmac junction would run a few metres up the lane). On it:
+-- that surface's word ("gravel"; "road" for tarmac), else nil.
 local JUNCTIONS = require("lib.road_junctions")
 local function inside(poly, x, z)
   local n, c = #poly // 2, false
@@ -148,12 +149,42 @@ function world.junction_surface(x, z)
   return nil
 end
 
--- Under a road's ribbon or a junction's tarmac (with a margin): the ground there is drawn a little lower, so the road lies on it.
+-- Under a road's ribbon or a junction's patch (with a margin): the ground there is drawn a little lower, so the road lies on it.
 function world.under_road(x, z)
   local rr, rd = world.nearest("road", x, z)
   if rr and rd < rr.width * 0.75 + 0.6 then return true end
   local dr, dd = world.nearest("drive", x, z)
   return (dr and dd < dr.width * 0.75 + 0.6) or world.junction_surface(x, z) ~= nil or world.in_yard(x, z, 1.2)
+end
+
+-- How far x, z is outside the junctions' patches and the drives' yards (metres: 0 on one; math.huge far from them all). A tyre leaving
+-- a road blends onto the meadow by this as well as by the roads' middle lines (entities/van.lua ground_kind): a junction's wide
+-- corners and a yard reach further from any middle line than a road's width, and stepping off one onto the grass was a jolt (the
+-- owner's ninth notes made every junction's corners gravel, 6 m round, and moved the yards).
+local function seg_dist(x, z, ax, az, bx, bz)
+  local sx, sz = bx - ax, bz - az
+  local l2 = sx * sx + sz * sz
+  local t = l2 > 0 and math.max(0, math.min(1, ((x - ax) * sx + (z - az) * sz) / l2)) or 0
+  return math.sqrt((x - ax - sx * t) ^ 2 + (z - az - sz * t) ^ 2)
+end
+function world.off_patch(x, z)
+  local best = math.huge
+  for _, j in ipairs(JUNCTIONS) do
+    local dx, dz = x - j.at[1], z - j.at[2]
+    if dx * dx + dz * dz < (j.paved + 20) ^ 2 then
+      if inside(j.area, x, z) then return 0 end
+      local a, n = j.area, #j.area // 2
+      for i = 1, n do
+        local k = i % n + 1
+        best = math.min(best, seg_dist(x, z, a[2 * i - 1], a[2 * i], a[2 * k - 1], a[2 * k]))
+      end
+    end
+  end
+  for i = 1, #world.yards do
+    local y = world.yards[i]
+    best = math.min(best, math.max(0, math.sqrt((x - y.x) ^ 2 + (z - y.z) ^ 2) - y.r - 0.3))
+  end
+  return best
 end
 
 -- In a driveway's yard (its gravel turning space, `margin` metres more round it)?
@@ -194,7 +225,7 @@ function world.ground_color(x, z, i, j)
   return r + v, g + v, b + v * 0.5
 end
 
--- The surface under a wheel or a foot: "road" (tarmac), "gravel", "bridge" or "grass".
+-- The surface under a wheel or a foot: "road" (tarmac: none in the valley since the owner's ninth notes), "gravel", "bridge" or "grass".
 function world.surface(x, z)
   if world.on_bridge(x, z) then return "bridge" end
   local js = world.junction_surface(x, z)
