@@ -1573,3 +1573,4 @@ way does not yet take its fallen tree or gates away.
 5. "The windscreen on the van should be a little shorter vertically."
 6. "We can remove the Neutral gear and the Lower Gear." (The lever is P R D.)
 7. "The driveways should be closer to the homes. Especially for the post office."
+8. "Also the creep should start sooner technically."
