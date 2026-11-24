@@ -1542,3 +1542,6 @@ pads, jetty, outcrop), `tools/heights.mjs` (the made ground, read back), `tools/
 Weak points: the edge adds about 80 trees, 110 hedges and 40 outcrops (513 trees, 73 forest masses in all): the device's frame time is
 not measured. The ponds' foam line is drawn by the water shader's depth, so a very shallow shore can look a little white. Opening a secret
 way does not yet take its fallen tree or gates away.
+
+12. On the van on slopes (with a screenshot): "the wheels don't act like a normal car in video games. It turns slanted and extends out of
+    the vehicle for some reason. Like other video games have cars, can we do it how other games handle cars"
