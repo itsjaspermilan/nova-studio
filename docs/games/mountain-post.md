@@ -1341,3 +1341,23 @@ moved in Rust (about 120 quads a frame at most with the game's counts, a handful
 `nature-bench` route, two runs each, the machine busy with other builds) the render time a frame moved by -0.4 to +0.4 ms, within its
 noise. **Not measured on the Retroid**: it was unreachable over SSH (host down) while this was done; `scripts/handheld-bench.sh` is the
 way to measure it (the target is at most about 1 ms of GPU added at 1280 x 720).
+
+## The owner's eighth play (2026-11-23, after the grass and sky)
+
+Device: 60 fps holds (GPU 10.4 ms, about 4 ms headroom). The owner's notes, in their words:
+
+1. "The flowers look kinda weird. Just like blobs on sticks. Instead of using 3D assets, don't some games use 2D assets for the
+   less important items?"
+2. "The pop in of grass and stuff is quite evident. Is there an efficient way we can fix that without adding too much load?"
+3. "The wind has jagged edges, it's too solid white, and doesn't happen often enough."
+4. "We can remove the green tops on the rock walls. The rock also needs some texture."
+5. "We should add some lakes throughout the map because the hills look barren."
+6. "What can you think of to keep the player on the road and not get stuck in the 'empty' areas? I do want to add some secret
+   areas after some time but for the most part we should smartly prevent the user from accessing the empty areas."
+7. "I don't think you did the removal of all the chips. I still see 'Y to exit' and 'Select' for map. I also don't see the
+   control menu." (From the feedback for later: remove the button chips entirely; a Controls option in the main menu.)
+8. "We should add some texture to the tree wood. We don't have to have those black parts sticking out of the birch trees either.
+   I think we can simplify it with texture."
+9. "There should be a driveway at the homes and buildings. Right now we're just driving on grass."
+10. "The player kind of looks like he's shuffling when he's walking."
+11. "I liked the post master cap that we had earlier. The bucket hat makes the character look like some kind of explorer."
