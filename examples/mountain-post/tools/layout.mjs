@@ -114,7 +114,8 @@ export const DRIVES = [
 // shoreline from the made ground and writes it into the scene (a `pond` object), and entities/pond.lua lays the still water and its banks.
 // Reed Pond, in the hollow between Post Road and Fern Lane's bend, is the one to walk to: a short jetty and a bench on its east shore,
 // inside the playable area. Alder Pond, east of Post Road, is seen from Post Road and Kettle Creek Road across the meadow; Tarn Pond sits
-// on a shelf cut into the valley's west side above Hazel's, seen from her yard and from the top of Fern Lane.
+// on a shelf cut into the valley's west side above Hazel's, outside the playable area: seen over the shelf's lip from the edge behind
+// her cabin, where a fallen tree lies across the old track up to it (a secret way, tools/scene.mjs).
 export const PONDS = [
   { id: "reed_pond", name: "Reed Pond", at: [-56, -4], plot: 1.2, depth: 1.5, fill: 0.95, bank: 2.6, blend: 14, reach: true,
     lobes: [[[-66, -12], [-52, -3], 10], [[-54, -8], [-44, 4], 9], [[-62, 1], [-55, 8], 8]],

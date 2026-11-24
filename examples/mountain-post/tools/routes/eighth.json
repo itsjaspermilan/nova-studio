@@ -50,18 +50,11 @@
    "capture": "alder_pond from above"
   },
   {
-   "lua": "CAM.pinned = { 152.6, nova.terrain_height(152.6, 45.6) + 1.9, 45.6, 206, nova.terrain_height(206, 104) + 0.5, 104, 45 }"
+   "lua": "CAM.pinned = { 175.31351491690094, nova.terrain_height(175.31351491690094, 73.39699933026341) + 3.6, 73.39699933026341, 206, nova.terrain_height(206, 104) + 0.3, 104, 50 }"
   },
   {
    "wait": 3,
-   "capture": "tarn_pond from Hazel's yard"
-  },
-  {
-   "lua": "CAM.pinned = { 140, nova.terrain_height(140, 30) + 3.4, 30, 206, nova.terrain_height(206, 104) + 0.5, 104, 45 }"
-  },
-  {
-   "wait": 3,
-   "capture": "tarn_pond from the top of Fern Lane"
+   "capture": "tarn_pond from the walking camera at the old track"
   },
   {
    "lua": "CAM.pinned = { 206, nova.terrain_height(206, 103.5) + 63.19198064745632, 103.5, 206, nova.terrain_height(206, 104) + 0, 104, 40 }"
@@ -85,6 +78,13 @@
    "capture": "reed_pond's jetty and bench"
   },
   {
+   "lua": "CAM.pinned = { 20.45194566505224, nova.terrain_height(20.45194566505224, -116.36178211498665) + 1.8, -116.36178211498665, 34.44, nova.terrain_height(34.44, -116.94) + 0.8, -116.94, 55 }"
+  },
+  {
+   "wait": 3,
+   "capture": "edge: forest"
+  },
+  {
    "lua": "CAM.pinned = { -19.29109692747318, nova.terrain_height(-19.29109692747318, -237.87700333219965) + 1.8, -237.87700333219965, -33.05, nova.terrain_height(-33.05, -235.29) + 0.8, -235.29, 55 }"
   },
   {
@@ -106,7 +106,7 @@
    "capture": "edge: fence by Pip's"
   },
   {
-   "lua": "CAM.pinned = { 34.78580260903375, nova.terrain_height(34.78580260903375, -66.64382807654017) + 1.8, -66.64382807654017, 38.99, nova.terrain_height(38.99, -53.29) + 0.8, -53.29, 55 }"
+   "lua": "CAM.pinned = { 98.84773435454963, nova.terrain_height(98.84773435454963, -0.3021724202406668) + 1.8, -0.3021724202406668, 85.97, nova.terrain_height(85.97, 5.19) + 0.8, 5.19, 55 }"
   },
   {
    "wait": 3,

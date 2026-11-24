@@ -1412,8 +1412,8 @@ Three new paint kinds (`bark`, `birch`, `rock`: docs/project-format.md, "Painted
 **Ponds** (note 5). Three small still ponds, none on a road's line (tools/layout.mjs `PONDS`): **Reed Pond** in the hollow between Post
 Road and Fern Lane's bend (the one to walk to: a meadow runs down to it from Post Road, a 6 m jetty you can walk out on and a bench on its
 east bank), **Alder Pond** east of Post Road (seen from Post Road and Kettle Creek Road; the playable area's edge crosses it, so the water
-is the edge there), **Tarn Pond** on a shelf cut into the valley's west side above Hazel's (outside, seen from the top of Fern Lane; the
-old track up to it is a secret way, below). Each is a level plot (a terrain pad at its own height) with a bowl carved by two or three
+is the edge there), **Tarn Pond** on a shelf cut into the valley's west side above Hazel's (outside the playable area, seen over the shelf's lip
+from the edge behind her cabin, where the old track up to it is a secret way, below; not seen from the road). Each is a level plot (a terrain pad at its own height) with a bowl carved by two or three
 overlapping strokes, so the shore is rounded and irregular; tools/scene.mjs finds the shoreline on the made ground and writes it into the
 scene (`pond`: `level`, `shore`). entities/pond.lua lays the water as **still water** (`nova.mesh.make { paint = "water", still = true }`,
 an engine addition: round ripples that only shimmer, more sky in them, a softer foam line, the shallows lighter) and 1 m ground cells round

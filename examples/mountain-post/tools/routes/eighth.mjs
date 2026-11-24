@@ -30,8 +30,9 @@ for (const p of objects.filter((o) => o.kind === "pond")) {
   const [x, z] = [p.x, p.z], r = nearestRoad(x, z), d = Math.hypot(r[0] - x, r[1] - z), ux = (x - r[0]) / d, uz = (z - r[1]) / d;
   if (p.name === "tarn_pond") {
     const from = objects.find((o) => o.kind === "playable").props.secrets.find((q) => q.id === "tarn_track").from;
-    shot(`${p.name} from the edge by the old track`, [from[0], from[1], 1.9], [x, z, 0.5], 50);
-    shot(`${p.name} from the top of Fern Lane`, [140, 30, 3.4], [x, z, 0.5], 45);
+    // (the walking camera, 3.5 m up and 7 m back, at the edge by the fallen tree: the tarn over the shelf's lip)
+    const dx = from[0] - x, dz = from[1] - z, l = Math.hypot(dx, dz);
+    shot(`${p.name} from the walking camera at the old track`, [from[0] + (dx / l) * 7, from[1] + (dz / l) * 7, 3.6], [x, z, 0.3], 50);
   } else {
     shot(`${p.name} driving`, [r[0] - ux * 2, r[1] - uz * 2, 3.4], [x, z, 0], 55);
     shot(`${p.name} walking`, [x - ux * 19, z - uz * 19, 1.9], [x, z, 0], 55);
