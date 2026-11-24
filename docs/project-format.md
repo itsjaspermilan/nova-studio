@@ -260,6 +260,11 @@ nova.grass_bend(hero.x, hero.z, 0.75)   -- each frame, from draw: the grass roun
 nova.grass()                            -- no grass
 ```
 
+A bending point pushes the blades and the flowers away from it out to its radius, fully from about half the radius out; nearer in the
+push shrinks to nothing at the point itself and they are pressed lower there instead, so something a walker steps over turns through
+upright over a few centimetres of the walk rather than flipping from one side to the other in a frame. A flower leans at most 0.6 of
+its height.
+
 | Option | Default | What it is |
 | --- | --- | --- |
 | `map` | everywhere | a picture laid over the ground like a heightmap (`x`, `z` its first pixel, `size` or `cell`): its grey (or red) says where grass grows, 255 in full, 0 none, between fewer and shorter clumps. Paint it black on roads, paths, water, porches and under houses |
@@ -303,7 +308,8 @@ edge, by the water or on a porch); a spot's plants grow where the map has any gr
 where the plants of a square stand (for tests and tools), and `Flora::drawn_in` how many of a square's plants are drawn (every one the
 shader shows any of). The plants are drawn in two passes, with or without multisampling: the solid inside of each picture, writing the
 depth, then its edges, its thin stems and petals, and whole plants fading with the distance blended over it (about a pixel wide when
-the picture is drawn larger than it is; as its smaller copies have them when smaller). Since 2026-11-24 (the owner on the device: "The
+the picture is drawn larger than it is, never sharper than about half a pixel whatever derivatives the GPU gives; as its smaller copies
+have them when smaller). Both passes place a plant exactly alike (its position is `@invariant`), so no pixel falls between them. Since 2026-11-24 (the owner on the device: "The
 flowers flicker for some reason"): drawn by coverage before, an edge pixel could only step by a quarter of the flower's contrast with
 the grass as the camera moved, and the whole plant's light came from one unfiltered shadow look, so a plant at a swaying shadow's
 edge blinked (`tests/flora_gpu.rs`, `flowers_hold_steady_as_the_camera_turns_and_walks`).

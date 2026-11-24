@@ -1768,3 +1768,34 @@ Weak points: from 9 m up a crown between the eye and the postmaster is common un
 hides them, so walking under a big pine the crown fills much of the picture with the postmaster seen below it. The far edge is 13 m
 ahead on flat ground and less walking uphill: the next house or the van is often off the top of the picture until close (the minimap
 shows them). The billboards (the post office's name board) are not cut by the see-through. Not seen on the Retroid yet.
+### What the ninth notes changed: flowers walked through and seen from above (note 1, again)
+
+The owner after the blended edges: "The flowers still flicker. It's at random times. When the camera is way up. When the player walks
+through them etc." Looked for on the Mac with headless frames (tests/flora_gpu.rs, and the game's own valley at 1280x720, 4x
+multisampling as the device build picks, the camera pinned 6.8 m up behind the postmaster walking at 1.4 m/s through the garden by the
+post office, and 13 m up):
+
+- *Walking through them: found and fixed.* A flower or a blade leaned away from a bending point (the postmaster's feet, the van's axles)
+  at its full lean as soon as it was within half the radius, so when the walker passed over it it flipped from leaning one way to
+  the other in one frame: its top jumped the length of the plant. Leaned 0.9 of its height a flower was also squashed into a coloured
+  streak. Measured stepping the walker over one of the game's flowers 5 mm at a time from the raised camera: the step across it changed
+  the picture 346 (sum of pixel changes / 255) against a median step of 7; now 34 at most against a median of 27, no jump. The push now
+  shrinks to nothing at the bending point and the plant is pressed lower there instead; a flower leans at most 0.6 of its height
+  (grass.wgsl, `vs_flora` and `vs_grass`). Pictures: `build/gallery/before_walk_strip.png` and `after_walk_strip.png` (the game, eight
+  frames at the feet), `walked_over_before_strip.png` and `walked_over_after_strip.png` (the test).
+- *Seen from above: nothing found that pops.* From 6.5 m and 14 m up the flowers flicker no more than the same frames drawn four times
+  as large and averaged down (-0.5 and -0.3 over that ideal with multisampling, 1.8 and 2.1 without), with the camera creeping 0.3 mm a
+  frame no plant appears, goes or flips, and the squares the flora is cut into are never culled while a plant of theirs is in view (600
+  random high and low views drawn with and without that culling: identical). The shadows on blades and flowers change smoothly across
+  the near map's end too. A test now covers the raised camera (`flowers_hold_steady_seen_from_the_raised_camera`).
+- *Made safe for the device's GPU, not measurable here:* the two passes' plant position is `@invariant` (two pipelines compiled apart may
+  place a vertex a hair differently, and a pixel both passes put on the other side of their split would be a hole for a frame), and the
+  edge sharpening never goes below about half a pixel whatever the GPU gives for `fwidth` (many mobile GPUs give one derivative per
+  2x2 block, which reads no change along a block whose edge runs between its rows). On the Mac both change nothing measurable.
+
+Weak points: the blended edges are not sorted between plants of one square, so where two plants overlap and a pixel's cover crosses
+the solid/blended split, the further plant's edge can be drawn over the nearer one for a frame (one to four pixels a frame in a
+garden at a crawl; it is in the "over the ideal" numbers above). Nothing here is seen on the device yet: the Retroid's GPU may differ
+from the Mac's exactly where the last two fixes aim. To look on the device, from the Mac: `scripts/build-linux-arm64.sh --release
+--project examples/mountain-post`, copy it as usual, then walk the postmaster through the garden by the post office with the camera
+tilted up (right stick) and watch the flowers at the feet.

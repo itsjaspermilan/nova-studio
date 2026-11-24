@@ -463,6 +463,25 @@ struct Look {
     eye: glam::Vec3,
     yaw: f32,
     boards: f32,
+    /// Degrees the camera looks down (15 for the turns and walks; the game's raised boom and the rooms' camera look 45 to 52 down).
+    pitch: f32,
+    /// A walker the grass and the flowers bend away from (`nova.grass_bend`: x, z and its radius), if any.
+    bend: Option<[f32; 3]>,
+    /// The wind's time (seconds): the valley's wind blows (`nova.wind { direction = 60, strength = 1.1 }`) when it is above 0.
+    time: f32,
+}
+
+impl Look {
+    fn at(eye: glam::Vec3, yaw: f32, boards: f32) -> Self {
+        Self {
+            eye,
+            yaw,
+            boards,
+            pitch: 15.0,
+            bend: None,
+            time: 0.0,
+        }
+    }
 }
 
 /// A frame of the meadow, with the game's lens (42 degrees) and the valley's shadows (`nova.shadows { radius = 40, near = 6,
@@ -500,7 +519,20 @@ fn meadow_shot(
         });
     }
     let (s, c) = look.yaw.sin_cos();
-    let pitch = 15f32.to_radians();
+    let pitch = look.pitch.to_radians();
+    let mut grass = grass.clone();
+    if let Some([x, z, r]) = look.bend {
+        grass.bends = vec![[x, 0.0, z, r]];
+    }
+    let wind = if look.time > 0.0 {
+        nova_runtime::gfx::Wind {
+            direction: [60f32.to_radians().sin(), 60f32.to_radians().cos()],
+            strength: 1.1,
+            time: look.time,
+        }
+    } else {
+        nova_runtime::gfx::Wind::default()
+    };
     let fwd = glam::Vec3::new(-s * pitch.cos(), -pitch.sin(), -c * pitch.cos());
     let input = FrameInput {
         clear: [0.5, 0.6, 0.8, 1.0],
@@ -523,7 +555,8 @@ fn meadow_shot(
             direction: [0.45, -0.75, 0.35],
             color: [1.0, 0.95, 0.85],
             ambient: [0.45, 0.48, 0.55],
-            grass: Some(grass.clone()),
+            grass: Some(grass),
+            wind,
             shadows: Some(nova_runtime::gfx::Shadows {
                 radius: 40.0,
                 strength: 0.72,
@@ -758,11 +791,11 @@ fn flowers_hold_steady_as_the_camera_turns_and_walks() {
         for (what, degrees, speed, boards, most4, most1) in runs {
             let f = flicker_run(&mut gfx, &what.replace(' ', "_"), msaa, 10, |t| {
                 let t = t as f32;
-                Look {
-                    eye: eye + glam::Vec3::new(0.0, 0.0, -speed / 60.0 * t),
-                    yaw: 0.15 + t * degrees.to_radians(),
-                    boards: boards / 60.0 * t,
-                }
+                Look::at(
+                    eye + glam::Vec3::new(0.0, 0.0, -speed / 60.0 * t),
+                    0.15 + t * degrees.to_radians(),
+                    boards / 60.0 * t,
+                )
             });
             assert!(
                 f.cover > 2000,
@@ -781,5 +814,108 @@ fn flowers_hold_steady_as_the_camera_turns_and_walks() {
                 f.flashing
             );
         }
+    }
+}
+
+// ---- walking through them: the owner on the device, "The flowers still flicker ... When the player walks through them" ------------
+
+/// The same from the raised camera ("When the camera is way up": the boom tilted up to 52 degrees, the rooms' top-down camera, and
+/// the walking camera made like it): 6.5 m up looking 48 degrees down, walking at 1.4 m/s, alone and with the walker 6 m ahead
+/// bending the flowers and the valley's wind blowing.
+#[test]
+fn flowers_hold_steady_seen_from_the_raised_camera() {
+    let Some(mut gfx) = gfx() else { return };
+    for msaa in [4, 1] {
+        for (what, walker) in [("raised walk", false), ("raised walk with walker", true)] {
+            let f = flicker_run(&mut gfx, &what.replace(' ', "_"), msaa, 10, |t| {
+                let z = 8.0 - 1.4 / 60.0 * t as f32;
+                let mut l = Look::at(glam::Vec3::new(0.0, 6.5, z), 0.15, 0.0);
+                l.pitch = 48.0;
+                if walker {
+                    l.bend = Some([-0.9, z - 5.85, 0.75]);
+                    l.time = 100.0 + t as f32 / 60.0;
+                }
+                l
+            });
+            assert!(f.cover > 2000, "msaa {msaa}, {what}: flowers in view");
+            let most = if msaa > 1 { 1.0 } else { 3.5 };
+            assert!(
+                f.pixels < most,
+                "msaa {msaa}, {what}: the flowers flicker {:.2} over the same frames without aliasing (at most {most})",
+                f.pixels
+            );
+            assert!(
+                f.flashing < if msaa > 1 { 0.001 } else { 0.004 },
+                "msaa {msaa}, {what}: {:.4} of the flowers' pixels flash for a frame",
+                f.flashing
+            );
+        }
+    }
+}
+
+/// The owner after the blended edges: "The flowers still flicker. It's at random times. When the camera is way up. When the player
+/// walks through them etc." A walker (`nova.grass_bend`, the game's 0.75 m) steps over one of the game's flowers half a centimetre
+/// at a time, seen from the raised camera (5 m up, looking 48 degrees down): every step changes the picture about as much as the
+/// next, with no step where the flower jumps. Before 2026-11-24 a plant leaned away from the walker at full lean as soon as it was
+/// within half the radius, so the moment the walker passed over it, it flipped from leaning one way to leaning the other in one frame
+/// (its top jumped the length of the plant), and a plant leaned that far was squashed into a streak.
+#[test]
+fn a_flower_walked_over_bends_away_without_a_jump() {
+    let Some(mut gfx) = gfx() else { return };
+    let meshes = (
+        gfx.upload_mesh(&ground_coloured(200.0, [45, 95, 30, 255])),
+        gfx.upload_mesh(&post_mesh()),
+    );
+    // (the game's flowers on bare ground: no blades in the way)
+    let grass = Grass {
+        density: 0.01,
+        height: 0.01,
+        ..meadow()
+    };
+    // a plant near (2, 4), on the walker's way (the boards stand further off)
+    let (px, pz, _) = grass
+        .flora_places(0, 0)
+        .into_iter()
+        .min_by(|a, b| {
+            let d = |p: &(f32, f32, u32)| (p.0 - 2.0).hypot(p.1 - 4.0);
+            d(a).total_cmp(&d(b))
+        })
+        .expect("a plant in the square");
+    for msaa in [4, 1] {
+        let steps = 25;
+        let mut shots = Vec::new();
+        for s in 0..steps {
+            let mut l = Look::at(glam::Vec3::new(px, 5.0, pz + 4.5), 0.0, 0.0);
+            l.pitch = 48.0;
+            // (the walker comes towards the camera, a millimetre to the side of the plant's foot)
+            l.bend = Some([px + 0.001, pz - 0.06 + 0.005 * s as f32, 0.75]);
+            shots.push(meadow_shot(&mut gfx, meshes, &grass, l, msaa, 1));
+        }
+        save_frames(&format!("walked_over_msaa{msaa}"), &shots);
+        let change: Vec<f64> = shots
+            .windows(2)
+            .map(|w| {
+                w[0].iter()
+                    .zip(&w[1])
+                    .map(|(a, b)| (*a as f64 - *b as f64).abs())
+                    .sum::<f64>()
+                    / 255.0
+            })
+            .collect();
+        let mut sorted = change.clone();
+        sorted.sort_by(f64::total_cmp);
+        let median = sorted[sorted.len() / 2];
+        let most = sorted[sorted.len() - 1];
+        eprintln!(
+            "msaa {msaa}: plant at ({px:.2}, {pz:.2}); a step changes {median:.1} (median), {most:.1} at the most: {change:.0?}"
+        );
+        assert!(
+            median > 0.5,
+            "msaa {msaa}: the flowers near the walker move as it walks: {change:.1?}"
+        );
+        assert!(
+            most < median * 4.0 + 20.0,
+            "msaa {msaa}: no step where a flower jumps: the most a 5 mm step changes is {most:.1}, the median {median:.1}: {change:.1?}"
+        );
     }
 }
