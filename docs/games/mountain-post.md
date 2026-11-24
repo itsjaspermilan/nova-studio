@@ -1156,6 +1156,51 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
 - **Weak points:** the effects are judged from pictures at 1280x720, not yet read on the Retroid; `{shake}` at the dialogue's
   size moves letters about 2 px, readable but subtle in a still; the face changes per line, not inside a line (Hazel smiles from
   the start of "I'd fix that bridge", not at "...Thank you").
+
+### The seventh play: grass, trees and shadows
+
+"The grass texture fades away too soon from the player's view ... I like BoTW's grass system", "Trees look a little blobby still"
+and "the shadows from the trees disappear even though the tree is still in view". Three engine features, all opt-in (Pine Ridge
+Rally is unchanged: `scripts/rally/verify.sh` 563 files identical), and the game turns them on:
+
+- **Real grass** (`nova.grass`, docs/project-format.md "Grass"): clumps of six blades grown on the GPU round the camera, about
+  ten clumps a square metre near it, thinning out to 32 m with no line where they end; 0.3 m tall (0.18 to 0.42), coloured from
+  the ground's own 4 m colour grid and its big painted patches, darker at the root and lighter and warmer at the tip, swaying in
+  the valley's wind with gusts that travel across the meadow, bending away from the postmaster's feet and the van's two axles,
+  lit with the sun's shadows, casting none. Where it grows is `terrain/grass.png` (0.5 m a pixel, `tools/grass.mjs`): none on the
+  road network's real surface (junctions and aprons included, thinning over the last 1.5 m), on the bridge's deck, in the creek,
+  the gorge or the lake, on porches and steps, under the houses, round walls, fences, rocks and benches. **Run `tools/grass.mjs`
+  again whenever the roads, the bridge or the scene move** (a test checks every road, gravel, bridge, water, porch and house spot).
+- **The painted ground carries on further**: three sizes of strokes (1.1 m dabs, three times that, and 10 m sweeps), each fading
+  where it would be under a few pixels across the view while the next carries on, and the paint noise read anisotropically, so
+  the meadow keeps its painted look to 80 m and more (it was flat from about 20 m) with no fade line and no shimmer.
+- **Shadows far off** (`nova.shadows { far = 110 }`): the 40 m map now lies over what the camera sees out to about 34 m and a
+  third map of the big casters (trees, houses, walls, the forest masses) takes the view on to 110 m, fading over its last 15 m.
+- **Trees**: a birch's crown is now a ring of five separate leaf clusters round a darker core, every other one higher, with
+  notches between them where the sky shows, and one on top; each cluster has a lighter cap where the sun falls and a pale branch
+  out to it from the trunk. Bushes are clusters with caps too. Pines and larches have more, shorter tiers (four or five), each a
+  skirt of branches whose every other side is a long drooping tip and the sides between notched in deep, the underside hollow and
+  painted darker, each tier lighter than the one below. The far versions are three such tiers (were two), and every treetop of a
+  forest mass has a lighter cap. No crown reaches further out or higher than before. The same recipes are in `prop3d_make`'s
+  painted tree, pine and bush.
+
+Triangles per model, before and after: pine 408 / 528, pine2 528 / 648, pine3 408 / 528, pine_far 180 / 280, larch and
+larch_small 488 / 598, larch_far 180 / 280, birch 694 / 1024, bush and bush2 400 / 480, forest_long 528 / 708, forest_tall and
+forest_round 448 / 592. Per frame (`nova.perf().triangles`, shadow passes included, `tools/routes/grass-bench.json` on a desktop):
+walking in the meadow 258,000 before and 410,000 after, low across the meadow 282,000 and 434,000, the driving camera on Post Road
+301,000 and 454,000, the view of the tree shadows into the distance 311,000 and 476,000. Of the increase about 120,000 is the grass
+(about 6,500 clumps of 18 triangles) and the rest the trees' new shapes and the far shadow map's casters.
+
+**Cost on the Retroid**: DEVICE_NUMBERS
+
+**Pictures** (1280 x 720, `build/gallery/`, not committed): `seventh-<view>-before.png` and `-after.png` for the meadow from the
+walking camera, low across the meadow, the driving camera on Post Road, the trees' shadows into the distance, a birch close and at
+40 m, a pine close, pines and larches at 40 m, the forest edge and the hillside. The route is `tools/routes/grass.json`.
+
+**Weak points**: from the van's higher camera the blades read as a fine texture rather than blades (they are 0.3 m tall); the
+grass map has to be made again when the roads or the scene change (a test catches it); the far shadow map is 11 cm a texel, so
+tree shadows past 35 m are soft; grass under a tree is lit by the shadow map but gets no extra darkening at the trunk; how it all
+looks in motion on the Retroid's screen (the gusts, the bending, any crawl) is not yet seen by the owner.
 ### What the seventh play changed: the houses (a minimum thickness, painted surfaces, lived-in details)
 
 The owner: "The houses look barren still. Also we should have a minimum thickness to prevent stick looking things and keep that
