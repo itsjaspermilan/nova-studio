@@ -11,6 +11,10 @@
 --   - the handbrake's warning light, a small circled "(P)" over the hub, lit red while B holds the handbrake; "km/h" under it.
 -- No button glyphs (the owner: the prompts say what the buttons do; the lever is A towards D, X towards P). A refused shift (into P
 -- or R on the move) says why for a moment on a slip beside the dial ("Stop to shift").
+-- The tenth notes made shifting lenient: a gear chosen on the move that does not suit the speed (`v.want`) lights AT ONCE, its key
+-- pulsing (a softer red, breathing) while the van brakes hard to a stop; the gear still engaged stays as plain letters; the slip beside
+-- the dial says "Slowing to shift"; when the gear takes (entities/van.lua Van:engage) the key goes solid. `hud.shown` is the engaged
+-- gear, `hud.pending` the one waiting (nil when none).
 -- Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures.
 -- (Three layouts were tried in pictures: an arc of gears round the foot, this row, and a strip set into the rim's left side; the
 -- row read best at a glance: the letters stay level and evenly spaced, and it is one round shape. build/gallery/option-*.png.)
@@ -20,7 +24,7 @@ local hud = {}
 
 local s, C, F, SP = ui.s, ui.C, ui.F, ui.SP
 local ORDER = { "P", "R", "D" }
-hud.HINTS = { stop = "Stop to shift" }
+hud.HINTS = { stop = "Stop to shift", slow = "Slowing to shift" }
 -- The dial: its face's radius (the rim is 8 wider), its range, its sweep (radians from straight up, clockwise positive: 0 km/h a
 -- little below the left, the top of the range a little below the right), the needle's resting peg (further round, below the 0),
 -- the row of gears (how far below the hub; the letters are SP.xl apart).
@@ -82,7 +86,9 @@ function hud.draw(v, w, h)
   ui.text(L.cx, L.cy + D.r * 0.2 - F.small * 0.5, "km/h", { size = F.small - 2, align = "center", color = ui.alpha(C.faint, 0.9) })
   -- the handbrake's warning light: a circled P, lit red while B holds it, faint when off
   local on = v.handbrake and true or false
-  hud.lit, hud.shown = on, v.gear -- (for the tests: what this frame's instrument showed)
+  hud.lit, hud.shown, hud.pending = on, v.gear, v.want -- (for the tests: what this frame's instrument showed)
+  hud.t = (hud.t or 0) + 1 / 60
+  local breath = 0.62 + 0.28 * math.sin(hud.t * 9)
   local lw, lh = s(34), s(22)
   ui.key(L.lamp[1] - lw / 2, L.lamp[2] - lh / 2, lw, lh, on and C.red or C.slate, { alpha = on and 1 or 0.3 })
   ui.text(L.lamp[1], L.lamp[2] - F.small * 0.72, "(P)", { size = F.small, align = "center", color = ui.alpha(C.cream, on and 1 or 0.8), bold = true })
@@ -90,9 +96,10 @@ function hud.draw(v, w, h)
   local kw, kh = s(21), s(24)
   for _, g in ipairs(ORDER) do
     local p = L.letters[g]
-    if g == v.gear then
-      ui.key(p[1] - kw / 2, p[2] - kh / 2, kw, kh, C.red)
-      ui.text(p[1], p[2] - F.hint * 0.68, g, { size = F.hint, align = "center", color = C.cream, bold = true })
+    if g == (v.want or v.gear) then
+      local al = v.want and breath or 1
+      ui.key(p[1] - kw / 2, p[2] - kh / 2, kw, kh, C.red, { alpha = al })
+      ui.text(p[1], p[2] - F.hint * 0.68, g, { size = F.hint, align = "center", color = ui.alpha(C.cream, al), bold = true })
     else
       ui.text(p[1], p[2] - F.small * 0.66, g, { size = F.small, align = "center", color = ui.alpha(C.faint, 0.95), bold = true })
     end

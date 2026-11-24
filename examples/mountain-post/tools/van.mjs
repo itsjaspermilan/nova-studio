@@ -222,8 +222,11 @@ const arch = (az) => {
 // the band: at mid height along the box (0.8 to 0.94), swooping down past the doorway towards the front wheel and on along the bonnet
 const BAND = { lo: [[-1.6, 0.8], [0.12, 0.8], [0.96, 0.58], [1.6, 0.58]], hi: [[1.6, 0.7], [0.96, 0.7], [0.14, 0.94], [-1.6, 0.94]] };
 const D = DOORWAY;
-// the doorway's front edge at a height: the windscreen pillar's lean, 10 cm behind its face
-const doorFront = (y) => zOfWindscreen(Math.max(y, WS.base[1])) - 0.1;
+// the doorway's front edge at a height: the windscreen pillar's lean, `A_PILLAR` behind its face: the body strip between the glass and
+// the doorway (the A pillar). The owner's tenth notes: "The side that's closer to the windscreen can be trimmed to allow for a larger
+// A pillar": it was 0.10, now 0.20 (the doorway is 10 cm shorter at the front; the skin there is the one body, only the cut moved).
+export const A_PILLAR = 0.2;
+const doorFront = (y) => zOfWindscreen(Math.max(y, WS.base[1])) - A_PILLAR;
 // The doorway's outline (z, y in metres), grown by `g` all round (the frame): the rear foot corner, the level bottom, round the wheel
 // well, up the front edge, the two round top corners.
 export function doorOutline(g = 0) {
