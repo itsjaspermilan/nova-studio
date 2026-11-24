@@ -77,6 +77,7 @@ mod physics_api;
 mod players_api;
 mod playtest;
 mod retained_api;
+mod rich_api;
 mod shader_api;
 mod solid_api;
 mod ui_shapes;
@@ -2822,6 +2823,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             Ok(draw_text(&mut sh, &text, 0.0, 0.0, &opts, false)?.0 as f64)
         })?,
     )?;
+    rich_api::register(lua, &ui, shared)?;
     nova.set("ui", ui)?;
     drawn_api::register(lua, &nova, shared)?;
 

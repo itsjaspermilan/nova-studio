@@ -322,6 +322,7 @@ picture made for that screen (a paper map, a title) can be chosen and drawn one 
 | `nova.image_size(id)` | any | The size in pixels of a picture in `sprites/`. |
 | `nova.ui.text(x, y, text [, opts])` | UI | Vector text, top-left `x, y` (see "Text and fonts"). |
 | `nova.ui.text_size(text [, opts])`, `nova.ui.text_width(text [, opts_or_scale])` | | Measure text in logical units. |
+| `nova.ui.rich_text(x, y, text [, opts])`, `nova.ui.rich_text_letters(x, y, text [, opts])` | UI | Text with markup ({shake}, {wave}, {big}, {slow}, {pop}, {c=red}, {pause}) typed out on a clock into a layout made first (see "Rich text"). |
 
 **Ready-made UI art and nine-slices.** Kenney's UI packs (and most UI art) draw a panel or button as one small picture whose corners must stay
 the same size while the middle stretches. `nova.ui.panel("ui/btn_grey", x, y, w, h, { slice = { 14, 14, 14, 22 }, scale = 0.75 })` draws that picture at
@@ -1525,6 +1526,51 @@ design size (Press Start 2P at 8, 16, 24...); `\n` starts a new line; text beyon
 call is cut. Letters are rasterised once per (font, character, pixel size) into a 2048x2048 coverage
 atlas; if it ever fills it is cleared and rebuilt. The engine's own overlays (the error banner, the F3
 stats) still use a small built-in pixel font.
+
+### Rich text: effects and typing (dialogue)
+
+`nova.ui.rich_text(x, y, text [, opts])` draws a line with markup a writer types into it, and types it out on a clock the game
+passes. The whole line is laid out first and the letters are typed into that layout, so a word never starts on one line and
+jumps to the next, and no letter moves as more come out. Each letter rises softly into place (a fifth of its size, with a quick
+fade, 0.16 s) as it appears; that is every rich text's own little animation (`appear = false` turns it off).
+
+```lua
+local t = 0     -- seconds since the line began: the game's own clock, so the same moment is the same picture
+function update(dt) t = t + dt end
+function draw()
+  local w, h, shown, done = nova.ui.rich_text(40, 600,
+    "{big}{wave}IT CAME!{/wave}{/big} It actually came! Tell her it {shake}hums{/shake}.{pause=0.3} {slow}...{/slow}Thanks.",
+    { font = "rounded", size = 22, width = 600, color = { 62, 54, 49 }, time = t, cps = 52, skip = skipped_at })
+end
+```
+
+| markup | does |
+| --- | --- |
+| `{shake}...{/shake}` | the letters jitter: small random offsets and tilts, 20 times a second (scared, angry, nervous) |
+| `{wave}...{/wave}` | the letters bob in a gentle sine running along the word (happy, sing-song) |
+| `{big}...{/big}` | 1.3 times larger and bolder (excitement, emphasis); the line is made taller for them |
+| `{slow}...{/slow}` | typed at a third of the speed (a dry pause, a drawl) |
+| `{pop}...{/pop}` | each letter pops in from small with a little overshoot |
+| `{c=red}...{/c}` | a colour: red, orange, gold, green, teal, blue, purple, pink, brown, grey, white, black, or `#rrggbb` |
+| `{pause}`, `{pause=0.6}` | a wait before the next letter (0.4 s, or the seconds given, up to 5) |
+| `{{` | a `{` |
+
+Tags nest; one left open runs to the end of the text. An unknown tag, or a close with nothing open, is an error naming it.
+
+Options: `font`, `size`, `color`, `bold`, `width` (wrap), `align`, `line_spacing` as `nova.ui.text`'s, and:
+- `time`: seconds since the line began. Letters come out at `cps` letters a second (default 52; spaces count), with a short pause
+  after a comma (0.11 s), a longer one after a full stop, `!` or `?` (0.24 s) and the longest after `...` (0.42 s, the dots
+  coming one by one). Without `time` the whole text is out and settled, and the effects move on the game's clock.
+- `skip`: the time the player asked for the whole line (a button pressed while it types): every letter not yet out comes out at
+  once, in a ripple a tenth of a second long.
+- `appear = false`: no rise as the letters come out.
+
+It returns its width and height (logical units), how many letters are out (spaces too) and whether the last is out.
+`nova.ui.rich_text_letters(x, y, text [, opts])` draws nothing and returns the same line as a table: `text` (the words without
+the markup), `last` (when the last letter comes out), `shown`, `done`, `width`, `height` and `letters`, one for each letter with
+`char`, `x`, `y` (its pen and baseline, where it rests), `line`, `size`, `at` (when it comes out), `shown`, its movement now
+(`dx`, `dy`, `scale`, `rotation`, `alpha`) and `fx` (`{ big = true, ... }`): for a babble voice that follows the letters, a mouth
+that moves while they come out, or a test. It costs what plain text costs: one quad a letter.
 
 
 ## Songs (`music/<name>.song.json`)

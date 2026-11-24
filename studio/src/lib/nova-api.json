@@ -539,6 +539,20 @@
   "group": "Drawing"
  },
  {
+  "name": "nova.ui.rich_text",
+  "kind": "function",
+  "signature": "nova.ui.rich_text(x, y, text [, opts]) -> width, height, shown, done",
+  "doc": "Text with markup, typed out: {shake}..{/shake} jitter, {wave}..{/wave} letters bobbing, {big}..{/big} larger and bolder, {slow}..{/slow} typed at a third of the speed, {pop}..{/pop} letters popping in, {c=red}..{/c} a colour (a name or #rrggbb), {pause} or {pause=0.6} a wait, {{ a brace. The whole line is laid out first and typed into that layout (a word never jumps to the next line, nothing reflows), each letter rising softly into place as it appears (appear = false: not). Options: font, size, color, bold, width, align, line_spacing as nova.ui.text's; time (seconds since the line began: letters come out at cps letters a second, default 52, with short pauses after commas, longer after stops, longest after ...; without it everything is out and the effects run on the game clock); skip (the time the player asked for the whole line: the rest comes out at once). Returns the size, how many letters are out and whether the last one is.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.ui.rich_text_letters",
+  "kind": "function",
+  "signature": "nova.ui.rich_text_letters(x, y, text [, opts]) -> { text, last, shown, done, width, height, letters }",
+  "doc": "The same line as nova.ui.rich_text without drawing it: `text` is the words without the markup, `last` when the last letter comes out, and `letters` one table a letter with char, x, y (pen and baseline where it rests), line, size, at (when it comes out), shown, dx, dy, scale, rotation, alpha (its movement at `time`) and fx ({ big = true, ... }). For a babble voice that follows the typing, or a test.",
+  "group": "Drawing"
+ },
+ {
   "name": "nova.input",
   "kind": "namespace",
   "signature": "nova.input",
