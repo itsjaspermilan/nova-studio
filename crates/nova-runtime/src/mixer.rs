@@ -1246,6 +1246,46 @@ mod tests {
         );
     }
 
+    /// Layers played once (`loop = false`, a playlist of pieces) end together, and then no music plays.
+    #[test]
+    fn layers_played_once_end_together_and_the_music_stops() {
+        let ramp: Vec<[i16; 2]> = (0..300).map(|n| [n * 8, n * 8]).collect();
+        let stem = |id: u64| {
+            (
+                Box::new(Play {
+                    stream: Some(StreamFeed::from_frames(1000, ramp.clone(), false)),
+                    music: true,
+                    looping: false,
+                    ..play(
+                        id,
+                        &Arc::new(Sample {
+                            rate: 1000,
+                            frames: Vec::new(),
+                        }),
+                    )
+                }),
+                1.0,
+            )
+        };
+        let mut m = Mixer::new(1000);
+        m.apply(Command::PlayLayers {
+            layers: vec![stem(1), stem(2)],
+            bar_seconds: 0.0,
+            bars: Vec::new(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let out = render(&mut m, 200);
+        assert!(out.iter().any(|v| *v != 0.0), "they play");
+        assert!(m.music_position().is_some());
+        let out = render(&mut m, 300);
+        assert!(
+            out[2 * 250..].iter().all(|v| *v == 0.0),
+            "and end, not loop"
+        );
+        assert_eq!(m.active_voices(), 0, "both stems are gone");
+        assert!(m.music_position().is_none(), "no music plays");
+    }
+
     /// Streamed stems are sample-locked: when one stem's decoder is behind, all of them wait (the music is silent for that
     /// block) instead of the others running on, so they come back in step.
     #[test]

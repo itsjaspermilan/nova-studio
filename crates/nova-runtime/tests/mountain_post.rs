@@ -1874,26 +1874,29 @@ fn the_song_is_a_long_piano_piece_in_sections() {
             "a soft, felt piano"
         );
     }
+    // (since the seventh play it is the first of four pieces that take turns: it plays once, intro A B C A''' and an ending, and
+    // no longer loops; the other three are tested at the end of this file)
     let spb = song["stepsPerBeat"].as_f64().unwrap();
     let bpm = song["bpm"].as_f64().unwrap();
-    let (from, to) = (
-        song["loop"]["from"].as_f64().unwrap(),
-        song["loop"]["to"].as_f64().unwrap(),
-    );
-    assert!(from > 0.0, "an intro that plays once");
-    assert_eq!(to, song["length"].as_f64().unwrap());
+    assert!(song.get("loop").is_none(), "it plays once and ends");
+    let markers = song["markers"].as_array().unwrap();
+    let from = markers.iter().find(|m| m["name"] == "A").unwrap()["step"]
+        .as_f64()
+        .unwrap();
+    let to = markers.iter().find(|m| m["name"] == "end").unwrap()["step"]
+        .as_f64()
+        .unwrap();
+    assert!(from > 0.0, "an intro");
     let seconds = (to - from) / spb * 60.0 / bpm;
-    assert!(seconds >= 150.0, "the loop is {seconds} s");
+    assert!(seconds >= 100.0, "the piece is {seconds} s");
     for t in song["tempos"].as_array().unwrap() {
         assert!(t["bpm"].as_f64().unwrap() <= bpm);
     }
-    let names: Vec<&str> = song["markers"]
-        .as_array()
-        .unwrap()
+    let names: Vec<&str> = markers
         .iter()
         .map(|m| m["name"].as_str().unwrap())
         .collect();
-    for s in ["A", "A'", "B", "A''", "C", "B'", "A'''"] {
+    for s in ["intro", "A", "B", "C", "A'''", "end"] {
         assert!(names.contains(&s), "the section {s}: {names:?}");
     }
     let right = tracks[0]["notes"].as_array().unwrap();
@@ -1909,7 +1912,10 @@ fn the_song_is_a_long_piano_piece_in_sections() {
         }
         b += bar;
     }
-    assert!(quiet_bars >= 2, "{quiet_bars} bars without the tune");
+    assert!(
+        quiet_bars >= 1,
+        "{quiet_bars} bars without the tune (C ends on one)"
+    );
     let (lo, hi) = right
         .iter()
         .map(|n| n["vel"].as_f64().unwrap())
@@ -3754,9 +3760,13 @@ fn the_valley_plays_the_stems_and_driving_brings_in_the_layers() {
         .filter_map(|s| s["text"].as_str().map(str::to_string))
         .filter(|t| t.starts_with("music"))
         .collect();
+    // (since the seventh play the first piece of the playlist starts a few seconds in: whichever it is, its five stems, once)
     assert!(
-        started.iter().any(|t| t
-            == "music layers fernhollow_piano + fernhollow_bass + fernhollow_brushes + fernhollow_pad + fernhollow_celesta"),
+        started.iter().any(|t| {
+            let Some(rest) = t.strip_prefix("music layers ") else { return false };
+            let Some((name, _)) = rest.split_once("_piano") else { return false };
+            t == &format!("music layers {name}_piano + {name}_bass + {name}_brushes + {name}_pad + {name}_celesta (once)")
+        }),
         "{started:?}"
     );
     // the last value each phase recorded: what has been earned, and each layer's level
@@ -3807,9 +3817,10 @@ fn the_five_stems_share_one_length_one_loop_and_the_pieces_bar_lines() {
             std::fs::read(root.join(format!("{GAME}/music/fernhollow_{stem}.ogg"))).unwrap();
         let len = frames(&bytes);
         let src = nova_runtime::stream::StreamSource::new(bytes).unwrap();
-        assert!(src.loop_points.is_some(), "{stem}: the loop's points");
+        // (since the seventh play the piece plays once and ends: no loop points; the other pieces are tested at the end)
+        assert!(src.loop_points.is_none(), "{stem}: it plays once");
         assert!(
-            src.bars.len() >= 50,
+            src.bars.len() >= 30,
             "{stem}: the bar lines ({})",
             src.bars.len()
         );
@@ -6416,7 +6427,7 @@ fn the_bass_layer_is_voiced_for_a_small_speaker_and_the_stems_stay_in_step() {
         up["notes"].as_array().unwrap(),
     );
     assert!(
-        ln.len() > 100 && ln.len() == un.len(),
+        ln.len() > 50 && ln.len() == un.len(),
         "bass notes {} / upper {}",
         ln.len(),
         un.len()
@@ -8582,5 +8593,285 @@ fn the_vans_glass_and_linings_stay_inside_its_skin() {
     assert!(
         checked > 40,
         "the panes and the linings were checked: {checked} points"
+    );
+}
+
+// ---- the seventh play: "the music is too repetitive" -> four pieces that take turns, with quiet between them (2026-11-23) ------------
+
+/// The four pieces (tools/music.mjs): each a song file and five stems of one length with the same bar lines, none looping (each
+/// plays once and ends), each 1.5 to 2.5 minutes long as lib/music.lua says it is, in its own key and tempo (one a waltz in 3/4),
+/// each with its own tune.
+#[test]
+fn four_pieces_each_five_stems_in_step_that_play_once() {
+    let root = game_dir();
+    let frames = |bytes: &[u8]| -> u64 {
+        let at = bytes.windows(4).rposition(|w| w == b"OggS").unwrap();
+        u64::from_le_bytes(bytes[at + 6..at + 14].try_into().unwrap())
+    };
+    let g = game();
+    let listed = lua(
+        &g,
+        "(function() local m = require('lib.music'); local t = {}; for _, p in ipairs(m.PIECES) do t[#t + 1] = p.name .. '=' .. p.seconds end; return table.concat(t, ' ') end)()",
+    );
+    let pieces: Vec<(String, f64)> = listed
+        .split(' ')
+        .map(|kv| {
+            let (k, v) = kv.split_once('=').unwrap();
+            (k.to_string(), v.parse().unwrap())
+        })
+        .collect();
+    assert!((3..=4).contains(&pieces.len()), "{pieces:?}");
+    assert_eq!(pieces[0].0, "fernhollow", "the first piece is kept");
+    let mut tempos = Vec::new();
+    let mut tunes = Vec::new();
+    let mut waltz = false;
+    for (name, seconds) in &pieces {
+        let song: Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(format!("music/{name}.song.json"))).unwrap(),
+        )
+        .unwrap();
+        assert!(song.get("loop").is_none(), "{name} plays once");
+        tempos.push(song["bpm"].as_f64().unwrap() as i64);
+        waltz |= song["beatsPerBar"].as_i64() == Some(3);
+        let right = song["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "right hand")
+            .unwrap();
+        assert_eq!(right["wave"], "piano", "{name}: the felt piano");
+        let notes: Vec<i64> = right["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .take(12)
+            .map(|n| n["pitch"].as_i64().unwrap())
+            .collect();
+        tunes.push(notes);
+        assert!(
+            (90.0..=160.0).contains(seconds),
+            "{name} is {seconds} s: 1.5 to 2.5 minutes, about"
+        );
+        let mut first: Option<(u64, Vec<u64>)> = None;
+        for stem in ["piano", "bass", "brushes", "pad", "celesta"] {
+            let bytes = std::fs::read(root.join(format!("music/{name}_{stem}.ogg")))
+                .unwrap_or_else(|_| panic!("{name}_{stem}.ogg"));
+            let len = frames(&bytes);
+            let src = nova_runtime::stream::StreamSource::new(bytes).unwrap();
+            assert!(src.loop_points.is_none(), "{name}_{stem} does not loop");
+            assert!(src.bars.len() >= 25, "{name}_{stem}: its bar lines");
+            let secs = len as f64 / src.rate as f64;
+            assert!(
+                (secs - seconds).abs() < 0.05,
+                "{name}_{stem} is {secs} s, lib/music.lua says {seconds}"
+            );
+            let this = (len, src.bars.clone());
+            match &first {
+                None => first = Some(this),
+                Some(f) => assert_eq!(f, &this, "{name}_{stem} is not in step with its piano"),
+            }
+        }
+    }
+    let mut distinct = tempos.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        tempos.len(),
+        "each its own tempo: {tempos:?}"
+    );
+    assert!(waltz, "one is a waltz in 3/4");
+    for i in 0..tunes.len() {
+        for j in i + 1..tunes.len() {
+            assert_ne!(tunes[i], tunes[j], "each its own tune");
+        }
+    }
+}
+
+/// The playlist (music.playlist_step), over five hours of play with a seeded shuffle: the first piece starts a few seconds in, not
+/// at once; a piece never follows itself and every one of them plays; between two pieces a quiet of 20 to 60 s, sometimes a little
+/// longer, never more than two minutes; each piece's stems are prepared about 8 s before it starts, during the quiet; the ending
+/// card cuts a quiet short.
+#[test]
+fn the_playlist_shuffles_never_repeats_and_leaves_quiet_between() {
+    let g = game();
+    let out = lua(
+        &g,
+        r#"(function()
+      local m = require('lib.music')
+      local seed = 12345
+      local function rand() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
+      local pl = m.new_playlist(rand)
+      local dt, t = 0.1, 0
+      local starts, ends, prepared = {}, {}, {}
+      for _ = 1, 5 * 3600 * 10 do
+        t = t + dt
+        for _, e in ipairs(m.playlist_step(pl, dt)) do
+          if e.kind == 'start' then
+            starts[#starts + 1] = { t = t, piece = e.piece }
+            assert(prepared[#starts] and prepared[#starts].piece == e.piece, 'prepared before it starts')
+            local ahead = t - prepared[#starts].t
+            assert((ahead > 7 or #starts == 1) and ahead < 9, 'prepared about 8 s ahead (the first as the game begins): ' .. ahead)
+          elseif e.kind == 'prepare' then
+            assert(pl.phase == 'quiet', 'prepared in the quiet')
+            prepared[#starts + 1] = { t = t, piece = e.piece }
+          else
+            ends[#ends + 1] = t
+            assert(e.piece == starts[#starts].piece)
+            local len = t - starts[#starts].t
+            assert(math.abs(len - m.PIECES[e.piece].seconds) < 0.2, 'a piece plays for its length')
+          end
+        end
+      end
+      assert(starts[1].t > 3 and starts[1].t < 10, 'the first piece shortly after the start: ' .. starts[1].t)
+      local seen, longer = {}, 0
+      for k, s in ipairs(starts) do
+        seen[s.piece] = true
+        if k > 1 then
+          assert(s.piece ~= starts[k - 1].piece, 'a piece twice in a row at ' .. s.t)
+          local quiet = s.t - ends[k - 1]
+          assert(quiet >= 19.9 and quiet <= 120.1, 'a quiet of ' .. quiet)
+          if quiet > 60.1 then longer = longer + 1 end
+        end
+      end
+      for i = 1, #m.PIECES do assert(seen[i], 'piece ' .. i .. ' played') end
+      assert(longer > 0 and longer < #starts / 2, 'sometimes a longer quiet: ' .. longer .. ' of ' .. #starts)
+      -- the ending card: a quiet is cut short
+      local p2 = m.new_playlist(rand)
+      m.playlist_step(p2, 0.1)
+      m.hurry(p2)
+      local at
+      for k = 1, 40 do for _, e in ipairs(m.playlist_step(p2, 0.1)) do if e.kind == 'start' then at = k * 0.1 end end end
+      assert(at and at <= 2.1, 'the ending starts the next piece within 2 s')
+      return 'ok ' .. #starts
+    end)()"#,
+    );
+    assert!(out.starts_with("ok"), "{out}");
+}
+
+/// The game's side (lib/music.lua's music.update, with nova.music's calls recorded): the stems of whichever piece plays are the
+/// ones started and faded; the layers follow the drive in every piece, and a piece that starts mid-drive starts with the layers
+/// the drive earned; nothing is sent in a quiet; on foot, indoors and under a card or a conversation only the piano plays; a new
+/// scene's music.start does not restart the piece.
+#[test]
+fn the_layers_follow_whichever_piece_plays() {
+    let g = game();
+    let out = lua(
+        &g,
+        r#"(function()
+      local m = require('lib.music')
+      m.reset()
+      local real = nova.music
+      local calls = {}
+      nova.music = {
+        layers = function(names, opts) calls[#calls + 1] = { kind = 'layers', names = names, opts = opts } end,
+        layer = function(name, level, opts) calls[#calls + 1] = { kind = 'layer', name = name, level = level } end,
+        prepare = function(names, opts) calls[#calls + 1] = { kind = 'prepare', names = names, opts = opts } end,
+        volume = function() end,
+      }
+      local ok, err = pcall(function()
+        m.start('outdoors')
+        local dt = 0.1
+        local function run(seconds, input) for _ = 1, math.floor(seconds / dt + 0.5) do m.update(dt, input) end end
+        -- on foot until the first piece: piano alone
+        run(10, { driving = false, speed = 0 })
+        local first = m.status().piece
+        assert(first, 'a piece plays after 10 s')
+        local starts = 0
+        for _, c in ipairs(calls) do
+          if c.kind == 'layers' then
+            starts = starts + 1
+            assert(c.opts.loop == false, 'a piece plays once')
+            assert(c.names[1] == first .. '_piano' and #c.names == 5, 'its five stems')
+            assert(c.opts.levels[1] == 1 and c.opts.levels[2] == 0 and c.opts.levels[5] == 0, 'on foot: the piano alone')
+          end
+          assert(c.kind ~= 'layer' or c.level == 0, 'on foot nothing joins')
+        end
+        assert(starts == 1)
+        -- into the post office and out again: the piece carries on
+        m.start('indoors'); run(5, { driving = false, speed = 0, quiet = false }); m.start('outdoors')
+        assert(m.status().piece == first, 'the piece carries on across scenes')
+        -- drive for six minutes at cruise: pieces come and go; every layer change names the stems of the piece that plays
+        local playing, mid = first, nil
+        local from = #calls
+        for _ = 1, 3600 do
+          m.update(dt, { driving = true, speed = 9 })
+          for k = from + 1, #calls do
+            local c = calls[k]
+            if c.kind == 'layers' then
+              playing = c.names[1]:gsub('_piano$', '')
+              mid = mid or c
+            elseif c.kind == 'layer' then
+              assert(playing and c.name:sub(1, #playing + 1) == playing .. '_', c.name .. ' is not a stem of ' .. tostring(playing))
+              assert(m.status().piece, 'nothing is sent in a quiet')
+            end
+          end
+          from = #calls
+        end
+        assert(mid, 'another piece started during the drive')
+        assert(mid.names[1]:gsub('_piano$', '') ~= first, 'not the same piece twice in a row')
+        for i = 2, 5 do assert(mid.opts.levels[i] == 1, 'a piece that starts mid-drive starts with the earned layers') end
+        -- wait for a piece, then a conversation: the layers go, the piano stays
+        while not m.status().piece do m.update(dt, { driving = true, speed = 9 }) end
+        run(20, { driving = true, speed = 9 })
+        assert(m.status().levels[4] == 1, 'all four at cruise')
+        run(3, { driving = true, speed = 9, quiet = true })
+        for i = 1, 4 do assert(m.status().levels[i] == 0, 'a conversation: the piano alone') end
+        -- getting out and walking indoors: the piano alone
+        run(3, { driving = false, speed = 0 })
+        m.start('indoors')
+        run(5, { driving = false, speed = 0 })
+        for i = 1, 4 do assert(m.status().levels[i] == 0, 'indoors: the piano alone') end
+      end)
+      nova.music = real
+      m.reset()
+      assert(ok, err)
+      return 'ok'
+    end)()"#,
+    );
+    assert!(out.starts_with("ok"), "{out}");
+}
+
+/// In the running game: the first piece starts a few seconds in (its stems prepared during the quiet before, played once), and
+/// going into the post office and back out does not start it again.
+#[test]
+fn the_first_piece_starts_after_a_moment_and_carries_on_through_the_door() {
+    let mut g = game();
+    let piece = "tostring(require('lib.music').status().piece)";
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 120, "record": "{piece} --early" }}, {{ "wait": 480, "record": "{piece} --playing" }},
+            {{ "lua": "nova.goto_scene('office')" }}, {{ "wait": 120 }}, {{ "lua": "nova.goto_scene('valley')" }}, {{ "wait": 120, "record": "{piece} --back" }} ] }}"#
+        ),
+    );
+    let last = |tag: &str| {
+        r.record(&format!("{piece} --{tag}"))
+            .last()
+            .unwrap_or_else(|| panic!("nothing recorded {tag}"))
+            .2
+            .clone()
+    };
+    assert_eq!(last("early"), "nil", "not at once");
+    let playing = last("playing");
+    assert_ne!(playing, "nil", "a piece plays ten seconds in");
+    assert_eq!(last("back"), playing, "the same piece after the door");
+    let music: Vec<String> = r.json["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| s["text"].as_str().map(str::to_string))
+        .filter(|t| t.starts_with("music"))
+        .collect();
+    let stems = format!(
+        "{playing}_piano + {playing}_bass + {playing}_brushes + {playing}_pad + {playing}_celesta"
+    );
+    assert_eq!(
+        music,
+        vec![
+            format!("music prepare {stems}"),
+            format!("music layers {stems} (once)")
+        ],
+        "prepared, then played once, and not restarted by the door"
     );
 }
