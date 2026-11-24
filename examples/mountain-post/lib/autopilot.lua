@@ -167,7 +167,7 @@ function autopilot.to(place, opts)
     self.turning = false
     van.ctl.steer = math.max(-1, math.min(1, -diff * 2.2))
     -- (forward in D: from P or R, stopped first)
-    if van.gear ~= "D" and van.gear ~= "L" then
+    if van.gear ~= "D" then
       if van.speed < -0.3 then van.ctl.go, van.ctl.brake = 0, 1; return end
       if not autopilot.gear(self, van, "D", dt) then return end
     end

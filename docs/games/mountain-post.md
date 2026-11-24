@@ -195,29 +195,30 @@ same letter).
 - **Y** (left) gets into the van at its left doorway, and out of it when it has stopped.
 - **A** (right) confirms in menus only: Start on the title, the pause menu's choice, and Take in the van's parcel panel (a menu).
   ~~In the van (the sixth play) A moves the lever one gear towards L.~~ (swapped by the owner, 2026-11-23) In the van A moves it one gear towards P.
-- **The van's lever** (the sixth play: an automatic with PRNDL): ~~A steps toward L, X toward P~~ X steps toward L (along the row P R N D L), A toward P (swapped by the owner, 2026-11-23); the column
-  reads P R N D L top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
+- **The van's lever** (the sixth play: an automatic with PRNDL; ~~P R N D L~~ replaced 2026-11-23 by the ninth notes, "We can remove the Neutral gear and the Lower Gear": **P R D**): ~~A steps toward L, X toward P~~ ~~X steps toward L (along the row P R N D L), A toward P (swapped by the owner, 2026-11-23)~~ **A steps toward D (P, R, D), X toward P**; the column
+  reads P R D top to bottom. ~~Shown bottom left beside the minimap~~ (replaced: "We should move the PRNDL to the right along
   with an analog speedometer") it is shown in the bottom right with an analog speedometer (~~0 to 40 km/h~~ 0 to 100 km/h since "the speedo should go to 100 km/h but the van caps out at 40 since there are no upgrades yet": Van.TUNE.cap holds D at 40 km/h on the flat, L at about 23; the minimap's frame, a
   soft red needle, eased; backing up it shows the speed it backs at). ~~The PRNDL panel beside the dial, with X and A glyphs,
   and the handbrake lamp in the dial's foot~~ (replaced: "merge them in a nice UI way. Not just two separate shapes"; "We don't
-  need the button chips there either") it is ONE round instrument: the gears a row P R N D L in the dial's foot (the current
+  need the button chips there either") it is ONE round instrument: the gears a row ~~P R N D L~~ P R D in the dial's foot (the current
   one on the red key), the handbrake's "(P)" warning light over the hub, bold dark ticks, the needle resting on a peg below the
   0; no button glyphs. The prompts stand above it while driving (lib/gear_hud.lua). It is in P each time someone gets in, and left in P on getting out.
   ~~Among P, R, N and D it moves only with L2 held and the van all but stopped (under 0.5 m/s); otherwise a soft click and "Hold
   the brake to shift".~~ (replaced: "We can remove the brake requirement honestly") It moves at once with no pedal; the one guard:
   never into P while moving faster than 1 m/s, nor into R while going forwards faster than that (a soft click and "Stop to
-  shift"). P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); N rolls free, down a
-  slope too; D drives; L pulls harder, brakes on the engine and tops out at about 58 % of D (the steep lanes). Each shift is a
-  gentle clunk. **Creep** ("We need to add creep for D R and L"): in D, L and R with the pedals up the van creeps at idle, built
-  up over about a second and a half: about 1.25 to 1.35 m/s on Post Road in D, 1.1 in L, 1.0 backwards in R, a little slower on
-  the grass; D slows on a climb (and rolls back on a very steep one), L creeps up moderate hills. Any touch of L2 or the handbrake
-  takes it away and holds a stopped van still; P and N never creep. A creeping van is moving: Y gets out once it is stopped on
+  shift"). P holds the wheels; R backs up on R2 (a soft reversing beeper sounds every 1.2 s, only in R); ~~N rolls free, down a
+  slope too~~ (no N now); D drives ~~L pulls harder, brakes on the engine and tops out at about 58 % of D~~ (no L now: D keeps its behaviour). Each shift is a
+  gentle clunk. **Creep** ("We need to add creep for D R and L"): in D and R (~~and L~~) with the pedals up the van creeps at idle, ~~built
+  up over about a second and a half~~ and, since "the creep should start sooner technically" (the ninth notes), it starts at once: the force builds in about 0.3 s
+  (two eases of Van.TUNE.creep_build 0.12 s, so the acceleration never jumps), the van moves visibly within half a second and is at 1 m/s in about a second: about 1.25 to 1.35 m/s on Post Road in D, 1.0 backwards in R, a little slower on
+  the grass; D slows on a climb (and rolls back on a very steep one). Any touch of L2 or the handbrake
+  takes it away and holds a stopped van still; P never creeps. A creeping van is moving: Y gets out once it is stopped on
   the brake or in P (Van.TUNE.creep, creep_pull, creep_band, creep_build, creep_brake).
 - **L3** (the left stick's click) sounds the horn while driving (it was X).
 - **B** (bottom), held: on foot, run (the stick alone only walks); driving, the handbrake (the rear wheels lock, the van slows firmly,
   in a bend at speed the tail steps out a little; standing, it holds the van still on a slope; the brake lamps light).
 - **Select** (the minus button) opens and closes the paper map. **Start** pauses (resume, quit). **L1** / **R1** go round the
-  parcel card, or the van's panel at its open back. **R2** goes (forwards in D and L, backwards in R), **L2** brakes
+  parcel card, or the van's panel at its open back. **R2** goes (forwards in D, backwards in R), **L2** brakes
   (~~brakes then reverses~~: only brakes since the sixth play), the left stick moves or steers, the right stick looks.
 - Keyboard (tests and the desktop): X is Space (or the X key), Y is F, A is Enter, B is Shift, Select is M (or Tab), Start is
   Escape (or P), L1 / R1 are Z / C, the stick and the pedals are the arrows or WASD, Q / E look, H the horn.
@@ -1573,3 +1574,17 @@ way does not yet take its fallen tree or gates away.
 5. "The windscreen on the van should be a little shorter vertically."
 6. "We can remove the Neutral gear and the Lower Gear." (The lever is P R D.)
 7. "The driveways should be closer to the homes. Especially for the post office."
+
+**Notes 5 and 6, and a later note on the creep (the gearbox's half; the coordinator relayed "Also the creep should start sooner technically").**
+- *Windscreen* (tools/van.mjs, `WIN.y1` 1.50 to 1.44): the opening is 0.44 m high instead of 0.50 (12 % off the top; the bottom stays on the dash).
+  Frame, pillars, both-sided pane, cab ceiling and linings are unchanged (they follow `WS` and `WIN`; the "nothing outside the skin" test passes);
+  the seated postmaster is seen whole through it from the front and the chase side. Lettering and the wheel mounts are untouched.
+- *The lever is P R D*: `Van.ORDER`, the instrument's row (lib/gear_hud.lua, letters SP.xl apart about the hub), the Controls page's rows
+  (lib/words.lua: A "Gear towards D", X "Gear towards P"), the autopilot (it walks `Van.ORDER`, so it goes P, R, D; its D-or-L test is D). L's extra
+  pull, top speed, engine braking and note went; so did N's roll. The tuning keys `low_power`, `low_top`, `low_brake` and the `L` creep entries are gone.
+- *Creep sooner*: `Van.TUNE.creep_build` 0.45 to 0.12 s, applied twice in a row (`creep_j` then `creep_k`), so the pull is at 90 % in about 0.3 s but starts
+  smoothly (the largest change in acceleration a step is under 0.12 m/s^2). Measured on Post Road: D moves 0.27 m/s half a second after the brake is let
+  go and reaches 1 m/s after 1.25 s, R 0.33 m/s at half a second; both settle where they did.
+- Pictures (not committed): `build/gallery/ninth-van/` (front, side, three-quarter, before and after), `build/gallery/ninth-windscreen/`, `build/gallery/ninth-gears/`.
+  Routes: `tools/routes/ninth-gears.json`, `ninth-windscreen.json`. Tests at the end of tests/mountain_post.rs (`only_p_r_and_d_exist_...`,
+  `the_lever_steps_p_r_d_...`, `the_autopilot_drives_through_p_r_d_only_...`; the creep test is `d_and_r_creep_at_idle_at_once_...`).

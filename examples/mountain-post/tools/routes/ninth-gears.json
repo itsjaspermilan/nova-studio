@@ -1,0 +1,16 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "out": "build/gallery/ninth-gears",
+  "lua": "nova.named('van'):teleport(4.5, -160, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()",
+  "print": ["nova.named('van').gear", "nova.named('van').speed"],
+  "route": [
+    { "wait": 60, "capture": "gear-P: just in, the lever in P, the row P R D" },
+    { "hold": ["brake"], "press": "confirm", "frames": 6 },
+    { "wait": 20, "capture": "gear-R: A once, the lever in R" },
+    { "hold": ["brake"], "press": "confirm", "frames": 6 },
+    { "wait": 20, "capture": "gear-D: A again, the lever in D (D is the last gear)" },
+    { "hold": ["go"], "frames": 240, "capture": "drive-D: at speed in D, the chase view with the postmaster seated behind the windscreen" },
+    { "hold": ["go"], "press": "interact", "frames": 8, "capture": "refused: X towards P on the move, 'Stop to shift'" }
+  ]
+}
