@@ -1717,3 +1717,54 @@ Weak points: the braking is felt only in the numbers and pictures here, not on t
 (the suspension takes the pitch). The Enter tip's spot is over the roof, so a low camera behind the van may put it off the top of the
 screen (the tip keeps itself on screen). Pressing X at speed no longer clicks to refuse, so nothing "tells" the player the shift
 is waiting beyond the breathing key and the slip.
+## The owner's tenth notes: the cameras (2026-11-23)
+
+1. "Camera: I like the 'top down' camera of the indoor areas. Let's keep that for the player every time they're walking even outside.
+   When the player gets in the van we can move the camera closer to the ground, similar to what it's at now while driving."
+2. "The camera can rotate a little faster when the player turns so that way the player doesn't have to use the Right Stick as often."
+
+### What the tenth notes changed: the office's look on foot outdoors, the chase view kept for the van, a quicker swing
+
+**On foot outdoors** (note 1; lib/camera.lua `FOOT`). The office's fixed view looks 47.5 degrees down from 11.2 m with a 33 degree lens
+(`ROOM`). Outdoors the boom now rises 47 degrees, 11 m long, with a 34 degree lens (it was 26 degrees from 8 m with 42): the same
+look, kept behind the postmaster and turning with them as before. The view itself looks down 42 degrees, a touch less than the boom,
+so the postmaster stands a little below the middle (about 60 % down the picture) and on flat ground about 13 m of ground ahead of
+them shows along the top; there is no horizon any more on foot. The right stick still orbits and tilts it, now between 30 and 64
+degrees. What outdoors needs on top of the office's view: the eye (about 9 m up) is among the tree crowns more often, so the boom's
+pull in when the eye is in a crown is held to 80 % of its length on foot (`pull_min`; it was down to 55 %, which at this height was a
+sudden zoom), and what is near the eye fades out whole as before (`NEAR_FADE`); the see-through circle, the ground lift and the rule
+that the van and people are never cut are unchanged. Coming out of the post office the postmaster now stands 6.5 m out of the door
+(`Valley.OUT_OF_DOOR`, scenes/valley.lua; it was 4 m, at the foot of the porch): from 4 m the high camera behind them looked down
+through the porch roof and its name board, which filled the lower half of the picture; from 6.5 m it looks past them.
+
+**Driving** (note 1; `VAN`). Unchanged: 16 degrees from 9.6 m with a 44 degree lens, the van in the lower third and the road and the
+horizon ahead.
+
+**Getting in and out** (`GET_IN` 0.9 s, `GET_OUT` 0.8 s; they were 0.7 and 0.6). The view eases (smoothstep) along a straight line
+between the high walking view and the low chase view, the lens with it; on the way the eye is kept a metre over the ground and out of
+the van's body (`camera.apply`). Measured in the valley: from 9.0 m up to 4.05 m in 54 frames, at most about 0.15 m a frame.
+
+**The swing behind** (note 2). On foot the drift round behind the way of walking turns at up to 0.9 rad/s (was 0.55), gain 1.8 (was
+1.1), easing its speed at 1.0 rad/s2 (was 0.6): 1.65 times each. In the van 0.65 rad/s plus 0.16 for each m/s up to 2.2 (was 0.5 +
+0.12 up to 1.7), gain 3.4 (2.6), 3.9 rad/s2 (3.0): 1.3 times each. It still waits for the right stick: nothing drifts for
+`DELAY` 1.2 s after the stick is let go, then it eases in over `EASE` 0.9 s, as before; standing still or turning on the spot it
+does not move. From 1.2 rad off, walking at 2.8 m/s, it now comes within 0.2 rad of behind in 1.67 s (100 frames; it took 2.55 s, 153); driving on Post Road, in 0.82 s (49 frames;
+it took 1.05 s, 63).
+
+**What reads differently from above.** The minimap turns with the camera's yaw only, so it is unchanged. The Talk tip over a
+resident, the van's panel over the open doors and the parcel tips are placed by `camera.project`, so they follow the new view; they
+were looked at in the pictures and read clearly (the van's panel stands over the doors with the postmaster below it). The dialogue's
+camera is its own close view, and the glide down into it (0.4 s) and back up (0.45 s) reads as a quick swoop.
+
+Tests (crates/nova-runtime/tests/mountain_post.rs, at its end): `walking_outdoors_the_camera_looks_down_like_the_office`,
+`driving_keeps_the_low_chase_camera`, `getting_in_and_out_of_the_van_eases_between_the_two_cameras`,
+`the_swing_behind_is_quicker_on_foot_and_in_the_van`. Changed in place: `the_cameras_are_lower_and_more_behind` (now pins the van's low
+view and the walking view's 44 to 50 degrees from 10 to 12 m) and the step out of the post office's door (6.5 m). Pictures
+(1280 x 720, not committed): tools/routes/walk-camera.mjs, `build/gallery/walk-camera-before/` and `walk-camera-after/` (out of the
+door, walking from the post office, a meadow, under a pine, a turn, at the van's door, getting in mid ease, in the van, driving, a
+bend, getting out mid ease, out, the van's panel, the Talk tip, the talk).
+
+Weak points: from 9 m up a crown between the eye and the postmaster is common under trees; the circle cuts it only when it really
+hides them, so walking under a big pine the crown fills much of the picture with the postmaster seen below it. The far edge is 13 m
+ahead on flat ground and less walking uphill: the next house or the van is often off the top of the picture until close (the minimap
+shows them). The billboards (the post office's name board) are not cut by the see-through. Not seen on the Retroid yet.
