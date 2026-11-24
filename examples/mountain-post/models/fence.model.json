@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "wood",
           "color": "#97633f",
           "verts": [
             [-25.44, 0, -1.44],
@@ -55,6 +56,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "wood",
           "color": "#97633f",
           "verts": [
             [22.56, 0, -1.44],
@@ -101,6 +103,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "wood",
           "color": "#b97c4f",
           "verts": [
             [-24.81, 6.833, -0.8],
@@ -124,6 +127,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "wood",
           "color": "#b97c4f",
           "verts": [
             [-24.771, 12.151, -0.8],

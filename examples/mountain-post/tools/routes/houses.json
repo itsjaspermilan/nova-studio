@@ -1,0 +1,185 @@
+{
+ "start_scene": "valley",
+ "lua": "CAM = require('lib.camera'); DRIVE = function(x, z, tx, tz) local h = math.atan(tx - x, tz - z); local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.pinned = nil; CAM.reset(h) end; WALK = function(px, pz, tx, tz) local s = nova.scene_now(); s.mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; local h = math.atan(tx - px, tz - pz); p.x, p.z, p.face = px, pz, h; CAM.pinned = nil; CAM.reset(h); nova.named('van'):teleport(6.5, -177, 0) end; CLOSE = function(kind, k, dist, up, look, fov, off) local n = 0; for _, o in ipairs(nova.scene_data('valley').objects) do if o.kind == kind then n = n + 1; if n == k then local ry = (o.props and o.props.ry) or 0; local fx, fz = math.sin(ry), math.cos(ry); local ox = off or 0; AT(o.x + fx * dist + fz * ox, up, o.z + fz * dist - fx * ox, o.x, look, o.z, fov or 50); return end end end end; SHEET = function(kinds, x0, z0, sp, dist, fov) local n = #kinds; for i, k in ipairs(kinds) do local x = x0 + (i - 1) * sp; nova.scenery.add(k, x, 0, z0, { ry = 0 }); if k == 'washing_line' then nova.scenery.add('cloths', x, 1.3, z0, { ry = 0 }) end end; local cx = x0 + (n - 1) * sp / 2; AT(cx, 2.2, z0 + dist, cx, 0.7, z0, fov or 40) end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end",
+ "route": [
+  {
+   "wait": 40
+  },
+  {
+   "lua": "WALK(8, -186, 21, -186)"
+  },
+  {
+   "wait": 90,
+   "capture": "a-po-walk"
+  },
+  {
+   "lua": "DRIVE(1, -178, 21, -186)"
+  },
+  {
+   "wait": 70,
+   "capture": "a-po-drive"
+  },
+  {
+   "lua": "WALK(152, 45.4, 162, 54)"
+  },
+  {
+   "wait": 90,
+   "capture": "b-hazel-walk"
+  },
+  {
+   "lua": "DRIVE(145, 37, 162, 54)"
+  },
+  {
+   "wait": 70,
+   "capture": "b-hazel-drive"
+  },
+  {
+   "lua": "WALK(-183.9, 103.9, -192, 114)"
+  },
+  {
+   "wait": 90,
+   "capture": "c-pip-walk"
+  },
+  {
+   "lua": "DRIVE(-176, 97, -192, 114)"
+  },
+  {
+   "wait": 70,
+   "capture": "c-pip-drive"
+  },
+  {
+   "lua": "CLOSE('post_office', 1, 11, 2.6, 2.2, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-po-front"
+  },
+  {
+   "lua": "CLOSE('bicycle', 1, 3.4, 1.2, 0.7, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-po-bicycle"
+  },
+  {
+   "lua": "CLOSE('crates', 1, 4, 1.4, 0.7, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-po-crates"
+  },
+  {
+   "lua": "CLOSE('flower_bed', 1, 4, 1.4, 0.5, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-po-flower-bed"
+  },
+  {
+   "lua": "CLOSE('cabin_hazel', 1, 12, 2.4, 2.0, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-hazel-front"
+  },
+  {
+   "lua": "CLOSE('garden_hazel', 1, 5, 2.2, 0.4, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-hazel-garden"
+  },
+  {
+   "lua": "CLOSE('chopping_block', 1, 4, 1.5, 0.5, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-hazel-chopping"
+  },
+  {
+   "lua": "CLOSE('ladder', 1, 5, 1.8, 1.5, 55)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-hazel-ladder"
+  },
+  {
+   "lua": "CLOSE('wheelbarrow', 1, 3.2, 1.3, 0.5, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-hazel-wheelbarrow"
+  },
+  {
+   "lua": "CLOSE('cabin_pip', 1, 11, 2.4, 2.2, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-front"
+  },
+  {
+   "lua": "CLOSE('garden_pip', 1, 5, 2.2, 0.5, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-garden"
+  },
+  {
+   "lua": "CLOSE('washing_line', 1, 7, 1.7, 1.3, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-washing"
+  },
+  {
+   "lua": "CLOSE('tinker_bench', 1, 4, 1.5, 0.9, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-bench"
+  },
+  {
+   "lua": "CLOSE('tyre_planters', 1, 4, 1.3, 0.3, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-planters"
+  },
+  {
+   "lua": "CLOSE('mast', 1, 9, 2.5, 5, 60)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-mast"
+  },
+  {
+   "lua": "CLOSE('mailbox', 2, 4, 1.4, 0.9, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-pip-mailbox"
+  },
+  {
+   "lua": "CLOSE('bird_feeder', 1, 4, 1.8, 1.6, 50)"
+  },
+  {
+   "wait": 6,
+   "capture": "d-bird-feeder"
+  },
+  {
+   "lua": "AT(-19, 4, -186, 21, 2.5, -186, 45)"
+  },
+  {
+   "wait": 6,
+   "capture": "e-po-40m"
+  },
+  {
+   "lua": "AT(124.5, 6, 21, 162, 2.5, 54, 45)"
+  },
+  {
+   "wait": 6,
+   "capture": "e-hazel-50m"
+  }
+ ],
+ "out": "build/houses"
+}

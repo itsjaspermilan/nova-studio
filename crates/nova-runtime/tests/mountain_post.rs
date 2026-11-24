@@ -8853,3 +8853,451 @@ fn the_talks_are_short_and_each_line_has_its_face() {
         "delighted indignant happy"
     );
 }
+
+// ---- the owner's seventh play: "a minimum thickness to prevent stick looking things", painted buildings, lived-in details -----------
+// (docs/games/mountain-post.md, "The houses: minimum thickness, painted surfaces, lived-in details")
+
+fn mp_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post")
+}
+
+/// The extents (smallest, middle, largest, in the units of the points) of a point cloud along its own principal axes: a turned plank
+/// or post measures as it is, not by its bounding box.
+#[allow(clippy::needless_range_loop)]
+fn principal_extents(pts: &[[f64; 3]]) -> [f64; 3] {
+    let n = pts.len() as f64;
+    let mean: [f64; 3] = std::array::from_fn(|k| pts.iter().map(|p| p[k]).sum::<f64>() / n);
+    let mut a = [[0.0f64; 3]; 3];
+    for p in pts {
+        for i in 0..3 {
+            for j in 0..3 {
+                a[i][j] += (p[i] - mean[i]) * (p[j] - mean[j]) / n;
+            }
+        }
+    }
+    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    for _ in 0..40 {
+        let (mut p, mut q, mut big) = (0, 1, 0.0f64);
+        for (i, j) in [(0, 1), (0, 2), (1, 2)] {
+            if a[i][j].abs() > big {
+                (p, q, big) = (i, j, a[i][j].abs());
+            }
+        }
+        if big < 1e-12 {
+            break;
+        }
+        let theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
+        let c = 1.0 / (t * t + 1.0).sqrt();
+        let s = t * c;
+        for k in 0..3 {
+            let (x, y) = (a[k][p], a[k][q]);
+            a[k][p] = c * x - s * y;
+            a[k][q] = s * x + c * y;
+        }
+        for k in 0..3 {
+            let (x, y) = (a[p][k], a[q][k]);
+            a[p][k] = c * x - s * y;
+            a[q][k] = s * x + c * y;
+        }
+        for k in 0..3 {
+            let (x, y) = (v[k][p], v[k][q]);
+            v[k][p] = c * x - s * y;
+            v[k][q] = s * x + c * y;
+        }
+    }
+    let mut ext: Vec<f64> = (0..3)
+        .map(|axis| {
+            let proj: Vec<f64> = pts
+                .iter()
+                .map(|p| (0..3).map(|k| p[k] * v[k][axis]).sum::<f64>())
+                .collect();
+            proj.iter().cloned().fold(f64::MIN, f64::max)
+                - proj.iter().cloned().fold(f64::MAX, f64::min)
+        })
+        .collect();
+    ext.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    [ext[0], ext[1], ext[2]]
+}
+
+/// Every solid of a model's source document (`models/<name>.model.json`) as (its kind, its three extents in metres, smallest first):
+/// a box by its size, a cylinder by its diameter and length, a tube by its diameter and the length of its line, a mesh by its points.
+fn model_solids(name: &str) -> Vec<(String, [f64; 3])> {
+    fn walk(part: &Value, scale: f64, out: &mut Vec<(String, [f64; 3])>) {
+        let f = |v: &Value| v.as_f64().unwrap_or(0.0);
+        for c in part["cubes"].as_array().into_iter().flatten() {
+            let shape = c["shape"].as_str().unwrap_or("");
+            let dims = match shape {
+                "box" | "cylinder" => {
+                    let s = &c["size"];
+                    let mut d = [f(&s[0]) * scale, f(&s[1]) * scale, f(&s[2]) * scale];
+                    d.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    Some(d)
+                }
+                "tube" => {
+                    let pts: Vec<[f64; 3]> = c["points"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| [f(&p[0]), f(&p[1]), f(&p[2])])
+                        .collect();
+                    let len: f64 = pts
+                        .windows(2)
+                        .map(|w| {
+                            (0..3)
+                                .map(|k| (w[1][k] - w[0][k]).powi(2))
+                                .sum::<f64>()
+                                .sqrt()
+                        })
+                        .sum();
+                    let r = c["radius"]
+                        .as_f64()
+                        .or_else(|| {
+                            c["radii"]
+                                .as_array()
+                                .and_then(|r| r.iter().filter_map(|v| v.as_f64()).reduce(f64::min))
+                        })
+                        .unwrap_or(0.0);
+                    Some([2.0 * r * scale, 2.0 * r * scale, len * scale])
+                }
+                "mesh" => {
+                    let pts: Vec<[f64; 3]> = c["verts"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| [f(&p[0]), f(&p[1]), f(&p[2])])
+                        .collect();
+                    // (a sheet drawn from both sides, a flag or a leaf, is not a solid)
+                    let polys = c["polys"].as_array().map_or(0, |p| p.len());
+                    if pts.len() < 4 || polys < 4 {
+                        None
+                    } else {
+                        let e = principal_extents(&pts);
+                        Some([e[0] * scale, e[1] * scale, e[2] * scale])
+                    }
+                }
+                _ => None,
+            };
+            if let Some(d) = dims {
+                out.push((shape.to_string(), d));
+            }
+        }
+        for ch in part["children"].as_array().into_iter().flatten() {
+            walk(ch, scale, out);
+        }
+    }
+    let text = std::fs::read_to_string(mp_root().join(format!("models/{name}.model.json")))
+        .unwrap_or_else(|e| panic!("models/{name}.model.json: {e}"));
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let scale = doc["scale"].as_f64().unwrap_or(0.0625);
+    let mut out = vec![];
+    for p in doc["parts"].as_array().unwrap() {
+        walk(p, scale, &mut out);
+    }
+    out
+}
+
+/// The house style's chunky minimum (tools/models.mjs, `HOUSE.min`) and the models that build with it: every `def("name"` of the file.
+fn house_min() -> (std::collections::HashMap<String, f64>, Vec<String>) {
+    let src = std::fs::read_to_string(mp_root().join("tools/models.mjs")).unwrap();
+    let line = src
+        .lines()
+        .find(|l| l.trim_start().starts_with("min: {"))
+        .expect("HOUSE.min");
+    let mut min = std::collections::HashMap::new();
+    for part in line.trim().trim_start_matches("min: {").split(',') {
+        let mut kv = part.trim().trim_end_matches(['}', ',']).split(':');
+        if let (Some(k), Some(v)) = (kv.next(), kv.next())
+            && let Ok(x) = v.trim().trim_end_matches('}').trim().parse::<f64>()
+        {
+            min.insert(k.trim().to_string(), x);
+        }
+    }
+    let mut names = vec![];
+    for l in src.lines() {
+        if let Some(rest) = l.strip_prefix("def(\"") {
+            names.push(rest.split('"').next().unwrap().to_string());
+        }
+    }
+    (min, names)
+}
+
+/// "A minimum thickness to prevent stick looking things" (the owner, seventh play). In every model the house style builds, no solid is a
+/// stick: at house scale anything over 1 m long and under 20 cm wide is at least 10 cm through, over 0.5 m at least 6 cm, a board (20 cm
+/// wide or more) at least 3 cm, and only flat paint (under 3 cm) is thinner; indoors and on a desk (`HOUSE.min.indoor`) half of that.
+/// The bridge and the signposts are another round's (they have their own look to settle) and ferns are felt sheets.
+#[test]
+fn every_model_is_chunky_nothing_is_a_stick() {
+    let (min, names) = house_min();
+    for k in [
+        "stick", "short", "longAt", "shortAt", "board", "flat", "plate", "indoor",
+    ] {
+        assert!(min.contains_key(k), "HOUSE.min.{k} is in tools/models.mjs");
+    }
+    let skip = [
+        "signpost",
+        "sign_arm",
+        "sign_arm_tall",
+        "bridge",
+        "old_bridge",
+        "old_bridge_far",
+        "fern",
+        "fern_big",
+        "fern_light",
+    ];
+    let indoor = [
+        "office_room",
+        "package_counter",
+        "front_counter",
+        "stool",
+        "rug",
+        "door_mat",
+        "mail_sack",
+        "pigeonholes",
+        "tally_frame",
+        "wall_clock",
+        "calendar",
+        "notice_board",
+        "crt_computer",
+        "letter_tray",
+        "envelopes",
+        "desk_mat",
+        "stamp",
+        "bell",
+        "parcel_hazel",
+        "parcel_pip",
+        "letter",
+    ];
+    assert!(names.len() > 55, "{} models found", names.len());
+    let (mut bad, mut checked, mut thinnest) = (vec![], 0, (f64::MAX, String::new()));
+    for name in &names {
+        if skip.contains(&name.as_str()) {
+            continue;
+        }
+        let k = if indoor.contains(&name.as_str()) {
+            min["indoor"]
+        } else {
+            1.0
+        };
+        for (shape, [a, b, c]) in model_solids(name) {
+            checked += 1;
+            let (flat, board) = (min["flat"] * k, min["board"] * k);
+            if a < flat - 1e-4 {
+                continue; // (flat paint, lying on a surface)
+            }
+            if b >= min["plate"] * k {
+                // a board or a plate: seen face on, at least as thick as a board
+                if a < board - 1e-3 {
+                    bad.push(format!(
+                        "{name}: a {shape} plate {a:.3} x {b:.3} x {c:.3} m is thinner than a board"
+                    ));
+                }
+                continue;
+            }
+            let need = if c >= min["longAt"] * k {
+                min["stick"] * k
+            } else if c >= min["shortAt"] * k {
+                min["short"] * k
+            } else {
+                0.0
+            };
+            if a < need - 1e-3 {
+                bad.push(format!(
+                    "{name}: a {shape} {a:.3} x {b:.3} x {c:.3} m is a stick (needs {need:.2} through)"
+                ));
+            }
+            if c >= min["shortAt"] * k && a < thinnest.0 {
+                thinnest = (a, format!("{name} {shape} {a:.3} x {b:.3} x {c:.3}"));
+            }
+        }
+    }
+    assert!(checked > 800, "{checked} solids measured");
+    assert!(bad.is_empty(), "{} sticks:\n{}", bad.len(), bad.join("\n"));
+    eprintln!("thinnest long part: {} m", thinnest.1);
+}
+
+/// The buildings and what stands by them are painted (docs/project-format.md, "Painted surfaces"): walls and decks as boards (kind 5),
+/// roofs as tiles (6), plinths, chimneys and footings as stone (7). Read from the written .glb files, so what the renderer gets.
+#[test]
+fn the_buildings_are_painted_as_boards_tiles_and_stone() {
+    use nova_runtime::model::{PAINT_STEP, import_glb};
+    let kinds = |name: &str| {
+        let mesh =
+            import_glb(&std::fs::read(mp_root().join(format!("models/{name}.glb"))).unwrap())
+                .expect("imports");
+        assert!(mesh.notes.is_empty(), "{name}: {:?}", mesh.notes);
+        let mut count = [0usize; 8];
+        for v in &mesh.vertices {
+            let k = (v.emissive / PAINT_STEP).round() as usize;
+            assert!(k < 8, "{name}: paint kind {k}");
+            count[k] += 1;
+        }
+        (count, mesh.vertices.len())
+    };
+    // (what share of each house's points are painted, and each of its kinds)
+    for (name, share) in [
+        ("post_office", 0.2),
+        ("cabin_hazel", 0.2),
+        ("cabin_pip", 0.2),
+        ("workshop", 0.1),
+    ] {
+        let (c, n) = kinds(name);
+        let painted: usize = c[5] + c[6] + c[7];
+        assert!(
+            painted as f64 >= share * n as f64,
+            "{name}: {painted} of {n} points painted"
+        );
+        for (k, what) in [(5, "boards"), (6, "tiles")] {
+            assert!(c[k] > 20, "{name}: no {what} ({} points)", c[k]);
+        }
+        if name != "workshop" {
+            assert!(c[7] > 20, "{name}: no stone ({} points)", c[7]);
+        }
+    }
+    for name in [
+        "fence",
+        "bench",
+        "picnic_table",
+        "planks",
+        "sawhorse",
+        "garden_hazel",
+        "garden_pip",
+        "flower_bed",
+        "crates",
+        "ladder",
+    ] {
+        let (c, _) = kinds(name);
+        assert!(c[5] > 10, "{name}: its boards are painted");
+    }
+    for name in ["mast", "washing_line", "bird_feeder"] {
+        let (c, _) = kinds(name);
+        assert!(c[5] + c[7] > 10, "{name}: its footing or wood is painted");
+    }
+}
+
+/// The lived-in details (docs/games/mountain-post.md): every house has its own, each placed by `tools/scene.mjs` (nothing on a road is
+/// the road test's: it reads every object of the scene, these included), and the ways in stay clear: from each door a walk 2.2 m wide
+/// and 14 m long straight out in front of it has none of them standing in it.
+#[test]
+fn the_lived_in_details_are_placed_and_the_doors_stay_clear() {
+    let root = mp_root();
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let count = |kind: &str| objects.iter().filter(|o| o["kind"] == kind).count();
+    for (kind, n) in [
+        ("bicycle", 1),
+        ("crates", 1),
+        ("flower_bed", 2),
+        ("garden_hazel", 1),
+        ("garden_pip", 1),
+        ("chopping_block", 1),
+        ("ladder", 1),
+        ("wheelbarrow", 1),
+        ("bird_feeder", 2),
+        ("tinker_bench", 1),
+        ("washing_line", 1),
+        ("cloths", 1),
+        ("tyre_planters", 1),
+        ("rain_barrel", 1),
+        ("watering_can", 3),
+    ] {
+        assert!(
+            count(kind) >= n,
+            "{kind}: {} placed, {n} wanted",
+            count(kind)
+        );
+    }
+    // the mailbox of No. 7 has its flag up and the others have not
+    let up: Vec<&str> = objects
+        .iter()
+        .filter(|o| o["kind"] == "mailbox" && o["props"]["flag_up"] == true)
+        .map(|o| o["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(up, ["mailbox_7"]);
+    // the washing line's cloths hang from its line: drawn 1.3 m up, over the line's own place
+    let (line, cloths) = (
+        objects
+            .iter()
+            .find(|o| o["kind"] == "washing_line")
+            .unwrap(),
+        objects.iter().find(|o| o["kind"] == "cloths").unwrap(),
+    );
+    assert_eq!(
+        (line["x"].clone(), line["z"].clone()),
+        (cloths["x"].clone(), cloths["z"].clone())
+    );
+    assert!(cloths["y"].as_f64().unwrap() > 1.0);
+    // the walks from the doors
+    let details = [
+        "bicycle",
+        "crates",
+        "flower_bed",
+        "garden_hazel",
+        "garden_pip",
+        "chopping_block",
+        "ladder",
+        "wheelbarrow",
+        "bird_feeder",
+        "tinker_bench",
+        "washing_line",
+        "tyre_planters",
+        "rain_barrel",
+        "watering_can",
+        "woodpile",
+    ];
+    let foot = |kind: &str| -> Vec<[f64; 2]> {
+        let mesh = nova_runtime::model::import_glb(
+            &std::fs::read(root.join(format!("models/{kind}.glb"))).unwrap(),
+        )
+        .unwrap();
+        mesh.vertices
+            .iter()
+            .filter(|v| v.position[1] < 0.6)
+            .map(|v| [v.position[0] as f64, v.position[2] as f64])
+            .collect()
+    };
+    let mut checked = 0;
+    for (house, door_x) in [
+        ("post_office", 0.0),
+        ("cabin_hazel", -1.0),
+        ("cabin_pip", 0.9),
+    ] {
+        let h = objects.iter().find(|o| o["kind"] == house).unwrap();
+        let (hx, hz, ry) = (
+            h["x"].as_f64().unwrap(),
+            h["z"].as_f64().unwrap(),
+            h["props"]["ry"].as_f64().unwrap_or(0.0),
+        );
+        // a world point in the house's own metres: x to its left, z to its front
+        let local = |wx: f64, wz: f64| {
+            let (dx, dz) = (wx - hx, wz - hz);
+            (dx * ry.cos() - dz * ry.sin(), dx * ry.sin() + dz * ry.cos())
+        };
+        for o in objects
+            .iter()
+            .filter(|o| details.contains(&o["kind"].as_str().unwrap()))
+        {
+            let ry_o = o["props"]["ry"].as_f64().unwrap_or(0.0);
+            for p in foot(o["kind"].as_str().unwrap()) {
+                let (wx, wz) = (
+                    o["x"].as_f64().unwrap() + p[0] * ry_o.cos() + p[1] * ry_o.sin(),
+                    o["z"].as_f64().unwrap() - p[0] * ry_o.sin() + p[1] * ry_o.cos(),
+                );
+                let (lx, lz) = local(wx, wz);
+                if lx.abs() > 40.0 || lz.abs() > 40.0 {
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    !(lx > door_x - 1.1 && lx < door_x + 1.1 && lz > 2.0 && lz < 16.0),
+                    "a {} stands in the walk from {house}'s door ({lx:.1}, {lz:.1})",
+                    o["kind"]
+                );
+            }
+        }
+    }
+    assert!(checked > 200, "{checked} points checked");
+}
