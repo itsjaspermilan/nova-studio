@@ -417,7 +417,7 @@ fn a_parcel_shows_a_tip_near_and_is_taken_without_a_popup_and_the_letter_reads_a
     assert!(
         t.contains(&"Pip Tansy".to_string())
             && t.contains(&"7 Kettle Creek Road".to_string())
-            && t.contains(&"Take".to_string()),
+            && !t.contains(&"Take".to_string()),
         "the tip over the parcel, near it: {t:?}"
     );
     assert_eq!(lua(&g, "tostring(require('lib.state').carrying)"), "nil");
@@ -1302,8 +1302,8 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
     assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
     assert_eq!(r.drawn_count("ui_text", Some("Van 2/4")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 0);
     assert!(r.drawn_count("ui_text", Some("Hazel Brock")) >= 1);
     play(
         &mut g,
@@ -1357,7 +1357,7 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
 
 /// "We can also make the truck have no doors." Y gets in only at the LEFT doorway (the driver's side, the van's +x), with the
 /// prompt "Get in", and at once (no walk round); not at the right doorway. Getting out puts the postmaster beside the left doorway.
-/// Carrying a parcel, the doorway says to load it at the back.
+/// Carrying a parcel, the doorway does not take it in (no prompt says so: the panel at the back loads it).
 #[test]
 fn getting_in_is_at_the_left_doorway_and_at_once() {
     let mut g = game();
@@ -1375,7 +1375,7 @@ fn getting_in_is_at_the_left_doorway_and_at_once() {
         &mut g,
         r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" }, { "wait": 5 } ] }"#,
     );
-    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 0);
     let r = play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 2 } ] }"#,
@@ -1403,7 +1403,7 @@ fn getting_in_is_at_the_left_doorway_and_at_once() {
         r#"{ "steps": [ { "lua": "require('lib.state').carrying = 'hazel'" }, { "wait": 3 }, { "press": "van" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
-    assert_eq!(r.drawn_count("ui_text", Some("Load it at the back")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Load it at the back")), 0, "no prompt: the panel at the back says it");
 }
 
 /// "When leaving the van, currently the camera is like clipped inside the van facing the player." From the moment Y is pressed,
@@ -1613,7 +1613,7 @@ fn every_piece_of_ui_is_drawn_from_the_one_kit() {
         r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 30 } ] }"#,
     );
     assert_ui_from_the_kit(&r, "driving");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
     // a conversation with each: the name on a key of the kit over the box
     for (who, name, x, z) in [("hazel", "Hazel", 150, 36), ("pip", "Pip", -178, 100)] {
         let mut g = game();
@@ -1728,8 +1728,8 @@ fn one_corner_card_goes_round_the_parcels_with_l1_and_r1() {
     );
     assert_eq!(r.drawn_count("ui_text", Some("carrying")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 0);
     let r = play(
         &mut g,
         r#"{ "steps": [ { "press": "next" }, { "wait": 5 } ] }"#,
@@ -1797,7 +1797,7 @@ fn one_corner_card_goes_round_the_parcels_with_l1_and_r1() {
         1,
         "only the panel counts"
     );
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
     // in a conversation the card is hidden and L1 / R1 do nothing to it
     let mut g = game();
     let r = play(
@@ -1845,7 +1845,7 @@ fn the_vans_panel_opens_with_the_doors_for_a_single_parcel() {
         "the panel and the faded card"
     );
     assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
-    assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
 }
 
 /// "The music is a little repetitive. Can we use piano?" The one piece is for piano alone (Nova's `piano` instrument: struck
@@ -3136,7 +3136,7 @@ fn x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else() {
         { "press": "interact" }, { "wait": 5 }, { "press": "confirm" }, { "wait": 5 }, { "press": "run" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
-    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 0);
     play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 20 } ] }"#,
@@ -3152,7 +3152,7 @@ fn x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else() {
         "L3 sounds the horn, X and A do not"
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "van");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
     play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 5 } ] }"#,
@@ -5230,7 +5230,7 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
     assert_eq!(r.drawn_count("ui_text", Some("Van 0/4")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
     // one, two, four in the van: one parcel line, the count, L1 / R1 only with more than one
-    for (load, tag, many) in [
+    for (load, tag, _many) in [
         ("{ 'hazel' }", "Van 1/4", false),
         ("{ 'hazel', 'pip' }", "Van 2/4", true),
         ("{ 'hazel', 'pip', 'hazel', 'pip' }", "Van 4/4", true),
@@ -5241,8 +5241,8 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
         );
         assert_eq!(lua(&g, "nova.scene_now():panel_mode()"), "pick");
         assert_eq!(r.drawn_count("ui_text", Some(tag)), 1, "{tag}");
-        assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
-        assert_eq!(r.drawn_count("ui_text", Some("L1")), many as usize);
+        assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+        assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
         assert_eq!(
             r.drawn_count("ui_text", Some("Hazel Brock")),
             2,
@@ -5995,7 +5995,7 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
                 "{size}: the prompts stand above the cluster ({bottom} over {top})"
             );
         }
-        assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+        assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
         assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "P");
         assert_eq!(lua(&g, "tostring(require('lib.gear_hud').lit)"), "false");
         play(
@@ -7082,15 +7082,10 @@ fn the_old_computer_has_no_prompt() {
         &mut g,
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "route": [
         { "wait": 10, "lua": "local c = nova.named('old_computer'); nova.named('postmaster').walk_to = { c.x, c.z + 1.0 }" }, { "until": "not T.walking()", "max": 600 },
-        { "wait": 5, "lua": "OFFER = tostring(nova.scene_now():action()); HINT = #nova.scene_now().hint" },
+        { "wait": 5, "lua": "OFFER = tostring(nova.scene_now():action())" },
         { "press": "interact" }, { "wait": 20, "lua": "CARD = tostring(require('lib.cards').active())" } ] }"#,
     );
     assert_eq!(lua(&g, "OFFER"), "nil");
-    assert_eq!(
-        num(&g, "HINT"),
-        1.0,
-        "only the map's hint (Select) is shown"
-    );
     assert_eq!(lua(&g, "CARD"), "false");
     assert_eq!(
         lua(&g, "tostring(require('lib.state').letter_read)"),
@@ -7250,7 +7245,7 @@ fn a_creeping_van_is_not_stopped_until_braked_or_in_p() {
         r#"{ "steps": [ { "hold": ["brake"], "frames": 90 }, { "hold": ["brake"], "frames": 1, "lua": "SPEED = nova.named('van').speed" } ] }"#,
     );
     assert!(num(&g, "SPEED").abs() < 1e-6, "held still on the brake");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1, "the prompt");
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0, "no prompt");
     play(
         &mut g,
         r#"{ "steps": [ { "hold": ["brake"], "press": "van", "frames": 6 }, { "wait": 5 } ] }"#,
@@ -8250,14 +8245,6 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "Hazel Brock",
         "van panel name",
     );
-    check(
-        &r,
-        &g,
-        "require('lib.ui').van_panel_box",
-        "require('lib.ui').FRAME.small",
-        "Take",
-        "van panel Take",
-    );
     // the card is dimmed while the panel is up; measure it on foot away from the van
     let r = play(
         &mut g,
@@ -8279,9 +8266,8 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "carrying",
         "parcel card line",
     );
-    // a prompt chip (bottom right)
-    let hits = r.drawn("ui_text", Some("Map"));
-    assert!(!hits.is_empty());
+    // (no prompt chip any more: nothing at the bottom right)
+    assert!(r.drawn("ui_text", Some("Map")).is_empty());
     // the slip beside the instrument
     let r = play(
         &mut g,
@@ -8309,14 +8295,6 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "require('lib.ui').FRAME.small",
         "Hazel Brock",
         "pickup tip name",
-    );
-    check(
-        &r,
-        &g,
-        "require('lib.ui').tip_box",
-        "require('lib.ui').FRAME.small",
-        "Take",
-        "pickup tip word",
     );
 }
 
@@ -10245,4 +10223,170 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
         ["0", "0", "0", "0", "0"],
         "nothing floats indoors"
     );
+}
+
+/// The owner's eighth play, note 7 ("I still see 'Y to exit' and 'Select' for map. I also don't see the control menu"): no button
+/// chip, button cap or button word is drawn in normal play, on foot, at the van's back, driving or in the office; the instrument
+/// stays while driving; the dialogue's "next" is a small arrow.
+#[test]
+fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
+    let mut g = game();
+    let banned_words = [
+        "Get in", "Get out", "Map", "Take", "Read", "Talk", "Knock", "Hand over", "Put back", "Close", "Choose", "Select", "L1", "R1",
+        "Load it at the back",
+    ];
+    let check = |r: &Report, what: &str| {
+        for name in ["round", "round_down"] {
+            assert_eq!(r.drawn_count("ui_sprite", Some(name)), 0, "{what}: no button cap ({name})");
+        }
+        for w in banned_words {
+            assert_eq!(r.drawn_count("ui_text", Some(w)), 0, "{what}: {w:?} is not on the screen");
+        }
+    };
+    // on foot by the van's door, and at its back with the panel (two parcels: the count with its two arrows, no L1 / R1)
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "T.to_van('door')" }, { "until": "not T.walking()", "max": 900 }, { "wait": 30 } ] }"#,
+    );
+    check(&r, "on foot");
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
+    );
+    check(&r, "at the van's back");
+    assert!(r.drawn_count("ui_text", Some("Hazel Brock")) > 0, "the panel still names the parcel");
+    assert!(r.drawn_count("ui_text", Some("1 of 2")) > 0, "and counts them");
+    assert!(r.drawn_count("ui_sprite", Some("chev_l")) > 0, "with its arrows");
+    // driving: the instrument is there
+    let r = play(
+        &mut g,
+        r#"{ "lua": "local v = nova.named('van'); v:teleport(4, -150, 0); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.camera').reset(0)",
+        "steps": [ { "wait": 20 }, { "hold": ["go"], "frames": 60 } ] }"#,
+    );
+    check(&r, "driving");
+    assert!(r.drawn_count("ui_text", Some("km/h")) > 0, "the instrument is drawn while driving");
+    assert_eq!(lua(&g, "tostring(require('lib.gear_hud').shown ~= nil)"), "true");
+    // in the office, at the shelf: the tip names the parcel only
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "lua": "local p = nova.named('postmaster'); local at = require('lib.testkit').shelf_spot('hazel'); p.x, p.z, p.face = at[1], at[2], 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil" }, { "wait": 40 } ] }"#,
+    );
+    check(&r, "in the office");
+    assert!(r.drawn_count("ui_text", Some("Hazel Brock")) > 0, "the tip names the parcel");
+    // a conversation's end of line: a bobbing arrow, no cap
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "local s = require('lib.state'); s.carrying = 'hazel'; s.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "interact" }, { "wait": 200 } ] }"#,
+    );
+    check(&r, "in a conversation");
+    assert!(r.drawn_count("ui_sprite", Some("chev_r")) > 0, "the next arrow");
+}
+
+/// The Controls page (the title's second choice, the pause menu's second): two columns, each row the buttons engraved on the
+/// Retroid and what they do, and the buttons are the ones nova.json binds for the actions the row stands for; every action the game
+/// reads in that mode is on the page; B or Start closes it.
+#[test]
+fn the_controls_page_lists_every_binding_and_opens_from_title_and_pause() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cfg: Value = serde_json::from_str(&std::fs::read_to_string(root.join(format!("{GAME}/nova.json"))).unwrap()).unwrap();
+    // a source of nova.json to the name of the key engraved on the pad
+    let key_of = |src: &str| -> Option<&'static str> {
+        Some(match src {
+            "pad:west" => "X",
+            "pad:north" => "Y",
+            "pad:south" => "A",
+            "pad:east" => "B",
+            "pad:thumb_l" => "L3",
+            "pad:select" => "Select",
+            "pad:start" => "Start",
+            "pad:l1" => "L1",
+            "pad:r1" => "R1",
+            "pad:dpad_up" | "pad:dpad_down" => "D-pad",
+            "axis:r2" => "R2",
+            "axis:l2" => "L2",
+            s if s.starts_with("axis:left_") => "Left stick",
+            s if s.starts_with("axis:right_") => "Right stick",
+            _ => return None, // (keyboard keys are for the desktop)
+        })
+    };
+    let sources = |action: &str| -> Vec<String> {
+        let v = &cfg["input"][action];
+        let mut out = vec![];
+        let mut add = |a: &Value| out.extend(a.as_array().into_iter().flatten().filter_map(|s| s.as_str()).map(String::from));
+        if v.is_array() {
+            add(v);
+        } else {
+            add(&v["negative"]);
+            add(&v["positive"]);
+        }
+        out
+    };
+    let keys_of = |actions: &[&str]| -> Vec<String> {
+        let mut k: Vec<String> = actions.iter().flat_map(|a| sources(a)).filter_map(|s| key_of(&s)).map(String::from).collect();
+        k.sort();
+        k.dedup();
+        k
+    };
+    let mut g = game();
+    // the page's rows, as "col|keys|word|actions"
+    let rows = lua(
+        &g,
+        "(function() local w = require('lib.words'); local out = {}; for _, col in ipairs({ 'foot', 'van' }) do for _, r in ipairs(w.controls_rows[col]) do \
+         out[#out + 1] = col .. '|' .. table.concat(r.keys, ',') .. '|' .. r.word .. '|' .. table.concat(r.actions, ',') end end; \
+         for _, r in ipairs(w.controls_menus) do out[#out + 1] = 'menus|' .. table.concat(r.keys, ',') .. '|' .. r.word .. '|' .. table.concat(r.actions, ',') end; return table.concat(out, ';') end)()",
+    );
+    let mut seen: std::collections::HashMap<String, Vec<String>> = Default::default(); // column -> actions listed
+    for row in rows.split(';') {
+        let p: Vec<&str> = row.split('|').collect();
+        let (col, keys, actions) = (p[0], p[1], p[3].split(',').collect::<Vec<_>>());
+        let mut want = keys_of(&actions);
+        let mut have: Vec<String> = keys.split(',').map(String::from).collect();
+        have.sort();
+        if col == "menus" {
+            // (the menus go by the D-pad and the stick; the page names the D-pad, and A and B)
+            want.retain(|k| k != "Left stick");
+        }
+        assert_eq!(have, want, "{row}: the row's buttons are what nova.json binds for {actions:?}");
+        seen.entry(col.to_string()).or_default().extend(actions.iter().map(|s| s.to_string()));
+    }
+    for (col, used) in [
+        ("foot", vec!["move_x", "move_y", "run", "interact", "confirm", "van", "prev", "next", "look_x", "look_y", "map", "pause"]),
+        ("van", vec!["go", "brake", "steer", "handbrake", "confirm", "interact", "horn", "van", "prev", "next", "look_x", "look_y", "map", "pause"]),
+        ("menus", vec!["menu_up", "menu_down"]),
+    ] {
+        for a in used {
+            assert!(seen[col].iter().any(|s| s == a), "the {col} column lists {a}");
+        }
+    }
+    // opens from the title (second choice) and closes on B and on Start
+    play(&mut g, r#"{ "start_scene": "title", "steps": [ { "wait": 90 }, { "press": "menu_down" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 30 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "controls", "the title opens it");
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 5 } ] }"#);
+    for w in ["On foot", "Driving", "Accelerate", "Run (hold)", "Handbrake (hold)", "Horn"] {
+        assert!(r.drawn_count("ui_text", Some(w)) > 0, "the page shows {w:?}");
+    }
+    for k in ["A", "B", "X", "Y"] {
+        assert!(r.drawn_count("ui_text", Some(k)) >= 2, "the engraved {k} is on both columns");
+    }
+    play(&mut g, r#"{ "steps": [ { "press": "run" }, { "wait": 20 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "nil", "B closes it");
+    assert_eq!(lua(&g, "nova.current_scene()"), "title", "and the title is still there, not started");
+    play(&mut g, r#"{ "steps": [ { "press": "confirm" }, { "wait": 30 }, { "press": "pause" }, { "wait": 20 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "nil", "Start closes it");
+    assert_eq!(lua(&g, "nova.current_scene()"), "title");
+    // and from the pause menu (second of three), back to the menu
+    let mut g = game();
+    play(&mut g, r#"{ "start_scene": "valley", "steps": [ { "wait": 10 }, { "press": "pause" }, { "wait": 20 }, { "press": "menu_down" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 30 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "controls", "the pause menu opens it");
+    play(&mut g, r#"{ "steps": [ { "press": "run" }, { "wait": 20 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "pause", "B goes back to the pause menu");
+    play(&mut g, r#"{ "steps": [ { "press": "pause" }, { "wait": 20 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "nil", "Start closes the menu");
 }

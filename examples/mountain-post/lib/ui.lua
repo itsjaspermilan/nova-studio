@@ -1,14 +1,14 @@
 -- The slice's UI kit: one theme for every piece of UI in the game (docs/games/mountain-post.md, "UI theme"). Its pictures are a
 -- few pieces of Kenney's UI Pack (CC0) recoloured into the toy palette by tools/ui-kit.mjs (sprites/ui/kit/): a paper panel on a
 -- wooden frame, a key (raised, or pressed), a round button cap, a parcel's label slip, a rule and two chevrons. Everything below
--- draws from them; nothing else in the game draws a panel, a button or a chip of its own.
+-- draws from them; nothing else in the game draws a panel or a button of its own.
 --
 --   ui.panel        a paper panel (cards, the dialogue box, menus, the map's frame, the letter)
 --   ui.key          a key, raised or pressed, in any colour (buttons, tabs, tags, title strips)
---   ui.glyph        a face button's cap with its letter (A, B, X, Y in the pad's colours); ui.shoulder: L1 / R1
---   ui.chip         a prompt: a small panel with a button and its word; ui.hints lays them out at the bottom right
+--   ui.glyph        a face button's cap with its letter (A, B, X, Y in the pad's colours); ui.pad_key: L1, R2, Start... (the Controls page only:
+--                   no prompt in play draws a button)
 --   ui.title_strip  a heading on a red key; ui.tag a name tag in a speaker's colour; ui.rule a groove under a heading
---   ui.slip         a parcel's label (white, the post's red double edge); ui.cycler: L1  1 of 2  R1
+--   ui.slip         a parcel's label (white, the post's red double edge); ui.cycler: < 1 of 2 >
 --   ui.parcel_card  the one card in the top-left corner; ui.van_panel the van's floating panel; ui.dim, ui.fade
 --   ui.text         all words: the rounded face (Fredoka) in two weights; ui.s(n) a length of the first design, scaled by ui.S
 -- (The minimap is its own painted disc, lib/ui.lua's ui.minimap, made in the same palette by tools/art.mjs.)
@@ -154,77 +154,19 @@ function ui.glyph(x, y, letter, size, opts)
   end
 end
 
--- A shoulder button (L1, R1): a small slate key with its name, centred on x, y.
-function ui.shoulder(x, y, name, size, opts)
-  size = size or s(26)
+-- A slate key with a name on it (L1, R2, L3, Start, Left stick...), left edge at x, middle at y, as wide as its name needs; returns its
+-- width. (The Controls page is the one place buttons are drawn: no prompt in play names a button.)
+local KEYCAP = s(26)
+local KEY_FS = math.max(12, sz(15))
+function ui.pad_key_width(name) return text_width(name, KEY_FS, true) + KEYCAP * 0.75 end
+function ui.pad_key(x, y, name, opts)
   opts = opts or {}
-  local w = size * 1.75
-  ui.key(x - w / 2, y - size / 2, w, size, C.slate, { down = opts.down, alpha = opts.alpha, scale = size / 70 })
-  local dy = opts.down and size * 0.06 or 0
-  text(x, y - size * 0.4 + dy, name, { size = size * 0.58, align = "center", color = alpha(C.cream, opts.alpha), bold = true })
-end
-
--- The Select button (the paper map's): a small slate key with the word on it, like the shoulder keys, centred on x, y. Its width.
-local SEL_FS = math.max(12, sz(15))
-local function select_w(size) return text_width("Select", SEL_FS, true) + size * 0.75 end
-function ui.select_key(x, y, size, opts)
-  opts = opts or {}
-  local w = select_w(size)
-  ui.key(x - w / 2, y - size / 2, w, size, C.slate, { down = opts.down, alpha = opts.alpha, scale = size / 70 })
-  local dy = opts.down and size * 0.06 or 0
-  text(x, y - SEL_FS * 0.66 + dy, "Select", { size = SEL_FS, align = "center", color = alpha(C.cream, opts.alpha), bold = true })
-end
-
--- How wide a prompt chip is, and the chip itself: a small panel (PAD_SMALL inside the small frame) holding a button and its word
--- (`button` nil: the word alone; "SELECT": the Select key); the button and its word GAP apart.
-local SEL_H = s(24)
-local CAP, SHOULDER = s(25), s(20) -- a face button's cap, a shoulder key's height
-local function button_w(button)
-  if button == "SELECT" then return select_w(SEL_H) end
-  if button == "L1" or button == "R1" then return SHOULDER * 1.75 end
-  return CAP
-end
-local function chip_box(button, str)
-  local cw = text_width(str, F.hint) + (button and button_w(button) + ui.GAP or 0)
-  return ui.box(cw, CAP, ui.PAD_SMALL, ui.FRAME.small)
-end
-local CHIP_H = select(2, chip_box(nil, ""))
-ui.CHIP_H = CHIP_H
-function ui.chip_width(button, str) return (chip_box(button, str)) end
-function ui.chip(x, y, button, str, opts)
-  opts = opts or {}
-  local w, _, left, top = chip_box(button, str)
-  ui.panel(x, y, w, CHIP_H, { scale = ui.FRAME.small, alpha = opts.alpha })
-  local cy = y + top + CAP / 2 - 1
-  local tx = x + left
-  if button then
-    local bw = button_w(button)
-    local bx = x + left + bw / 2
-    if button == "L1" or button == "R1" then ui.shoulder(bx, cy, button, SHOULDER, { down = opts.down })
-    elseif button == "SELECT" then ui.select_key(bx, cy, SEL_H, { down = opts.down, alpha = opts.alpha })
-    else ui.glyph(bx, cy, button, CAP, { down = opts.down }) end
-    tx = x + left + bw + ui.GAP
-  end
-  text(tx, cy - F.hint * 0.62, str, { size = F.hint, color = alpha(C.ink, opts.alpha) })
+  local w = ui.pad_key_width(name)
+  ui.key(x, y - KEYCAP / 2, w, KEYCAP, C.slate, { alpha = opts.alpha, scale = KEYCAP / 70 })
+  text(x + w / 2, y - KEY_FS * 0.66, name, { size = KEY_FS, align = "center", color = alpha(C.cream, opts.alpha), bold = true })
   return w
 end
-
--- Which game action each button of a hint is (so a chip shows its button held while it is held).
--- (the letters engraved on the Retroid: X interact, Y the van, A confirm, B run / handbrake; Select the map)
-local ACTION = { A = "confirm", B = "run", X = "interact", Y = "van", SELECT = "map", L1 = "prev", R1 = "next" }
-local function held(button) return button and ACTION[button] and nova.input.down(ACTION[button]) end
-
--- The prompts at the bottom right: { { "A", "Take" }, { "B", "Get in" } } (a hint with no button, { nil, "words" }, is words alone).
-function ui.hints(list, w, h)
-  if not list or #list == 0 then return end
-  local x = w - ui.EDGE
-  for i = #list, 1, -1 do
-    local item = list[i]
-    x = x - ui.chip_width(item[1], item[2])
-    ui.chip(x, h - ui.EDGE - CHIP_H, item[1], item[2], { down = held(item[1]) })
-    x = x - SP.s
-  end
-end
+ui.KEYCAP = KEYCAP
 -- A heading on a red key, centred on x (its top at y); returns its height. Its words have xl either side and s above and below.
 function ui.title_strip(x, y, str, opts)
   opts = opts or {}
@@ -258,35 +200,22 @@ function ui.slip(x, y, w, h, opts)
   nova.ui.panel(KIT .. "slip", x, y, w, h, SLIP)
 end
 
--- "L1  1 of 2  R1": going round a list, centred on x (its middle at y). `opts.size` the keys' size, `opts.half` the room between the
--- count and each key's middle, `opts.plain`: without the chevrons beside the keys (the van's small panel). `ui.cycler_width` is how
--- wide it is.
+-- "< 1 of 2 >": going round a list, centred on x (its middle at y): the count between two small slate chevrons, no buttons drawn.
+-- `ui.cycler_width` is how wide it is.
 local CYCLER_FS = F.small + 1
-function ui.cycler_width(i, n, opts)
-  opts = opts or {}
-  local tw = text_width(i .. " of " .. n, CYCLER_FS)
-  local size = opts.size or s(22)
-  local half = tw / 2 + (opts.half or 2 * SP.l)
-  local w = 2 * half + size * 1.75
-  if not opts.plain then w = w + 2 * (SP.xl + SP.s) end
-  return w
+local CHEV = SP.l
+function ui.cycler_width(i, n)
+  return text_width(i .. " of " .. n, CYCLER_FS) + 2 * (SP.m + CHEV)
 end
 function ui.cycler(x, y, i, n, opts)
   opts = opts or {}
   local a = opts.alpha or 1
   local count = i .. " of " .. n
-  local fs = CYCLER_FS
-  local tw = text_width(count, fs)
-  local half = tw / 2 + (opts.half or 2 * SP.l)
-  local size = opts.size or s(22)
-  ui.shoulder(x - half, y, "L1", size, { down = held("L1"), alpha = a })
-  ui.shoulder(x + half, y, "R1", size, { down = held("R1"), alpha = a })
-  if not opts.plain then
-    local ch = { w = SP.l, h = SP.l, color = tint(C.slate, math.floor(255 * a)) }
-    nova.ui.sprite(KIT .. "chev_l", x - half - SP.xl - SP.s, y - 1, ch)
-    nova.ui.sprite(KIT .. "chev_r", x + half + SP.xl + SP.s, y - 1, ch)
-  end
-  text(x, y - fs * 0.62, count, { size = fs, align = "center", color = alpha(opts.colour or C.faint, a) })
+  local tw = text_width(count, CYCLER_FS)
+  local ch = { w = CHEV, h = CHEV, color = tint(C.slate, math.floor(255 * a)) }
+  nova.ui.sprite(KIT .. "chev_l", x - tw / 2 - SP.m - CHEV / 2, y - 1, ch)
+  nova.ui.sprite(KIT .. "chev_r", x + tw / 2 + SP.m + CHEV / 2, y - 1, ch)
+  text(x, y - CYCLER_FS * 0.62, count, { size = CYCLER_FS, align = "center", color = alpha(opts.colour or C.faint, a) })
 end
 
 -- A dimming of everything under a card (0 to 1; `most` is how dark at 1: 140 of 255, a card's; the end card's is nearly black).
@@ -372,7 +301,8 @@ local function tail(x, y, hw, len, a)
 end
 
 local PICK_ICON = { w = s(42), h = s(35) }
-local CAP_A, CAP_X = s(21), s(23)
+local CYC_ROW = s(18) -- (the count's row under the parcel's lines)
+local LINE_H = F.name -- (a one-line panel: the load words, or the empty van)
 local PICK_LINES_H = F.name + SP.xs + F.line
 function ui.van_panel(d, w, h, dt)
   local a = d.a or 1
@@ -384,14 +314,13 @@ function ui.van_panel(d, w, h, dt)
   local cw, chh
   if mode == "pick" then
     local row1 = PICK_ICON.w + ui.GAP + math.max(text_width(name, F.name, true), text_width(street, F.line))
-    local row2 = CAP_A + ui.GAP + text_width(words.hint.take, F.hint, true)
-    if many then row2 = row2 + SP.m + ui.cycler_width(d.i, #d.list, { size = s(18), half = SP.xl, plain = true }) end
-    cw, chh = math.max(row1, row2), PICK_LINES_H + SP.s + CAP_A
+    local row2 = many and ui.cycler_width(d.i, #d.list) or 0
+    cw, chh = math.max(row1, row2), PICK_LINES_H + (many and SP.s + CYC_ROW or 0)
   elseif mode == "load" then
-    cw = CAP_X + ui.GAP + math.max(text_width(words.hint.load, F.name, true), text_width(words.van.full, F.name, true))
-    chh = CAP_X
+    cw = math.max(text_width(words.hint.load, F.name, true), text_width(words.van.full, F.name, true))
+    chh = LINE_H
   else
-    cw, chh = text_width(words.van.empty, F.name, true), CAP_X
+    cw, chh = text_width(words.van.empty, F.name, true), LINE_H
   end
   local pw, ph, left, top = ui.box(cw, chh + TAG_CLEAR, ui.PAD, ui.FRAME.small)
   top = top + TAG_CLEAR
@@ -420,21 +349,13 @@ function ui.van_panel(d, w, h, dt)
     local tx0 = x0 + PICK_ICON.w + ui.GAP
     text(tx0, y0, name, { size = F.name, color = alpha(C.ink, a), bold = true })
     text(tx0, y0 + F.name + SP.xs, street, { size = F.line, color = alpha(C.faint, a) })
-    local by = y0 + PICK_LINES_H + SP.s + CAP_A / 2
-    ui.glyph(x0 + CAP_A / 2, by, "A", CAP_A, { down = held("A"), alpha = a })
-    text(x0 + CAP_A + ui.GAP, by - F.hint * 0.62, words.hint.take, { size = F.hint, color = alpha(C.ink, a), bold = true })
-    if many then
-      local cyw = ui.cycler_width(d.i, #d.list, { size = s(18), half = SP.xl, plain = true })
-      ui.cycler(x0 + cw - cyw / 2, by, d.i, #d.list, { alpha = a, size = s(18), half = SP.xl, plain = true })
-    end
+    if many then ui.cycler(x0 + cw / 2, y0 + PICK_LINES_H + SP.s + CYC_ROW / 2, d.i, #d.list, { alpha = a }) end
   elseif mode == "load" then
-    local my = y0 + CAP_X / 2
-    ui.glyph(x0 + CAP_X / 2, my, "X", CAP_X, { down = held("X"), alpha = a })
     local msg, col = words.hint.load, C.ink
     if note > 0 then msg, col = words.van.full, C.red end
-    text(x0 + CAP_X + ui.GAP, my - F.name * 0.62, msg, { size = F.name, color = alpha(col, a), bold = true })
+    text(x0 + cw / 2, y0, msg, { size = F.name, align = "center", color = alpha(col, a), bold = true })
   else
-    text(x0 + cw / 2, y0 + CAP_X / 2 - F.name * 0.62, words.van.empty, { size = F.name, align = "center", color = alpha(C.faint, a), bold = true })
+    text(x0 + cw / 2, y0, words.van.empty, { size = F.name, align = "center", color = alpha(C.faint, a), bold = true })
   end
   ui.van_panel_box = { x = x, y = y, w = pw, h = ph, left = left, top = top, tail_x = f.x, anchor_y = f.y } -- (for the tests: where the panel is)
 end
@@ -448,7 +369,6 @@ ui.tip_f = nil
 ui.tip_id = nil
 function ui.tip_reset() ui.tip_f, ui.tip_id = nil, nil end
 local TIP_ICON = { w = s(40), h = s(33) }
-local TIP_CAP = s(17)
 function ui.tip(d, w, h, dt)
   local a = d.a or 1
   if a <= 0 then return end
@@ -461,10 +381,9 @@ function ui.tip(d, w, h, dt)
   local two = d.street ~= nil
   local nw = text_width(d.name, F.name, true)
   local sw = two and text_width(d.street, F.line) or 0
-  local row2 = TIP_CAP + ui.GAP + text_width(d.word, F.small, true)
   local lines_h = two and (F.name + SP.xs + F.line) or F.name
   local row1 = two and (TIP_ICON.w + ui.GAP + math.max(nw, sw)) or nw
-  local cw, ch, left, top = ui.box(math.max(row1, row2), lines_h + SP.s + TIP_CAP, ui.PAD, ui.FRAME.small)
+  local cw, ch, left, top = ui.box(row1, lines_h, ui.PAD, ui.FRAME.small)
   local x = math.max(SP.s, math.min(w - SP.s - cw, f.x - cw / 2))
   local y = math.max(SP.xl + SP.xs, math.min(h - SP.s - ch - TAIL, f.y - TAIL - ch)) + (1 - a) * SP.s
   ui.panel(x, y, cw, ch, { alpha = a, scale = ui.FRAME.small })
@@ -479,9 +398,6 @@ function ui.tip(d, w, h, dt)
   else
     text(tx, y0, d.name, { size = F.name, color = alpha(C.ink, a), bold = true })
   end
-  local by = y0 + lines_h + SP.s + TIP_CAP / 2
-  ui.glyph(x0 + TIP_CAP / 2, by, d.key, TIP_CAP, { down = held(d.key), alpha = a })
-  text(x0 + TIP_CAP + ui.GAP, by - F.small * 0.62, d.word, { size = F.small, color = alpha(C.ink, a), bold = true })
   ui.tip_box = { x = x, y = y, w = cw, h = ch, left = left, top = top, tail_x = f.x, anchor_y = f.y } -- (for the tests)
 end
 

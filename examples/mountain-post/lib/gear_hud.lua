@@ -9,9 +9,9 @@
 --     moves. Backing up it shows the speed it backs at;
 --   - the gears in the dial's foot, one row P R N D L, the one the lever is in on the kit's raised red key;
 --   - the handbrake's warning light, a small circled "(P)" over the hub, lit red while B holds the handbrake; "km/h" under it.
--- No button glyphs (the owner: the prompts say what the buttons do; the lever is X towards L, A towards P). A refused shift (into P
--- or R on the move) says why for a moment on a slip beside the dial ("Stop to shift"). The prompt chips sit above the instrument while
--- driving (hud.hints_floor). Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures.
+-- No button glyphs (the owner: the prompts say what the buttons do; the lever is A towards L, X towards P). A refused shift (into P
+-- or R on the move) says why for a moment on a slip beside the dial ("Stop to shift").
+-- Everything is drawn with the kit (lib/ui.lua) and the minimap's pictures.
 -- (Three layouts were tried in pictures: an arc of gears round the foot, this row, and a strip set into the rim's left side; the
 -- row read best at a glance: the letters stay level and evenly spaced, and it is one round shape. build/gallery/option-*.png.)
 local ui = require("lib.ui")
@@ -37,11 +37,6 @@ function hud.layout(w, h)
   L.peg = { cx + math.sin(D.rest) * (D.r - 9), cy - math.cos(D.rest) * (D.r - 9) }
   L.top = cy - rim
   return L
-end
-
--- The prompt chips' floor while driving: ui.hints given this as the screen's height puts them just above the instrument.
-function hud.hints_floor(w, h)
-  return hud.layout(w, h).top + ui.EDGE - SP.s
 end
 
 -- A straight stroke on the dial (a tick, the needle): the minimap's soft bar, from radius r0 to r1 at angle `a`.

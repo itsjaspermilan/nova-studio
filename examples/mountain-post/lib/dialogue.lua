@@ -119,8 +119,10 @@ function dialogue.draw(w, h)
     local since = cur.t - math.min(cur.skip or cur.last, cur.last)
     local a = math.min(1, math.max(0, since / 0.15))
     local bob = math.sin(cur.t * 4.5) * 2
-    local cap = s(28)
-    ui.glyph(x + bw - L.left - cap / 2, y + bh - ui.inset().bottom - ui.PAD_LONG.y - cap / 2 + bob, "X", cap, { down = nova.input.down("interact"), alpha = a })
+    -- (a small slate arrow pointing down, no button: chev_r turned a quarter)
+    local sz = ui.SP.l
+    nova.ui.sprite("ui/kit/chev_r", x + bw - L.left - sz / 2, y + bh - ui.inset().bottom - ui.PAD_LONG.y - sz / 2 + bob,
+      { w = sz, h = sz, rotation = math.pi / 2, color = { 112 * 1.1, 102 * 1.1, 96 * 1.1, math.floor(255 * a) } })
   end
 end
 
