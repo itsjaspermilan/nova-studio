@@ -1156,3 +1156,5 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
 - **Weak points:** the effects are judged from pictures at 1280x720, not yet read on the Retroid; `{shake}` at the dialogue's
   size moves letters about 2 px, readable but subtle in a still; the face changes per line, not inside a line (Hazel smiles from
   the start of "I'd fix that bridge", not at "...Thank you").
+
+- **The post office name board**: it was on the wall, so the porch roof hid the lower line of words and the main roof slope buried the rest. It now stands on two short posts on the porch roof front edge (tools/models.mjs post_office), 4.0 x 0.9 m; its words (tools/art.mjs, signs section) are solid cream rounded capitals cropped to their ink, the two lines centred on one another and the block on the panel (2.7 x 0.66 m, margin 0.12 m), no faded alpha. Pictures: build/gallery/po-after/.
