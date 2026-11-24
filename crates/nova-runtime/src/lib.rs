@@ -35,6 +35,7 @@ pub mod physics;
 pub mod players;
 pub mod playtest;
 pub mod project;
+pub mod rich_text;
 pub mod save;
 pub mod scene;
 pub mod script;

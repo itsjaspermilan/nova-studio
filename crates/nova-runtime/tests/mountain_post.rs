@@ -95,10 +95,10 @@ fn plays_the_whole_slice(swap: bool) {
             .iter()
             .filter(|l| l.starts_with(&format!("dialogue {who} ")))
             .collect();
-        assert!(said.len() >= 5, "{who} said {said:?}");
-        // each of the hand-over's lines came with the face lib/words.lua gives it (Hazel gruff, dry, sad at the shop that shut,
-        // a small smile at "...Thank you"; Pip delighted, indignant at "It SINGS."), set as the line began
-        let faces: Vec<String> = (1..=5)
+        assert!(said.len() >= 3, "{who} said {said:?}");
+        // each of the hand-over's lines came with the face lib/words.lua gives it (Hazel gruff, sad at the shop that shut,
+        // a small smile at "...Thank you"; Pip delighted, indignant that nobody believed him, happy), set as the line began
+        let faces: Vec<String> = (1..=3)
             .map(|i| {
                 lua(
                     &g,
@@ -123,7 +123,7 @@ fn plays_the_whole_slice(swap: bool) {
         // the postmaster smiles as the parcel leaves their hands
         assert_eq!(log[start + 1], "face postmaster happy");
     }
-    let hazel: Vec<String> = (1..=5)
+    let hazel: Vec<String> = (1..=3)
         .map(|i| {
             lua(
                 &g,
@@ -131,8 +131,8 @@ fn plays_the_whole_slice(swap: bool) {
             )
         })
         .collect();
-    assert_eq!(hazel, ["gruff", "neutral", "sad", "gruff", "smile"]);
-    let pip: Vec<String> = (1..=5)
+    assert_eq!(hazel, ["gruff", "sad", "smile"]);
+    let pip: Vec<String> = (1..=3)
         .map(|i| {
             lua(
                 &g,
@@ -140,12 +140,11 @@ fn plays_the_whole_slice(swap: bool) {
             )
         })
         .collect();
-    assert_eq!(
-        pip,
-        ["delighted", "delighted", "happy", "indignant", "delighted"]
+    assert_eq!(pip, ["delighted", "indignant", "happy"]);
+    assert!(lua(&g, "require('lib.words').people.pip.given[3]").contains("past the creek"));
+    assert!(
+        lua(&g, "require('lib.words').people.hazel.given[2]").contains("Pemberton shut up shop")
     );
-    assert!(lua(&g, "require('lib.words').people.pip.given[4]").contains("It SINGS."));
-    assert!(lua(&g, "require('lib.words').people.hazel.given[3]").contains("didn't open up"));
 }
 
 /// The owner's fourth notes: "Walking the player shouldn't have their arms out. For running they will". The stick alone only walks
@@ -324,7 +323,7 @@ fn the_labels_and_every_line_are_exactly_the_specs_words() {
         words.push(lua(&g, &format!("require('lib.words').letter[{i}]")));
     }
     for who in ["hazel", "pip"] {
-        for i in 1..=5 {
+        for i in 1..=3 {
             words.push(lua(
                 &g,
                 &format!("require('lib.words').people.{who}.given[{i}]"),
@@ -361,11 +360,11 @@ fn the_labels_and_every_line_are_exactly_the_specs_words() {
     );
     assert_eq!(
         lua(&g, "require('lib.words').people.hazel.given[1]"),
-        "Hm. So there IS a postmaster."
+        "Hm. So there {slow}IS{/slow} a postmaster."
     );
     assert_eq!(
-        lua(&g, "require('lib.words').people.pip.given[5]"),
-        "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander."
+        lua(&g, "require('lib.words').people.pip.given[3]"),
+        "This valve gets Fernhollow Radio past the creek. The lake side too, once there's a bridge!"
     );
     assert_eq!(
         lua(&g, "require('lib.words').ending"),
@@ -509,15 +508,15 @@ fn talking_again_rotates_the_after_lines() {
         .collect();
     assert_eq!(
         said[0],
-        "dialogue pip 1: Testing, testing. Can you hear that? No? Good, it's not plugged in yet."
+        "dialogue pip 1: Tonight I say your name on the radio. Live. No pressure!"
     );
     assert_eq!(
         said[1],
-        "dialogue pip 1: If Hazel asks, the aerial is staying."
+        "dialogue pip 1: If Hazel asks, the aerial sings. It does not hum."
     );
     assert_eq!(
         said[2],
-        "dialogue pip 1: Testing, testing. Can you hear that? No? Good, it's not plugged in yet."
+        "dialogue pip 1: Tonight I say your name on the radio. Live. No pressure!"
     );
 }
 
@@ -2573,7 +2572,7 @@ fn every_line_of_the_dialogue_and_the_letter_fits_its_box_in_the_rounded_face() 
               if type(v) == 'string' then all[#all + 1] = v else for _, s in ipairs(v) do all[#all + 1] = s end end
             end
             for _, line in ipairs(all) do
-              local _, h = nova.ui.text_size(line, { font = 'rounded', size = L.size, width = L.text_w, line_spacing = L.spacing, bold = 0.55 })
+              local h = ui.rich_letters(0, 0, line, dialogue.text_opts(who, L)).height
               if h > maxh then bad[#bad + 1] = who .. ' ' .. math.floor(h) .. ' > ' .. math.floor(maxh) .. ': ' .. line:sub(1, 30) end
             end
           end
@@ -8964,4 +8963,273 @@ fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
     }
     assert!(seen >= 18, "boards checked at 25 m: {seen}");
     eprintln!("the least angle at 25 m: boards across the road {:.0} degrees, boards along it {:.0}", worst_cross.asin().to_degrees(), worst_along.asin().to_degrees());
+
+// ---- the owner's seventh play: the talks (text effects, layout before typing, pacing, the words) ------------------------------
+
+/// The engine's markup is read and taken out of the words: the plain words, each letter's effects, and a clear error for a tag
+/// that does not exist or a close with no open.
+#[test]
+fn the_talk_markup_parses_and_strips() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local t = nova.ui.rich_text_letters(0, 0, "{big}{wave}IT CAME!{/wave}{/big} You're {pop}real{/pop}{{ {c=red}x{/c}{pause=0.3}.", { font = 'rounded', size = 20 })
+          local fx = t.letters[1].fx
+          local r = t.text .. '|' .. tostring(fx.big) .. tostring(fx.wave) .. tostring(fx.shake) .. '|' .. tostring(t.letters[10].fx.big)
+          local ok1, e1 = pcall(nova.ui.rich_text_letters, 0, 0, 'a {wobble}b', {})
+          local ok2, e2 = pcall(nova.ui.rich_text_letters, 0, 0, 'a {/shake}b', {})
+          return r .. '|' .. tostring(ok1) .. tostring(ok2) .. '|' .. tostring(tostring(e1):find('unknown tag', 1, true) ~= nil) .. tostring(tostring(e2):find('not open', 1, true) ~= nil)
+        end)()"#,
+    );
+    assert_eq!(
+        out,
+        "IT CAME! You're real{ x.|truetruenil|nil|falsefalse|truetrue"
+    );
+    // every line of the slice's talks parses, and its plain words (what the log says) have no braces left
+    let bad = lua(
+        &g,
+        r#"(function()
+          local words, bad = require('lib.words'), {}
+          for who, p in pairs(words.people) do
+            local all = { p.without }
+            for _, s in ipairs(p.given) do all[#all + 1] = s end
+            for _, s in ipairs(p.after) do all[#all + 1] = s end
+            for _, s in ipairs(all) do
+              local ok, t = pcall(nova.ui.rich_text_letters, 0, 0, s, {})
+              if not ok then bad[#bad + 1] = tostring(t) elseif t.text:find('[{}]') then bad[#bad + 1] = t.text end
+            end
+          end
+          return table.concat(bad, ' | ')
+        end)()"#,
+    );
+    assert_eq!(bad, "");
+}
+
+/// "The text box will 'type' the word on one line then realize that it needs to go on the next line": the whole line is laid out
+/// before it is typed, so no letter's place changes as more letters come out (big letters' room included), and no word is split
+/// over two lines.
+#[test]
+fn the_talk_is_laid_out_before_it_is_typed_and_never_reflows() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local words, dialogue, ui = require('lib.words'), require('lib.dialogue'), require('lib.ui')
+          local L = dialogue.layout(1280)
+          local bad, n = {}, 0
+          for who, p in pairs(words.people) do
+            local all = { p.without }
+            for _, s in ipairs(p.given) do all[#all + 1] = s end
+            for _, s in ipairs(p.after) do all[#all + 1] = s end
+            for _, s in ipairs(all) do
+              local final = ui.rich_letters(100, 500, s, dialogue.text_opts(who, L, 99))
+              for t = 0, final.last + 0.2, 1 / 30 do
+                local now = ui.rich_letters(100, 500, s, dialogue.text_opts(who, L, t))
+                for k, l in ipairs(now.letters) do
+                  local f = final.letters[k]
+                  if l.x ~= f.x or l.y ~= f.y or l.line ~= f.line then bad[#bad + 1] = who .. ' ' .. k .. ' moved at ' .. t end
+                  if l.shown then n = n + 1 end
+                end
+                if now.height ~= final.height then bad[#bad + 1] = 'height changed' end
+              end
+              -- the letters of a word share a line; a line never runs past the box
+              local prev
+              for _, l in ipairs(final.letters) do
+                if prev and l.char:match('%S') and prev.char:match('%S') and l.line ~= prev.line then bad[#bad + 1] = 'split word in ' .. final.text end
+                if l.char:match('%S') and l.x + l.size * 0.3 > 100 + L.text_w + 1 then bad[#bad + 1] = 'past the box: ' .. final.text end
+                prev = l
+              end
+            end
+          end
+          return #bad == 0 and ('ok ' .. n) or table.concat(bad, ' | ', 1, math.min(#bad, 6))
+        end)()"#,
+    );
+    assert!(out.starts_with("ok "), "{out}");
+}
+
+/// The letters' movements are small and the same every time for the same moment: each letter rises softly into place as it
+/// appears and then rests exactly where it was laid out; {shake} and {wave} move letters by a fraction of their size; {big}
+/// letters are larger; nothing moves when it is drawn twice at one time.
+#[test]
+fn the_text_effects_move_letters_within_small_bounds_and_deterministically() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local s = "So {shake}hums{/shake} and {wave}sings{/wave}, {big}BIG{/big} {pop}pop{/pop}."
+          local o = function(t) return { font = 'rounded', size = 20, time = t } end
+          local bad, moved = {}, { shake = 0, wave = 0 }
+          local base = nova.ui.rich_text_letters(0, 0, s, o(0))
+          for t = 0, 3, 0.021 do
+            local a, b = nova.ui.rich_text_letters(0, 0, s, o(t)), nova.ui.rich_text_letters(0, 0, s, o(t))
+            for k, l in ipairs(a.letters) do
+              local m = b.letters[k]
+              if l.dx ~= m.dx or l.dy ~= m.dy or l.scale ~= m.scale or l.alpha ~= m.alpha then bad[#bad + 1] = 'not the same at ' .. t end
+              if l.shown then
+                if math.abs(l.dx) > l.size * 0.25 or math.abs(l.dy) > l.size * 0.4 or l.scale < 0.3 or l.scale > 1.2 then bad[#bad + 1] = l.char .. ' too far at ' .. t end
+                local age = t - l.at
+                if age > 0.5 and l.fx.shake and (l.dx ~= 0 or l.dy ~= 0) then moved.shake = moved.shake + 1 end
+                if age > 0.5 and l.fx.wave and l.dy ~= 0 then moved.wave = moved.wave + 1 end
+                if age > 0.5 and not l.fx.shake and not l.fx.wave and (l.dx ~= 0 or l.dy ~= 0 or l.scale ~= 1 or l.alpha ~= 1) then bad[#bad + 1] = l.char .. ' not at rest' end
+              end
+            end
+          end
+          -- a letter just out is a little below its place and faint, then rises
+          local k = 2
+          local just = nova.ui.rich_text_letters(0, 0, s, o(base.letters[k].at + 0.02)).letters[k]
+          if not (just.dy > 0 and just.alpha < 1) then bad[#bad + 1] = 'no rise' end
+          local big, plain = base.letters[20], base.letters[1]
+          if not (big.fx.big and big.size > plain.size * 1.2) then bad[#bad + 1] = 'big is not bigger' end
+          return #bad == 0 and string.format('ok %d %d', moved.shake, moved.wave) or table.concat(bad, ' | ', 1, math.min(#bad, 6))
+        end)()"#,
+    );
+    let parts: Vec<&str> = out.split(' ').collect();
+    assert_eq!(parts[0], "ok", "{out}");
+    assert!(
+        parts[1].parse::<u32>().unwrap() > 100 && parts[2].parse::<u32>().unwrap() > 100,
+        "shake and wave keep moving: {out}"
+    );
+}
+
+/// The pace: typed at 45 to 60 letters a second, a short pause after a comma, a longer one after a full stop, the longest after
+/// "..."; X once shows the rest of the line at once, X again goes to the next line (and after the last, the talk ends); the
+/// speaker's mouth moves only while letters come out.
+#[test]
+fn x_finishes_the_line_then_goes_on_and_the_pace_pauses_at_stops() {
+    let g0 = game();
+    let pace = lua(
+        &g0,
+        r#"(function()
+          local d = require('lib.dialogue')
+          local out = {}
+          for _, who in ipairs({ 'hazel', 'pip' }) do out[#out + 1] = d.VOICES[who].cps end
+          return table.concat(out, ' ')
+        end)()"#,
+    );
+    for cps in pace.split(' ') {
+        let c: f64 = cps.parse().unwrap();
+        assert!((45.0..=60.0).contains(&c), "{pace}");
+    }
+    let gaps = lua(
+        &g0,
+        r#"(function()
+          local t = nova.ui.rich_text_letters(0, 0, 'Hm, well. So... yes', { font = 'rounded', size = 20, cps = 50, time = 0 }).letters
+          local function gap(k) return t[k + 1].at - t[k].at end
+          return string.format('%.3f %.3f %.3f %.3f', gap(1), gap(3), gap(9), gap(15))
+        end)()"#,
+    );
+    let g: Vec<f64> = gaps.split(' ').map(|v| v.parse().unwrap()).collect();
+    assert!(g[0] < 0.03, "a plain letter: {gaps}");
+    assert!(g[1] > 0.1 && g[1] < 0.2, "after a comma: {gaps}");
+    assert!(
+        g[2] > 0.2 && g[2] < g[3],
+        "after a stop, less than after dots: {gaps}"
+    );
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "local s = require('lib.state'); s.carrying = 'hazel'; s.on_shelf.hazel = false; D = require('lib.dialogue')", "steps": [
+        { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "interact" }, { "wait": 12, "lua": "TYPING = D.typing(); BEFORE = D.complete()" },
+        { "press": "interact" }, { "wait": 1, "lua": "AFTER1 = D.complete(); LINE1 = D.line(); MOUTH1 = D.typing()" },
+        { "wait": 20 },
+        { "press": "interact" }, { "wait": 1, "lua": "LINE2 = D.line(); DONE2 = D.complete()" },
+        { "until": "D.complete()", "max": 400 }, { "wait": 2, "lua": "MOUTH2 = D.typing()" },
+        { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2, "lua": "OVER = D.active()" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(TYPING) .. ' ' .. tostring(BEFORE)"),
+        "true false"
+    );
+    assert_eq!(
+        lua(&g, "tostring(AFTER1)"),
+        "true",
+        "X once shows the whole line"
+    );
+    assert_eq!(lua(&g, "LINE1"), "Hm. So there IS a postmaster.");
+    assert_eq!(
+        lua(&g, "tostring(MOUTH1)"),
+        "false",
+        "the mouth rests once the line is out"
+    );
+    assert_eq!(
+        lua(&g, "LINE2"),
+        "My chisels. Ordered them the winter Pemberton shut up shop and the lake bridge went.",
+        "X again goes on"
+    );
+    assert_eq!(
+        lua(&g, "tostring(DONE2)"),
+        "false",
+        "the next line types from the start"
+    );
+    assert_eq!(lua(&g, "tostring(MOUTH2)"), "false");
+    assert_eq!(
+        lua(&g, "tostring(OVER)"),
+        "false",
+        "the talk ends after the last line"
+    );
+    assert_eq!(lua(&g, "require('lib.state').delivered.hazel"), "true");
+}
+
+/// "Too much text": the hand-over talks are three lines, the talks after that and at the door one line each, every line short;
+/// each has a face the cast can make; the effects are used, but not on every line.
+#[test]
+fn the_talks_are_short_and_each_line_has_its_face() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local words, face = require('lib.words'), require('lib.face')
+          local bad, marked, total = {}, 0, 0
+          for who, p in pairs(words.people) do
+            if #p.given ~= 3 or #p.faces.given ~= 3 then bad[#bad + 1] = who .. ' given ' .. #p.given end
+            if #p.after ~= 2 or #p.faces.after ~= 2 then bad[#bad + 1] = who .. ' after ' .. #p.after end
+            if type(p.without) ~= 'string' or not face.EXPRESSIONS[p.faces.without] then bad[#bad + 1] = who .. ' without' end
+            for _, k in ipairs({ 'given', 'after' }) do
+              for i, s in ipairs(p[k]) do
+                total = total + 1
+                if s:find('{', 1, true) then marked = marked + 1 end
+                local plain = nova.ui.rich_text_letters(0, 0, s, {}).text
+                if #plain > 100 then bad[#bad + 1] = who .. ' long: ' .. plain end
+                if not face.EXPRESSIONS[p.faces[k][i]] then bad[#bad + 1] = who .. ' face ' .. tostring(p.faces[k][i]) end
+              end
+            end
+          end
+          if marked == 0 or marked >= total then bad[#bad + 1] = 'effects on ' .. marked .. ' of ' .. total end
+          return #bad == 0 and 'ok' or table.concat(bad, ' | ')
+        end)()"#,
+    );
+    assert_eq!(out, "ok");
+    assert_eq!(
+        lua(
+            &g,
+            "table.concat(require('lib.words').people.hazel.faces.given, ' ')"
+        ),
+        "gruff sad smile"
+    );
+    assert_eq!(
+        lua(
+            &g,
+            "table.concat(require('lib.words').people.pip.faces.given, ' ')"
+        ),
+        "delighted indignant happy"
+    );
 }
