@@ -1,6 +1,7 @@
 {
   "version": 1,
   "scale": 0.0625,
+  "texture": { "size": [880, 300], "smooth": true },
   "parts": [
     {
       "name": "body",
@@ -7652,7 +7653,9 @@
             {"v":[5,7,3,1]}
           ],
           "modifiers": [{"type":"bevel","width":0.144,"segments":2,"angle":30}]
-        }
+        },
+        { "from": [10.471, 16.608, -16.88], "size": [0.16, 5.184, 15.2], "rotation": [0, 0, 2.9609361341637532], "color": "#ffffff", "texture": { "at": [0, 0], "faces": {"up":[0,0,1,1],"down":[0,0,1,1],"north":[0,0,1,1],"south":[0,0,1,1],"east":[0,0,880,299],"west":[0,0,1,1]} } },
+        { "from": [-10.631, 16.608, -16.88], "size": [0.16, 5.184, 15.2], "rotation": [0, 0, -2.9609361341637532], "color": "#ffffff", "texture": { "at": [0, 0], "faces": {"up":[0,0,1,1],"down":[0,0,1,1],"north":[0,0,1,1],"south":[0,0,1,1],"east":[0,0,1,1],"west":[0,0,880,299]} } }
       ],
       "children": [
         {
