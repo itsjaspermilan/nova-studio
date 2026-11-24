@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#b3ab9d",
           "verts": [
             [-34.243, 0.4, -4.448],
@@ -32,6 +33,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#948c7f",
           "verts": [
             [-22.076, 0.4, -4.068],
@@ -55,6 +57,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#b2aa9c",
           "verts": [
             [-11.869, 0.4, -3.965],
@@ -78,6 +81,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a1988a",
           "verts": [
             [0.685, 0.4, -4.869],
@@ -101,6 +105,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#aaa192",
           "verts": [
             [11.401, 0.4, -4.764],
@@ -124,6 +129,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#b6aea0",
           "verts": [
             [21.821, 0.4, -3.712],
@@ -147,6 +153,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#9c9487",
           "verts": [
             [-29.014, 4.56, -4.171],
@@ -170,6 +177,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#b0a89a",
           "verts": [
             [-17.642, 4.56, -4.619],
@@ -193,6 +201,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#aba293",
           "verts": [
             [-6.605, 4.56, -3.368],
@@ -216,6 +225,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#9c9486",
           "verts": [
             [4.117, 4.56, -4.06],
@@ -239,6 +249,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#b3ab9d",
           "verts": [
             [16.6, 4.56, -3.752],
@@ -262,6 +273,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a89f91",
           "verts": [
             [-34.084, 8.72, -4.08],
@@ -285,6 +297,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a9a091",
           "verts": [
             [-22.661, 8.72, -3.987],
@@ -308,6 +321,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#9a9284",
           "verts": [
             [-11.502, 8.72, -3.204],
@@ -331,6 +345,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a0978a",
           "verts": [
             [-0.074, 8.72, -3.465],
@@ -354,6 +369,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a79e90",
           "verts": [
             [10.758, 8.72, -3.379],
@@ -377,6 +393,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#9d9487",
           "verts": [
             [22.8, 8.72, -3.203],
@@ -400,7 +417,8 @@
         },
         {
           "shape": "mesh",
-          "color": "#9bb66e",
+          "paint": "rock",
+          "color": "#b5ada0",
           "verts": [
             [-28.5, 13.2, -3.52],
             [-15.013, 13.2, -3.52],
@@ -423,7 +441,8 @@
         },
         {
           "shape": "mesh",
-          "color": "#779149",
+          "paint": "rock",
+          "color": "#aba293",
           "verts": [
             [-9.934, 13.2, -3.52],
             [-0.055, 13.2, -3.52],
@@ -446,7 +465,8 @@
         },
         {
           "shape": "mesh",
-          "color": "#88a754",
+          "paint": "rock",
+          "color": "#b0a799",
           "verts": [
             [5.922, 13.2, -3.52],
             [15.63, 13.2, -3.52],
@@ -469,7 +489,8 @@
         },
         {
           "shape": "mesh",
-          "color": "#99b46b",
+          "paint": "rock",
+          "color": "#b4ac9f",
           "verts": [
             [21.375, 13.2, -3.52],
             [35.399, 13.2, -3.52],

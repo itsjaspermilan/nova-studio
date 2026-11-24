@@ -417,7 +417,7 @@ fn a_parcel_shows_a_tip_near_and_is_taken_without_a_popup_and_the_letter_reads_a
     assert!(
         t.contains(&"Pip Tansy".to_string())
             && t.contains(&"7 Kettle Creek Road".to_string())
-            && t.contains(&"Take".to_string()),
+            && !t.contains(&"Take".to_string()),
         "the tip over the parcel, near it: {t:?}"
     );
     assert_eq!(lua(&g, "tostring(require('lib.state').carrying)"), "nil");
@@ -1302,8 +1302,8 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
     assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
     assert_eq!(r.drawn_count("ui_text", Some("Van 2/4")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 0);
     assert!(r.drawn_count("ui_text", Some("Hazel Brock")) >= 1);
     play(
         &mut g,
@@ -1357,7 +1357,7 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
 
 /// "We can also make the truck have no doors." Y gets in only at the LEFT doorway (the driver's side, the van's +x), with the
 /// prompt "Get in", and at once (no walk round); not at the right doorway. Getting out puts the postmaster beside the left doorway.
-/// Carrying a parcel, the doorway says to load it at the back.
+/// Carrying a parcel, the doorway does not take it in (no prompt says so: the panel at the back loads it).
 #[test]
 fn getting_in_is_at_the_left_doorway_and_at_once() {
     let mut g = game();
@@ -1375,7 +1375,7 @@ fn getting_in_is_at_the_left_doorway_and_at_once() {
         &mut g,
         r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR)" }, { "wait": 5 } ] }"#,
     );
-    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 0);
     let r = play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 2 } ] }"#,
@@ -1403,7 +1403,11 @@ fn getting_in_is_at_the_left_doorway_and_at_once() {
         r#"{ "steps": [ { "lua": "require('lib.state').carrying = 'hazel'" }, { "wait": 3 }, { "press": "van" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
-    assert_eq!(r.drawn_count("ui_text", Some("Load it at the back")), 1);
+    assert_eq!(
+        r.drawn_count("ui_text", Some("Load it at the back")),
+        0,
+        "no prompt: the panel at the back says it"
+    );
 }
 
 /// "When leaving the van, currently the camera is like clipped inside the van facing the player." From the moment Y is pressed,
@@ -1613,7 +1617,7 @@ fn every_piece_of_ui_is_drawn_from_the_one_kit() {
         r#"{ "steps": [ { "lua": "local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in()" }, { "wait": 30 } ] }"#,
     );
     assert_ui_from_the_kit(&r, "driving");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
     // a conversation with each: the name on a key of the kit over the box
     for (who, name, x, z) in [("hazel", "Hazel", 150, 36), ("pip", "Pip", -178, 100)] {
         let mut g = game();
@@ -1728,8 +1732,8 @@ fn one_corner_card_goes_round_the_parcels_with_l1_and_r1() {
     );
     assert_eq!(r.drawn_count("ui_text", Some("carrying")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("1 of 2")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
-    assert_eq!(r.drawn_count("ui_text", Some("R1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("R1")), 0);
     let r = play(
         &mut g,
         r#"{ "steps": [ { "press": "next" }, { "wait": 5 } ] }"#,
@@ -1797,7 +1801,7 @@ fn one_corner_card_goes_round_the_parcels_with_l1_and_r1() {
         1,
         "only the panel counts"
     );
-    assert_eq!(r.drawn_count("ui_text", Some("L1")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
     // in a conversation the card is hidden and L1 / R1 do nothing to it
     let mut g = game();
     let r = play(
@@ -1845,7 +1849,7 @@ fn the_vans_panel_opens_with_the_doors_for_a_single_parcel() {
         "the panel and the faded card"
     );
     assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
-    assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
 }
 
 /// "The music is a little repetitive. Can we use piano?" The one piece is for piano alone (Nova's `piano` instrument: struck
@@ -3136,7 +3140,7 @@ fn x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else() {
         { "press": "interact" }, { "wait": 5 }, { "press": "confirm" }, { "wait": 5 }, { "press": "run" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "foot");
-    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get in")), 0);
     play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 20 } ] }"#,
@@ -3152,7 +3156,7 @@ fn x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else() {
         "L3 sounds the horn, X and A do not"
     );
     assert_eq!(lua(&g, "nova.scene_now().mode"), "van");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
     play(
         &mut g,
         r#"{ "steps": [ { "press": "van" }, { "wait": 5 } ] }"#,
@@ -5234,7 +5238,7 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
     assert_eq!(r.drawn_count("ui_text", Some("Van 0/4")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
     // one, two, four in the van: one parcel line, the count, L1 / R1 only with more than one
-    for (load, tag, many) in [
+    for (load, tag, _many) in [
         ("{ 'hazel' }", "Van 1/4", false),
         ("{ 'hazel', 'pip' }", "Van 2/4", true),
         ("{ 'hazel', 'pip', 'hazel', 'pip' }", "Van 4/4", true),
@@ -5245,8 +5249,8 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
         );
         assert_eq!(lua(&g, "nova.scene_now():panel_mode()"), "pick");
         assert_eq!(r.drawn_count("ui_text", Some(tag)), 1, "{tag}");
-        assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
-        assert_eq!(r.drawn_count("ui_text", Some("L1")), many as usize);
+        assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+        assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
         assert_eq!(
             r.drawn_count("ui_text", Some("Hazel Brock")),
             2,
@@ -5999,7 +6003,7 @@ fn the_gear_display_sits_beside_the_minimap_follows_the_lever_and_lights_with_th
                 "{size}: the prompts stand above the cluster ({bottom} over {top})"
             );
         }
-        assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1);
+        assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0);
         assert_eq!(lua(&g, "require('lib.gear_hud').shown"), "P");
         assert_eq!(lua(&g, "tostring(require('lib.gear_hud').lit)"), "false");
         play(
@@ -6857,11 +6861,13 @@ fn the_valleys_trees_are_painted_and_within_their_triangles() {
             "{kind}: {:.0}% of its points are painted as kind {paint}",
             share * 100.0
         );
-        // (nothing glows: every point is plain, or painted with no glow on top)
+        // (nothing glows: every point is plain, or painted with no glow on top; the trunks and branches are painted bark (8) or
+        // birch (9) since the eighth play)
         assert!(
-            mesh.vertices
-                .iter()
-                .all(|v| v.emissive == 0.0 || (v.emissive - paint * PAINT_STEP).abs() < 0.5),
+            mesh.vertices.iter().all(|v| v.emissive == 0.0
+                || (v.emissive - paint * PAINT_STEP).abs() < 0.5
+                || (v.emissive - 8.0 * PAINT_STEP).abs() < 0.5
+                || (v.emissive - 9.0 * PAINT_STEP).abs() < 0.5),
             "{kind}"
         );
     }
@@ -7086,15 +7092,10 @@ fn the_old_computer_has_no_prompt() {
         &mut g,
         r#"{ "start_scene": "office", "lua": "T = require('lib.testkit')", "route": [
         { "wait": 10, "lua": "local c = nova.named('old_computer'); nova.named('postmaster').walk_to = { c.x, c.z + 1.0 }" }, { "until": "not T.walking()", "max": 600 },
-        { "wait": 5, "lua": "OFFER = tostring(nova.scene_now():action()); HINT = #nova.scene_now().hint" },
+        { "wait": 5, "lua": "OFFER = tostring(nova.scene_now():action())" },
         { "press": "interact" }, { "wait": 20, "lua": "CARD = tostring(require('lib.cards').active())" } ] }"#,
     );
     assert_eq!(lua(&g, "OFFER"), "nil");
-    assert_eq!(
-        num(&g, "HINT"),
-        1.0,
-        "only the map's hint (Select) is shown"
-    );
     assert_eq!(lua(&g, "CARD"), "false");
     assert_eq!(
         lua(&g, "tostring(require('lib.state').letter_read)"),
@@ -7254,7 +7255,7 @@ fn a_creeping_van_is_not_stopped_until_braked_or_in_p() {
         r#"{ "steps": [ { "hold": ["brake"], "frames": 90 }, { "hold": ["brake"], "frames": 1, "lua": "SPEED = nova.named('van').speed" } ] }"#,
     );
     assert!(num(&g, "SPEED").abs() < 1e-6, "held still on the brake");
-    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 1, "the prompt");
+    assert_eq!(r.drawn_count("ui_text", Some("Get out")), 0, "no prompt");
     play(
         &mut g,
         r#"{ "steps": [ { "hold": ["brake"], "press": "van", "frames": 6 }, { "wait": 5 } ] }"#,
@@ -8254,14 +8255,6 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "Hazel Brock",
         "van panel name",
     );
-    check(
-        &r,
-        &g,
-        "require('lib.ui').van_panel_box",
-        "require('lib.ui').FRAME.small",
-        "Take",
-        "van panel Take",
-    );
     // the card is dimmed while the panel is up; measure it on foot away from the van
     let r = play(
         &mut g,
@@ -8283,9 +8276,8 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "carrying",
         "parcel card line",
     );
-    // a prompt chip (bottom right)
-    let hits = r.drawn("ui_text", Some("Map"));
-    assert!(!hits.is_empty());
+    // (no prompt chip any more: nothing at the bottom right)
+    assert!(r.drawn("ui_text", Some("Map")).is_empty());
     // the slip beside the instrument
     let r = play(
         &mut g,
@@ -8313,14 +8305,6 @@ fn text_keeps_the_scales_distance_from_every_panels_frame() {
         "require('lib.ui').FRAME.small",
         "Hazel Brock",
         "pickup tip name",
-    );
-    check(
-        &r,
-        &g,
-        "require('lib.ui').tip_box",
-        "require('lib.ui').FRAME.small",
-        "Take",
-        "pickup tip word",
     );
 }
 
@@ -10251,6 +10235,560 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
     );
 }
 
+/// The owner's eighth play, note 7 ("I still see 'Y to exit' and 'Select' for map. I also don't see the control menu"): no button
+/// chip, button cap or button word is drawn in normal play, on foot, at the van's back, driving or in the office; the instrument
+/// stays while driving; the dialogue's "next" is a small arrow.
+#[test]
+fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
+    let mut g = game();
+    let banned_words = [
+        "Get in",
+        "Get out",
+        "Map",
+        "Take",
+        "Read",
+        "Talk",
+        "Knock",
+        "Hand over",
+        "Put back",
+        "Close",
+        "Choose",
+        "Select",
+        "L1",
+        "R1",
+        "Load it at the back",
+    ];
+    let check = |r: &Report, what: &str| {
+        for name in ["round", "round_down"] {
+            assert_eq!(
+                r.drawn_count("ui_sprite", Some(name)),
+                0,
+                "{what}: no button cap ({name})"
+            );
+        }
+        for w in banned_words {
+            assert_eq!(
+                r.drawn_count("ui_text", Some(w)),
+                0,
+                "{what}: {w:?} is not on the screen"
+            );
+        }
+    };
+    // on foot by the van's door, and at its back with the panel (two parcels: the count with its two arrows, no L1 / R1)
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'hazel', 'pip' }; S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "T.to_van('door')" }, { "until": "not T.walking()", "max": 900 }, { "wait": 30 } ] }"#,
+    );
+    check(&r, "on foot");
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
+    );
+    check(&r, "at the van's back");
+    assert!(
+        r.drawn_count("ui_text", Some("Hazel Brock")) > 0,
+        "the panel still names the parcel"
+    );
+    assert!(
+        r.drawn_count("ui_text", Some("1 of 2")) > 0,
+        "and counts them"
+    );
+    assert!(
+        r.drawn_count("ui_sprite", Some("chev_l")) > 0,
+        "with its arrows"
+    );
+    // driving: the instrument is there
+    let r = play(
+        &mut g,
+        r#"{ "lua": "local v = nova.named('van'); v:teleport(4, -150, 0); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.camera').reset(0)",
+        "steps": [ { "wait": 20 }, { "hold": ["go"], "frames": 60 } ] }"#,
+    );
+    check(&r, "driving");
+    assert!(
+        r.drawn_count("ui_text", Some("km/h")) > 0,
+        "the instrument is drawn while driving"
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.gear_hud').shown ~= nil)"),
+        "true"
+    );
+    // in the office, at the shelf: the tip names the parcel only
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 20 }, { "lua": "local p = nova.named('postmaster'); local at = require('lib.testkit').shelf_spot('hazel'); p.x, p.z, p.face = at[1], at[2], 3.14; p.speed = 0; p.walk_to = nil; p.walk_path = nil" }, { "wait": 40 } ] }"#,
+    );
+    check(&r, "in the office");
+    assert!(
+        r.drawn_count("ui_text", Some("Hazel Brock")) > 0,
+        "the tip names the parcel"
+    );
+    // a conversation's end of line: a bobbing arrow, no cap
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "local s = require('lib.state'); s.carrying = 'hazel'; s.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "interact" }, { "wait": 200 } ] }"#,
+    );
+    check(&r, "in a conversation");
+    assert!(
+        r.drawn_count("ui_sprite", Some("chev_r")) > 0,
+        "the next arrow"
+    );
+}
+
+/// The Controls page (the title's second choice, the pause menu's second): two columns, each row the buttons engraved on the
+/// Retroid and what they do, and the buttons are the ones nova.json binds for the actions the row stands for; every action the game
+/// reads in that mode is on the page; B or Start closes it.
+#[test]
+fn the_controls_page_lists_every_binding_and_opens_from_title_and_pause() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cfg: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join(format!("{GAME}/nova.json"))).unwrap(),
+    )
+    .unwrap();
+    // a source of nova.json to the name of the key engraved on the pad
+    let key_of = |src: &str| -> Option<&'static str> {
+        Some(match src {
+            "pad:west" => "X",
+            "pad:north" => "Y",
+            "pad:south" => "A",
+            "pad:east" => "B",
+            "pad:thumb_l" => "L3",
+            "pad:select" => "Select",
+            "pad:start" => "Start",
+            "pad:l1" => "L1",
+            "pad:r1" => "R1",
+            "pad:dpad_up" | "pad:dpad_down" => "D-pad",
+            "axis:r2" => "R2",
+            "axis:l2" => "L2",
+            s if s.starts_with("axis:left_") => "Left stick",
+            s if s.starts_with("axis:right_") => "Right stick",
+            _ => return None, // (keyboard keys are for the desktop)
+        })
+    };
+    let sources = |action: &str| -> Vec<String> {
+        let v = &cfg["input"][action];
+        let mut out = vec![];
+        let mut add = |a: &Value| {
+            out.extend(
+                a.as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|s| s.as_str())
+                    .map(String::from),
+            )
+        };
+        if v.is_array() {
+            add(v);
+        } else {
+            add(&v["negative"]);
+            add(&v["positive"]);
+        }
+        out
+    };
+    let keys_of = |actions: &[&str]| -> Vec<String> {
+        let mut k: Vec<String> = actions
+            .iter()
+            .flat_map(|a| sources(a))
+            .filter_map(|s| key_of(&s))
+            .map(String::from)
+            .collect();
+        k.sort();
+        k.dedup();
+        k
+    };
+    let mut g = game();
+    // the page's rows, as "col|keys|word|actions"
+    let rows = lua(
+        &g,
+        "(function() local w = require('lib.words'); local out = {}; for _, col in ipairs({ 'foot', 'van' }) do for _, r in ipairs(w.controls_rows[col]) do \
+         out[#out + 1] = col .. '|' .. table.concat(r.keys, ',') .. '|' .. r.word .. '|' .. table.concat(r.actions, ',') end end; \
+         for _, r in ipairs(w.controls_menus) do out[#out + 1] = 'menus|' .. table.concat(r.keys, ',') .. '|' .. r.word .. '|' .. table.concat(r.actions, ',') end; return table.concat(out, ';') end)()",
+    );
+    let mut seen: std::collections::HashMap<String, Vec<String>> = Default::default(); // column -> actions listed
+    for row in rows.split(';') {
+        let p: Vec<&str> = row.split('|').collect();
+        let (col, keys, actions) = (p[0], p[1], p[3].split(',').collect::<Vec<_>>());
+        let mut want = keys_of(&actions);
+        let mut have: Vec<String> = keys.split(',').map(String::from).collect();
+        have.sort();
+        if col == "menus" {
+            // (the menus go by the D-pad and the stick; the page names the D-pad, and A and B)
+            want.retain(|k| k != "Left stick");
+        }
+        assert_eq!(
+            have, want,
+            "{row}: the row's buttons are what nova.json binds for {actions:?}"
+        );
+        seen.entry(col.to_string())
+            .or_default()
+            .extend(actions.iter().map(|s| s.to_string()));
+    }
+    for (col, used) in [
+        (
+            "foot",
+            vec![
+                "move_x", "move_y", "run", "interact", "confirm", "van", "prev", "next", "look_x",
+                "look_y", "map", "pause",
+            ],
+        ),
+        (
+            "van",
+            vec![
+                "go",
+                "brake",
+                "steer",
+                "handbrake",
+                "confirm",
+                "interact",
+                "horn",
+                "van",
+                "prev",
+                "next",
+                "look_x",
+                "look_y",
+                "map",
+                "pause",
+            ],
+        ),
+        ("menus", vec!["menu_up", "menu_down"]),
+    ] {
+        for a in used {
+            assert!(
+                seen[col].iter().any(|s| s == a),
+                "the {col} column lists {a}"
+            );
+        }
+    }
+    // opens from the title (second choice) and closes on B and on Start
+    play(
+        &mut g,
+        r#"{ "start_scene": "title", "steps": [ { "wait": 90 }, { "press": "menu_down" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 30 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "controls",
+        "the title opens it"
+    );
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 5 } ] }"#);
+    for w in [
+        "On foot",
+        "Driving",
+        "Accelerate",
+        "Run (hold)",
+        "Handbrake (hold)",
+        "Horn",
+    ] {
+        assert!(
+            r.drawn_count("ui_text", Some(w)) > 0,
+            "the page shows {w:?}"
+        );
+    }
+    for k in ["A", "B", "X", "Y"] {
+        assert!(
+            r.drawn_count("ui_text", Some(k)) >= 2,
+            "the engraved {k} is on both columns"
+        );
+    }
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "run" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "nil",
+        "B closes it"
+    );
+    assert_eq!(
+        lua(&g, "nova.current_scene()"),
+        "title",
+        "and the title is still there, not started"
+    );
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 30 }, { "press": "pause" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "nil",
+        "Start closes it"
+    );
+    assert_eq!(lua(&g, "nova.current_scene()"), "title");
+    // and from the pause menu (second of three), back to the menu
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 10 }, { "press": "pause" }, { "wait": 20 }, { "press": "menu_down" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 30 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "controls",
+        "the pause menu opens it"
+    );
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "run" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "pause",
+        "B goes back to the pause menu"
+    );
+    play(
+        &mut g,
+        r#"{ "steps": [ { "press": "pause" }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(require('lib.cards').kind())"),
+        "nil",
+        "Start closes the menu"
+    );
+}
+
+/// The owner's seventh play: on a steep grassy bank the FERNHOLLOW POST lettering, a `nova.billboard` sticker laid beside the van,
+/// floated off at another angle from the body. It is part of the van's model now: two thin decals on the cargo sides (children of the
+/// body, so they follow its pitch, roll and suspension exactly), painted with models/van.texture.png.
+#[test]
+fn the_vans_lettering_is_in_its_model_and_no_sticker_is_drawn() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [
+        { "lua": "BB = {}; local orig = nova.billboard; nova.billboard = function(id, ...) BB[id] = (BB[id] or 0) + 1; return orig(id, ...) end; nova.named('van').engine_on = true" },
+        { "wait": 90 } ] }"#,
+    );
+    assert_eq!(
+        num(&g, "BB.van_side or 0"),
+        0.0,
+        "no van_side billboard is drawn"
+    );
+    assert!(
+        num(&g, "BB.puff or 0") > 0.0,
+        "the exhaust's puffs still are billboards"
+    );
+    let root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post");
+    assert!(
+        !root.join("sprites/fx/van_side.png").exists(),
+        "the lettering is no sprite any more"
+    );
+    let model = van_model();
+    let size = &model["texture"]["size"];
+    assert_eq!(
+        size,
+        &serde_json::json!([880, 300]),
+        "the model's texture is the lettering's picture"
+    );
+    let png = std::fs::read(root.join("models/van.texture.png")).unwrap();
+    let wh = |o: usize| u32::from_be_bytes(png[o..o + 4].try_into().unwrap());
+    assert_eq!(
+        (wh(16), wh(20)),
+        (880, 300),
+        "models/van.texture.png is 880 x 300"
+    );
+    // two decals, one a side, in the body part, painted with the whole picture on their outer face
+    let mut shapes = Vec::new();
+    van_shapes(&model["parts"][0], &mut shapes);
+    let decals: Vec<&Value> = shapes
+        .iter()
+        .filter(|(n, c)| {
+            n == "body"
+                && c["shape"].as_str().is_none_or(|s| s == "box")
+                && c["texture"]["faces"].is_object()
+        })
+        .map(|(_, c)| *c)
+        .collect();
+    assert_eq!(decals.len(), 2, "one lettering decal on each cargo side");
+    let mut sides = Vec::new();
+    for c in &decals {
+        let x = (c["from"][0].as_f64().unwrap() + c["size"][0].as_f64().unwrap() / 2.0) / 16.0;
+        let z = (c["from"][2].as_f64().unwrap() + c["size"][2].as_f64().unwrap() / 2.0) / 16.0;
+        let w = c["size"][2].as_f64().unwrap() / 16.0;
+        assert!((0.64..0.68).contains(&x.abs()), "on the side panel: x {x}");
+        assert!(
+            z - w / 2.0 > -1.2 && z + w / 2.0 < 0.0,
+            "on the cargo box behind the doorway: z {z}"
+        );
+        let face = if x > 0.0 { "east" } else { "west" };
+        assert_eq!(
+            c["texture"]["faces"][face],
+            serde_json::json!([0, 0, 880, 299]),
+            "the picture is on the outer face"
+        );
+        sides.push(x > 0.0);
+    }
+    assert!(
+        sides.contains(&true) && sides.contains(&false),
+        "both sides"
+    );
+}
+
+/// The body is turned as `nova.model` turns it, Ry(heading) * Rx(pitch) * Rz(roll) with the lift added; `Van:to_world` (the postmaster
+/// at his seat, the parcels, the lamps' beams, the exhaust's tip) is that, not a small-angle shortcut: within a centimetre at 25
+/// degrees of pitch and roll.
+#[test]
+fn to_world_turns_a_point_as_the_models_body_is_turned_at_25_degrees() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 30 } ] }"#,
+    );
+    let rad = 25.0_f64.to_radians();
+    let (h, p, r) = (0.7_f64, rad, -rad);
+    let points = [
+        [0.64, 1.2, -0.58],
+        [-0.68, 1.2, -0.58],
+        [0.4, 0.31, -1.5],
+        [0.45, 0.9, 0.1],
+        [0.2, 0.68, -0.95],
+        [-0.64, 0.5, 1.2],
+    ];
+    for [lx, ly, lz] in points {
+        // Ry(h) * Rx(p) * Rz(r) applied to the point
+        let (x1, y1) = (lx * r.cos() - ly * r.sin(), lx * r.sin() + ly * r.cos());
+        let (y2, z2) = (y1 * p.cos() - lz * p.sin(), y1 * p.sin() + lz * p.cos());
+        let (wx, wz) = (x1 * h.cos() + z2 * h.sin(), -x1 * h.sin() + z2 * h.cos());
+        let out = lua(
+            &g,
+            &format!(
+                "(function() local v = nova.named('van'); v.heading, v.pitch, v.roll, v.lift = {h}, {p}, {r}, 0.1; v.x, v.z = 10, 20; local x, y, z = v:to_world({lx}, {ly}, {lz}); return string.format('%.5f %.5f %.5f', x, y, z) end)()"
+            ),
+        );
+        let got: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+        let want = [10.0 + wx, 0.1 + y2, 20.0 + wz];
+        for k in 0..3 {
+            assert!(
+                (got[k] - want[k]).abs() < 0.01,
+                "point {lx},{ly},{lz}: to_world {got:?} vs the model's turn {want:?}"
+            );
+        }
+    }
+}
+
+// ---- the eighth play's notes 4 and 8: bark painted on the trunks, stone painted on the rocks and walls --------------------------------
+
+/// The shapes of a model's glb as (paint kind, colour) per vertex, and its triangle count.
+fn painted_points(name: &str) -> (Vec<(f32, [u8; 4])>, usize) {
+    use nova_runtime::model::{PAINT_STEP, import_glb};
+    let path = game_dir().join(format!("models/{name}.glb"));
+    let mesh = import_glb(&std::fs::read(path).unwrap()).expect("imports");
+    assert!(mesh.notes.is_empty(), "{name}: {:?}", mesh.notes);
+    let points = mesh
+        .vertices
+        .iter()
+        .map(|v| ((v.emissive / PAINT_STEP + 0.0005).floor(), v.color))
+        .collect();
+    (points, mesh.indices.len() / 3)
+}
+
+/// "We don't have to have those black parts sticking out of the birch trees either. I think we can simplify it with texture." A
+/// birch is its trunk and branches (painted `birch`: white with dark dashes) and its leaf clumps (foliage), nothing else: no box
+/// sticks out of the trunk, and the model has fewer triangles than it had with them (1024). Pines, larches, their far versions and
+/// the stump have their trunks painted as bark, every point of them painted (no plain brown left).
+#[test]
+fn trunks_and_branches_are_painted_bark_and_a_birch_has_no_pieces_stuck_on() {
+    let birch = model_doc("birch");
+    let mut shapes = std::collections::BTreeMap::<String, usize>::new();
+    for c in all_cubes(&birch) {
+        let kind = c["shape"].as_str().unwrap_or("?").to_string();
+        let paint = c["paint"].as_str().unwrap_or("plain").to_string();
+        *shapes.entry(format!("{kind}/{paint}")).or_default() += 1;
+        assert_ne!(kind, "box", "a box is stuck on the birch: {c}");
+    }
+    // the trunk (a turned mesh) and six branches (one to each leaf cluster), all painted birch; the rest is leaf clumps
+    assert_eq!(shapes.get("mesh/birch"), Some(&7), "{shapes:?}");
+    assert!(
+        shapes
+            .keys()
+            .all(|k| k.ends_with("/birch") || k.ends_with("/foliage")),
+        "{shapes:?}"
+    );
+    let (points, tris) = painted_points("birch");
+    assert!(tris < 1024, "the birch lost its boxes: {tris} triangles");
+    assert!(
+        points.iter().all(|(k, _)| *k == 1.0 || *k == 9.0),
+        "every point of a birch is leaf or birch bark"
+    );
+    let bark = points.iter().filter(|(k, _)| *k == 9.0).count();
+    assert!(bark > 60, "the trunk and branches are painted: {bark}");
+    // pale: nothing of its bark is black or brown (the dashes are painted on by the renderer)
+    assert!(
+        points
+            .iter()
+            .filter(|(k, _)| *k == 9.0)
+            .all(|(_, c)| c[0] > 150 && c[1] > 150 && c[2] > 140),
+        "the birch bark is white"
+    );
+    for name in [
+        "pine",
+        "pine2",
+        "pine3",
+        "pine_far",
+        "larch",
+        "larch_small",
+        "larch_far",
+    ] {
+        let (points, _) = painted_points(name);
+        assert!(
+            points.iter().all(|(k, _)| *k == 1.0 || *k == 8.0),
+            "{name}: leaves and bark only"
+        );
+        assert!(
+            points.iter().filter(|(k, _)| *k == 8.0).count() >= 24,
+            "{name}: its trunk is painted bark"
+        );
+        // warm brown, as the trunk was
+        assert!(
+            points
+                .iter()
+                .filter(|(k, _)| *k == 8.0)
+                .all(|(_, c)| c[0] > c[1] && c[1] > c[2]),
+            "{name}: the bark is brown"
+        );
+    }
+    let (stump, _) = painted_points("stump");
+    assert!(
+        stump.iter().any(|(k, _)| *k == 8.0),
+        "the stump's sides are bark"
+    );
+}
+
+/// "We can remove the green tops on the rock walls. The rock also needs some texture." Rocks and the wall's stones are painted as
+/// rock (speckle, strata, cracks), none is plain, and nothing of them is green: the moss caps are gone from the wall and from the big
+/// boulder (a moss cap on a boulder read as the same green blob), and the boulder has fewer triangles than with its cap (264).
+#[test]
+fn rocks_and_stone_walls_are_painted_rock_with_no_moss_caps() {
+    for name in ["rock", "rock_big", "rock_small", "stone_wall"] {
+        let (points, tris) = painted_points(name);
+        assert!(
+            points.iter().all(|(k, _)| *k == 10.0),
+            "{name}: every point is painted as rock"
+        );
+        for (_, c) in &points {
+            assert!(
+                c[0] + 2 >= c[1] && c[1] >= c[2],
+                "{name}: a stone is warm grey, never green: {c:?}"
+            );
+        }
+        if name == "rock_big" {
+            assert!(tris < 264, "{name}: {tris} triangles");
+        }
+    }
+    // the wall's top is still capped, by flat stones of the wall's own grey and not by moss
+    let wall = model_doc("stone_wall");
+    let cubes = all_cubes(&wall);
+    assert!(cubes.len() >= 20, "{} stones", cubes.len());
+    assert!(
+        cubes.iter().all(|c| c["paint"] == "rock"),
+        "every stone of the wall is painted rock"
+    );
+}
+
 // ---- the owner's eighth play (2026-11-23): ponds, the playable area and its edge, driveways ----------------------------------------------
 
 /// The valley scene's objects, as tools/scene.mjs wrote them.
@@ -10312,8 +10850,23 @@ fn the_ponds_are_carved_and_filled_with_no_grass_or_trees_in_them_and_a_walker_s
         map.texels[j * map.width as usize + i]
     };
     let standing = [
-        "pine", "pine2", "pine3", "larch", "larch_small", "birch", "forest_long", "forest_tall",
-        "forest_round", "hedge", "fence", "stone_wall", "outcrop", "bush", "bush2", "bench", "log",
+        "pine",
+        "pine2",
+        "pine3",
+        "larch",
+        "larch_small",
+        "birch",
+        "forest_long",
+        "forest_tall",
+        "forest_round",
+        "hedge",
+        "fence",
+        "stone_wall",
+        "outcrop",
+        "bush",
+        "bush2",
+        "bench",
+        "log",
         "stump",
     ];
     for p in &ponds {
@@ -10331,7 +10884,10 @@ fn the_ponds_are_carved_and_filled_with_no_grass_or_trees_in_them_and_a_walker_s
             (150.0..1500.0).contains(&area),
             "{name}: a small pond, {area:.0} m2"
         );
-        assert!(eighth_inside(&shore, (cx, cz)), "{name}: its middle is water");
+        assert!(
+            eighth_inside(&shore, (cx, cz)),
+            "{name}: its middle is water"
+        );
         let h = |x: f64, z: f64| num(&g, &format!("nova.terrain_height({x}, {z})"));
         assert!(
             h(cx, cz) < level - 0.5,
@@ -10384,7 +10940,10 @@ fn the_ponds_are_carved_and_filled_with_no_grass_or_trees_in_them_and_a_walker_s
             "{name}: its water is laid"
         );
         assert_eq!(
-            lua(&g, &format!("tostring(require('lib.world').pond_at({cx}, {cz}) ~= nil)")),
+            lua(
+                &g,
+                &format!("tostring(require('lib.world').pond_at({cx}, {cz}) ~= nil)")
+            ),
             "true"
         );
         // a walker going straight at it from 8 m out, along every fourth bearing, stops on the bank
@@ -10469,7 +11028,10 @@ fn the_driveways_are_joined_to_the_roads_without_gaps_and_read_as_gravel() {
                 }
             }
         }
-        assert!(gaps.is_empty(), "{name}: not covered by the road surface at {gaps:?}");
+        assert!(
+            gaps.is_empty(),
+            "{name}: not covered by the road surface at {gaps:?}"
+        );
         // gravel to the wheel: the yard, and the drive's last stretch (past any tarmac apron)
         let surface = |x: f64, z: f64| lua(&g, &format!("require('lib.world').surface({x}, {z})"));
         assert_eq!(surface(yard.0, yard.1), "gravel", "{name}: its yard");
@@ -10477,10 +11039,9 @@ fn the_driveways_are_joined_to_the_roads_without_gaps_and_read_as_gravel() {
             assert_eq!(surface(x, z), "gravel", "{name} at {x:.1},{z:.1}");
         }
         // nothing to trip over on it
-        for o in objects
-            .iter()
-            .filter(|o| o["kind"] == "mailbox" || o["kind"] == "signpost" || o["kind"] == "gate_post")
-        {
+        for o in objects.iter().filter(|o| {
+            o["kind"] == "mailbox" || o["kind"] == "signpost" || o["kind"] == "gate_post"
+        }) {
             let at = (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap());
             let near = pts
                 .iter()
@@ -10504,13 +11065,26 @@ fn the_driveways_are_joined_to_the_roads_without_gaps_and_read_as_gravel() {
     // the van starts in the post office's yard, on the gravel
     let d0 = drives.iter().find(|d| d["name"] == "po_drive").unwrap();
     let yard = eighth_points(&Value::Array(vec![d0["props"]["yard"]["at"].clone()]))[0];
-    let (vx, vz) = (num(&g, "nova.named('van').x"), num(&g, "nova.named('van').z"));
+    let (vx, vz) = (
+        num(&g, "nova.named('van').x"),
+        num(&g, "nova.named('van').z"),
+    );
     assert!(
         (vx - yard.0).hypot(vz - yard.1) < 1.0,
         "the van starts in the post office's yard: {vx:.1}, {vz:.1}"
     );
-    assert_eq!(lua(&g, "require('lib.world').surface(nova.named('van').x, nova.named('van').z)"), "gravel");
-    assert_eq!(lua(&g, "nova.named('van').surface"), "gravel", "the van hears gravel");
+    assert_eq!(
+        lua(
+            &g,
+            "require('lib.world').surface(nova.named('van').x, nova.named('van').z)"
+        ),
+        "gravel"
+    );
+    assert_eq!(
+        lua(&g, "nova.named('van').surface"),
+        "gravel",
+        "the van hears gravel"
+    );
 }
 
 /// "What can you think of to keep the player on the road and not get stuck in the 'empty' areas?" The playable area (the scene's
@@ -10548,8 +11122,14 @@ fn the_postmaster_and_the_van_cannot_leave_the_playable_area_from_any_side() {
     let worst: f64 = w.next().unwrap().parse().unwrap();
     let out: Vec<&str> = w.filter(|s| !s.is_empty()).collect();
     assert!(tried > 400, "walks tried round the edge: {tried}");
-    assert!(out.is_empty(), "the postmaster got past the edge at {out:?}");
-    assert!(worst >= 0.24, "the postmaster came within {worst} m of the line");
+    assert!(
+        out.is_empty(),
+        "the postmaster got past the edge at {out:?}"
+    );
+    assert!(
+        worst >= 0.24,
+        "the postmaster came within {worst} m of the line"
+    );
     // the van: from 16 m in, in D with the pedal down at 11 m/s (40 km/h), straight out and at a slant, six seconds each
     let van = lua(
         &g,
@@ -10575,14 +11155,19 @@ fn the_postmaster_and_the_van_cannot_leave_the_playable_area_from_any_side() {
     let tried: usize = v.next().unwrap().parse().unwrap();
     let fast: usize = v.next().unwrap().parse().unwrap();
     let knock: usize = v.next().unwrap().parse().unwrap();
-    let (fasts, out): (Vec<&str>, Vec<&str>) = v.filter(|s| !s.is_empty()).partition(|s| s.starts_with("fast:"));
+    let (fasts, out): (Vec<&str>, Vec<&str>) = v
+        .filter(|s| !s.is_empty())
+        .partition(|s| s.starts_with("fast:"));
     assert!(tried > 60, "drives tried round the edge: {tried}");
     assert!(out.is_empty(), "the van got past the edge at {out:?}");
     assert!(
         fast * 10 <= tried,
         "the rough ground slows the van before the edge: {fast} of {tried} came to it faster than 6 m/s: {fasts:?}"
     );
-    assert!(knock * 10 <= tried, "{knock} of {tried} knocked against the edge itself");
+    assert!(
+        knock * 10 <= tried,
+        "{knock} of {tried} knocked against the edge itself"
+    );
     // the owner's way down the gorge's bank: off the road's end at BRIDGE OUT, either side of the barrier, full speed for 8 s
     for (x0, aim) in [(28.0, -0.5), (12.0, 0.5), (34.0, -0.2), (4.0, 0.25)] {
         play(
@@ -10592,8 +11177,14 @@ fn the_postmaster_and_the_van_cannot_leave_the_playable_area_from_any_side() {
                 {{ "hold": ["go"], "frames": 480 }} ] }}"#
             ),
         );
-        let (x, z) = (num(&g, "nova.named('van').x"), num(&g, "nova.named('van').z"));
-        let ground = num(&g, "nova.terrain_height(nova.named('van').x, nova.named('van').z)");
+        let (x, z) = (
+            num(&g, "nova.named('van').x"),
+            num(&g, "nova.named('van').z"),
+        );
+        let ground = num(
+            &g,
+            "nova.terrain_height(nova.named('van').x, nova.named('van').z)",
+        );
         assert!(
             z < 220.5 && ground > 24.0,
             "from {x0}, 196 the van went over the gorge's lip: at {x:.1}, {z:.1}, ground {ground:.1} m"
@@ -10613,8 +11204,12 @@ fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways
         &mut g,
         r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit')", "steps": [ { "wait": 3 } ] }"#,
     );
-    let edge = |g: &Game, x: f64, z: f64| num(g, &format!("(require('lib.world').play_edge({x}, {z}))"));
-    for o in objects.iter().filter(|o| o["kind"] == "roadline" || o["kind"] == "driveway") {
+    let edge =
+        |g: &Game, x: f64, z: f64| num(g, &format!("(require('lib.world').play_edge({x}, {z}))"));
+    for o in objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline" || o["kind"] == "driveway")
+    {
         let key = o["props"]["key"].as_str().unwrap();
         let half = o["props"]["width"].as_f64().unwrap() / 2.0;
         for (x, z) in eighth_points(&o["props"]["points"]) {
@@ -10623,33 +11218,76 @@ fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways
                 continue;
             }
             let e = edge(&g, x, z);
-            assert!(e > half + 1.0, "{key} at {x:.1}, {z:.1} is {e:.1} m inside the edge");
+            assert!(
+                e > half + 1.0,
+                "{key} at {x:.1}, {z:.1} is {e:.1} m inside the edge"
+            );
         }
     }
     let mut places: Vec<(String, f64, f64)> = vec![];
     for o in &objects {
-        let (k, n) = (o["kind"].as_str().unwrap(), o["name"].as_str().unwrap_or(""));
-        if ["office_door", "door_hazel", "door_pip", "bridge_out_view", "jetty_end", "pond_bench", "picnic", "overlook", "van"].contains(&n)
-            || ["post_office", "cabin_hazel", "cabin_pip", "mailbox", "bridge"].contains(&k)
+        let (k, n) = (
+            o["kind"].as_str().unwrap(),
+            o["name"].as_str().unwrap_or(""),
+        );
+        if [
+            "office_door",
+            "door_hazel",
+            "door_pip",
+            "bridge_out_view",
+            "jetty_end",
+            "pond_bench",
+            "picnic",
+            "overlook",
+            "van",
+        ]
+        .contains(&n)
+            || [
+                "post_office",
+                "cabin_hazel",
+                "cabin_pip",
+                "mailbox",
+                "bridge",
+            ]
+            .contains(&k)
         {
-            places.push((format!("{k} {n}"), o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap()));
+            places.push((
+                format!("{k} {n}"),
+                o["x"].as_f64().unwrap(),
+                o["z"].as_f64().unwrap(),
+            ));
         }
         if k == "bridge" {
             for end in ["a", "b"] {
                 let p = &o["props"][end];
-                places.push((format!("the bridge's end {end}"), p[0].as_f64().unwrap(), p[1].as_f64().unwrap()));
+                places.push((
+                    format!("the bridge's end {end}"),
+                    p[0].as_f64().unwrap(),
+                    p[1].as_f64().unwrap(),
+                ));
             }
         }
         if n == "barrier" {
             // (its front, the side the road comes from)
-            places.push(("the BRIDGE OUT barrier's front".into(), o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap() - 1.0));
+            places.push((
+                "the BRIDGE OUT barrier's front".into(),
+                o["x"].as_f64().unwrap(),
+                o["z"].as_f64().unwrap() - 1.0,
+            ));
         }
     }
     assert!(places.len() >= 16, "{places:?}");
     for (what, x, z) in &places {
         let e = edge(&g, *x, *z);
-        let need = if what.contains("barrier") || what.contains("jetty") { 0.3 } else { 2.0 };
-        assert!(e > need, "{what} at {x:.1}, {z:.1}: {e:.1} m inside the edge");
+        let need = if what.contains("barrier") || what.contains("jetty") {
+            0.3
+        } else {
+            2.0
+        };
+        assert!(
+            e > need,
+            "{what} at {x:.1}, {z:.1}: {e:.1} m inside the edge"
+        );
     }
     // the walk to Reed Pond's jetty: from Post Road over the meadow (south of the clump by the road), past the bench, out along the boards
     play(
@@ -10663,18 +11301,28 @@ fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways
     );
     assert!(off < 0.8, "walked out to the jetty's end: {off:.2} m short");
     assert!(
-        num(&g, "require('lib.world').lift(nova.named('postmaster').x, nova.named('postmaster').z)") > 0.2,
+        num(
+            &g,
+            "require('lib.world').lift(nova.named('postmaster').x, nova.named('postmaster').z)"
+        ) > 0.2,
         "standing on the jetty's boards"
     );
     // the secret ways: in the data, closed, each on the edge, and opening one lets you through
-    let playable = objects.iter().find(|o| o["kind"] == "playable").expect("a playable area");
+    let playable = objects
+        .iter()
+        .find(|o| o["kind"] == "playable")
+        .expect("a playable area");
     let secrets = playable["props"]["secrets"].as_array().unwrap();
     assert!(secrets.len() >= 2, "{secrets:?}");
     for (i, s) in secrets.iter().enumerate() {
         let id = s["id"].as_str().unwrap();
         assert_eq!(s["closed"], true, "{id} is closed for now");
         let at = eighth_points(&Value::Array(vec![s["at"].clone()]))[0];
-        assert!(edge(&g, at.0, at.1).abs() < 3.0, "{id}'s {} stands on the edge", s["kind"]);
+        assert!(
+            edge(&g, at.0, at.1).abs() < 3.0,
+            "{id}'s {} stands on the edge",
+            s["kind"]
+        );
         assert!(
             objects.iter().any(|o| o["props"]["secret"] == id),
             "{id}: its {} is in the scene",
@@ -10686,7 +11334,16 @@ fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways
             area.iter().map(|p| p.1).sum::<f64>() / area.len() as f64,
         );
         assert!(edge(&g, mx, mz) < 0.0, "{id}: the land beyond is shut");
-        assert_eq!(lua(&g, &format!("tostring(require('lib.world').open_secret('{id}'))")), "true");
-        assert!(edge(&g, mx, mz) > 0.0, "{id}: opened, the land beyond joins the playable area ({i})");
+        assert_eq!(
+            lua(
+                &g,
+                &format!("tostring(require('lib.world').open_secret('{id}'))")
+            ),
+            "true"
+        );
+        assert!(
+            edge(&g, mx, mz) > 0.0,
+            "{id}: opened, the land beyond joins the playable area ({i})"
+        );
     }
 }

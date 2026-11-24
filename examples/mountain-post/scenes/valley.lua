@@ -353,8 +353,7 @@ function Valley:update(dt)
   if paused then
     cards.update(dt)
     music.update(dt, { driving = self.mode == "van", speed = self.van.speed, quiet = true })
-    self.hint = nil
-    return
+      return
   end
   self.t = self.t + dt
   self.full_t = math.max(0, (self.full_t or 0) - dt * 0.5)
@@ -432,25 +431,6 @@ function Valley:update(dt)
   ambience.update(dt, e[1], e[3], self.mode == "van")
   -- the music: the piano alone on foot; layers join as the van is driven and thin out as it slows (lib/music.lua)
   music.update(dt, { driving = self.mode == "van", speed = v.speed, quiet = cards.active() or dialogue.active() })
-  self.hint = self:hints()
-end
-
-function Valley:hints()
-  if cards.active() or dialogue.active() or self.leaving then return nil end
-  local list = {}
-  if self.mode == "van" then
-    if self.van:stopped() then list[#list + 1] = { "Y", words.hint.get_out } end
-    list[#list + 1] = { "SELECT", words.hint.map }
-    return list
-  end
-  -- (at the van's open back the floating panel has its own buttons)
-  if self:panel_mode() then return { { "SELECT", words.hint.map } } end
-  local a, b = self:actions()
-  if a then list[#list + 1] = { "X", a == "give" and words.hint.give or a == "load" and words.hint.load or a == "knock" and words.hint.knock or words.hint.talk } end
-  if b then list[#list + 1] = { "Y", words.hint.get_in }
-  elseif state.carrying and self.van:stopped() and self:to_door() < AT_DOOR then list[#list + 1] = { nil, words.hint.load_at_back } end
-  list[#list + 1] = { "SELECT", words.hint.map }
-  return list
 end
 
 -- The panel at the van's back is a light overlay, not a mode: it floats above the open rear doors (ui.van_panel) and fades up over
@@ -544,8 +524,6 @@ function Valley:draw_ui()
     local x, z, hd = p.x, p.z, p.face
     if self.mode == "van" then x, z, hd = v.x, v.z, v.heading end
     if not dialogue.active() then ui.minimap(x, z, hd, w, h, math.atan(camera.forward())) end
-    -- (driving, the prompts stand just above the van's cluster in the bottom right: lib/gear_hud.lua)
-    if not dialogue.active() then ui.hints(self.hint, w, self.mode == "van" and gear_hud.hints_floor(w, h) or h) end
     if self.mode == "van" and not dialogue.active() then gear_hud.draw(v, w, h) end
     if (self.picker_a or 0) > 0 and self.pk and not dialogue.active() then
       -- the van's panel, floating over the open doors

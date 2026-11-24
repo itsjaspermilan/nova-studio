@@ -202,7 +202,7 @@ struct VertexOut {
     @location(6) @interpolate(flat) dirt: f32,
     // xyz: the vertex in its piece's own space (dirt's blotches are fixed to it); w: metres above the model's base (its own origin)
     @location(7) local: vec4<f32>,
-    // how the surface is painted (`paint_of`): 0 plain, 1 a tree's crown, 2 a mass of canopy, 3 ground, 4 running water, 5 boards, 6 roof tiles, 7 stone
+    // how the surface is painted (`paint_of`): 0 plain, 1 a tree's crown, 2 a mass of canopy, 3 ground, 4 running water, 5 boards, 6 roof tiles, 7 stone, 8 pine and larch bark, 9 birch bark, 10 rock
     @location(8) @interpolate(flat) paint: f32,
 };
 
@@ -806,15 +806,163 @@ fn paint_stone(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -
     return c * (1.0 - (0.14 * (1.0 - rounded) + 0.22 * mortar) * fine - 0.06 * (1.0 - fine));
 }
 
-// The kinds 5 (wood), 6 (roof) and 7 (stone): the colour changes; the light is the plain look's.
+// ---- painted bark and rock: kinds 8 (bark), 9 (birch) and 10 (rock; docs/project-format.md, "Painted surfaces") ----
+// Worked out in the model's own space like the building kinds, on up to three planes through it (a side seen along x, a side seen
+// along z, a top) blended by which way the surface faces, so a pattern that is stretched one way (furrows, strata) runs the right
+// way on every side. Every fine part fades to the plain colour where it is under a few pixels wide (`fp`, model metres a pixel
+// spans), and the noise's mip levels average the rest away, so far trees and rocks are calm.
+struct NaturePlanes {
+    w: vec3<f32>,
+    fp: f32,
+};
+
+fn nature_planes(local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, around: bool) -> NaturePlanes {
+    var o: NaturePlanes;
+    let nl = safe_normalize(cross(lx, ly));
+    var d = nl.xz;
+    var top = smoothstep(0.55, 0.85, abs(nl.y));
+    if (around) {
+        // a trunk or branch: by where the pixel is round the axis (smooth across the facets), never from the top
+        d = local.xz;
+        top = 0.0;
+    }
+    let dd = max(dot(d, d), 1e-6);
+    o.w = vec3<f32>(d.y * d.y / dd, d.x * d.x / dd, 0.0) * (1.0 - top) + vec3<f32>(0.0, 0.0, top);
+    o.fp = max(length(lx), length(ly));
+    return o;
+}
+
+// The point and its change across the pixel on plane `i` (0: x along, y up; 1: z along, y up; 2: x and z), as `paint_read` wants.
+fn nature_read(i: i32, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, along: f32, up: f32, off: vec2<f32>) -> vec4<f32> {
+    var p = local.xy;
+    var gx = lx.xy;
+    var gy = ly.xy;
+    if (i == 1) {
+        p = local.zy;
+        gx = lx.zy;
+        gy = ly.zy;
+    } else if (i == 2) {
+        p = local.xz;
+        gx = lx.xz;
+        gy = ly.xz;
+    }
+    return paint_read(p, gx, gy, paint_axes(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), along, up), off);
+}
+
+// Bark of a pine or larch: furrows up the trunk (about 8 cm apart and half a metre long, a darker brown, broken here and there),
+// broad plates between them a little lighter or darker, a slow warm and cool mottle, and a darker foot.
+fn paint_bark(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -> vec3<f32> {
+    let pl = nature_planes(local, lx, ly, true);
+    var furrow = 0.0;
+    var plate = 0.0;
+    var warm = 0.0;
+    for (var i = 0; i < 2; i = i + 1) {
+        let w = pl.w[i];
+        if (w > 0.01) {
+            let f = nature_read(i, local, lx, ly, 22.0, 2.4, vec2<f32>(0.17 + f32(i) * 0.31, 0.43));
+            let g = nature_read(i, local, lx, ly, 7.0, 1.1, vec2<f32>(0.61, 0.07 + f32(i) * 0.4));
+            furrow = furrow + w * f.g;
+            plate = plate + w * g.r;
+            warm = warm + w * g.a;
+        }
+    }
+    let fine = 1.0 - smoothstep(0.03, 0.14, pl.fp);
+    var c = rgb * (1.0 + (plate - 0.5) * 0.5 * (1.0 - smoothstep(0.1, 0.3, pl.fp)));
+    c = c * mix(vec3<f32>(0.96, 0.99, 1.04), vec3<f32>(1.05, 1.0, 0.93), warm);
+    // the furrows: dark where the stretched noise runs high, a lighter lip on the plates beside them
+    let groove = smoothstep(0.5, 0.66, furrow);
+    let ridge = smoothstep(0.4, 0.26, furrow);
+    c = c * (1.0 - 0.5 * groove * fine + 0.14 * ridge * fine - 0.07 * (1.0 - fine));
+    // a darker foot
+    c = c * mix(0.78, 1.0, smoothstep(0.0, 0.9, local.y));
+    return c;
+}
+
+// A birch's bark, white, with little dark dashes across it (lenticels: about 8 cm by 2 cm, laid round the trunk), broader grey
+// blotches here and there, a pale and dim banding, and a trunk that darkens to a rough black foot.
+fn paint_birch(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -> vec3<f32> {
+    let pl = nature_planes(local, lx, ly, true);
+    var dash = 0.0;
+    var blotch = 0.0;
+    var band = 0.0;
+    for (var i = 0; i < 2; i = i + 1) {
+        let w = pl.w[i];
+        if (w > 0.01) {
+            let a = nature_read(i, local, lx, ly, 8.0, 28.0, vec2<f32>(0.13 + f32(i) * 0.29, 0.71));
+            let b = nature_read(i, local, lx, ly, 2.6, 7.5, vec2<f32>(0.47, 0.19 + f32(i) * 0.37));
+            let e = nature_read(i, local, lx, ly, 1.3, 36.0, vec2<f32>(0.83, 0.55));
+            dash = dash + w * smoothstep(0.62, 0.74, a.g);
+            blotch = blotch + w * smoothstep(0.66, 0.8, b.b);
+            band = band + w * (e.r - 0.5);
+        }
+    }
+    let fine = 1.0 - smoothstep(0.03, 0.13, pl.fp);
+    let mid = 1.0 - smoothstep(0.1, 0.35, pl.fp);
+    var c = rgb * (1.0 + band * 0.18 * mid);
+    let ink = vec3<f32>(0.2, 0.18, 0.17);
+    c = mix(c, c * vec3<f32>(0.62, 0.6, 0.58), clamp(blotch, 0.0, 1.0) * 0.55 * mid);
+    c = mix(c, ink, clamp(dash, 0.0, 1.0) * 0.85 * fine);
+    // (where the dashes are too fine to see, they still grey the bark a little on average)
+    c = c * (1.0 - 0.06 * (1.0 - fine));
+    // the foot: the bark goes dark and rough near the ground
+    c = mix(c, ink * 1.3, 0.75 * smoothstep(0.55, 0.0, local.y));
+    return c;
+}
+
+// Rock: a soft speckle (fine light and dark grains, a few centimetres), gentle strata (horizontal bands a hand or two thick,
+// slightly lighter and darker), a few painted cracks (thin dark lines that wander, in some places only), a lighter top and a
+// darker base, and slow warm and cool patches across it.
+fn paint_rock(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    let pl = nature_planes(local, lx, ly, false);
+    var grain = 0.0;
+    var strata = 0.0;
+    var crack = 0.0;
+    var here = 0.0;
+    var warm = 0.0;
+    for (var i = 0; i < 3; i = i + 1) {
+        let w = pl.w[i];
+        if (w > 0.01) {
+            let s = f32(i);
+            let g = nature_read(i, local, lx, ly, 13.0, 13.0, vec2<f32>(0.21 + s * 0.17, 0.62));
+            let g2 = nature_read(i, local, lx, ly, 31.0, 31.0, vec2<f32>(0.66 - s * 0.13, 0.08));
+            let t = nature_read(i, local, lx, ly, 1.0, 6.0, vec2<f32>(0.4, 0.13 + s * 0.23));
+            let k = nature_read(i, local, lx, ly, 1.7, 1.2, vec2<f32>(0.77 - s * 0.2, 0.34));
+            let m = nature_read(i, local, lx, ly, 0.7, 0.7, vec2<f32>(0.05 + s * 0.3, 0.9));
+            grain = grain + w * ((g.g - 0.5) * 0.7 + (g2.b - 0.5) * 0.45);
+            strata = strata + w * (smoothstep(0.38, 0.62, t.b) - 0.5);
+            // a crack runs where the noise crosses its middle; only where a second, slower noise is high
+            let line = 1.0 - smoothstep(0.005, 0.016 + pl.fp * 0.6, abs(k.r - 0.5));
+            crack = crack + w * line;
+            here = here + w * smoothstep(0.42, 0.6, m.a);
+            warm = warm + w * m.g;
+        }
+    }
+    let fine = 1.0 - smoothstep(0.03, 0.13, pl.fp);
+    let mid = 1.0 - smoothstep(0.1, 0.35, pl.fp);
+    var c = rgb * (1.0 + grain * 0.28 * (1.0 - smoothstep(0.02, 0.1, pl.fp)) + strata * 0.3 * mid);
+    c = c * mix(vec3<f32>(0.94, 0.98, 1.05), vec3<f32>(1.06, 1.01, 0.92), warm);
+    c = c * (1.0 - 0.3 * crack * here * fine);
+    // lighter where it faces up, darker towards the ground
+    c = c * (1.0 + 0.1 * smoothstep(0.3, 0.9, n.y));
+    c = c * mix(0.72, 1.0, smoothstep(0.0, 0.55, local.y));
+    return c;
+}
+
+// The kinds 5 (wood), 6 (roof), 7 (stone), 8 (bark), 9 (birch) and 10 (rock): the colour changes; the light is the plain look's.
 fn paint_building(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, n: vec3<f32>, kind: f32) -> Painted {
     var o: Painted;
     if (kind < 5.5) {
         o.rgb = paint_wood(rgb, local, lx, ly);
     } else if (kind < 6.5) {
         o.rgb = paint_roof(rgb, local, lx, ly);
-    } else {
+    } else if (kind < 7.5) {
         o.rgb = paint_stone(rgb, local, lx, ly);
+    } else if (kind < 8.5) {
+        o.rgb = paint_bark(rgb, local, lx, ly);
+    } else if (kind < 9.5) {
+        o.rgb = paint_birch(rgb, local, lx, ly);
+    } else {
+        o.rgb = paint_rock(rgb, local, lx, ly, n);
     }
     o.normal = n;
     o.wrap = 0.0;

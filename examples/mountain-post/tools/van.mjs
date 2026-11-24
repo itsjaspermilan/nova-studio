@@ -44,7 +44,7 @@
 // Parts: `body` (the shell and the cab; its children `door_l` and `door_r`, hinged at the back corners and leaning with the back, the
 // `steering` wheel, the lamps) and the four wheels `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr` at their axles (entities/van.lua hangs
 // each on a spring).
-import { bevelled, cyl, mesh, model, part, shade, tube } from "./geo.mjs";
+import { bevelled, box, cyl, mesh, model, part, shade, tube } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
@@ -524,6 +524,24 @@ const door = (name, s) => {
   const hinges = [0.14, DH - 0.14].map((y) => cyl([s * 0.005, y, -DT / 2], 0.02, 0.09, INK, { segments: 8 }));
   return part(name, [s * HINGE, DY, backZ(DY) + 0.004], hinges, [leaf], [LEAN, 0, 0]);
 };
+// FERNHOLLOW POST on both sides of the cargo box (the owner's seventh play: on a steep bank the lettering, once a billboard sticker the
+// game laid beside the van, floated off at another angle). Now two thin decals that are part of the body: a box 0.95 x 0.324 m,
+// 1 cm thick, whose outer face is painted with models/van.texture.png (tools/art.mjs makes it; see-through texels are not drawn), so it
+// can never separate from the panel. At this place the skin's side is 0.670 m out at 0.996 m up and 0.646 m at 1.46 m (measured on the
+// skin's rings: it leans in 5.2 cm a metre, a little more than SECTION.lean says, because its rings are a quarter metre apart), so
+// the decal leans 3 degrees and its outer face stands 5 mm proud of that line between 1.04 and 1.36 m. East is the van's +x side, west
+// its -x side; each reads left to right seen from outside.
+export const LETTERS = { w: 0.95, h: 0.324, y: 1.2, z: -0.58, tex: [880, 300], panel: { x: 0.67, y: 0.996, slope: -(0.67 - 0.646) / (1.46 - 0.996) }, proud: 0.005 };
+const letters = [["east", 1], ["west", -1]].map(([face, s]) => {
+  const L = LETTERS, k = L.panel.slope;
+  const mid = L.panel.x + k * (L.y - L.panel.y) + L.proud - 0.005; // (the box's middle: its outer face 5 mm proud of the panel, half its thickness in)
+  const cube = box([s * mid, L.y, L.z], [0.01, L.h, L.w], "#ffffff", { rot: [0, 0, s * Math.atan(-k) * 180 / Math.PI] });
+  // (the rim's faces and the inner one take the see-through top left texel; the model's picture has one white row under it that the
+  // smooth sampler would blend into the last row, so the lettering's face stops a texel short of it: no pale line along its foot)
+  const none = [0, 0, 1, 1], pic = [0, 0, LETTERS.tex[0], LETTERS.tex[1] - 1];
+  cube.texture = { at: [0, 0], faces: { up: none, down: none, north: none, south: none, east: face === "east" ? pic : none, west: face === "west" ? pic : none } };
+  return cube;
+});
 // the steering wheel: a dark ring-like disc with a lighter middle, tilted up towards the driver; it turns about its column (y)
 const steering = part("steering", [STEER.x, STEER.y, STEER.z], [
   cyl([0, 0, 0], 0.11, 0.032, INK, { segments: 18 }),
@@ -549,9 +567,9 @@ const tailpipe = (() => {
 })();
 
 export const van = model([
-  part("body", [0, 0, 0], body, [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse, tailpipe]),
+  part("body", [0, 0, 0], [...body, ...letters], [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse, tailpipe]),
   wheel("wheel_fl", TR, AXF), wheel("wheel_fr", -TR, AXF), wheel("wheel_rl", TR, AXR), wheel("wheel_rr", -TR, AXR),
-], { boxes: [{ x: 0, z: (Z0 + Z1) / 2, hw: HW + 0.02, hl: (Z1 - Z0) / 2, turn: 0 }] });
+], { texture: { size: LETTERS.tex, smooth: true }, boxes: [{ x: 0, z: (Z0 + Z1) / 2, hw: HW + 0.02, hl: (Z1 - Z0) / 2, turn: 0 }] });
 
 // The measures, checked against the reference's (printed by the recipe; the tests read the model).
 export function measures() {
@@ -568,7 +586,7 @@ export function measures() {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   console.log(JSON.stringify(measures()));
-  tool("model_write", { name: "van", model: van });
+  tool("model_write", { name: "van", model: van, picture: "models/van.texture.png" });
   const views = { "van-34": [35, 12], "van-back-34": [215, 10], "van-side": [90, 0], "van-front": [0, 0], "van-back": [180, 0], "van-top": [90, 89] };
   for (const [name, [yaw, pitch]] of Object.entries(views)) tool("model_preview", { name: "van", yaw, pitch, width: 1280, height: 720, image_out: `build/look/${name}.png` });
 }

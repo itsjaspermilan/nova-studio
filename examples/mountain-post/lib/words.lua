@@ -3,7 +3,7 @@
 local words = {}
 
 words.title = "Fernhollow Post"
-words.press = "Start" -- (on the title, beside the A button's cap)
+words.press = "Start" -- (the title menu's first choice)
 
 -- The labels: name and street, nothing else.
 words.labels = {
@@ -58,17 +58,52 @@ words.people = {
 
 words.ending = "Two delivered. A few hundred to go."
 
--- The few words of the controls' hints (beside a button glyph), and the pause menu.
-words.hint = {
-  take = "Take", read = "Read", talk = "Talk", give = "Hand over", knock = "Knock", get_in = "Get in", get_out = "Get out",
-  map = "Map", close = "Close", next = "Next", put_back = "Put back", go_in = "Go in", go_out = "Go out",
-  load = "Load package", load_at_back = "Load it at the back", choose = "Choose",
-}
+-- The words the van's panel says (no button is drawn in play: the Controls page lists them).
+words.hint = { load = "Load package" }
 -- the small tip floating over a parcel (or the letter) that can be taken (lib/ui.lua ui.tip)
 words.tip = { letter = "Letter from the Mayor" }
 -- the panel floating over the van's open back doors (lib/ui.lua ui.van_panel)
 words.van = { tag = "Van", empty = "The van is empty", full = "The van is full" }
-words.pause = { title = "Paused", resume = "Resume", quit = "Quit" }
+words.pause = { title = "Paused", resume = "Resume", controls = "Controls", quit = "Quit" }
+-- the title menu's second choice, and the Controls page (lib/cards.lua: cards.CONTROLS lists the rows)
+words.controls = { title = "Controls", foot = "On foot", van = "Driving", back = "Back", choose = "Choose", move = "Move" }
+
+-- The Controls page: each row is the button(s) as engraved on the Retroid, what it does, and the actions of nova.json it stands for
+-- (a test checks every action the game uses is on the page, and that the buttons are the ones nova.json binds). Face buttons are
+-- A right, B bottom, X top, Y left as engraved.
+words.controls_rows = {
+  foot = {
+    { keys = { "Left stick" }, word = "Walk", actions = { "move_x", "move_y" } },
+    { keys = { "B" }, word = "Run (hold)", actions = { "run" } },
+    { keys = { "X" }, word = "Talk, read, put back", actions = { "interact" } },
+    { keys = { "A" }, word = "Take from the van", actions = { "confirm" } },
+    { keys = { "Y" }, word = "Get in the van", actions = { "van" } },
+    { keys = { "L1", "R1" }, word = "Choose a parcel", actions = { "prev", "next" } },
+    { keys = { "Right stick" }, word = "Look round", actions = { "look_x", "look_y" } },
+    { keys = { "Select" }, word = "Map", actions = { "map" } },
+    { keys = { "Start" }, word = "Pause", actions = { "pause" } },
+  },
+  van = {
+    { keys = { "R2" }, word = "Accelerate", actions = { "go" } },
+    { keys = { "L2" }, word = "Brake", actions = { "brake" } },
+    { keys = { "Left stick" }, word = "Steer", actions = { "steer" } },
+    { keys = { "B" }, word = "Handbrake (hold)", actions = { "handbrake" } },
+    { keys = { "A" }, word = "Gear towards L", actions = { "confirm" } },
+    { keys = { "X" }, word = "Gear towards P", actions = { "interact" } },
+    { keys = { "L3" }, word = "Horn", actions = { "horn" } },
+    { keys = { "Y" }, word = "Get out (stopped)", actions = { "van" } },
+    { keys = { "L1", "R1" }, word = "Choose a parcel", actions = { "prev", "next" } },
+    { keys = { "Right stick" }, word = "Look round", actions = { "look_x", "look_y" } },
+    { keys = { "Select" }, word = "Map", actions = { "map" } },
+    { keys = { "Start" }, word = "Pause", actions = { "pause" } },
+  },
+}
+-- (the foot of the page: menus)
+words.controls_menus = {
+  { keys = { "D-pad" }, word = "Move", actions = { "menu_up", "menu_down" } },
+  { keys = { "A" }, word = "Choose", actions = { "confirm" } },
+  { keys = { "B" }, word = "Back", actions = { "run" } },
+}
 -- the card in the corner: where the parcel it shows is
 words.card = { hands = "carrying", van = "in the van" }
 -- on the strip over the label held up to read

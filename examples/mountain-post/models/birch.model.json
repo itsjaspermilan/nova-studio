@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#f4eee2",
           "verts": [
             [0, -4, 0],
@@ -21,13 +22,8 @@
           "polys": [
             {"v":[0,1,2,3,4,5]}
           ],
-          "modifiers": [{"type":"revolve","axis":"y","segments":6,"sharp":50}]
+          "modifiers": [{"type":"revolve","axis":"y","segments":8,"sharp":50}]
         },
-        { "from": [1.695, 9.6, -0.738], "size": [1.92, 0.8, 1.92], "rotation": [0, 85.22028300668222, 0], "color": "#3e3631" },
-        { "from": [-0.322, 17.6, -3.429], "size": [1.92, 0.8, 1.92], "rotation": [0, 165.50685052042616, 0], "color": "#3e3631" },
-        { "from": [1.3, 25.6, -0.046], "size": [1.92, 0.8, 1.92], "rotation": [0, 67.9876253598668, 0], "color": "#3e3631" },
-        { "from": [-3.281, 33.6, -1.084], "size": [1.92, 0.8, 1.92], "rotation": [0, 266.9484665140493, 0], "color": "#3e3631" },
-        { "from": [-3.122, 41.6, -1.42], "size": [1.92, 0.8, 1.92], "rotation": [0, 257.992701460291, 0], "color": "#3e3631" },
         {
           "shape": "mesh",
           "paint": "foliage",
@@ -333,6 +329,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [1.195, 38.478, 0.071],
@@ -564,6 +561,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [1.075, 37.887, -0.147],
@@ -795,6 +793,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [1.111, 38.028, 0.259],
@@ -1026,6 +1025,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [1.164, 38.662, -0.131],
@@ -1257,6 +1257,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [0.936, 39.137, 0.142],
@@ -1488,6 +1489,7 @@
         },
         {
           "shape": "mesh",
+          "paint": "birch",
           "color": "#d7d1c7",
           "verts": [
             [1.199, 38.457, 0],

@@ -7,11 +7,15 @@ local cards = {}
 local open -- { kind, data, t, choice }
 
 function cards.open(kind, data)
-  open = { kind = kind, data = data, t = 0, choice = 1 }
+  open = { kind = kind, data = data, t = 0, choice = 1, prev = (kind == "controls" and open and open.kind == "pause") and open or nil }
   if kind == "letter" or kind == "map" then nova.sound.play("paper", { volume = 0.5, vary = 0.06 }) end
   nova.log("card " .. kind .. (data and data.which and (" " .. data.which) or ""))
 end
 function cards.close()
+  if open and open.kind == "controls" and open.prev then -- (the Controls page opened from the pause menu: back to the menu)
+    open = open.prev
+    return
+  end
   if open and (open.kind == "letter" or open.kind == "map") then nova.sound.play("paper", { volume = 0.35, pitch = 1.12, vary = 0.06 }) end
   local was = open
   open = nil
@@ -20,21 +24,30 @@ end
 function cards.kind() return open and open.kind end
 function cards.active() return open ~= nil end
 
+cards.PAUSE_CHOICES = { "resume", "controls", "quit" }
+
 function cards.update(dt)
   if not open then return end
   open.t = open.t + dt
   local k = open.kind
   if k == "pause" then
-    if nova.input.pressed("menu_up") or nova.input.pressed("menu_down") then
-      open.choice = 3 - open.choice
-      nova.sound.play("tick", { volume = 0.35 })
-    end
+    local n = #cards.PAUSE_CHOICES
+    if nova.input.pressed("menu_down") then open.choice = open.choice % n + 1; nova.sound.play("tick", { volume = 0.35 })
+    elseif nova.input.pressed("menu_up") then open.choice = (open.choice - 2) % n + 1; nova.sound.play("tick", { volume = 0.35 }) end
     -- (Start closes it; A confirms the choice: nothing else does anything here)
     if nova.input.pressed("pause") then cards.close(); return end
     if nova.input.pressed("confirm") then
       nova.sound.play("tick", { volume = 0.45, pitch = 1.2 })
-      if open.choice == 1 then cards.close() else nova.log("quit"); nova.quit() end
+      local what = cards.PAUSE_CHOICES[open.choice]
+      if what == "resume" then cards.close()
+      elseif what == "controls" then cards.open("controls")
+      else nova.log("quit"); nova.quit() end
     end
+    return
+  end
+  if k == "controls" then
+    -- (B or Start goes back: to the pause menu it came from, or to the title)
+    if open.t > 0.15 and (nova.input.pressed("run") or nova.input.pressed("pause")) then cards.close() end
     return
   end
   if open.t < 0.25 then return end -- (a press that opened it does not close it)
@@ -134,36 +147,113 @@ local function ending_card(w, h, t)
   ui.panel(x, y, cw, ch, { alpha = ta })
   ui.title_strip(w / 2, y - strip / 2, words.title, { alpha = ta })
   text(w / 2, y + text_y, words.ending, { size = fs, align = "center", color = ui.alpha(C.ink, ta), bold = true })
-  if t > 2.5 then ui.chip(w / 2 - ui.chip_width("X", words.hint.close) / 2, y + ch + SP.l, "X", words.hint.close, { down = nova.input.down("interact") }) end
 end
 
--- Paused: a small card, its two choices as keys (the chosen one red, pressed while A is held).
+-- A column of menu choices as keys (the chosen one red, pressed while A is held), the first one's top at y, centred on x; `alpha` fades them.
+-- Plain choices: no button is drawn on them.
+function cards.buttons(x, y, bw, labels, choice, alpha)
+  local bh = s(56)
+  for i, label in ipairs(labels) do
+    local yy = y + (i - 1) * (bh + SP.l)
+    local on = choice == i
+    local down = on and nova.input.down("confirm")
+    ui.key(x - bw / 2, yy, bw, bh, on and C.red or nil, { scale = ui.FRAME.big * ui.S, down = down, alpha = alpha })
+    text(x, yy + bh / 2 - (F.button + 4) * 0.62 + (down and 3 or 0), label, { size = F.button + 4, align = "center", color = ui.alpha(on and C.cream or C.ink, alpha), bold = on or nil })
+  end
+  return bh
+end
+
+-- Paused: a small card, its choices as keys.
 local function pause_card(o, w, h)
   ui.dim(w, h, 1)
   local I, P = ui.inset(), ui.PAD_LONG
   local strip = F.heading + 2 * SP.s -- (the title strip hangs half over the card's top edge)
   local bh = s(56)                  -- a button
+  local labels = { words.pause.resume, words.pause.controls, words.pause.quit }
   local cw = s(360)
-  local ch = strip / 2 + SP.m + bh + SP.l + bh + P.y + I.bottom
+  local ch = strip / 2 + SP.m + #labels * bh + (#labels - 1) * SP.l + P.y + I.bottom
   local x, y = (w - cw) / 2, (h - ch) / 2
   ui.panel(x, y, cw, ch)
   ui.title_strip(w / 2, y - strip / 2, words.pause.title, { min_w = s(170) })
-  for i, label in ipairs({ words.pause.resume, words.pause.quit }) do
-    local yy = y + strip / 2 + SP.m + (i - 1) * (bh + SP.l)
-    local on = o.choice == i
-    local down = on and nova.input.down("confirm")
-    ui.key(x + I.x + P.x, yy, cw - 2 * (I.x + P.x), bh, on and C.red or nil, { scale = ui.FRAME.big * ui.S, down = down })
-    text(w / 2, yy + bh / 2 - (F.button + 4) * 0.62 + (down and 3 or 0), label, { size = F.button + 4, align = "center", color = on and C.cream or C.ink, bold = on or nil })
+  cards.buttons(w / 2, y + strip / 2 + SP.m, cw - 2 * (I.x + P.x), labels, o.choice)
+end
+
+-- The Controls page: two columns, "On foot" and "Driving", each control as the button engraved on the Retroid (the kit's caps) and
+-- what it does. The one place in the game where buttons are drawn. Rows come from words.controls_rows.
+local FACE = { A = true, B = true, X = true, Y = true }
+local KEY_GAP = SP.xs
+local function keys_width(keys)
+  local tw = 0
+  for i, k in ipairs(keys) do tw = tw + (FACE[k] and ui.KEYCAP or ui.pad_key_width(k)) + (i > 1 and KEY_GAP or 0) end
+  return tw
+end
+local function draw_keys(x, y, keys)
+  for _, k in ipairs(keys) do
+    if FACE[k] then ui.glyph(x + ui.KEYCAP / 2, y, k, ui.KEYCAP); x = x + ui.KEYCAP + KEY_GAP
+    else x = x + ui.pad_key(x, y, k) + KEY_GAP end
+  end
+end
+local ROW = ui.KEYCAP + SP.xs
+-- Where everything is, for a screen `w` wide (and the tests).
+function cards.controls_layout(w)
+  local I, P = ui.inset(), ui.PAD
+  local L = { cols = {} }
+  for ci, name in ipairs({ "foot", "van" }) do
+    local rows = words.controls_rows[name]
+    local kw, ww = 0, 0
+    for _, r in ipairs(rows) do kw = math.max(kw, keys_width(r.keys)); ww = math.max(ww, ui.text_width(r.word, F.hint)) end
+    L.cols[ci] = { name = name, rows = rows, key_w = kw, w = kw + SP.m + ww }
+  end
+  local gap = SP.xl * 2
+  L.gap = gap
+  L.w = L.cols[1].w + gap + L.cols[2].w + 2 * (I.x + P.x + SP.m)
+  L.left = I.x + P.x + SP.m
+  L.strip = F.heading + 2 * SP.s
+  L.head_y = L.strip / 2 + SP.m
+  L.rows_y = L.head_y + F.name + SP.s + SP.xs + SP.s
+  local n = math.max(#L.cols[1].rows, #L.cols[2].rows)
+  L.foot_y = L.rows_y + n * ROW + SP.s
+  L.h = L.foot_y + SP.xs + SP.m + ROW + P.y + I.bottom
+  return L
+end
+local function controls_card(w, h, t)
+  local k, e = rise(t, 0.2)
+  ui.dim(w, h, k)
+  local L = cards.controls_layout(w)
+  local x, y = (w - L.w) / 2, (h - L.h) / 2 + (1 - e) * 30 + L.strip / 4
+  ui.panel(x, y, L.w, L.h, { alpha = k })
+  ui.title_strip(w / 2, y - L.strip / 2, words.controls.title, { alpha = k })
+  local cx = x + L.left
+  for ci, col in ipairs(L.cols) do
+    text(cx, y + L.head_y, words.controls[col.name], { size = F.name, color = ui.alpha(C.faint, k), bold = true })
+    ui.rule(cx, y + L.head_y + F.name + SP.s, col.w, { alpha = k })
+    for i, r in ipairs(col.rows) do
+      local ry = y + L.rows_y + (i - 1) * ROW + ui.KEYCAP / 2
+      draw_keys(cx, ry, r.keys)
+      text(cx + col.key_w + SP.m, ry - F.hint * 0.62, r.word, { size = F.hint, color = ui.alpha(C.ink, k) })
+    end
+    cx = cx + col.w + L.gap
+  end
+  -- the foot: how the menus go
+  local fy = y + L.foot_y
+  ui.rule(x + L.left, fy, L.w - 2 * L.left, { alpha = k })
+  local fx, ry = x + L.left, fy + SP.xs + SP.m + ui.KEYCAP / 2
+  for _, r in ipairs(words.controls_menus) do
+    draw_keys(fx, ry, r.keys)
+    fx = fx + keys_width(r.keys) + ui.GAP
+    text(fx, ry - F.hint * 0.62, r.word, { size = F.hint, color = ui.alpha(C.ink, k) })
+    fx = fx + ui.text_width(r.word, F.hint) + SP.xl
   end
 end
 
 function cards.draw(w, h)
   if not open then return end
   local k, t = open.kind, open.t
-  if k == "letter" then letter_card(w, h, t); ui.hints({ { "X", words.hint.close } }, w, h)
-  elseif k == "map" then map_card(w, h, t); ui.hints({ { "SELECT", words.hint.close } }, w, h)
+  if k == "letter" then letter_card(w, h, t)
+  elseif k == "map" then map_card(w, h, t)
   elseif k == "ending" then ending_card(w, h, t)
-  elseif k == "pause" then pause_card(open, w, h); ui.hints({ { "A", words.hint.choose } }, w, h) end
+  elseif k == "controls" then controls_card(w, h, t)
+  elseif k == "pause" then pause_card(open, w, h) end
 end
 
 return cards

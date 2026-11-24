@@ -543,13 +543,17 @@ function Van:wheel_offset(i)
 end
 
 -- Where a point of the van's body is in the world, from the van's own metres (right +x is left, as the model): for the
--- lettering on its sides, the postmaster at its door, the parcel at its back.
--- (the body's small pitch and roll, as the model turns it: about x, then about z, for a few degrees taken as straight lines)
+-- postmaster at his seat, the parcels in the hold, the headlamps' beams, the exhaust's tip.
+-- Exactly as the engine turns the body (nova.model's turn is Ry(heading) * Rx(pitch) * Rz(roll) and the body part is lifted by
+-- `lift`; Van:draw): the point is rolled about z, then pitched about x, then turned by the heading. No small-angle shortcut, so on a
+-- steep bank (0.3 rad is the most the springs allow) nothing drifts from the body it sits in (the lettering is in the model itself).
 function Van:to_world(lx, ly, lz)
   local p, r = self.pitch or 0, self.roll or 0
-  lx, ly, lz = lx - r * ly, ly - p * lz + r * lx, lz + p * ly
+  local sr, cr, sp, cp = math.sin(r), math.cos(r), math.sin(p), math.cos(p)
+  local x, y = lx * cr - ly * sr, lx * sr + ly * cr
+  local py, pz = y * cp - lz * sp, y * sp + lz * cp
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
-  return self.x + sinh * lz + cosh * lx, (self.lift or 0) + ly, self.z + cosh * lz - sinh * lx
+  return self.x + sinh * pz + cosh * x, (self.lift or 0) + py, self.z + cosh * pz - sinh * x
 end
 
 function Van:update(dt)
@@ -598,7 +602,6 @@ end
 -- (for the tests: how many puffs are alive)
 function Van:puff_count() return #(self.puffs or {}) end
 
-local SIDE = { color = { 255, 255, 255, 255 } }
 local PUFF = { color = { 236, 236, 240, 0 }, rot = 0 }
 local BEAM = { radius = 16, color = { 255, 236, 200 }, dir = { 0, -0.12, 1 }, angle = 46 }
 local PARCEL = { hazel = "parcel_hazel", pip = "parcel_pip" }
@@ -645,13 +648,7 @@ function Van:draw()
     PUFF.rot = p.spin + t * 0.8
     nova.billboard("puff", p.x, p.y, p.z, E.size * (1 + E.grow * 3 * t), PUFF)
   end
-  -- FERNHOLLOW POST on both sides of the cargo box, on its upper half behind the doorways, just off the panel, moving with the lean
-  for _, side in ipairs({ 1, -1 }) do
-    local x, y, z = self:to_world(side * 0.68, 1.2, -0.58)
-    SIDE.face = { cosh * side, 0, -sinh * side }
-    SIDE.w, SIDE.h = 0.95, 0.324
-    nova.billboard("van_side", x, y, z, 0.95, SIDE)
-  end
+  -- (FERNHOLLOW POST on the cargo's sides is part of the van's model, tools/van.mjs: it moves with the body exactly)
   -- the parcels in the hold, on its floor (0.68 m: tools/van.mjs HOLD_FLOOR), the first loaded furthest in
   for i, which in ipairs(state.van_load) do
     self:draw_inside(PARCEL[which], i == 1 and 0.2 or -0.22, 0.68, i == 1 and -0.5 or -0.95, i * 0.4)

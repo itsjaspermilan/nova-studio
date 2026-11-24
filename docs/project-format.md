@@ -200,7 +200,7 @@ points on a desktop (Apple M4); filling the lists in Lua costs more than that (a
 ### Painted surfaces
 
 A surface can be painted instead of flat-coloured (added 2026-11-23 for Fernhollow Post's grass, trees and creek, the owner's sixth
-play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Seven kinds (the last three added 2026-11-23 for Fernhollow Post's houses), each
+play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Ten kinds (`wood`, `roof` and `stone` added 2026-11-23 for Fernhollow Post's houses, `bark`, `birch` and `rock` the same day for its trees and rocks), each
 an original look in the spirit of a hand-painted world, worked out in the plain look's shader (`mesh.wgsl`) from where the pixel is,
 over the surface's own colours:
 
@@ -213,6 +213,9 @@ over the surface's own colours:
 | `wood` | boards: courses of 0.32 m (0.2 m on a floor or deck) along a wall, one shade each (a little warmer or cooler), a little different along their length, a soft dark seam about 2.5 cm wide between them, a lighter lip on each upper edge and grain streaks about a metre long; the pattern is fixed in the model's own space | a shape's `"paint": "wood"` |
 | `roof` | tiles: rows of 0.26 m up the slope, tiles 0.36 m wide, every other row half a tile along, each a little different; a soft shadow under each row's scalloped lower edge and a joint between tiles; the slope is found from the surface itself, so it fits any pitch or turn | `"paint": "roof"` |
 | `stone` | courses of 0.22 m with blocks about 0.42 m long set differently on each course, each block its own shade and a little rounded, soft mortar, a slow mottle | `"paint": "stone"` |
+| `bark` | a pine's or larch's trunk (added 2026-11-23, the owner's eighth play: "some texture to the tree wood"): furrows running up it (cells about 4.5 cm across and 40 cm long, darker, with a lighter lip beside them), broad plates a little lighter or darker, a slow warm and cool mottle, a darker foot. Read round the model's y axis, so the model's origin must be the trunk's axis; furrows and plates fade to a slightly darker average under a few pixels | `"paint": "bark"` |
+| `birch` | a birch's white bark, painted on: dark horizontal dashes (about 5 by 1.5 cm, laid round the trunk), a few broader grey blotches, a faint banding, a dark rough foot below half a metre. Read round the model's y axis like `bark` | `"paint": "birch"` |
+| `rock` | speckle (two sizes of light and dark grain), gentle strata (horizontal bands of about 17 cm, a little lighter and darker), a few painted cracks (thin dark lines that wander, in some places only), a lighter top and a darker base, slow warm and cool patches. Read on up to three planes of the model's space blended by the way the surface faces (a side along x, a side along z, a top), so it fits a boulder or a stack of stones; strata and cracks fade out under a few pixels, the grain under a few more | `"paint": "rock"` |
 
 A model file says it per shape (`"paint": "foliage"`), which `model_write` writes to the `.glb` as the material's
 `"extras": { "nova": { "paint": "foliage" } }`; a name that is not a kind is a note and the shape is drawn plain. In the renderer the
