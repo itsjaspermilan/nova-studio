@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#aca394",
           "verts": [
             [-17.689, -1.92, -18.346],
@@ -29,8 +30,7 @@
             {"v":[5,7,3,1]}
           ],
           "modifiers": [{"type":"subsurf","levels":2,"renderLevels":2,"smooth":true}]
-        },
-        { "shape": "sphere", "from": [-9.696, 16.926, -11.616], "size": [23.232, 8.131, 23.232], "segments": 9, "color": "#8aa955" }
+        }
       ],
       "children": []
     }

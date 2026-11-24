@@ -89,9 +89,11 @@ function clump(c, r, color, R, o = {}) {
   for (let j = 0; j < seg; j++) faces.push([last, ring(rows - 1, j + 1), ring(rows - 1, j)]);
   return { ...mesh(verts, faces, color, { smooth: true, inside: c }), paint: o.paint ?? "foliage" };
 }
-/// A trunk: slightly tapered and rounded at its foot (it sinks a little into the ground, so a slope never shows a gap).
-function trunk(h, r, color, segments = 6) {
-  return spun([[0, -0.25], [r * 1.25, -0.25], [r * 1.25, 0.05], [r, 0.3], [r * 0.75, h], [0, h]], color, segments);
+/// A trunk: slightly tapered and rounded at its foot (it sinks a little into the ground, so a slope never shows a gap). Painted as bark
+// (the owner's eighth play: "some texture to the tree wood"): `bark` furrows by default, `birch` for a birch's white, dashed trunk
+// (docs/project-format.md, "Painted surfaces"); all of it paint, no geometry.
+function trunk(h, r, color, segments = 8, paint = "bark") {
+  return { ...spun([[0, -0.25], [r * 1.25, -0.25], [r * 1.25, 0.05], [r, 0.3], [r * 0.75, h], [0, h]], color, segments), paint };
 }
 
 // ---- pines: three or four stacked soft cones in deep greens, their rims ragged -----------------------------------------------------
@@ -129,16 +131,12 @@ def("larch_far", () => one([trunk(4, 0.15, PAL.trunk, 5), tier(3.1, 3.6, 2.6, PA
 // ---- a birch: a pale trunk with painted dark marks, a crown of leaf clumps -----------------------------------------------------------
 // (the five clumps of the old crown, each now a ball with bulges of its own: a crown of sub-clumps with soft hollows between)
 def("birch", () => {
-  const R = rng(2), h = 3.0, c = [trunk(h, 0.17, PAL.white)];
-  for (let i = 0; i < 5; i++) { // flat painted bark marks: little dark lozenges hugging the trunk
-    const y = 0.6 + i * 0.5, a = R() * 6.28, r = 0.17 * (1 - (y / h) * 0.25) + 0.005;
-    c.push({ shape: "box", from: [u(Math.sin(a) * r - 0.06), u(y), u(Math.cos(a) * r - 0.06)], size: [u(0.12), u(0.05), u(0.12)], color: PAL.ink, rotation: [0, (a * 180) / Math.PI, 0] });
-  }
+  const h = 3.0, c = [trunk(h, 0.17, PAL.white, 8, "birch")]; // (its dark dashes and patches are paint: the little black boxes that stuck out of it are gone)
   // (2026-11-23, "Trees look a little blobby still": the crown is now a ring of five separate leaf clusters round a darker core, every
   // other one higher, with notches between them where the sky shows at the crown's edge, and one on top; each cluster has a lighter
   // cap where the sun falls on its top, and a pale branch runs out to it from the trunk, seen in the gaps and under the crown. No
   // cluster reaches further out or higher than the old crown did: the signs' sight lines are measured from it.)
-  crown(c, [0, 3.55, 0], { core: 0.9, ring: 5, out: 1.06, lift: 0.5, r: [0.68, 0.8], top: 0.74, color: shade(PAL.leaf, 0.08), bark: shade(PAL.white, -0.12), from: 2.4, seed: 12 });
+  crown(c, [0, 3.55, 0], { core: 0.9, ring: 5, out: 1.06, lift: 0.5, r: [0.68, 0.8], top: 0.74, color: shade(PAL.leaf, 0.08), bark: shade(PAL.white, -0.12), barkPaint: "birch", from: 2.4, seed: 12 });
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.3 }] });
 });
 
@@ -161,7 +159,7 @@ function crown(c, at, o) {
     // the cap: a smaller, lighter clump on the cluster's top, a little outwards
     const ox = x - at[0], oz = z - at[2], d = Math.hypot(ox, oz) || 1;
     c.push(clump([x + (ox / d) * r * 0.12, y + r * 0.42, z + (oz / d) * r * 0.12], r * 0.58, shade(col, 0.16), L, { seg: 6, rows: 4, bulges: 2, amp: 0.12 }));
-    if (o.bark) c.push(tube([[at[0], o.from, at[2]], [at[0] + ox * 0.45, (o.from + y) * 0.5 + 0.1, at[2] + oz * 0.45], [at[0] + ox * 0.8, y - r * 0.3, at[2] + oz * 0.8]], [0.075, 0.05, 0.03], o.bark, { segments: 5 }));
+    if (o.bark) c.push({ ...tube([[at[0], o.from, at[2]], [at[0] + ox * 0.45, (o.from + y) * 0.5 + 0.1, at[2] + oz * 0.45], [at[0] + ox * 0.8, y - r * 0.3, at[2] + oz * 0.8]], [0.075, 0.05, 0.03], o.bark, { segments: 5 }), paint: o.barkPaint ?? "bark" });
   }
 }
 
@@ -174,20 +172,20 @@ const bush = (seed, color) => () => {
 def("bush", bush(1, PAL.leaf));
 def("bush2", bush(5, shade(PAL.pine, 0.1)));
 
-// ---- rocks: smooth pebbles (a lumpy box cage, subdivided), a soft moss cap on the big one ------------------------------------------
-const rock = (seed, w, h, d, moss) => () => {
+// ---- rocks: smooth pebbles (a lumpy box cage, subdivided), painted as rock (speckle, strata, cracks; no moss cap now) ------------------------------------------
+const rock = (seed, w, h, d) => () => {
   const R = rng(seed), v = [];
   for (const sy of [0, 1]) for (const sz of [-1, 1]) for (const sx of [-1, 1]) {
     const k = sy ? 0.7 + R() * 0.2 : 1;
     v.push([sx * w / 2 * k * (0.85 + R() * 0.3), sy ? h * (0.9 + R() * 0.2) : -0.12, sz * d / 2 * k * (0.85 + R() * 0.3)]);
   }
   const c = [mesh(v, [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]], shade(PAL.stone, (R() - 0.5) * 0.1), { modifiers: [{ type: "subsurf", levels: 2, renderLevels: 2, smooth: true }] })];
-  if (moss) c.push(puff([w * 0.05, h * 0.82, 0], Math.min(w, d) * 0.33, PAL.moss, 0.35, 9));
+  c[0].paint = "rock";
   return one(c, { colliders: [{ x: 0, z: 0, r: Math.min(w, d) * 0.45 }] });
 };
-def("rock", rock(1, 1.5, 0.9, 1.4, false));
-def("rock_big", rock(4, 2.4, 1.6, 2.2, true));
-def("rock_small", rock(6, 0.7, 0.42, 0.75, false));
+def("rock", rock(1, 1.5, 0.9, 1.4));
+def("rock_big", rock(4, 2.4, 1.6, 2.2));
+def("rock_small", rock(6, 0.7, 0.42, 0.75));
 
 // ---- a fallen log and a stump: rounded wooden cylinders with pale cut ends -------------------------------------------------------------
 def("log", () => {
@@ -201,7 +199,7 @@ def("log", () => {
   return model([body], { capsules: [{ ax: -L / 2, az: 0, bx: L / 2, bz: 0, r }] });
 });
 def("stump", () => one([
-  spun([[0, -0.15], [0.62, -0.15], [0.62, 0.05], [0.48, 0.2], [0.45, 0.62], [0.4, 0.66], [0, 0.66]], PAL.log, 12),
+  { ...spun([[0, -0.15], [0.62, -0.15], [0.62, 0.05], [0.48, 0.2], [0.45, 0.62], [0.4, 0.66], [0, 0.66]], PAL.log, 12), paint: "bark" },
   cyl([0, 0.665, 0], 0.37, 0.012, PAL.woodLight, { segments: 12 }),
 ], { colliders: [{ x: 0, z: 0, r: 0.45 }] }));
 

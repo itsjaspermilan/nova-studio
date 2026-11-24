@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "rock",
           "color": "#a69d8f",
           "verts": [
             [-11.051, -1.92, -10.761],

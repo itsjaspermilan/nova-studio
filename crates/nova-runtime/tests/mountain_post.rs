@@ -6857,11 +6857,13 @@ fn the_valleys_trees_are_painted_and_within_their_triangles() {
             "{kind}: {:.0}% of its points are painted as kind {paint}",
             share * 100.0
         );
-        // (nothing glows: every point is plain, or painted with no glow on top)
+        // (nothing glows: every point is plain, or painted with no glow on top; the trunks and branches are painted bark (8) or
+        // birch (9) since the eighth play)
         assert!(
-            mesh.vertices
-                .iter()
-                .all(|v| v.emissive == 0.0 || (v.emissive - paint * PAINT_STEP).abs() < 0.5),
+            mesh.vertices.iter().all(|v| v.emissive == 0.0
+                || (v.emissive - paint * PAINT_STEP).abs() < 0.5
+                || (v.emissive - 8.0 * PAINT_STEP).abs() < 0.5
+                || (v.emissive - 9.0 * PAINT_STEP).abs() < 0.5),
             "{kind}"
         );
     }
@@ -10662,4 +10664,123 @@ fn to_world_turns_a_point_as_the_models_body_is_turned_at_25_degrees() {
             );
         }
     }
+}
+
+// ---- the eighth play's notes 4 and 8: bark painted on the trunks, stone painted on the rocks and walls --------------------------------
+
+/// The shapes of a model's glb as (paint kind, colour) per vertex, and its triangle count.
+fn painted_points(name: &str) -> (Vec<(f32, [u8; 4])>, usize) {
+    use nova_runtime::model::{PAINT_STEP, import_glb};
+    let path = game_dir().join(format!("models/{name}.glb"));
+    let mesh = import_glb(&std::fs::read(path).unwrap()).expect("imports");
+    assert!(mesh.notes.is_empty(), "{name}: {:?}", mesh.notes);
+    let points = mesh
+        .vertices
+        .iter()
+        .map(|v| ((v.emissive / PAINT_STEP + 0.0005).floor(), v.color))
+        .collect();
+    (points, mesh.indices.len() / 3)
+}
+
+/// "We don't have to have those black parts sticking out of the birch trees either. I think we can simplify it with texture." A
+/// birch is its trunk and branches (painted `birch`: white with dark dashes) and its leaf clumps (foliage), nothing else: no box
+/// sticks out of the trunk, and the model has fewer triangles than it had with them (1024). Pines, larches, their far versions and
+/// the stump have their trunks painted as bark, every point of them painted (no plain brown left).
+#[test]
+fn trunks_and_branches_are_painted_bark_and_a_birch_has_no_pieces_stuck_on() {
+    let birch = model_doc("birch");
+    let mut shapes = std::collections::BTreeMap::<String, usize>::new();
+    for c in all_cubes(&birch) {
+        let kind = c["shape"].as_str().unwrap_or("?").to_string();
+        let paint = c["paint"].as_str().unwrap_or("plain").to_string();
+        *shapes.entry(format!("{kind}/{paint}")).or_default() += 1;
+        assert_ne!(kind, "box", "a box is stuck on the birch: {c}");
+    }
+    // the trunk (a turned mesh) and six branches (one to each leaf cluster), all painted birch; the rest is leaf clumps
+    assert_eq!(shapes.get("mesh/birch"), Some(&7), "{shapes:?}");
+    assert!(
+        shapes
+            .keys()
+            .all(|k| k.ends_with("/birch") || k.ends_with("/foliage")),
+        "{shapes:?}"
+    );
+    let (points, tris) = painted_points("birch");
+    assert!(tris < 1024, "the birch lost its boxes: {tris} triangles");
+    assert!(
+        points.iter().all(|(k, _)| *k == 1.0 || *k == 9.0),
+        "every point of a birch is leaf or birch bark"
+    );
+    let bark = points.iter().filter(|(k, _)| *k == 9.0).count();
+    assert!(bark > 60, "the trunk and branches are painted: {bark}");
+    // pale: nothing of its bark is black or brown (the dashes are painted on by the renderer)
+    assert!(
+        points
+            .iter()
+            .filter(|(k, _)| *k == 9.0)
+            .all(|(_, c)| c[0] > 150 && c[1] > 150 && c[2] > 140),
+        "the birch bark is white"
+    );
+    for name in [
+        "pine",
+        "pine2",
+        "pine3",
+        "pine_far",
+        "larch",
+        "larch_small",
+        "larch_far",
+    ] {
+        let (points, _) = painted_points(name);
+        assert!(
+            points.iter().all(|(k, _)| *k == 1.0 || *k == 8.0),
+            "{name}: leaves and bark only"
+        );
+        assert!(
+            points.iter().filter(|(k, _)| *k == 8.0).count() >= 24,
+            "{name}: its trunk is painted bark"
+        );
+        // warm brown, as the trunk was
+        assert!(
+            points
+                .iter()
+                .filter(|(k, _)| *k == 8.0)
+                .all(|(_, c)| c[0] > c[1] && c[1] > c[2]),
+            "{name}: the bark is brown"
+        );
+    }
+    let (stump, _) = painted_points("stump");
+    assert!(
+        stump.iter().any(|(k, _)| *k == 8.0),
+        "the stump's sides are bark"
+    );
+}
+
+/// "We can remove the green tops on the rock walls. The rock also needs some texture." Rocks and the wall's stones are painted as
+/// rock (speckle, strata, cracks), none is plain, and nothing of them is green: the moss caps are gone from the wall and from the big
+/// boulder (a moss cap on a boulder read as the same green blob), and the boulder has fewer triangles than with its cap (264).
+#[test]
+fn rocks_and_stone_walls_are_painted_rock_with_no_moss_caps() {
+    for name in ["rock", "rock_big", "rock_small", "stone_wall"] {
+        let (points, tris) = painted_points(name);
+        assert!(
+            points.iter().all(|(k, _)| *k == 10.0),
+            "{name}: every point is painted as rock"
+        );
+        for (_, c) in &points {
+            assert!(
+                c[0] + 2 >= c[1] && c[1] >= c[2],
+                "{name}: a stone is warm grey, never green: {c:?}"
+            );
+        }
+        if name == "rock_big" {
+            assert!(tris < 264, "{name}: {tris} triangles");
+        }
+    }
+    // the wall's top is still capped, by flat stones of the wall's own grey and not by moss
+    let wall = model_doc("stone_wall");
+    let cubes = all_cubes(&wall);
+    assert!(cubes.len() >= 20, "{} stones", cubes.len());
+    assert!(
+        cubes.iter().all(|c| c["paint"] == "rock"),
+        "every stone of the wall is painted rock"
+    );
 }
