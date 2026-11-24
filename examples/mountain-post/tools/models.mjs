@@ -593,15 +593,16 @@ def("fence", () => {
   for (const y of [0.45, 0.85]) c.push(wood(box([0, y, 0], [3.1, HOUSE.rail, HOUSE.rail], C.wood, { rot: [0, 0, y > 0.6 ? 1.5 : -1] })));
   return one(c, { capsules: [{ ax: -1.5, az: 0, bx: 1.5, bz: 0, r: 0.12 }] });
 });
+const rocky = (c) => ({ ...c, paint: "rock" });
 def("stone_wall", () => {
-  // an old dry-stone wall, 4 m along x: stacked stones, moss on top
+  // an old dry-stone wall, 4 m along x: stacked stones, each painted as rock (speckle, strata, a crack or two) and capped by lighter flat stones; no moss on top (the owner, eighth play: "remove the green tops on the rock walls")
   const c = [], R = rng(3);
   for (let row = 0; row < 3; row++) for (let i = 0; i < 6; i++) {
     const x = -1.75 + i * 0.7 + (row % 2) * 0.3 + (R() - 0.5) * 0.08;
     if (x > 1.85) continue;
-    c.push(bevelled([x, 0.16 + row * 0.26, (R() - 0.5) * 0.06], [0.66 + R() * 0.1, 0.27, 0.55 - row * 0.06], shade(C.stone, (R() - 0.5) * 0.3), { bevel: 0.05, ry: (R() - 0.5) * 8 }));
+    c.push(rocky(bevelled([x, 0.16 + row * 0.26, (R() - 0.5) * 0.06], [0.66 + R() * 0.1, 0.27, 0.55 - row * 0.06], shade(C.stone, (R() - 0.5) * 0.3), { bevel: 0.05, ry: (R() - 0.5) * 8 })));
   }
-  for (let i = 0; i < 4; i++) c.push(bevelled([-1.5 + i * 1.0 + R() * 0.3, 0.86, 0], [0.6 + R() * 0.3, 0.07, 0.44], shade(C.moss, (R() - 0.5) * 0.3), { bevel: 0.03 }));
+  for (let i = 0; i < 4; i++) c.push(rocky(bevelled([-1.5 + i * 1.0 + R() * 0.3, 0.86, 0], [0.6 + R() * 0.3, 0.07, 0.44], shade(C.stone, 0.05 + (R() - 0.5) * 0.12), { bevel: 0.03 })));
   return one(c, { boxes: [{ x: 0, z: 0, hw: 2.0, hl: 0.3, turn: 0 }] });
 });
 def("bridge", () => {

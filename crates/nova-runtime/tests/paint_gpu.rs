@@ -422,3 +422,57 @@ fn painted_walls_roofs_and_stone_vary_near_and_are_calm_far_off() {
         assert!(g < 1.5, "{name}: far off it is calm: {g:.2} levels a pixel");
     }
 }
+
+/// The three nature kinds (bark 8, birch 9, rock 10; "Painted surfaces"): near, each adds the furrows, dashes or strata and cracks of
+/// its surface to the plain colour without changing the mean much (a birch is greyer by its dashes and dark foot), and seen from far
+/// off, where they are under a pixel, they are as calm as plain paint.
+#[test]
+fn painted_bark_birch_and_rock_vary_near_and_are_calm_far_off() {
+    let Some(mut gfx) = gfx() else { return };
+    // a wall facing +z, `z` metres from the model's origin (bark and birch go by where a pixel is round the origin's axis, so it
+    // stands well out to be read as one side of a trunk)
+    let wall = |z: f32, w: f32, h: f32, kind: f32, color: [u8; 4]| {
+        quad(
+            [[-w, 0.0, z], [w, 0.0, z], [w, h, z], [-w, h, z]],
+            [0.0, 0.0, 1.0],
+            color,
+            kind,
+        )
+    };
+    let cases: [(&str, f32, [u8; 4]); 3] = [
+        ("bark", 8.0, [124, 83, 56, 255]),
+        ("birch", 9.0, [233, 228, 216, 255]),
+        ("rock", 10.0, [172, 163, 148, 255]),
+    ];
+    for (name, kind, color) in cases {
+        let plain = gfx.upload_mesh(&wall(60.0, 4.0, 3.0, 0.0, color));
+        let painted = gfx.upload_mesh(&wall(60.0, 4.0, 3.0, kind, color));
+        let near = |gfx: &mut Gfx, m| shoot(gfx, m, [0.0, 3.2, 65.0], [0.0, 1.8, 60.0], 40.0, 0.0);
+        let (pm, ps, pn) = stats(&near(&mut gfx, plain), 0, 0, W, H);
+        let (gm, gs, gn) = stats(&near(&mut gfx, painted), 0, 0, W, H);
+        assert!(
+            pn > 5000 && (gn as f64 - pn as f64).abs() < pn as f64 * 0.02,
+            "{name}: the same shape is drawn"
+        );
+        assert!(
+            gs > ps + 2.0,
+            "{name}: painted varies (sd {gs:.2}) more than plain (sd {ps:.2})"
+        );
+        assert!(
+            gm > pm * 0.6 && gm < pm * 1.15,
+            "{name}: about as bright as plain, a little darker by its marks ({gm:.1} against {pm:.1})"
+        );
+        // far off: a wall 400 m wide seen from 400 m back
+        let big = gfx.upload_mesh(&wall(3000.0, 200.0, 150.0, kind, color));
+        let far = shoot(
+            &mut gfx,
+            big,
+            [0.0, 60.0, 3400.0],
+            [0.0, 60.0, 3000.0],
+            40.0,
+            0.0,
+        );
+        let g = grain(&far, 0, H);
+        assert!(g < 1.5, "{name}: far off it is calm: {g:.2} levels a pixel");
+    }
+}

@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "bark",
           "color": "#7c5338",
           "verts": [
             [0, -4, 0],

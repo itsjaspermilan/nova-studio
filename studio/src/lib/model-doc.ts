@@ -12,7 +12,7 @@ export const FACES: Face[] = ["east", "west", "up", "down", "south", "north"];
 export type Shape = "box" | "wedge" | "pyramid" | "cylinder" | "cone" | "sphere" | "mesh";
 export const SHAPES: Shape[] = ["box", "wedge", "pyramid", "cylinder", "cone", "sphere", "mesh"];
 /// The painted surfaces the game draws (crates/nova-runtime/src/model.rs PAINT_KINDS, in the same order).
-export const PAINT_KINDS = ["foliage", "canopy", "ground", "water", "wood", "roof", "stone"] as const;
+export const PAINT_KINDS = ["foliage", "canopy", "ground", "water", "wood", "roof", "stone", "bark", "birch", "rock"] as const;
 export type PaintKind = (typeof PAINT_KINDS)[number];
 export const MIN_SEGMENTS = 3;
 export const MAX_SEGMENTS = 64;
@@ -59,7 +59,7 @@ export interface Cube {
   /// `KHR_materials_transmission` (the game draws it when nova.json says `"materials": true`).
   glass?: number;
   /// How the game paints the surface (docs/project-format.md, "Painted surfaces"): "foliage" (a tree's crown: leaf clumps, leaf strokes,
-  /// a darker core and a lit rim), "canopy" (the same for a long mass of trees along the model's x), "ground", "water", or for a building "wood" (boards), "roof" (tiles) and "stone" (courses). Written to the
+  /// a darker core and a lit rim), "canopy" (the same for a long mass of trees along the model's x), "ground", "water", or for a building "wood" (boards), "roof" (tiles), "stone" (courses), or for trees and rocks "bark" (furrows), "birch" (white with dark dashes) and "rock" (speckle, strata, cracks). Written to the
   /// .glb as the material's `extras.nova.paint`; the plain look draws it, with no picture.
   paint?: PaintKind;
   /// Mesh only: sharp edges for a Subdivision modifier, `[point a, point b, weight]` with weight 0 (smooth) to 1 (sharp at every level).

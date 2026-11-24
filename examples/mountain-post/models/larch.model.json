@@ -9,6 +9,7 @@
       "cubes": [
         {
           "shape": "mesh",
+          "paint": "bark",
           "color": "#7c5338",
           "verts": [
             [0, -4, 0],
@@ -21,7 +22,7 @@
           "polys": [
             {"v":[0,1,2,3,4,5]}
           ],
-          "modifiers": [{"type":"revolve","axis":"y","segments":6,"sharp":50}]
+          "modifiers": [{"type":"revolve","axis":"y","segments":8,"sharp":50}]
         },
         {
           "shape": "mesh",

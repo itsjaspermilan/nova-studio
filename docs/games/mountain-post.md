@@ -1361,3 +1361,32 @@ Device: 60 fps holds (GPU 10.4 ms, about 4 ms headroom). The owner's notes, in t
 9. "There should be a driveway at the homes and buildings. Right now we're just driving on grass."
 10. "The player kind of looks like he's shuffling when he's walking."
 11. "I liked the post master cap that we had earlier. The bucket hat makes the character look like some kind of explorer."
+
+### What the eighth play changed: bark and stone (notes 4 and 8)
+
+Three new paint kinds (`bark`, `birch`, `rock`: docs/project-format.md, "Painted surfaces"; their own block in `mesh.wgsl`, kinds 8 to
+10), all paint and no geometry.
+
+- **Trunks and branches (note 8).** `trunk()` in `tools/nature.mjs` paints bark: furrows up the trunk (soft, warm brown, a lighter lip
+  beside each, plates a little lighter and darker, a darker foot). Pines, larches, their far versions (`pine_far`, `larch_far`: the
+  same `trunk()`, so near and far match) and the stump have it; the forest masses have no trunks. A birch's trunk and its branches are
+  painted `birch`: white with dark horizontal dashes, a few grey blotches, a faint banding and a dark foot. **The five black boxes
+  that stuck out of the birch are gone** (60 triangles): the birch is 980 triangles (was 1024; the trunks went from six sides to eight, so
+  the pines gained 16 each).
+- **Rocks and the wall (note 4).** Rocks and every stone of `stone_wall` are painted `rock`: two sizes of grain, strata, a few painted
+  cracks, a lighter top and a darker base. The moss caps are gone from the wall (the four green slabs are now flat stones of the wall's
+  own grey, a little lighter, so the wall still has a coping) and **from the big boulder as well**: a moss puff on a boulder read as the
+  same flat green blob the owner objected to on the walls, and a rock with real texture needs no help to look old (`rock_big` is 192
+  triangles, was 264). The log's moss patch is left as it was (it is not a rock or a wall). The wall uses `rock`, not `stone`: `stone` is
+  courses with mortar for a mortared building, and the wall is dry-stacked single stones, so courses over them would draw two sets of
+  joints.
+- **Mip-calm.** Furrows, dashes and cracks fade to a slightly darker or greyer average where they are under a few pixels wide; the grain
+  a little later. Test `painted_bark_birch_and_rock_vary_near_and_are_calm_far_off` (tests/paint_gpu.rs).
+- **Pictures** (1280 x 720, not committed): `build/gallery/bark-before/` and `bark-after/` (a wall close and at 15 m, the big boulder, a
+  rock, rocks at 12 m, a birch close, at 10 m and at 40 m, a pine's and a larch's trunk close, a pine at 40 m). The route generator is
+  not kept; the views are the grass route's `TREE` helper and a `SPOT` camera.
+- **Tests**: `trunks_and_branches_are_painted_bark_and_a_birch_has_no_pieces_stuck_on`,
+  `rocks_and_stone_walls_are_painted_rock_with_no_moss_caps` (tests/mountain_post.rs).
+- **Weak points**: the bark is read round the model's y axis, so a horizontal log is not painted bark (it keeps its plain look); the
+  pattern is in the model's own space, so a tree scaled up 2.5 times has furrows 2.5 times as wide; a crack on the wall runs across
+  stones as one line (the pattern does not know where one stone ends); none of it has been seen on the Retroid's screen.
