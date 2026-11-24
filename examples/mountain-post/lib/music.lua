@@ -1,13 +1,30 @@
--- The music: "Fernhollow" as five stems of one piece, played together and in step (nova.music.layers), made by tools/music.mjs:
--- the felt piano, always, and four layers that join while the van is driven (the owner: "pretty simple when not in the vehicle,
--- then as the player drives more and more layers can come on"):
+-- The music: four pieces for felt piano that take turns, with quiet between them (the owner, seventh play: the one piece was "too
+-- repetitive"; chosen fix: several pieces that take turns, with quiet between them, as in games where each part of the day has its
+-- own piece). Each plays once and ends; then only the ambience is heard for a while; then another piece, never the one just played.
+-- Made by tools/music.mjs, each as five stems of one song, played together and in step (nova.music.layers):
+--
+--   fernhollow   F major, 68 bpm, 4/4         the morning walk (the first piece, shortened, now with an ending)   2:06
+--   thistle      G major, 104 bpm, 4/4        a bright skipping tune                                              1:46
+--   stillwater   E flat major, 58 bpm, 4/4    reflective and slow                                                 2:03
+--   meadowsweet  D major, 120 bpm, 3/4        a folksy waltz                                                      1:53
+--
+-- The order (music.playlist_step, the same for the game and the tests): the first piece starts about 6 s after the game begins
+-- (not at once); the pieces come from a shuffled bag, so all four play before any plays again, and a new bag never starts with the
+-- piece just played; between two pieces a quiet of 20 to 60 s (one time in five 30 to 60 s longer), when only the ambience plays.
+-- Eight seconds before a piece starts its stems' decoders are started (nova.music.prepare), so it begins with its opening decoded
+-- and no burst of decoding as it starts; only the piece that plays is decoded (and, in the quiet, the next one's first second or
+-- so). The playlist lives in this module, not in a scene, so walking in and out of the post office does not restart a piece; the
+-- ending card cuts a quiet short (the next piece starts within 2 s).
+--
+-- Each piece's stems: the felt piano, always, and four layers that join while the van is driven (the owner: "pretty simple when not
+-- in the vehicle, then as the player drives more and more layers can come on"):
 --
 --   1 bass      a round, soft bass on the chords' roots
---   2 brushes   a light shaker and brush taps with a little lilt
+--   2 brushes   a light shaker and brush taps
 --   3 pad       warm, slow strings holding the harmony
 --   4 celesta   a soft celesta answering the tune in its rests
 --
--- The rule (music.step, the same for the game and for tools/music.mjs's audition clip):
+-- The layers' rule (music.step, the same for the game and for tools/music.mjs), whichever piece plays:
 --   * on foot, indoors, on the title: the piano alone (indoors a touch quieter);
 --   * getting in changes nothing; driving earns the layers one by one, the longer and steadier the drive: the first after about
 --     4.5 s of driving faster than a walk, then one about every 9 s (sooner at cruising speed); an earned layer fades in over about a
@@ -18,13 +35,95 @@
 --     cruise do not pump. Speeding up again on the same drive brings the earned ones back as the speed returns (over a second or so),
 --     with no wait;
 --   * getting out forgets the drive: whatever is left fades away over a few seconds;
---   * a card or a conversation: the piano alone, a little lower.
+--   * a card or a conversation: the piano alone, a little lower;
+--   * the rule runs in the quiet too, so a piece that starts mid-drive starts with the layers the drive has earned.
 -- The music's level is one dial (nova.music.volume), eased: the place's level, lower in the van's cab (as before), lower again under
--- a card or a conversation. All the layers at once are about 1.7 dB louder than the piano alone (tools/music.mjs sets their balance).
+-- a card or a conversation. Every piece's piano alone measures -18 LUFS, its five stems together 1.0 to 1.5 dB more.
 local music = {}
 
-music.STEMS = { "fernhollow_piano", "fernhollow_bass", "fernhollow_brushes", "fernhollow_pad", "fernhollow_celesta" }
-music.EXTRA = #music.STEMS - 1
+music.PIECES = {
+  { name = "fernhollow", title = "Fernhollow", seconds = 126.45 },
+  { name = "thistle", title = "Thistle Lane", seconds = 105.71 },
+  { name = "stillwater", title = "Stillwater", seconds = 123.30 },
+  { name = "meadowsweet", title = "Meadowsweet", seconds = 112.89 },
+}
+music.KINDS = { "piano", "bass", "brushes", "pad", "celesta" }
+music.EXTRA = #music.KINDS - 1
+
+-- The stems of piece `i` (an index into music.PIECES), the piano first.
+function music.stems(i)
+  local out = {}
+  for k, kind in ipairs(music.KINDS) do out[k] = music.PIECES[i].name .. "_" .. kind end
+  return out
+end
+
+music.PLAYLIST = {
+  first = 6,           -- seconds from the game's start to the first piece
+  gap = { 20, 60 },    -- seconds of quiet between two pieces
+  longer = 0.2,        -- the chance that a quiet is longer
+  extra = { 30, 60 },  -- by this many seconds
+  prepare = 8,         -- seconds before a piece starts, its stems' decoders start (nova.music.prepare)
+  fade = 0.5,          -- seconds a piece's start fades in over (each begins softly anyway)
+  hurry = 2,           -- the ending card: the quiet left is cut to this
+}
+
+-- A fresh playlist: `rand` gives numbers from 0 to 1 (math.random by default; the tests pass their own).
+function music.new_playlist(rand)
+  return { rand = rand or math.random, phase = "quiet", left = music.PLAYLIST.first, piece = nil, last = nil, next = nil, bag = {}, prepared = false, gaps = {} }
+end
+
+-- The next piece: the next from a shuffled bag of all of them; a new bag never starts with the piece just played.
+local function draw(pl)
+  if #pl.bag == 0 then
+    local bag = {}
+    for i = 1, #music.PIECES do bag[i] = i end
+    for i = #bag, 2, -1 do
+      local j = 1 + math.floor(pl.rand() * i) % i
+      bag[i], bag[j] = bag[j], bag[i]
+    end
+    -- (pieces are taken from the end)
+    if #bag > 1 and bag[#bag] == pl.last then bag[#bag], bag[1] = bag[1], bag[#bag] end
+    pl.bag = bag
+  end
+  return table.remove(pl.bag)
+end
+
+local function quiet_length(pl)
+  local T = music.PLAYLIST
+  local g = T.gap[1] + (T.gap[2] - T.gap[1]) * pl.rand()
+  if pl.rand() < T.longer then g = g + T.extra[1] + (T.extra[2] - T.extra[1]) * pl.rand() end
+  return g
+end
+
+-- One step of the playlist: returns what to do now, a list of { kind = "prepare" | "start" | "end", piece = index }.
+function music.playlist_step(pl, dt)
+  local out = {}
+  pl.left = pl.left - dt
+  if pl.phase == "quiet" then
+    pl.next = pl.next or draw(pl)
+    if not pl.prepared and pl.left <= music.PLAYLIST.prepare then
+      pl.prepared = true
+      out[#out + 1] = { kind = "prepare", piece = pl.next }
+    end
+    if pl.left <= 0 then
+      pl.phase, pl.piece, pl.last, pl.next, pl.prepared = "piece", pl.next, pl.next, nil, false
+      pl.left = pl.left + music.PIECES[pl.piece].seconds
+      out[#out + 1] = { kind = "start", piece = pl.piece }
+    end
+  elseif pl.left <= 0 then
+    out[#out + 1] = { kind = "end", piece = pl.piece }
+    pl.phase, pl.piece = "quiet", nil
+    local g = quiet_length(pl)
+    pl.gaps[#pl.gaps + 1] = g
+    pl.left = pl.left + g
+  end
+  return out
+end
+
+-- Cuts a quiet short (the ending card): the next piece starts within PLAYLIST.hurry seconds.
+function music.hurry(pl)
+  if pl.phase == "quiet" then pl.left = math.min(pl.left, music.PLAYLIST.hurry) end
+end
 
 music.TUNE = {
   moving = 2.0,     -- m/s: driving at least this fast earns layers
@@ -107,27 +206,42 @@ function music.step(st, dt, input)
   return out
 end
 
--- The game's side: the stems, the state, and the music's level.
-local playing, where, state, heard = false, "outdoors", music.new_state(), nil
+-- The game's side: the playlist, the layers' state, the music's level and the piece that plays (an index, nil in a quiet).
+local list, where, state, heard, current = nil, "outdoors", music.new_state(), nil, nil
 
--- Starts the music if it does not play yet (it carries on from scene to scene), and says where we are (the level).
+-- Starts the playlist if it has not started yet (it carries on from scene to scene), and says where we are (the level).
 function music.start(place)
   where = place or "outdoors"
-  if not playing then
-    local levels = { 1 }
-    for i = 1, music.EXTRA do levels[i + 1] = 0 end
-    nova.music.layers(music.STEMS, { levels = levels, fade = 1.0 })
-    playing, state = true, music.new_state()
+  if not list then
+    list, state, current = music.new_playlist(), music.new_state(), nil
     heard = music.TUNE.volume[where] or music.TUNE.volume.outdoors
     nova.music.volume(heard)
   end
+  if where == "ending" then music.hurry(list) end
 end
 
 -- Each frame: `input` as for music.step.
 function music.update(dt, input)
-  if not playing then return end
-  for _, c in ipairs(music.step(state, dt, input)) do
-    nova.music.layer(music.STEMS[c.layer + 1], c.level, { fade = c.fade, at = c.at })
+  if not list then return end
+  local changes = music.step(state, dt, input)
+  for _, e in ipairs(music.playlist_step(list, dt)) do
+    if e.kind == "prepare" then
+      nova.music.prepare(music.stems(e.piece), { loop = false })
+    elseif e.kind == "start" then
+      -- (the piano heard, each layer at the level the drive has earned)
+      local levels = { 1 }
+      for i = 1, music.EXTRA do levels[i + 1] = state.sent[i] end
+      nova.music.layers(music.stems(e.piece), { levels = levels, fade = music.PLAYLIST.fade, loop = false })
+      current = e.piece
+    else
+      current = nil -- (the stems have ended by themselves)
+    end
+  end
+  if current then
+    local stems = music.stems(current)
+    for _, c in ipairs(changes) do
+      nova.music.layer(stems[c.layer + 1], c.level, { fade = c.fade, at = c.at })
+    end
   end
   local T = music.TUNE
   local want = (T.volume[where] or T.volume.outdoors) * (input.driving and T.cab or 1) * (input.quiet and T.talk or 1)
@@ -135,9 +249,18 @@ function music.update(dt, input)
   nova.music.volume(heard)
 end
 
--- For the tests: what has been earned, the eased speed, and the level each layer was last given.
+-- For the tests: forgets the playlist and the drive (the next music.start begins afresh).
+function music.reset()
+  list, where, state, heard, current = nil, "outdoors", music.new_state(), nil, nil
+end
+
+-- For the tests: what has been earned, the eased speed, the level each layer was last given, the piece that plays (its name, or
+-- nil in a quiet), the playlist's phase and the seconds left in it.
 function music.status()
-  return { earned = state.earned, drive = state.drive, speed = state.speed, levels = { table.unpack(state.sent) }, volume = heard, where = where }
+  return {
+    earned = state.earned, drive = state.drive, speed = state.speed, levels = { table.unpack(state.sent) }, volume = heard, where = where,
+    piece = current and music.PIECES[current].name or nil, phase = list and list.phase or "off", left = list and list.left or 0,
+  }
 end
 
 -- For tools/music.mjs (the audition clip) and the tests: the rule run over a drive, one input every `dt` seconds; returns the changes

@@ -199,7 +199,7 @@ end
 function Valley:say(r, lines, faces, on_done)
   r:begin_talk()
   self.talking_to = r
-  camera.glide(0.55)
+  camera.glide(0.4) -- (snappy: the talk opens quickly)
   r.talking = true
   self.p.control = false
   self.p:face_to(r.x, r.z)
@@ -211,7 +211,7 @@ function Valley:say(r, lines, faces, on_done)
       self.talking_to = nil
       -- (back behind the postmaster, at the default, gliding there from the talk's view)
       camera.reset(self.p.face)
-      camera.glide(0.6)
+      camera.glide(0.45)
       self.p.control = true
       if on_done then on_done() end
     end,
@@ -511,7 +511,11 @@ function Valley:draw()
     local ry = po.ry or 0
     local fx, fz = math.sin(ry), math.cos(ry)
     BOARD.face = { fx, 0, fz }
-    nova.billboard("po_sign", po.x + fx * 3.42, 3.8, po.z + fz * 3.42, 2.1, BOARD)
+    -- (the board stands on the porch roof's front edge: tools/models.mjs "post_office"; the picture is cropped to the ink of its words and
+    -- its middle is the panel's middle, 3.65 m up, 0.02 m off the panel's front)
+    local iw, ih = nova.image_size("fx/po_sign")
+    BOARD.w, BOARD.h = iw / 300, ih / 300
+    nova.billboard("po_sign", po.x + fx * 5.37, 3.65, po.z + fz * 5.37, BOARD.w, BOARD)
   end
   local bar = nova.named("barrier")
   if bar then
@@ -520,16 +524,6 @@ function Valley:draw()
     -- (the board faces back down the road, the way the barrier's model faces: its front; the words just off it)
     OUT.face = { fx, 0, fz }
     nova.billboard("bridge_out", bar.x - fx * 0.36, 1.86, bar.z - fz * 0.36, 2.0, OUT)
-  end
-  -- the mast's guy wires, from its top down to three pegs
-  local m = nova.named("mast")
-  if m then
-    local h0 = nova.terrain_height(m.x, m.z)
-    for k = 0, 2 do
-      local a = k * 2.094 + 0.3
-      local px, pz = m.x + math.sin(a) * 6.5, m.z + math.cos(a) * 6.5
-      nova.line3(m.x, h0 + 12, m.z, px, nova.terrain_height(px, pz) + 0.1, pz, { color = { 70, 70, 74 }, width = 1 })
-    end
   end
 end
 

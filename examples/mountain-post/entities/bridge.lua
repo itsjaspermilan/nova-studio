@@ -16,7 +16,7 @@ function Bridge:settle()
   local dx, dz = b[1] - a[1], b[2] - a[2]
   local len = math.sqrt(dx * dx + dz * dz)
   local ha, hb = nova.terrain_height(a[1], a[2]), nova.terrain_height(b[1], b[2])
-  world.bridge = { ax = a[1], az = a[2], dx = dx / len, dz = dz / len, len = len, half = 2.2, ha = ha, hb = hb }
+  world.bridge = { ax = a[1], az = a[2], dx = dx / len, dz = dz / len, len = len, half = 2.8, ha = ha, hb = hb }
   self.deck = (ha + hb) / 2
   self.y = self.deck - nova.terrain_height(self.x, self.z)
 end

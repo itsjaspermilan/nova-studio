@@ -864,7 +864,8 @@ function markThresholds(mesh, routes, cuts) {
   for (const r of routes) for (const c of cuts.get(r)) {
     if (c.kind !== "gap") continue;
     for (const s of [c.from, c.to]) {
-      const f = r.line.at(s), sg = r.sigma(s), inner = sec(r.kindAt(s)).inner * sg;
+      // (across the carriageway and its lit shoulder, to the verge: the whole width a deck of the road's width covers)
+      const f = r.line.at(s), sg = r.sigma(s), inner = (sec(r.kindAt(s)).offs[2] ?? sec(r.kindAt(s)).inner) * sg;
       for (const t of mesh.tris) {
         const cx = (t.v[0].x + t.v[1].x + t.v[2].x) / 3, cz = (t.v[0].z + t.v[1].z + t.v[2].z) / 3;
         const along = (cx - f.x) * f.tx + (cz - f.z) * f.tz, acr = (cx - f.x) * f.nx + (cz - f.z) * f.nz;

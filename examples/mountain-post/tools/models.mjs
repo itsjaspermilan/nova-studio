@@ -22,7 +22,13 @@ const C = {
 // sixth play: "keep a consistent look ... a little more rounded"). Metres. The look rule is tools/palette.mjs; this is its carpentry:
 //   edge     the one rounding radius of every box edge: a box is rounded by `edge`, or by 0.4 of its thinnest side where that is less (a
 //            4 cm board gets 1.6 cm, a wall 16 cm); anything thinner than 3 cm is flat paint and stays sharp
-//   board    siding: a painted board line every 0.32 m on every wall, 4 cm tall, flat on the wall (never thicker than 2 cm)
+//   board    siding: every wall is painted as boards (`paint: "wood"`: courses of 0.32 m, a shade each, soft seams and grain, made by the
+//            renderer, no geometry), roofs as tiles (`"roof"`), plinths, chimneys and footings as courses of stone (`"stone"`)
+//   thick    the MINIMUM THICKNESS (HOUSE.min; the owner's seventh play: "a minimum thickness to prevent stick looking things"): at
+//            house scale a post, rail, pipe, mast leg or fence board is at least 10 cm through, a cross-brace or bar at least 6 cm, and
+//            only a flat painted line (under 3 cm, lying on a surface) is thinner; indoors and on a desk (`min.indoor`) half that.
+//            Round things count by their diameter. A thing that must look finer than that is drawn chunkier, or as flat paint, or left
+//            out (the mast's guy wires became braces of timber). The test `every_model_is_chunky_...` measures every model's parts
 //   trim     the thickness of every trim piece (frames, fascias, caps, sills); corner boards are 0.24 square, cream, on every house
 //   plinth   every house stands on a rounded stone footing that sticks out `over` all round, in stoneDark
 //   roof     gable roofs: soft thick plates (`thick`) of the same pitch (rise = pitch x half the span), overhanging `over` at the eaves
@@ -37,10 +43,15 @@ const HOUSE = {
   trim: 0.12, corner: 0.24,
   plinth: { over: 0.15 },
   roof: { thick: 0.22, over: 0.45, pitch: 0.6, drop: 0.45, ridge: 0.15 },
-  window: { w: 1.1, h: 0.95, frame: 0.13, bar: 0.06, sill: 0.1 },
+  window: { w: 1.1, h: 0.95, frame: 0.13, bar: 0.07, sill: 0.1 },
   door: { w: 1.1, h: 2.15, frame: 0.14 },
   post: 0.18, rail: 0.1,
+  // (the chunky minimum, metres: a part's thickness is its smaller sides; "long" is its longest side)
+  min: { stick: 0.1, short: 0.06, longAt: 1.2, shortAt: 0.5, board: 0.03, flat: 0.03, plate: 0.2, indoor: 0.5 },
 };
+// A shape (or a list of them) painted as `kind`: "wood", "roof" or "stone" (docs/project-format.md, "Painted surfaces").
+const painted = (c, kind) => (Array.isArray(c) ? c.map((x) => painted(x, kind)) : { ...c, paint: kind });
+const wood = (c) => painted(c, "wood"), tiles = (c) => painted(c, "roof"), stoneOf = (c) => painted(c, "stone");
 const edgeOf = (size) => Math.min(HOUSE.edge, Math.min(...size) * 0.4);
 // A box with soft toy edges (HOUSE.edge), turned as `rot` says.
 const box = (c, size, color, o = {}) => {
@@ -67,9 +78,11 @@ function gableRoof(W, D, top, wallColor, roofColor, along = "x") {
   const verts = [...top6, ...top6.map(([x, y, z]) => [x, y - th, z])];
   const roof = mesh(verts, [[0, 2, 3, 1], [2, 4, 5, 3], [6, 7, 9, 8], [8, 9, 11, 10], [0, 2, 4, 10, 8, 6], [1, 3, 5, 11, 9, 7], [0, 1, 7, 6], [4, 10, 11, 5]], roofColor, { inside: P(0, top + thick / 2, 0) });
   roof.modifiers = [{ type: "bevel", width: Math.round(0.09 * 16 * 1000) / 1000, segments: 2, angle: 20 }];
+  roof.paint = "roof";
   const apex = top + pitch * hs - 0.05;
   const attic = mesh([[-hs, top - 0.1, -len / 2], [hs, top - 0.1, -len / 2], [0, apex, -len / 2], [-hs, top - 0.1, len / 2], [hs, top - 0.1, len / 2], [0, apex, len / 2]].map(([u, y, v]) => P(u, y, v)),
     [[0, 2, 1], [3, 4, 5], [0, 1, 4, 3], [1, 2, 5, 4], [2, 0, 3, 5]], wallColor);
+  attic.paint = "wood";
   const cap = cyl([0, yTop(0) - 0.01, 0], ridge, len + 2 * over + 0.12, shade(roofColor, -0.1), { axis: along, segments: 10, smooth: true });
   return { cubes: [roof, attic, cap], at: yTop };
 }
@@ -79,33 +92,59 @@ function gableRoof(W, D, top, wallColor, roofColor, along = "x") {
 function leanRoof(x0, x1, zBack, zFront, yBack, { free = false, color = C.roofRed } = {}) {
   const { thick, over, drop } = HOUSE.roof;
   const zb = free ? zBack - over : zBack, zf = zFront + over, y = (z) => yBack - (drop * (z - zBack)) / (zf - zBack);
-  return plate([[x0 - over, y(zb), zb], [x1 + over, y(zb), zb], [x1 + over, y(zf), zf], [x0 - over, y(zf), zf]], thick, color);
+  return tiles(plate([[x0 - over, y(zb), zb], [x1 + over, y(zb), zb], [x1 + over, y(zf), zf], [x0 - over, y(zf), zf]], thick, color));
 }
-// The cream corner boards of a house on its plinth, and the siding's board lines on its four walls (flat paint).
-function walls(W, D, base, H, color, lineColor) {
-  const c = [box([0, base + H / 2, 0], [W, H, D], color)];
-  const bl = HOUSE.boardLine;
-  for (let y = base + HOUSE.board; y < base + H - 0.1; y += HOUSE.board) {
-    for (const s of [1, -1]) c.push(hardBox([0, y, s * (D / 2 + 0.01)], [W - 0.3, bl, 0.02], lineColor), hardBox([s * (W / 2 + 0.01), y, 0], [0.02, bl, D - 0.3], lineColor));
-  }
+// The walls of a house on its plinth (painted as boards) and its cream corner boards.
+function walls(W, D, base, H, color) {
+  const c = [wood(box([0, base + H / 2, 0], [W, H, D], color))];
   for (const sx of [1, -1]) for (const sz of [1, -1]) c.push(box([sx * (W / 2), base + H / 2, sz * (D / 2)], [HOUSE.corner, H + 0.02, HOUSE.corner], C.cream));
   return c;
 }
 // The stone footing a house stands on (HOUSE.plinth), its top at y = base.
-const plinth = (W, D, base) => box([0, base / 2, 0], [W + 2 * HOUSE.plinth.over, base, D + 2 * HOUSE.plinth.over], C.stoneDark);
-// A window in a front wall (the wall's face at z = zw), its middle at (x, y).
-function windowAt(x, y, zw, { lit = false, flowers = false } = {}) {
+const plinth = (W, D, base) => stoneOf(box([0, base / 2, 0], [W + 2 * HOUSE.plinth.over, base, D + 2 * HOUSE.plinth.over], C.stoneDark));
+// A window in a front wall (the wall's face at z = zw), its middle at (x, y). `flowers`: a box of flowers under it (`bloom`: the colours
+// of its flowers); `shutters`: [left colour, right colour] (a null leaves a side bare), boards on the wall either side of the frame.
+function windowAt(x, y, zw, { lit = false, flowers = false, bloom = [PAL.mustard, PAL.red], shutters = null } = {}) {
   const { w, h, frame, bar, sill } = HOUSE.window, t = HOUSE.trim;
   const c = [box([x, y, zw + t / 2 - 0.02], [w + 2 * frame, h + 2 * frame, t], C.cream)];
   const glass = lit ? box([x, y, zw + t - 0.005], [w, h, 0.04], PAL.lit, { emissive: 0.45 }) : box([x, y, zw + t - 0.005], [w, h, 0.04], PAL.glass);
-  c.push(glass, box([x, y, zw + t + 0.025], [bar, h, 0.03], C.cream), box([x, y, zw + t + 0.025], [w, bar, 0.03], C.cream));
+  c.push(glass, box([x, y, zw + t + 0.02], [bar, h, 0.06], C.cream), box([x, y, zw + t + 0.02], [w, bar, 0.06], C.cream));
   c.push(box([x, y - h / 2 - frame - sill / 2 + 0.02, zw + t / 2 + 0.06], [w + 2 * frame + 0.2, sill, 0.22], C.cream));
-  if (flowers) { // a box of flowers under it, painted bright
-    c.push(box([x, y - h / 2 - frame - sill - 0.1, zw + 0.24], [w + 0.1, 0.22, 0.26], C.plankDark));
-    for (let i = 0; i < 5; i++) c.push(box([x - w / 2 + 0.12 + i * (w - 0.24) / 4, y - h / 2 - frame - sill + 0.05, zw + 0.24], [0.16, 0.16, 0.16], i % 2 ? PAL.mustard : PAL.red));
-  }
+  (shutters ?? []).forEach((col, i) => {
+    if (col) c.push(...shutter(x + (i ? 1 : -1) * (w / 2 + frame + 0.2), y, zw, h + 2 * frame, col));
+  });
+  if (flowers) c.push(...flowerBox(x, y - h / 2 - frame - sill - 0.1, zw + 0.24, w + 0.1, bloom));
   return c;
 }
+// A shutter: a board of painted wood (0.36 wide) on the wall with two cross-battens, its middle at (x, y).
+function shutter(x, y, zw, h, color) {
+  return [wood(box([x, y, zw + 0.045], [0.36, h, 0.09], color)), box([x, y + h * 0.28, zw + 0.1], [0.36, 0.08, 0.06], shade(color, -0.18)), box([x, y - h * 0.28, zw + 0.1], [0.36, 0.08, 0.06], shade(color, -0.18))];
+}
+// A window box (a trough of dark boards, a mass of leaves, a row of round blooms), its middle at (x, y, z), `w` wide.
+function flowerBox(x, y, z, w, bloom) {
+  const c = [wood(box([x, y, z], [w, 0.22, 0.28], C.plankDark)), bevelled([x, y + 0.15, z], [w - 0.06, 0.14, 0.22], PAL.leaf, { bevel: 0.05, segments: 2 })];
+  const n = Math.max(4, Math.round(w / 0.26));
+  for (let i = 0; i < n; i++) c.push(bevelled([x - (w - 0.3) / 2 + (i * (w - 0.3)) / (n - 1), y + 0.26 + (i % 2) * 0.03, z + (i % 3 - 1) * 0.03], [0.16, 0.14, 0.16], bloom[i % bloom.length], { bevel: 0.055, segments: 2 }));
+  return c;
+}
+// A wall lantern at (x, y) on a wall at z = zw: a bracket, a glowing glass (warm even by day: it is lit), a cap.
+function lantern(x, y, zw) {
+  return [
+    box([x, y + 0.2, zw + 0.1], [0.1, 0.1, 0.2], C.iron), // the arm
+    box([x, y + 0.2, zw + 0.24], [0.1, 0.1, 0.1], C.iron),
+    box([x, y, zw + 0.26], [0.2, 0.3, 0.2], PAL.lit, { emissive: 0.85 }),
+    box([x, y + 0.2, zw + 0.26], [0.28, 0.08, 0.28], C.iron),
+    box([x, y - 0.17, zw + 0.26], [0.26, 0.06, 0.26], C.iron),
+  ];
+}
+// A flowerpot on the ground (y0), its middle at (x, z): a round clay pot with a rim, a mass of leaves and three blooms.
+function pot(x, y0, z, { r = 0.2, h = 0.36, bloom = PAL.red, clay = shade(PAL.roofRed, 0.05) } = {}) {
+  const c = [cyl([x, y0 + h / 2, z], r, h, clay, { segments: 10 }), cyl([x, y0 + h - 0.04, z], r + 0.04, 0.09, shade(clay, -0.1), { segments: 10 }), bevelled([x, y0 + h + 0.12, z], [r * 2.2, 0.26, r * 2.2], PAL.leaf, { bevel: 0.09, segments: 2 })];
+  for (const [dx, dz, dy] of [[-0.07, 0.04, 0.3], [0.08, -0.05, 0.34], [0.02, 0.1, 0.27]]) c.push(bevelled([x + dx, y0 + h + dy, z + dz], [0.13, 0.12, 0.13], bloom, { bevel: 0.045, segments: 2 }));
+  return c;
+}
+// A doormat, flat on a deck at (x, z), 1.1 x 0.6 m: mustard with a darker border.
+const doormat = (x, y, z, color = PAL.mustard) => [box([x, y + 0.02, z], [1.1, 0.04, 0.6], shade(color, -0.2)), box([x, y + 0.035, z], [0.92, 0.04, 0.44], color)];
 // A door in a front wall: its frame (cream, in the wall) and its leaf (the colour; `leaf` cubes are relative to the leaf's bottom middle, so
 // a door that opens can be a part of its own).
 function doorAt(x, base, zw, color) {
@@ -119,7 +158,7 @@ const doorLeaf = (color, [ox, oy, oz] = [0, 0, 0]) => {
 };
 // A porch across the front: a deck, a lean-to roof on posts, a fascia; `posts` are x positions; `top` is the roof's top at the wall.
 function porch(W, D, base, top, { w, depth, posts, x = 0 }) {
-  const c = [box([x, base - 0.06, D / 2 + depth / 2], [w, 0.12, depth], C.woodLight)];
+  const c = [wood(box([x, base - 0.06, D / 2 + depth / 2], [w, 0.12, depth], C.woodLight))];
   const zf = D / 2 + depth, yFront = top - HOUSE.roof.drop;
   c.push(leanRoof(x - w / 2 + 0.2, x + w / 2 - 0.2, D / 2, zf, top, {}));
   const under = yFront - HOUSE.roof.thick; // (the front edge's underside)
@@ -130,7 +169,7 @@ function porch(W, D, base, top, { w, depth, posts, x = 0 }) {
 // A chimney: a stone stack with a cap (stoneDark) and a dark flue.
 function chimney(x, z, w, d, y0, y1) {
   const t = HOUSE.trim + 0.04;
-  return [box([x, (y0 + y1) / 2, z], [w, y1 - y0, d], C.stone), box([x, y1 + t / 2, z], [w + 0.2, t, d + 0.2], C.stoneDark), hardBox([x, y1 + t + 0.005, z], [w - 0.3, 0.01, d - 0.3], C.dark)];
+  return [stoneOf(box([x, (y0 + y1) / 2, z], [w, y1 - y0, d], C.stone)), stoneOf(box([x, y1 + t / 2, z], [w + 0.2, t, d + 0.2], C.stoneDark)), hardBox([x, y1 + t + 0.005, z], [w - 0.3, 0.01, d - 0.3], C.dark)];
 }
 // Every other solid of a model made toy-like when it is written: round shapes shaded smooth; closed meshes without a stack of their
 // own get a soft bevel (a roof, a gable, a sign board).
@@ -158,30 +197,44 @@ const def = (name, fn) => (made[name] = fn);
 // ---- the post office, outside ------------------------------------------------------------------------------------------------------------
 // 9 m wide, 6.4 m deep, its porch along the front (+z) up three steps; the door in the middle; a faded sign over the porch roof.
 def("post_office", () => {
-  const W = 9, D = 6.4, H = 3.2, base = 0.45;
-  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.plank, C.plankDark)];
+  const W = 9, D = 6.4, H = 3.2, base = 0.45, SHUT = shade(PAL.teal, -0.25);
+  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.plank)];
   const roof = gableRoof(W, D, base + H, C.plank, C.roof, "x");
   c.push(...roof.cubes);
   // the porch: a deck, steps, posts, a lean-to roof
   c.push(...porch(W, D, base, base + 2.9, { w: W - 1.2, depth: 2.2, posts: [-3.6, -1.2, 1.2, 3.6] }));
-  for (let i = 0; i < 3; i++) c.push(box([0, base - 0.15 * (i + 1), D / 2 + 2.3 + i * 0.3], [2.2, 0.15, 0.3], shade(C.woodLight, -0.1 * i)));
+  for (let i = 0; i < 3; i++) c.push(wood(box([0, base - 0.15 * (i + 1), D / 2 + 2.3 + i * 0.3], [2.2, 0.15, 0.3], shade(C.woodLight, -0.1 * i))));
   // a rail either side of the steps
   for (const s of [1, -1]) {
-    c.push(box([s * 2.5, base + 0.5, D / 2 + 2.05], [2.2, HOUSE.rail, HOUSE.rail], C.cream));
+    c.push(wood(box([s * 2.5, base + 0.5, D / 2 + 2.05], [2.2, HOUSE.rail, HOUSE.rail], C.cream)));
     for (const x of [1.6, 2.6, 3.5]) c.push(box([s * x, base + 0.25, D / 2 + 2.05], [HOUSE.trim, 0.5, HOUSE.trim], C.cream));
   }
-  // windows either side of the door, with a box of flowers under one
-  c.push(...windowAt(2.6, base + 1.65, D / 2), ...windowAt(-2.6, base + 1.65, D / 2, { flowers: true }));
-  // the door frame (the door is its own part) and a lamp over it
+  // windows either side of the door: green shutters and a box of flowers under each
+  c.push(...windowAt(2.6, base + 1.65, D / 2, { flowers: true, bloom: [PAL.rose, PAL.mustard, PAL.white], shutters: [SHUT, SHUT] }));
+  c.push(...windowAt(-2.6, base + 1.65, D / 2, { flowers: true, bloom: [PAL.red, PAL.mustard, PAL.lilac], shutters: [SHUT, SHUT] }));
+  // the door frame (the door is its own part), a lantern each side of it, a mat and a pot of flowers each side
   const door = doorAt(0, base, D / 2, PAL.teal);
-  c.push(door.frame, box([0, base + 2.55, D / 2 + 0.15], [HOUSE.trim, 0.2, HOUSE.trim], C.iron));
+  c.push(door.frame, ...lantern(-1.0, base + 2.0, D / 2), ...lantern(1.0, base + 2.0, D / 2));
+  c.push(...doormat(0, base, D / 2 + 0.7), ...pot(-1.0, base, D / 2 + 0.5, { bloom: PAL.rose }), ...pot(1.0, base, D / 2 + 0.5, { bloom: PAL.mustard, r: 0.22, h: 0.4 }));
   // the sign board over the porch roof (its words are drawn by the game)
-  c.push(box([0, base + 3.35, D / 2 + 0.08], [4.2, 0.85, 0.12], shade(PAL.slate, -0.3)));
-  c.push(box([0, base + 3.35, D / 2 + 0.03], [4.4, 1.0, 0.08], C.cream));
+  // (it stands on the porch roof's front edge, on two short posts, clear above the roof: when it was on the wall the porch roof hid the
+  // lower line of words and the main roof's slope buried the rest; the game paints the words on its front, scenes/valley.lua)
+  const zs = D / 2 + 2.1; // the board's middle, in front of the wall
+  c.push(wood(box([0, base + 3.2, zs], [4.0, 0.9, 0.1], shade(PAL.slate, -0.3))));
+  c.push(box([0, base + 3.2, zs - 0.04], [4.24, 1.14, 0.08], C.cream));
+  for (const x of [-1.6, 1.6]) c.push(box([x, base + 2.7, zs - 0.04], [0.14, 0.7, 0.14], C.cream));
   // the chimney, stone, at the back right, up through the roof (its smoke starts at 6.5 m: scenes/valley.lua)
   c.push(...chimney(2.6, -1.4, 0.75, 0.75, roof.at(1.4) - 0.4, 6.34));
+  // the side door in the left end wall (-x), two stone steps down to the yard: the parcels' side, crates stacked by it (scenes: tools/scene.mjs)
+  {
+    const x = -W / 2, z = 0.6, t = HOUSE.trim;
+    c.push(box([x - t / 2 + 0.02, base + (HOUSE.door.h + HOUSE.door.frame) / 2, z], [t, HOUSE.door.h + HOUSE.door.frame, HOUSE.door.w + 2 * HOUSE.door.frame], C.cream));
+    c.push(box([x - 0.06, base + HOUSE.door.h / 2, z], [0.1, HOUSE.door.h, HOUSE.door.w], PAL.woodDark), wood(box([x - 0.06, base + HOUSE.door.h / 2, z], [0.12, HOUSE.door.h - 0.2, HOUSE.door.w - 0.2], shade(PAL.woodDark, 0.08))));
+    c.push(box([x - 0.13, base + HOUSE.door.h / 2 - 0.05, z - HOUSE.door.w / 2 + 0.16], [0.07, 0.15, 0.09], PAL.mustard));
+    c.push(stoneOf(box([x - 0.4, base - 0.2, z], [0.6, 0.4, 1.7], C.stone)), stoneOf(box([x - 0.95, base - 0.33, z], [0.5, 0.24, 1.7], C.stoneDark)));
+  }
   // a bench on the porch, a post box at the steps' foot
-  c.push(box([2.9, base + 0.42, D / 2 + 0.4], [1.5, HOUSE.rail, 0.42], C.wood));
+  c.push(wood(box([2.9, base + 0.42, D / 2 + 0.4], [1.5, HOUSE.rail, 0.42], C.wood)));
   for (const s of [2.25, 3.55]) c.push(box([s, base + 0.2, D / 2 + 0.4], [HOUSE.rail, 0.4, 0.36], C.plankDark));
   c.push(bevelled([1.75, 0.6, D / 2 + 3.6], [0.5, 1.2, 0.5], C.red, { bevel: 0.12, segments: 3 }));
   c.push(box([1.75, 1.25, D / 2 + 3.6], [0.6, 0.12, 0.6], shade(C.red, -0.25)));
@@ -222,15 +275,15 @@ def("office_room", () => {
     wall(-X - 0.1, wm, 0.2, ww, H - WINDOW.y1, WINDOW.y1 + (H - WINDOW.y1) / 2);
     c.push(box([-X - 0.06, wy, wm], [0.08, wh + 0.04, ww + 0.1], C.cream));
     c.push(box([-X - 0.12, wy, wm], [0.04, wh, ww - 0.1], shade(PAL.lit, 0.4), { emissive: 0.9 })); // the bright day outside
-    c.push(box([-X + 0.02, wy, wm], [0.04, wh, 0.06], C.cream));
-    c.push(box([-X + 0.02, wy, wm], [0.04, 0.06, ww - 0.1], C.cream));
+    c.push(box([-X + 0.03, wy, wm], [0.06, wh, 0.06], C.cream));
+    c.push(box([-X + 0.03, wy, wm], [0.06, 0.06, ww - 0.1], C.cream));
     c.push(box([-X + 0.1, WINDOW.y0 - 0.02, wm], [0.22, 0.06, ww + 0.1], C.cream)); // the sill
   }
   // a wainscot and a picture rail round the walls (the rail above the wall things' top, 2.5 m)
   c.push(box([0, 0.5, -Z + 0.01], [2 * X, 1.0, 0.02], shade(C.wall, -0.18)));
-  c.push(box([0, 2.58, -Z + 0.01], [2 * X, 0.06, 0.04], shade(C.wall, -0.3)));
+  c.push(box([0, 2.58, -Z + 0.03], [2 * X, 0.08, 0.06], shade(C.wall, -0.3)));
   c.push(box([X - 0.01, 0.5, 0], [0.02, 1.0, 2 * Z], shade(C.wall, -0.18)));
-  c.push(box([X - 0.01, 2.58, 0], [0.02, 0.06, 2 * Z + 0.02], shade(C.wall, -0.3)));
+  c.push(box([X - 0.03, 2.58, 0], [0.06, 0.08, 2 * Z + 0.02], shade(C.wall, -0.3)));
   // the walls' cut tops (no ceiling: the room is seen from above)
   for (const [cx, cz, w, d] of [[0, -Z - 0.1, 2 * X + 0.42, 0.22], [X + 0.1, 0, 0.22, 2 * Z + 0.4], [-X - 0.1, 0, 0.22, 2 * Z + 0.4]]) c.push(box([cx, H + 0.015, cz], [w, 0.03, d], C.plankDark));
   // a corner of cobweb up in the back right
@@ -249,7 +302,7 @@ def("office_room", () => {
 def("package_counter", () => {
   const c = [], w = 14 * GRID.cell, d = GRID.cell, top = TOP;
   c.push(box([0, 0.36, 0], [w - 0.04, 0.72, d - 0.04], C.wood));
-  c.push(box([0, 0.04, d / 2 + 0.005], [w - 0.1, 0.08, 0.04], C.plankDark)); // a kick board
+  c.push(box([0, 0.04, d / 2 + 0.005], [w - 0.1, 0.08, 0.06], C.plankDark)); // a kick board
   c.push(box([0, top - 0.04, 0], [w, 0.08, d], shade(C.woodLight, -0.12))); // the top (darker than the tiles)
   // the tiles: raised, bevelled plates (1.6 cm, a bevel on each edge that catches the light) with the darker top between them
   for (let i = 1; i <= TILES; i++) c.push(bevelled([tileX(i), top + 0.008, 0], [TILE - 0.08, 0.016, TILE - 0.08], shade(C.woodLight, 0.2), { bevel: 0.006 }));
@@ -283,8 +336,8 @@ def("mail_sack", () => {
 def("pigeonholes", () => {
   const c = [], w = 2.0, h = 1.0, cols = 6, rows = 3, cw = (w - 0.08) / cols, ch = (h - 0.08) / rows, x0 = -w / 2 + 0.04, y0 = 0.04;
   c.push(box([0, h / 2, 0.2], [w, h, 0.36], C.plankDark));
-  for (let i = 0; i <= cols; i++) c.push(box([x0 + i * cw, h / 2, 0.38], [0.03, rows * ch, 0.04], C.wood));
-  for (let j = 0; j <= rows; j++) c.push(box([0, y0 + j * ch, 0.38], [cols * cw, 0.03, 0.04], C.wood));
+  for (let i = 0; i <= cols; i++) c.push(box([x0 + i * cw, h / 2, 0.38], [0.05, rows * ch, 0.06], C.wood));
+  for (let j = 0; j <= rows; j++) c.push(box([0, y0 + j * ch, 0.38], [cols * cw, 0.05, 0.06], C.wood));
   const R = rng(4);
   for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) if (R() < 0.12) c.push(box([x0 + (i + 0.5) * cw, y0 + j * ch + 0.08, 0.22], [0.24, 0.12, 0.2], R() < 0.5 ? PAL.paper : shade(PAL.paper, -0.12), { rot: [0, 0, R() * 20 - 10] }));
   c.push(box([0, h + 0.02, 0.22], [w, 0.04, 0.3], C.dust)); // dust on the top
@@ -361,21 +414,35 @@ def("letter", () => one([box([0, 0.005, 0], [0.24, 0.01, 0.16], PAL.paper), box(
 // ---- Hazel's cabin and workshop (No. 3) ------------------------------------------------------------------------------------------------
 def("cabin_hazel", () => {
   const W = 7.5, D = 6, H = 2.9, base = 0.35;
-  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.log, C.logDark)];
+  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.log)];
   const roof = gableRoof(W, D, base + H, C.log, C.roof, "x");
   c.push(...roof.cubes);
-  // the door (front, left of middle), two windows with warm light, a porch roof on two posts
+  // the door (front, left of middle), two windows with warm light and a box of herbs and flowers each, a porch roof on two posts
   const door = doorAt(-1.0, base, D / 2, PAL.woodDark);
   c.push(door.frame, ...door.leaf);
-  c.push(...windowAt(1.45, base + 1.6, D / 2, { lit: true }), ...windowAt(2.9, base + 1.6, D / 2, { lit: true }));
+  c.push(...windowAt(1.45, base + 1.6, D / 2, { lit: true, flowers: true, bloom: [PAL.white, PAL.mustard] }), ...windowAt(2.9, base + 1.6, D / 2, { lit: true, flowers: true, bloom: [PAL.white, PAL.rose] }));
   c.push(...porch(W, D, base, base + H - 0.25, { w: W - 1, depth: 2.1, posts: [-3.2, 3.2] }));
+  // a lantern and a mat at the door, a pot of herbs, her tools hung tidy on the wall beside it
+  c.push(...lantern(-2.05, base + 1.9, D / 2), ...doormat(-1.0, base, D / 2 + 0.7, PAL.moss), ...pot(0.2, base, D / 2 + 0.45, { bloom: PAL.white, clay: shade(PAL.woodDark, 0.1) }));
+  c.push(...toolRack(-2.95, base + 0.55, D / 2));
   // a stone chimney on the left end, from the ground up through the roof (its smoke starts at 5.8 m: scenes/valley.lua)
-  c.push(box([W / 2 + 0.35, 0.2, -0.8], [1.1, 0.4, 1.2], C.stoneDark), ...chimney(W / 2 + 0.35, -0.8, 0.9, 1.0, 0.2, 5.4));
+  c.push(stoneOf(box([W / 2 + 0.35, 0.2, -0.8], [1.1, 0.4, 1.2], C.stoneDark)), ...chimney(W / 2 + 0.35, -0.8, 0.9, 1.0, 0.2, 5.4));
   // a rocking chair on the porch
-  c.push(box([2.2, base + 0.45, D / 2 + 1.0], [0.55, HOUSE.rail, 0.5], C.wood));
-  c.push(box([2.2, base + 0.85, D / 2 + 0.78], [0.55, 0.8, HOUSE.rail], C.wood));
+  c.push(wood(box([2.2, base + 0.45, D / 2 + 1.0], [0.55, HOUSE.rail, 0.5], C.wood)));
+  c.push(wood(box([2.2, base + 0.85, D / 2 + 0.78], [0.55, 0.8, HOUSE.rail], C.wood)));
+  for (const sx of [-1, 1]) c.push(box([2.2 + sx * 0.25, base + 0.1, D / 2 + 1.0], [HOUSE.rail, 0.18, 0.7], C.plankDark)); // (its two rockers)
   return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: W / 2 + 0.3, hl: D / 2 + 0.3, turn: 0 }, { x: W / 2 + 0.35, z: -0.8, hw: 0.5, hl: 0.55, turn: 0 }] });
 });
+// Hazel's tools on the wall: a rail of boards, an axe, a spade and a saw hung from it (x: the middle, y: the bottom of the rack).
+function toolRack(x, y, zw) {
+  const m = HOUSE.min;
+  return [
+    wood(box([x, y + 1.05, zw + 0.06], [1.1, 0.14, 0.1], C.woodLight)),
+    box([x - 0.34, y + 0.58, zw + 0.14], [0.08, 0.8, 0.08], C.wood), box([x - 0.34, y + 0.95, zw + 0.14], [0.24, 0.17, 0.08], PAL.metal), // the axe
+    box([x, y + 0.45, zw + 0.14], [m.stick, 1.1, m.stick], C.woodLight), box([x, y - 0.05, zw + 0.14], [0.3, 0.3, 0.07], PAL.metal), // the spade
+    box([x + 0.36, y + 0.8, zw + 0.14], [0.14, 0.5, 0.07], PAL.metal), box([x + 0.36, y + 1.0, zw + 0.14], [0.12, 0.12, 0.09], C.wood), // the saw
+  ];
+}
 def("workshop", () => {
   // an open shed on four posts, a lean-to roof, a back wall of boards, the bench along it
   const c = [], z0 = -1.4, z1 = 1.4, x1 = 2;
@@ -386,75 +453,95 @@ def("workshop", () => {
     c.push(box([x, 0.09, z], [0.4, 0.18, 0.4], C.stoneDark)); // (each post on a little stone footing, as a house on its plinth)
     c.push(box([x, 0.18 + (under(z) - 0.18) / 2, z], [HOUSE.post, under(z) - 0.18, HOUSE.post], C.log));
   }
-  c.push(box([0, 1.35, -1.52], [4.1, 2.6, 0.12], C.plank));
-  for (let y = 0.45; y < 2.6; y += HOUSE.board) c.push(hardBox([0, y, -1.455], [3.8, HOUSE.boardLine, 0.02], C.plankDark));
-  c.push(box([0, 0.85, -1.05], [3.2, HOUSE.rail, 0.7], C.woodLight)); // the bench
+  c.push(wood(box([0, 1.35, -1.52], [4.1, 2.6, 0.12], C.plank)));
+  c.push(wood(box([0, 0.85, -1.05], [3.2, HOUSE.rail, 0.7], C.woodLight))); // the bench
   for (const x of [-1.4, 1.4]) c.push(box([x, 0.4, -1.05], [HOUSE.rail, 0.8, 0.6], C.plankDark));
   // tools on the back wall: a saw, a mallet, a row of hooks
   c.push(box([-0.8, 1.6, -1.42], [0.8, 0.22, 0.04], PAL.metal));
-  c.push(box([-0.35, 1.6, -1.42], [0.18, 0.12, 0.06], C.wood));
-  c.push(box([0.6, 1.55, -1.42], [0.06, 0.5, 0.06], C.wood));
+  c.push(box([-0.35, 1.6, -1.42], [0.18, 0.14, 0.08], C.wood));
+  c.push(box([0.6, 1.55, -1.42], [0.08, 0.5, 0.08], C.wood));
   c.push(box([0.6, 1.8, -1.42], [0.2, 0.12, 0.1], C.plankDark));
   c.push(box([1.3, 1.5, -1.42], [0.3, 0.4, 0.04], shade(PAL.metal, -0.2)));
   return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: -1.2, hw: 2.2, hl: 0.4, turn: 0 }], colliders: [{ x: -2, z: 1.4, r: 0.15 }, { x: 2, z: 1.4, r: 0.15 }] });
 });
 def("sawhorse", () => {
-  const c = [box([0, 0.75, 0], [1.2, 0.1, 0.12], C.woodLight)];
-  for (const sx of [1, -1]) for (const sz of [1, -1]) c.push(box([sx * 0.45, 0.37, sz * 0.14], [0.08, 0.8, 0.08], C.wood, { rot: [sz * 14, 0, 0] }));
+  const c = [wood(box([0, 0.75, 0], [1.2, 0.1, 0.12], C.woodLight))];
+  for (const sx of [1, -1]) for (const sz of [1, -1]) c.push(wood(box([sx * 0.45, 0.37, sz * 0.14], [0.1, 0.8, 0.1], C.wood, { rot: [sz * 14, 0, 0] })));
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.5 }] });
 });
 def("planks", () => {
   const c = [], R = rng(9);
-  for (let j = 0; j < 6; j++) for (let i = 0; i < 4; i++) c.push(box([(i - 1.5) * 0.24 + (R() - 0.5) * 0.04, 0.1 + j * 0.07, (R() - 0.5) * 0.2], [0.22, 0.06, 2.4 + R() * 0.3], shade(C.woodLight, (R() - 0.5) * 0.25)));
-  for (const z of [-0.9, 0.9]) c.push(box([0, 0.04, z], [1.1, 0.08, 0.1], C.plankDark));
+  for (let j = 0; j < 6; j++) for (let i = 0; i < 4; i++) c.push(wood(box([(i - 1.5) * 0.24 + (R() - 0.5) * 0.04, 0.1 + j * 0.07, (R() - 0.5) * 0.2], [0.22, 0.06, 2.4 + R() * 0.3], shade(C.woodLight, (R() - 0.5) * 0.25))));
+  for (const z of [-0.9, 0.9]) c.push(box([0, 0.05, z], [1.1, 0.1, 0.1], C.plankDark));
   return one(c, { boxes: [{ x: 0, z: 0, hw: 0.55, hl: 1.25, turn: 0 }] });
 });
-def("plank_held", () => one([box([0, 0, 0], [0.12, 0.05, 1.3], C.woodLight)]));
+def("plank_held", () => one([box([0, 0, 0], [0.2, 0.06, 1.2], C.woodLight)]));
 
 // ---- Pip's cabin (No. 7) and the mast -------------------------------------------------------------------------------------------------
 def("cabin_pip", () => {
   const W = 6, D = 5, H = 2.7, base = 0.4;
-  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.paint, shade(C.paint, -0.18))];
+  const c = [plinth(W, D, base), ...walls(W, D, base, H, C.paint)];
   // (the ridge runs front to back: the front is a gable, its triangle of wall above the porch roof)
   const roof = gableRoof(W, D, base + H, C.paint, C.roofRed, "z");
   c.push(...roof.cubes);
   const door = doorAt(0.9, base, D / 2, PAL.mustard); // a yellow door
   c.push(door.frame, ...door.leaf);
-  c.push(...windowAt(-1.3, base + 1.6, D / 2, { lit: true }));
+  // one window, its shutters not a pair (a teal one, a mustard one), a box of jumbled flowers under it
+  c.push(...windowAt(-1.3, base + 1.6, D / 2, { lit: true, flowers: true, bloom: [PAL.lilac, PAL.mustard, PAL.rose, PAL.white], shutters: [PAL.teal, PAL.mustard] }));
   c.push(...porch(W, D, base, base + H - 0.25, { w: W - 0.6, depth: 1.55, posts: [-2.5, 2.5] }));
   // the radio: a box on the porch with a dial and a speaker horn on the wall
-  c.push(box([-2.0, base + 0.5, D / 2 + 0.55], [0.9, 0.7, 0.5], PAL.woodDark));
+  c.push(wood(box([-2.0, base + 0.5, D / 2 + 0.55], [0.9, 0.7, 0.5], PAL.woodDark)));
   c.push(cyl([-2.2, base + 0.6, D / 2 + 0.82], 0.12, 0.04, PAL.mustard, { axis: "z", segments: 12 }));
   c.push(cyl([-1.8, base + 0.6, D / 2 + 0.82], 0.08, 0.04, PAL.ink, { axis: "z", segments: 10 }));
   c.push(cone([2.6, base + 2.0, D / 2 + 0.2], 0.22, 0.4, PAL.metal));
+  // a lantern, a mat, a pot of flowers on each side of the door
+  c.push(...lantern(2.05, base + 1.9, D / 2), ...doormat(0.9, base, D / 2 + 0.55, PAL.teal), ...pot(2.1, base, D / 2 + 0.45, { bloom: PAL.lilac, clay: shade(PAL.mustard, -0.1) }), ...pot(-0.1, base, D / 2 + 0.45, { bloom: PAL.red, r: 0.17, h: 0.3 }));
   // a bunting of little flags along the porch's front beam
   const yb = base + 2.45 - HOUSE.roof.drop - HOUSE.roof.thick - 0.2, zb = D / 2 + 1.55 - 0.15 + 0.1;
   for (let i = 0; i < 9; i++) c.push(mesh([[-2.4 + i * 0.6, yb, zb], [-2.1 + i * 0.6, yb, zb], [-2.25 + i * 0.6, yb - 0.27, zb], [-2.25 + i * 0.6, yb, zb + 0.02]], [[0, 1, 2], [0, 2, 3], [1, 3, 2], [0, 3, 1]], [PAL.red, PAL.mustard, PAL.sky, PAL.leaf][i % 4]));
   // the chimney, up through the roof beside the ridge (its smoke starts at 4.9 m: scenes/valley.lua)
   c.push(...chimney(2.4, -1.0, 0.5, 0.5, roof.at(2.4) - 0.4, 4.8));
+  // his aerial on the ridge: a stout pole with three arms and two struts, and a thick cable down the corner to the radio
+  {
+    const y0 = roof.at(0) - 0.04, z = -0.6;
+    c.push(tube([[0, y0, z], [0, y0 + 1.9, z]], 0.07, PAL.metal, { segments: 6 }));
+    for (const [dy, len] of [[1.0, 1.4], [1.45, 1.0], [1.8, 0.7]]) c.push(box([0, y0 + dy, z], [len, 0.1, 0.1], PAL.metal), box([0, y0 + dy, z], [0.1, 0.1, 0.22], PAL.metal));
+    for (const s of [-1, 1]) c.push(tube([[0, y0 + 0.5, z], [s * 0.7, y0 + 0.02, z]], 0.055, shade(PAL.metal, -0.15), { segments: 5 }));
+    c.push(box([-W / 2 + 0.2, base + H / 2, D / 2 + 0.08], [0.1, H, 0.1], C.iron)); // (a cable in a pipe down the corner)
+    c.push(box([-W / 2 + 0.2, base + H, D / 2 - 0.4], [0.1, 0.1, 0.9], C.iron));
+  }
   return model([part("body", [0, 0, 0], c)], { boxes: [{ x: 0, z: 0, hw: W / 2 + 0.2, hl: D / 2 + 0.2, turn: 0 }] });
 });
 def("mast", () => {
-  // a home-made lattice mast: three legs, rungs, a crosspiece and a little dish at the top; guy wires are drawn by the game
+  // a home-made lattice mast: three stout legs, rungs, a crosspiece and a little dish at the top, held by three timber braces to stone
+  // pads (the owner's seventh play: no sticks; the thin guy wires the game drew are gone)
   const c = [], h = 15, legs = [[0.32, 0], [-0.16, 0.28], [-0.16, -0.28]];
-  for (const [x, z] of legs) c.push(tube([[x, 0, z], [x * 0.4, h, z * 0.4]], 0.065, PAL.metal, { segments: 5 }));
+  for (const [x, z] of legs) c.push(tube([[x, 0, z], [x * 0.4, h, z * 0.4]], 0.1, PAL.metal, { segments: 6 }));
   // (painted bands, red and white, so it reads from across the valley)
-  for (let y = 1.5, k = 0; y < h; y += 1.5, k++) c.push(box([0, y, 0], [0.62 * (1 - (y / h) * 0.6), 0.5, 0.62 * (1 - (y / h) * 0.6)], k % 2 ? PAL.white : PAL.red));
-  for (let y = 0.6; y < h; y += 0.75) {
+  for (let y = 1.5, k = 0; y < h; y += 1.5, k++) c.push(box([0, y, 0], [0.7 * (1 - (y / h) * 0.6), 0.5, 0.7 * (1 - (y / h) * 0.6)], k % 2 ? PAL.white : PAL.red));
+  for (let y = 0.6; y < h; y += 1.2) {
     const k = 1 - (y / h) * 0.6;
     for (let i = 0; i < 3; i++) {
       const [ax, az] = legs[i], [bx, bz] = legs[(i + 1) % 3];
-      c.push(tube([[ax * k, y, az * k], [bx * k, y + 0.35, bz * k]], 0.035, shade(PAL.metal, -0.1), { segments: 3 }));
+      c.push(tube([[ax * k, y, az * k], [bx * k, y + 0.6, bz * k]], 0.055, shade(PAL.metal, -0.1), { segments: 4 }));
     }
   }
-  c.push(box([0, h + 0.1, 0], [1.6, 0.06, 0.06], PAL.metal));
-  c.push(box([0, h + 0.1, 0], [0.06, 0.06, 1.2], PAL.metal));
-  c.push(tube([[0, h, 0], [0, h + 1.4, 0]], 0.03, PAL.metal));
-  c.push(cyl([0, h + 1.45, 0], 0.09, 0.12, C.red, { emissive: 0.6 }));
+  c.push(box([0, h + 0.1, 0], [1.6, 0.12, 0.12], PAL.metal));
+  c.push(box([0, h + 0.1, 0], [0.12, 0.12, 1.2], PAL.metal));
+  c.push(tube([[0, h, 0], [0, h + 1.4, 0]], 0.07, PAL.metal));
+  c.push(cyl([0, h + 1.45, 0], 0.12, 0.16, C.red, { emissive: 0.6 }));
   c.push(cone([0.5, h - 1.2, 0.3], 0.35, 0.25, shade(PAL.metal, 0.2)));
   // its footing, a house's plinth in small: a rounded stone block, a smaller stone one on it
-  c.push(box([0, 0.12, 0], [1.4, 0.24, 1.4], C.stoneDark), box([0, 0.3, 0], [0.95, 0.2, 0.95], C.stone));
-  return one(c, { colliders: [{ x: 0, z: 0, r: 0.6 }] });
+  c.push(stoneOf(box([0, 0.12, 0], [1.4, 0.24, 1.4], C.stoneDark)), stoneOf(box([0, 0.3, 0], [0.95, 0.2, 0.95], C.stone)));
+  // three braces of timber from the legs at 5.5 m out to stone pads on the ground
+  const colliders = [{ x: 0, z: 0, r: 0.6 }];
+  for (const [x, z] of legs) {
+    const k = 1 - (5.5 / h) * 0.6, d = Math.hypot(x, z), ux = x / d, uz = z / d, fx = ux * 3.6, fz = uz * 3.6;
+    c.push(tube([[x * k, 5.5, z * k], [fx, 0.3, fz]], 0.1, C.log, { segments: 6 }));
+    c.push(stoneOf(box([fx, 0.14, fz], [0.7, 0.28, 0.7], C.stoneDark)));
+    colliders.push({ x: fx, z: fz, r: 0.4 });
+  }
+  return one(c, { colliders });
 });
 
 // ---- by the roads ---------------------------------------------------------------------------------------------------------------------
@@ -485,18 +572,25 @@ const signArm = (L, h) => () => {
 };
 def("sign_arm", signArm(SIGN.length, SIGN.h));
 def("sign_arm_tall", signArm(SIGN.length, SIGN.tall));
-def("mailbox", () => one([
-  box([0, 0.4, 0], [0.12, 0.8, 0.12], C.sign),
-  bevelled([0, 0.92, 0.05], [0.36, 0.3, 0.55], PAL.teal, { bevel: 0.06 }),
-  box([0.2, 1.0, 0.12], [0.03, 0.25, 0.04], C.red),
-  box([0, 0.9, 0.33], [0.26, 0.2, 0.02], shade(PAL.teal, -0.3)),
-], { colliders: [{ x: 0, z: 0, r: 0.15 }] }));
+// A mailbox on its post: a rounded teal box with a door, a red flag on its right side, DOWN along it or UP (a letter to go).
+const mailbox = (flagUp) => () => {
+  const c = [
+    wood(box([0, 0.45, 0], [0.14, 0.9, 0.14], C.sign)),
+    bevelled([0, 0.98, 0.05], [0.36, 0.3, 0.55], PAL.teal, { bevel: 0.06 }),
+    box([0, 0.96, 0.33], [0.26, 0.2, 0.03], shade(PAL.teal, -0.3)),
+  ];
+  if (flagUp) c.push(box([0.22, 1.05, 0.0], [0.06, 0.42, 0.08], C.red), box([0.22, 1.3, 0.07], [0.06, 0.12, 0.2], C.red)); // (an arm up, its flag turned out)
+  else c.push(box([0.22, 0.98, 0.1], [0.06, 0.1, 0.34], C.red));
+  return one(c, { colliders: [{ x: 0, z: 0, r: 0.15 }] });
+};
+def("mailbox", mailbox(false));
+def("mailbox_up", mailbox(true));
 def("gate_post", () => one([box([0, 0.7, 0], [HOUSE.post + 0.04, 1.4, HOUSE.post + 0.04], C.log), box([0, 1.45, 0], [0.3, HOUSE.trim, 0.3], C.logDark)], { colliders: [{ x: 0, z: 0, r: 0.15 }] }));
 def("fence", () => {
   // a split-rail fence, 3 m along x: capped posts (HOUSE.post) and two rails (HOUSE.rail)
   const c = [];
-  for (const x of [-1.5, 1.5]) c.push(box([x, 0.55, 0], [HOUSE.post, 1.1, HOUSE.post], C.log), box([x, 1.14, 0], [0.24, 0.08, 0.24], C.logDark));
-  for (const y of [0.45, 0.85]) c.push(box([0, y, 0], [3.1, HOUSE.rail, HOUSE.rail], C.wood, { rot: [0, 0, y > 0.6 ? 1.5 : -1] }));
+  for (const x of [-1.5, 1.5]) c.push(wood(box([x, 0.55, 0], [HOUSE.post, 1.1, HOUSE.post], C.log)), box([x, 1.14, 0], [0.24, 0.08, 0.24], C.logDark));
+  for (const y of [0.45, 0.85]) c.push(wood(box([0, y, 0], [3.1, HOUSE.rail, HOUSE.rail], C.wood, { rot: [0, 0, y > 0.6 ? 1.5 : -1] })));
   return one(c, { capsules: [{ ax: -1.5, az: 0, bx: 1.5, bz: 0, r: 0.12 }] });
 });
 def("stone_wall", () => {
@@ -511,23 +605,32 @@ def("stone_wall", () => {
   return one(c, { boxes: [{ x: 0, z: 0, hw: 2.0, hl: 0.3, turn: 0 }] });
 });
 def("bridge", () => {
-  // the wooden bridge over Kettle Creek: 22 m long (along z), 4.6 wide, on two trestles; its deck at y = 0 at both ends. Rails and posts as the
-  // fence's (HOUSE.post, HOUSE.rail), the stone piers capped like a plinth
-  const L = 22, Wd = 4.6, c = [];
-  for (let z = -L / 2 + 0.2; z < L / 2; z += 0.42) c.push(box([0, -0.08, z], [Wd, 0.14, 0.38], shade(C.woodLight, ((z * 13) % 3) / 20 - 0.05)));
+  // the wooden bridge over Kettle Creek: 22 m long (along z) and 5.6 wide, the width of the road's carriageway and lit shoulder
+  // (layout.mjs BRIDGE.width: the road ends square on the deck's end line, scripts/lib/roadnet.mjs gaps), on two trestles; its deck top
+  // 2 cm above y = 0, as the road's is above the ground, at both ends. A sturdy post at each corner on the bank stands 0.3 m past the
+  // deck's end, on a stone footing, and the rails run from end post to end post (rails and posts as the fence's: HOUSE.post, HOUSE.rail).
+  const L = 22, Wd = 5.6, c = [], RX = Wd / 2 + 0.1, PE = L / 2 + 0.3, N = 53, pitch = L / N;
+  for (let i = 0; i < N; i++) c.push(box([0, -0.05, -L / 2 + pitch * (i + 0.5)], [Wd, 0.14, pitch - 0.03], shade(C.woodLight, ((i * 13) % 3) / 20 - 0.05)));
   for (const s of [1, -1]) {
-    c.push(box([s * 1.6, -0.26, 0], [0.3, 0.22, L], C.plankDark));
-    c.push(box([s * (Wd / 2 + 0.05), 0.95, 0], [HOUSE.rail + 0.02, HOUSE.rail + 0.02, L], C.wood));
-    c.push(box([s * (Wd / 2 + 0.05), 0.5, 0], [HOUSE.rail, HOUSE.rail, L], C.wood));
-    for (let z = -L / 2; z <= L / 2 + 0.01; z += 2.2) c.push(box([s * (Wd / 2 + 0.05), 0.55, z], [HOUSE.post, 1.1, HOUSE.post], C.log));
+    c.push(box([s * 1.9, -0.26, 0], [0.3, 0.22, L], C.plankDark));
+    c.push(box([s * RX, 0.95, 0], [HOUSE.rail + 0.02, HOUSE.rail + 0.02, 2 * PE], C.wood));
+    c.push(box([s * RX, 0.5, 0], [HOUSE.rail, HOUSE.rail, 2 * PE], C.wood));
+    for (let z = -L / 2 + 2.2; z < L / 2 - 1; z += 2.2) c.push(box([s * RX, 0.55, z], [HOUSE.post, 1.1, HOUSE.post], C.log));
+    for (const e of [1, -1]) {
+      // the end post: taller and stouter than the rest, capped, on a stone footing in the bank
+      c.push(box([s * RX, 0.7, e * PE], [0.26, 1.7, 0.26], C.log), box([s * RX, 1.58, e * PE], [0.36, 0.1, 0.36], C.logDark));
+      c.push(box([s * RX, 0.0, e * PE], [0.5, 0.4, 0.5], C.stoneDark), box([s * RX, 0.12, e * PE], [0.38, 0.12, 0.38], C.stone));
+    }
   }
+  // the deck's ends rest on a stone sill under the threshold, across the whole width
+  for (const e of [1, -1]) c.push(box([0, -0.34, e * (L / 2 - 0.3)], [Wd + 0.3, 0.5, 0.6], C.stoneDark));
   for (const z of [-3.6, 3.6]) {
-    for (const s of [1, -1]) c.push(box([s * 1.6, -2.4, z], [0.3, 4.3, 0.3], C.plankDark));
-    c.push(box([0, -1.4, z], [3.4, 0.2, 0.24], C.plankDark));
-    c.push(box([0, -2.6, z], [3.6, 0.2, 0.24], C.plankDark, { rot: [0, 0, 24] }));
-    c.push(box([0, -4.5, z], [3.6, 0.5, 0.6], C.stone));
+    for (const s of [1, -1]) c.push(box([s * 1.9, -2.4, z], [0.3, 4.3, 0.3], C.plankDark));
+    c.push(box([0, -1.4, z], [4.1, 0.2, 0.24], C.plankDark));
+    c.push(box([0, -2.6, z], [4.3, 0.2, 0.24], C.plankDark, { rot: [0, 0, 24] }));
+    c.push(box([0, -4.5, z], [4.3, 0.5, 0.6], C.stone));
   }
-  return one(c, { capsules: [{ ax: Wd / 2 + 0.1, az: -L / 2, bx: Wd / 2 + 0.1, bz: L / 2, r: 0.12 }, { ax: -Wd / 2 - 0.1, az: -L / 2, bx: -Wd / 2 - 0.1, bz: L / 2, r: 0.12 }] });
+  return one(c, { capsules: [{ ax: RX + 0.1, az: -PE, bx: RX + 0.1, bz: PE, r: 0.12 }, { ax: -RX - 0.1, az: -PE, bx: -RX - 0.1, bz: PE, r: 0.12 }] });
 });
 def("barrier", () => {
   // a road barrier across Post Road's end (one white rail with red bands wrapped round it, on two capped posts) and a hand-painted board on
@@ -557,14 +660,14 @@ def("old_bridge_far", () => {
   return one(c);
 });
 def("picnic_table", () => {
-  const c = [box([0, 0.75, 0], [1.9, 0.07, 0.8], C.woodLight)];
-  for (const s of [1, -1]) c.push(box([0, 0.45, s * 0.65], [1.9, 0.06, 0.3], C.woodLight));
-  for (const x of [-0.75, 0.75]) for (const s of [1, -1]) c.push(box([x, 0.38, s * 0.3], [0.08, 0.8, 0.08], C.wood, { rot: [s * 28, 0, 0] }));
+  const c = [wood(box([0, 0.75, 0], [1.9, 0.07, 0.8], C.woodLight))];
+  for (const s of [1, -1]) c.push(wood(box([0, 0.45, s * 0.65], [1.9, 0.06, 0.3], C.woodLight)));
+  for (const x of [-0.75, 0.75]) for (const s of [1, -1]) c.push(box([x, 0.38, s * 0.3], [0.1, 0.8, 0.1], C.wood, { rot: [s * 28, 0, 0] }));
   return one(c, { boxes: [{ x: 0, z: 0, hw: 0.95, hl: 0.8, turn: 0 }] });
 });
 def("bench", () => {
-  const c = [box([0, 0.45, 0], [1.6, 0.06, 0.42], C.woodLight), box([0, 0.8, -0.2], [1.6, 0.3, 0.05], C.woodLight, { rot: [-10, 0, 0] })];
-  for (const x of [-0.65, 0.65]) c.push(box([x, 0.22, 0], [0.08, 0.45, 0.38], C.plankDark));
+  const c = [wood(box([0, 0.45, 0], [1.6, 0.06, 0.42], C.woodLight)), wood(box([0, 0.8, -0.2], [1.6, 0.3, 0.05], C.woodLight, { rot: [-10, 0, 0] }))];
+  for (const x of [-0.65, 0.65]) c.push(box([x, 0.22, 0], [0.1, 0.45, 0.38], C.plankDark));
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.5 }] });
 });
 def("woodpile", () => {
@@ -597,6 +700,212 @@ const fern = (seed, n, size, color) => () => {
 def("fern", fern(5, 9, 0.9, PAL.leaf));
 def("fern_big", fern(8, 11, 1.3, shade(PAL.leaf, -0.12)));
 def("fern_light", fern(13, 8, 0.75, PAL.grass));
+
+// ---- lived-in details: what stands round the houses (tools/scene.mjs places them) --------------------------------------------------------
+// The owner's seventh play: "The houses look barren still" and "lived-in details". Each is a toy in the house style (HOUSE.min: nothing
+// thinner than a chunky minimum), made from boxes, rounded things and flat paint, and each tells who lives there: Hazel's are tools and
+// timber, tidy and in rows; Pip's are antennas, cables and a messy charm; the post office's are a bicycle, crates and parcels, flowers.
+const SOIL = shade(PAL.woodDark, -0.25);
+// A low picket fence round a w x d plot (centred), pickets 12 cm wide and 7 cm deep, 70 cm high, a gap in the front (+z) side `gate` wide.
+// `wobble`: how crooked the pickets stand (degrees). Returns the shapes and the capsules a walker is stopped by.
+function picketFence(w, d, { gate = 0.9, wobble = 0, color = C.woodLight, seed = 2 } = {}) {
+  const R = rng(seed), c = [], caps = [];
+  const side = (x0, z0, x1, z1, gap) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(2, Math.round(len / 0.24)), ux = (x1 - x0) / len, uz = (z1 - z0) / len;
+    const ry = (Math.atan2(ux, uz) * 180) / Math.PI + 90;
+    const pieces = gap ? [[0, len / 2 - gap / 2], [len / 2 + gap / 2, len]] : [[0, len]];
+    for (const [a, b] of pieces) {
+      const m = (a + b) / 2, L = b - a;
+      for (const y of [0.22, 0.5]) c.push(wood(box([x0 + ux * m, y, z0 + uz * m], [L, 0.1, 0.1], C.wood, { ry })));
+      caps.push({ ax: x0 + ux * a, az: z0 + uz * a, bx: x0 + ux * b, bz: z0 + uz * b, r: 0.12 });
+    }
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * len;
+      if (gap && t > len / 2 - gap / 2 - 0.02 && t < len / 2 + gap / 2 + 0.02 && i % n !== 0) continue;
+      c.push(wood(box([x0 + ux * t, 0.35 + (R() - 0.5) * wobble * 0.005, z0 + uz * t], [0.12, 0.7 + (R() - 0.5) * wobble * 0.01, 0.07], shade(color, (R() - 0.5) * 0.12), { ry: ry + (R() - 0.5) * wobble * 2, rot: wobble ? [0, ry, (R() - 0.5) * wobble] : undefined })));
+    }
+  };
+  const x = w / 2, z = d / 2;
+  side(-x, -z, x, -z, 0); side(x, -z, x, z, 0); side(x, z, -x, z, gate); side(-x, z, -x, -z, 0);
+  for (const [px, pz] of [[-x, -z], [x, -z], [x, z], [-x, z], [-gate / 2, z], [gate / 2, z]]) c.push(wood(box([px, 0.45, pz], [0.14, 0.9, 0.14], C.log)));
+  return { c, caps };
+}
+// a round cabbage / lettuce: a squashed ball of leaves
+const cabbage = (x, z, r, color) => [bevelled([x, 0.18 + r * 0.45, z], [r * 2, r * 1.5, r * 2], color, { bevel: r * 0.7, segments: 3 }), bevelled([x, 0.18 + r * 0.55, z], [r * 1.3, r * 1.4, r * 1.3], shade(color, 0.12), { bevel: r * 0.5, segments: 3 })];
+// a flower on a stem 12 cm through... no: stems are chunky: 10 cm round, the head a disc of petals with a dark eye (a sunflower) or a ball
+function flower(x, z, h, color, { eye = null, r = 0.17 } = {}) {
+  const c = [tube([[x, 0.16, z], [x, h, z]], 0.05, PAL.leaf, { segments: 5 }), bevelled([x + 0.12, h * 0.5, z], [0.3, 0.1, 0.18], PAL.leaf, { bevel: 0.04 })];
+  if (eye) c.push(cyl([x, h + 0.02, z + 0.03], r, 0.1, color, { axis: "z", segments: 10 }), cyl([x, h + 0.02, z + 0.09], r * 0.55, 0.06, eye, { axis: "z", segments: 8 }));
+  else c.push(bevelled([x, h + 0.05, z], [r * 2, r * 1.6, r * 2], color, { bevel: r * 0.7, segments: 2 }));
+  return c;
+}
+
+// Hazel's vegetable garden: 3.4 x 2.2 m, a low picket fence, a raised bed of soil in four neat rows (cabbages, lettuce, carrots, onions) and a
+// teepee of bean poles; a wooden watering can by the gate is its own model (watering_can).
+def("garden_hazel", () => {
+  const w = 3.4, d = 2.2, fence = picketFence(w, d, { gate: 1.0, color: C.woodLight, seed: 3 }), c = [...fence.c];
+  c.push(wood(box([0, 0.1, -0.05], [w - 0.4, 0.2, d - 0.4], SOIL)));
+  for (let i = 0; i < 4; i++) c.push(...cabbage(-1.2 + i * 0.8, -0.65, 0.27, PAL.pine));
+  for (let i = 0; i < 6; i++) c.push(...cabbage(-1.3 + i * 0.52, -0.1, 0.17, PAL.larch));
+  for (let i = 0; i < 6; i++) c.push(cone([-1.3 + i * 0.52, 0.34, 0.45], 0.14, 0.3, PAL.leaf), bevelled([-1.3 + i * 0.52, 0.22, 0.45], [0.14, 0.1, 0.14], PAL.mustard, { bevel: 0.05 }));
+  for (let i = 0; i < 5; i++) c.push(bevelled([-1.2 + i * 0.6, 0.3, 0.88], [0.2, 0.18, 0.2], shade(PAL.rose, -0.1), { bevel: 0.07, segments: 2 }), cone([-1.2 + i * 0.6, 0.42, 0.88], 0.07, 0.2, PAL.larch));
+  // a teepee of three bean poles, tied (10 cm poles), at the back right
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2, bx = 1.15 + Math.sin(a) * 0.35, bz = -0.55 + Math.cos(a) * 0.35;
+    c.push(tube([[bx, 0.1, bz], [1.15, 1.75, -0.55]], 0.056, C.wood, { segments: 5 }));
+  }
+  c.push(bevelled([1.15, 1.7, -0.55], [0.22, 0.2, 0.22], PAL.leaf, { bevel: 0.08 }));
+  return one(c, { capsules: fence.caps });
+});
+// Pip's flower plot: 3.4 x 2.2 m, a crooked fence, a jumble of flowers of every colour at every height, sunflowers at the back.
+def("garden_pip", () => {
+  const w = 3.4, d = 2.2, R = rng(8), fence = picketFence(w, d, { gate: 1.1, wobble: 9, color: PAL.sky, seed: 6 }), c = [...fence.c];
+  c.push(wood(box([0, 0.08, 0], [w - 0.4, 0.16, d - 0.4], SOIL)));
+  const cols = [PAL.red, PAL.mustard, PAL.rose, PAL.lilac, PAL.white, PAL.sky];
+  for (let i = 0; i < 16; i++) {
+    const x = -1.3 + R() * 2.6, z = -0.8 + R() * 1.5, back = z < -0.35;
+    c.push(...flower(x, z, back ? 1.1 + R() * 0.4 : 0.35 + R() * 0.4, back ? PAL.mustard : cols[i % cols.length], back ? { eye: PAL.woodDark, r: 0.22 } : {}));
+  }
+  return one(c, { capsules: fence.caps });
+});
+// The post office's flower bed: a long raised bed of boards along the porch front, 3.2 x 0.9 m, full of tulips and daisies.
+def("flower_bed", () => {
+  const w = 3.2, d = 0.9, R = rng(5), c = [];
+  c.push(wood(box([0, 0.14, 0], [w, 0.28, d], C.plankDark)), box([0, 0.3, 0], [w - 0.2, 0.06, d - 0.2], SOIL));
+  const cols = [PAL.red, PAL.mustard, PAL.rose, PAL.white, PAL.lilac];
+  for (let i = 0; i < 11; i++) c.push(...flower(-1.35 + i * 0.27, (R() - 0.5) * 0.4, 0.55 + R() * 0.35, cols[i % cols.length], i % 3 === 0 ? { eye: PAL.mustard, r: 0.15 } : {}));
+  return one(c, { boxes: [{ x: 0, z: 0, hw: w / 2, hl: d / 2, turn: 0 }] });
+});
+// Pip's tyre planters: three old tyres of different sizes standing on their sides, soil and flowers in each.
+def("tyre_planters", () => {
+  const c = [], list = [[0, 0, 0.42, 0.3, PAL.red], [0.95, 0.15, 0.34, 0.26, PAL.mustard], [0.45, 0.85, 0.38, 0.3, PAL.lilac]];
+  for (const [x, z, r, h, col] of list) {
+    c.push(cyl([x, h / 2, z], r, h, PAL.tyre, { segments: 14 }), cyl([x, h + 0.01, z], r - 0.11, 0.03, SOIL, { segments: 14 }));
+    for (let i = 0; i < 4; i++) c.push(...flower(x + Math.cos(i * 1.7) * r * 0.4, z + Math.sin(i * 1.7) * r * 0.4, h + 0.2 + i * 0.07, i % 2 ? col : PAL.white));
+  }
+  return one(c, { colliders: list.map(([x, z, r]) => ({ x, z, r: r * 0.95 })) });
+});
+// Hazel's chopping block: a stump with an axe stuck in it, split logs round it.
+def("chopping_block", () => {
+  const c = [cyl([0, 0.26, 0], 0.34, 0.52, C.log, { segments: 12 }), cyl([0, 0.525, 0], 0.3, 0.03, shade(C.woodLight, 0.05), { segments: 12 })];
+  c.push(box([0.06, 0.82, 0.0], [0.09, 0.8, 0.09], C.wood, { rot: [0, 0, -18] }), box([0.06, 0.62, 0.0], [0.24, 0.17, 0.09], PAL.metal, { rot: [0, 0, -18] }));
+  const R = rng(4);
+  for (let i = 0; i < 7; i++) {
+    const a = 0.5 + i * 0.85, r = 0.65 + (i % 3) * 0.14;
+    c.push(wood(cyl([Math.cos(a) * r, 0.1, Math.sin(a) * r], 0.1, 0.46, shade(C.log, (R() - 0.5) * 0.2), { axis: i % 2 ? "x" : "z", segments: 7 })));
+  }
+  c.push(box([0.45, 0.02, -0.5], [0.12, 0.04, 0.2], C.woodLight, { ry: 30 }), box([-0.5, 0.02, 0.4], [0.2, 0.04, 0.12], C.woodLight, { ry: 10 })); // (chips)
+  return one(c, { colliders: [{ x: 0, z: 0, r: 0.42 }] });
+});
+// A leaning ladder: two 10 cm rails, rungs 8 cm; it leans against the wall at its back (-z) at 12 degrees. 3 m.
+def("ladder", () => {
+  const c = [], a = 12, ca = Math.cos((a * Math.PI) / 180), sa = Math.sin((a * Math.PI) / 180), L = 3.0;
+  for (const x of [-0.27, 0.27]) c.push(wood(box([x, (L / 2) * ca, -(L / 2) * sa], [0.1, L, 0.1], C.woodLight, { rot: [-a, 0, 0] })));
+  for (let i = 1; i < 9; i++) { const t = (i / 9.5) * L; c.push(wood(box([0, t * ca, -t * sa], [0.54, 0.08, 0.08], C.wood))); }
+  return one(c, { colliders: [{ x: 0, z: -0.2, r: 0.4 }] });
+});
+// A wheelbarrow: a tray of boards, one wheel, two handles, a few logs in it.
+def("wheelbarrow", () => {
+  const c = [bevelled([0, 0.52, -0.1], [0.74, 0.34, 0.95], PAL.teal, { bevel: 0.07, segments: 2, taper: 0.8, taperZ: 0.85 })];
+  c.push(box([0, 0.66, -0.1], [0.58, 0.06, 0.78], SOIL));
+  c.push(cyl([0, 0.26, 0.55], 0.27, 0.12, PAL.tyre, { axis: "x", segments: 12 }), cyl([0, 0.26, 0.55], 0.17, 0.14, PAL.cream, { axis: "x", segments: 10 }));
+  for (const sx of [-1, 1]) {
+    c.push(box([sx * 0.24, 0.5, -0.8], [0.1, 0.1, 1.0], C.woodLight, { rot: [-10, 0, 0] }), box([sx * 0.3, 0.2, -0.6], [0.1, 0.4, 0.1], C.woodLight));
+  }
+  const R = rng(12);
+  for (let i = 0; i < 4; i++) c.push(wood(cyl([-0.18 + i * 0.12, 0.74, -0.2 + (R() - 0.5) * 0.3], 0.07, 0.42, shade(C.log, (R() - 0.5) * 0.2), { axis: "z", segments: 7 })));
+  return one(c, { colliders: [{ x: 0, z: 0, r: 0.5 }] });
+});
+// A watering can: a round teal body, a long spout with a rose, a big handle (everything is 7 cm or more across).
+def("watering_can", () => one([
+  cyl([0, 0.17, 0], 0.17, 0.34, PAL.teal, { segments: 10 }), cyl([0, 0.35, 0], 0.18, 0.04, shade(PAL.teal, -0.2), { segments: 10 }),
+  tube([[0.14, 0.12, 0], [0.45, 0.4, 0]], 0.045, PAL.teal, { segments: 6 }), cyl([0.48, 0.43, 0], 0.09, 0.07, shade(PAL.teal, -0.2), { axis: "x", segments: 8 }),
+  tube([[-0.14, 0.32, 0], [-0.32, 0.22, 0], [-0.3, 0.06, 0], [-0.16, 0.04, 0]], 0.04, shade(PAL.teal, -0.2), { segments: 5 }),
+]));
+// A bird feeder: a stout post (14 cm) with a little house on it, a roof of two boards, a tray of seed and two felt birds.
+def("bird_feeder", () => {
+  const c = [wood(box([0, 0.85, 0], [0.14, 1.7, 0.14], C.log)), stoneOf(box([0, 0.08, 0], [0.5, 0.16, 0.5], C.stoneDark))];
+  c.push(wood(box([0, 1.88, 0], [0.5, 0.3, 0.42], C.woodLight)), box([0, 1.88, 0.215], [0.18, 0.18, 0.04], PAL.ink));
+  for (const s of [-1, 1]) c.push(wood(box([s * 0.2, 2.13, 0], [0.5, 0.08, 0.56], PAL.roofRed, { rot: [0, 0, s * 28] })));
+  c.push(wood(box([0, 1.7, 0.3], [0.55, 0.07, 0.3], C.wood)), box([-0.1, 1.74, 0.3], [0.18, 0.04, 0.2], PAL.mustard));
+  c.push(bevelled([0.14, 1.83, 0.31], [0.14, 0.13, 0.17], PAL.mailBlue, { bevel: 0.05 }), bevelled([-0.18, 1.82, 0.3], [0.13, 0.12, 0.16], PAL.red, { bevel: 0.05 }));
+  return one(c, { colliders: [{ x: 0, z: 0, r: 0.22 }] });
+});
+// A bicycle leaning on its stand: chunky tyres (10 cm) with cream rims, a frame of 10 cm tubes, a basket on the front, a bell. 1.7 m long (along x).
+def("bicycle", () => {
+  const c = [], frame = PAL.red, wheel = (x) => {
+    const ring = [];
+    for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI * 2; ring.push([x + Math.cos(a) * 0.34, 0.4 + Math.sin(a) * 0.34, 0]); }
+    c.push(tube(ring, 0.055, PAL.tyre, { segments: 8 }), cyl([x, 0.4, 0], 0.3, 0.05, PAL.cream, { axis: "z", segments: 14 }), cyl([x, 0.4, 0], 0.07, 0.14, PAL.metal, { axis: "z", segments: 8 }));
+  };
+  wheel(-0.62); wheel(0.62);
+  const t = (pts, r = 0.05, col = frame) => c.push(tube(pts.map(([x, y]) => [x, y, 0]), r, col, { segments: 6 }));
+  t([[-0.62, 0.4], [-0.12, 0.36], [0.2, 0.9], [-0.22, 0.88], [-0.12, 0.36]]); // the rear stay, down tube, top tube and seat tube
+  t([[0.2, 0.9], [0.5, 0.42], [0.62, 0.4]]); // the fork
+  t([[0.2, 0.9], [0.28, 1.06]]);
+  c.push(tube([[0.28, 1.06, -0.26], [0.28, 1.06, 0.26]], 0.045, PAL.ink, { segments: 6 }));
+  c.push(bevelled([-0.24, 0.98, 0], [0.34, 0.09, 0.2], PAL.ink, { bevel: 0.03 }), tube([[-0.22, 0.88, 0], [-0.24, 0.96, 0]], 0.05, frame));
+  c.push(wood(bevelled([0.55, 0.9, 0], [0.34, 0.24, 0.42], C.woodLight, { bevel: 0.05, segments: 2 })), cyl([0.3, 1.12, 0.12], 0.05, 0.06, PAL.mustard, { segments: 8 }));
+  c.push(tube([[-0.1, 0.36, 0.04], [-0.14, 0.04, 0.2]], 0.045, PAL.metal, { segments: 5 })); // the stand
+  return one(c, { capsules: [{ ax: -0.9, az: 0, bx: 0.9, bz: 0, r: 0.14 }] });
+});
+// Crates and parcels stacked by the post office's side door: three crates of boards with corner battens, one a little turned, brown-paper
+// parcels and a mail sack on top.
+def("crates", () => {
+  const c = [], crate = (x, y, z, ry, col) => {
+    const s = 0.6, h = 0.5;
+    c.push(wood(box([x, y + h / 2, z], [s, h, s], col, { ry })));
+    for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const a = (ry * Math.PI) / 180, ox = (dx * Math.cos(a) + dz * Math.sin(a)) * (s / 2), oz = (-dx * Math.sin(a) + dz * Math.cos(a)) * (s / 2);
+      c.push(box([x + ox, y + h / 2, z + oz], [0.08, h + 0.02, 0.08], shade(col, -0.25)));
+    }
+    for (const yy of [0.12, h - 0.12]) c.push(box([x, y + yy, z], [s + 0.02, 0.08, s + 0.02], shade(col, -0.12), { ry }));
+  };
+  crate(-0.33, 0, 0, 4, C.woodLight); crate(0.34, 0, 0.04, -6, C.wood); crate(0.0, 0.5, 0.02, 10, C.woodLight);
+  const pc = (x, y, z, w, h, d, ry, col) => c.push(box([x, y + h / 2, z], [w, h, d], col, { ry, bevel: 0.03 }), bevelled([x, y + h / 2, z], [w + 0.012, h + 0.012, 0.04], C.string, { bevel: 0.02, segments: 2, ry }));
+  pc(-0.12, 1.0, 0.02, 0.46, 0.2, 0.34, 14, PAL.woodLight); pc(0.2, 1.0, -0.02, 0.3, 0.28, 0.3, -10, shade(PAL.woodLight, -0.1));
+  c.push(bevelled([0.62, 0.34, 0.5], [0.46, 0.66, 0.44], shade(PAL.woodLight, -0.18), { bevel: 0.12, taper: 0.7, ry: 20 }));
+  pc(-0.55, 0, 0.62, 0.44, 0.18, 0.34, 20, PAL.woodLight);
+  return one(c, { boxes: [{ x: 0, z: 0.02, hw: 0.75, hl: 0.4, turn: 0 }] });
+});
+// Pip's workbench in the open: a table with his radio taken apart, a lamp, a coil of cable as thick as a hose, a tin of screws.
+def("tinker_bench", () => {
+  const c = [wood(box([0, 0.85, 0], [1.7, 0.1, 0.75], C.woodLight))];
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) c.push(wood(box([sx * 0.72, 0.4, sz * 0.28], [0.12, 0.8, 0.12], C.plankDark)));
+  c.push(wood(box([0, 0.3, 0], [1.5, 0.1, 0.1], C.plankDark)));
+  c.push(wood(box([-0.4, 1.06, 0], [0.62, 0.32, 0.36], PAL.woodDark)), cyl([-0.55, 1.08, 0.2], 0.09, 0.05, PAL.mustard, { axis: "z", segments: 10 }), cyl([-0.28, 1.08, 0.2], 0.06, 0.05, PAL.ink, { axis: "z", segments: 8 }), box([-0.4, 1.28, 0], [0.5, 0.06, 0.3], PAL.metal));
+  const coil = []; for (let i = 0; i <= 20; i++) { const a = i * 0.9, r = 0.14 - i * 0.002; coil.push([0.4 + Math.cos(a) * r, 0.92 + i * 0.012, Math.sin(a) * r]); }
+  c.push(tube(coil, 0.05, C.red, { segments: 6 }), tube([[0.4, 1.08, 0.1], [0.62, 0.95, 0.3], [0.7, 0.3, 0.45]], 0.05, C.red, { segments: 6 }));
+  c.push(cyl([0.62, 0.99, -0.15], 0.1, 0.14, PAL.metal, { segments: 10 }), tube([[-0.8, 0.9, -0.25], [-0.8, 1.45, -0.25], [-0.5, 1.6, -0.2]], 0.045, PAL.ink, { segments: 5 }), cone([-0.46, 1.58, -0.2], 0.14, 0.18, PAL.mustard));
+  return one(c, { boxes: [{ x: 0, z: 0, hw: 0.9, hl: 0.4, turn: 0 }] });
+});
+// Pip's washing line: two stout poles (14 cm) on stone feet, a rope as thick as a thumb (10 cm) sagging between them 4 m apart. Its cloths are
+// their own model (cloths), which sways in the wind.
+const LINE_Y = 2.0;
+def("washing_line", () => {
+  const c = [];
+  for (const x of [-2, 2]) c.push(stoneOf(box([x, 0.08, 0], [0.45, 0.16, 0.45], C.stoneDark)), wood(box([x, 1.1, 0], [0.14, 2.2, 0.14], C.log)), box([x, 2.24, 0], [0.24, 0.08, 0.24], C.logDark));
+  const rope = []; for (let i = 0; i <= 10; i++) { const t = i / 10; rope.push([-2 + 4 * t, LINE_Y + 0.12 - 0.14 * 4 * t * (1 - t) * 1.0 + 0.0, 0]); }
+  c.push(tube(rope, 0.05, PAL.cream, { segments: 5 }));
+  return one(c, { colliders: [{ x: -2, z: 0, r: 0.2 }, { x: 2, z: 0, r: 0.2 }] });
+});
+// The cloths on that line, hung from it: their tops are at 0.8 m, their bottoms at 0 (they are drawn that much above the ground, so that the wind
+// moves them: the more above its origin, the more it sways). A shirt, a sheet, a pair of socks, a towel, red long johns.
+def("cloths", () => {
+  const c = [], felt = (x, y, w, h, col, th = 0.06) => c.push(bevelled([x, y, 0], [w, h, th], col, { bevel: 0.02 }));
+  felt(-1.45, 0.45, 0.55, 0.7, PAL.mustard); felt(-1.45, 0.72, 0.9, 0.2, PAL.mustard); felt(-1.9, 0.62, 0.2, 0.34, PAL.mustard); // (a shirt: body and sleeves)
+  felt(-0.5, 0.4, 0.9, 0.78, PAL.cream); felt(-0.5, 0.42, 0.9, 0.12, shade(PAL.cream, -0.1));
+  felt(0.35, 0.62, 0.2, 0.34, PAL.red); felt(0.6, 0.62, 0.2, 0.34, PAL.mailBlue); // (mismatched socks)
+  felt(1.0, 0.45, 0.6, 0.7, PAL.teal); felt(1.0, 0.7, 0.6, 0.1, PAL.cream);
+  felt(1.65, 0.4, 0.2, 0.78, PAL.redDark); felt(1.9, 0.4, 0.2, 0.78, PAL.redDark);
+  for (const x of [-1.7, -1.2, -0.9, -0.1, 0.3, 0.65, 0.85, 1.2, 1.65, 1.95]) c.push(box([x, 0.76, 0], [0.09, 0.14, 0.09], C.woodLight)); // (pegs)
+  return one(c);
+});
+// A rain barrel by a downpipe: a barrel of dark staves with two hoops, a lid of boards. (Hazel's.)
+def("rain_barrel", () => one([
+  wood(cyl([0, 0.5, 0], 0.4, 1.0, C.plankDark, { segments: 12 })), cyl([0, 0.2, 0], 0.425, 0.1, PAL.metal, { segments: 12 }), cyl([0, 0.8, 0], 0.425, 0.1, PAL.metal, { segments: 12 }),
+  cyl([0, 1.0, 0], 0.4, 0.04, shade(PAL.water ?? PAL.sky, -0.2), { segments: 12 }),
+], { colliders: [{ x: 0, z: 0, r: 0.42 }] }));
 
 // ---- run -------------------------------------------------------------------------------------------------------------------------------
 const want = process.argv.slice(2);

@@ -50,28 +50,28 @@
    "capture": "kettle_creek_junction driving side"
   },
   {
-   "lua": "local h = nova.terrain_height(-96, 53); CAM.pinned = { -96, h + 41.2, 53 - 0.5, -96, h, 53, 40 }"
+   "lua": "local h = nova.terrain_height(-94.7, 51.5); CAM.pinned = { -94.7, h + 41.2, 51.5 - 0.5, -94.7, h, 51.5, 40 }"
   },
   {
    "wait": 3,
    "capture": "bridge_west from above"
   },
   {
-   "lua": "local h = nova.terrain_height(-78.78146943571369, 42.82541375746718); local t = nova.terrain_height(-96, 53); CAM.pinned = { -78.78146943571369, h + 3.4, 42.82541375746718, -99.44370611285726, t + 0.6, 55.03491724850657, 52 }"
+   "lua": "local h = nova.terrain_height(-77.51018137441417, 41.27698011253707); local t = nova.terrain_height(-94.7, 51.5); CAM.pinned = { -77.51018137441417, h + 3.4, 41.27698011253707, -98.13796372511717, t + 0.6, 53.544603977492585, 52 }"
   },
   {
    "wait": 3,
    "capture": "bridge_west driving main"
   },
   {
-   "lua": "local h = nova.terrain_height(-114, 57.5); CAM.pinned = { -114, h + 41.2, 57.5 - 0.5, -114, h, 57.5, 40 }"
+   "lua": "local h = nova.terrain_height(-115.3, 59); CAM.pinned = { -115.3, h + 41.2, 59 - 0.5, -115.3, h, 59, 40 }"
   },
   {
    "wait": 3,
    "capture": "bridge_east from above"
   },
   {
-   "lua": "local h = nova.terrain_height(-133.0099065035129, 63.71477712614845); local t = nova.terrain_height(-114, 57.5); CAM.pinned = { -133.0099065035129, h + 3.4, 63.71477712614845, -110.19801869929742, t + 0.6, 56.25704457477031, 52 }"
+   "lua": "local h = nova.terrain_height(-134.54219394839436, 64.45325334569881); local t = nova.terrain_height(-115.3, 59); CAM.pinned = { -134.54219394839436, h + 3.4, 64.45325334569881, -111.45156121032113, t + 0.6, 57.90934933086024, 52 }"
   },
   {
    "wait": 3,

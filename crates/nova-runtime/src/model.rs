@@ -404,9 +404,11 @@ fn read_influences(
 pub const PAINT_STEP: f32 = 1000.0;
 
 /// The painted kinds by name, in the order of their numbers (1 is "foliage").
-pub const PAINT_KINDS: [&str; 4] = ["foliage", "canopy", "ground", "water"];
+pub const PAINT_KINDS: [&str; 7] = [
+    "foliage", "canopy", "ground", "water", "wood", "roof", "stone",
+];
 
-/// The number of a painted kind's name (1 to 4), or None for a name that is not one.
+/// The number of a painted kind's name (1 to 7), or None for a name that is not one.
 pub fn paint_kind(name: &str) -> Option<u32> {
     PAINT_KINDS
         .iter()

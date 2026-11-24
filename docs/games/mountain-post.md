@@ -142,30 +142,42 @@ loading two is two trips from the shelf). A cheerful horn. (The shape since the 
 4. When both are delivered and you are back at the post office, the slice ends quietly on a card: "Two delivered. A few hundred
    to go."
 
-**The conversations** (text boxes, a babble voice per character; the player's lines are not shown; keep these words unless the
-owner changes them).
+**The conversations** (text boxes, a babble voice per character; the player's lines are not shown). Rewritten after the owner's
+seventh play ("Too much text", "pacing", "tone of the words"): three lines at the hand-over, one line each time they are talked to
+again (the two "after that" lines take turns), one at the door without the parcel; warmer, shorter, the facts kept lighter (the
+bridge out, the Mayor, Pemberton). The braces are the engine's text markup (`nova.ui.rich_text`, docs/project-format.md "Rich
+text"): `{slow}` typed slowly, `{big}` larger and bolder, `{wave}` letters bobbing, `{shake}` jitter, `{pop}` letters popping
+in, `{pause=s}` a wait; used where a line has a feeling to carry, not on every line. The face for each line is in brackets.
 
 Hazel, when handed her parcel:
-- "Hm. So there IS a postmaster."
-- "Chisels. I ordered these two winters back. Built a whole porch without them."
-- "Pemberton never lost a parcel in forty years, then one morning he just didn't open up. Same winter the lake bridge went."
-- "I'd have rebuilt that bridge myself, if the Mayor and I were speaking. We're not. Don't ask."
-- "...Thank you. Mind the left on Fern Lane. Everybody clips my wall."
+- "Hm. So there {slow}IS{/slow} a postmaster." (gruff)
+- "My chisels. Ordered them the winter Pemberton shut up shop and the lake bridge went." (sad)
+- "I'd fix that bridge, if the Mayor and I were speaking. We're not.{pause=0.3} {slow}...{/slow}Thank you." (smile)
 
-Hazel, after that (talk again): "Still here? The wall's fine. Mostly." / "If you see Pip, tell him his aerial hums through my
-teeth."
+Hazel, after that (talk again): "Still here? Mind my wall on Fern Lane. Everybody clips it." (dry) / "Tell Pip his aerial
+{shake}hums{/shake} through my teeth." (gruff)
 
 Pip, when handed his parcel:
-- "IT CAME! It actually came! You're real!"
-- "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!"
-- "This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge."
-- "Hazel says my aerial hums. It does not hum. It SINGS."
-- "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander."
+- "{big}{wave}IT CAME!{/wave}{/big} It actually came! You're {pop}real!{/pop}" (delighted)
+- "A whole year I told the radio the mail was coming back. Nobody believed me!" (indignant)
+- "This valve gets Fernhollow Radio past the creek. The lake side too, once there's a bridge!" (happy)
 
-Pip, after that: "Testing, testing. Can you hear that? No? Good, it's not plugged in yet." / "If Hazel asks, the aerial is
-staying."
+Pip, after that: "Tonight I say your name on the radio. {shake}Live.{/shake} No pressure!" (surprised) / "If Hazel asks, the
+aerial {wave}sings{/wave}. It does {big}not{/big} hum." (indignant)
 
-If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." Pip: "Is it here? Is it? ...Oh. Hello anyway!"
+If you knock without their parcel: Hazel: "Unless that's my chisels, I'm busy." (gruff) Pip: "Is it here? Is it?{pause=0.3}
+...Oh. Hello anyway!" (surprised)
+
+~~The first conversations (replaced after the seventh play):~~ Hazel's five lines were "Hm. So there IS a postmaster." / "Chisels.
+I ordered these two winters back. Built a whole porch without them." / "Pemberton never lost a parcel in forty years, then one
+morning he just didn't open up. Same winter the lake bridge went." / "I'd have rebuilt that bridge myself, if the Mayor and I were
+speaking. We're not. Don't ask." / "...Thank you. Mind the left on Fern Lane. Everybody clips my wall."; after that "Still here?
+The wall's fine. Mostly." / "If you see Pip, tell him his aerial hums through my teeth." Pip's were "IT CAME! It actually came!
+You're real!" / "I've been telling everyone on the radio the mail's coming back. Every morning. For a year. Nobody believed me!" /
+"This valve means Fernhollow Radio can reach past the creek again. Maybe even the lake side, when there's a bridge." / "Hazel says
+my aerial hums. It does not hum. It SINGS." / "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say
+'the Postmaster'. Sounds grander."; after that "Testing, testing. Can you hear that? No? Good, it's not plugged in yet." / "If Hazel
+asks, the aerial is staying."
 
 **Finding your way.** Labels give name and street. The **paper map** (one button) is a hand-drawn sheet of the slice's roads with
 their names and the post office marked; no house numbers, no marker for you, no destination. The **minimap** is a small disc that
@@ -1088,3 +1100,158 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
   words. "I don't like that when the text starts to appear, sometimes the text box will 'type' the word on one line then
   realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
   three lines, warmer and simpler words, faster text with a press to finish the line.)
+
+### What the seventh play changed: the bridge's joins and the signposts (2026-11-23)
+
+- **The bridge** ("doesn't connect to the roads properly still"). Pictured close from both banks, from the walking and the driving
+  camera, from the side at deck height and from above (`build/gallery/bridge-before/`), the faults were: the road came at the deck
+  skewed (Kettle Creek Road's line bent 8 degrees off the deck's axis at the west end, 2.5 at the east, so the square-cut end and the
+  deck's end met at a wedge); the ground at the west end stood 0.34 m above the deck and at the east end 0.34 m below it (the road's
+  profile fell too steeply for the terrain's 11 % grade limit, so the deck, a flat average of the two, was buried at one end and
+  floating at the other, and the deck's collision sloped while its picture did not); the deck was 4.6 m wide against a road lit 5.6 m
+  wide, its threshold strip only 4.4 m across; the rails ended at the deck's end in mid air; and the last row of planks was
+  swallowed by the bank. Now (`tools/layout.mjs`, `tools/models.mjs` "bridge", `scripts/lib/roadnet.mjs`): the road's control points run
+  straight along the deck's axis (the deck's 22 m, at 20 degrees, between two control points of the road with another 10 m of straight
+  line either side), the road's profile drops to the deck's level 30 m before it (ground within 4 cm of the deck at both ends and
+  across its width), the deck is 5.6 m wide, the road's lit width (and the threshold strip, which now covers the carriageway and its
+  lit shoulder), 53 planks laid flush to both end lines on a stone sill, and a stout capped end post on a stone footing stands at each
+  corner on the bank, 0.3 m past the deck, with the rails running from post to post (`entities/bridge.lua` `half` 2.8). The van's
+  body height over the deck either way (frame by frame, from 10 m before to 10 m after): no step over 2 cm a frame, vertical
+  acceleration 1.2 m/s2 at most (the open gravel road: about 1). Tests `the_bridge_meets_the_road_at_both_ends_in_line_width_and_height`,
+  `the_van_crosses_the_bridge_both_ways_without_a_bump`. `tools/routes/roads.mjs` pictures both ends.
+- **The signposts** ("they don't always follow the direction of the road and the text doesn't line up properly"). The sixth play's
+  fix swung each arm up to 40 degrees off its road so it could be read from the approaches; that is what the owner saw. Every arm
+  now points along its road again (`layout.mjs` SIGNS names a road and a way along it, `scene.mjs` takes the road's direction over
+  8 m either side of the post's foot; within 4 degrees, the point showing the way the road goes), and readability comes from the
+  corner the post stands in (Kettle Creek's moved to the south-east corner of its junction, 3 m off the road: the least angle a
+  board is seen at from 25 m, from any road that comes to a post, is 21 degrees for a board along that road and 40 degrees for one
+  across it; at 12 m none is under 14) and from the lettering being on both faces (it was already; checked from the back: the words read
+  the right way round, the point on the other side). The lettering's faults, found by looking from 5 m at both faces of every board:
+  the words were 2.98 to 3.11 m wide on a panel 3.0 m long, so they ran into the point and off the rim; the picture's box, not its ink,
+  was centred (a descender's room under capitals); the two lines of KETTLE CREEK / ROAD were centred by their advance widths. Now
+  (`tools/art.mjs`, section "signs", `lib/sign_art.lua`): each picture is cropped to the ink of its words (3 texels round), the lines
+  centred on one another by their ink, the capitals 0.36 m (0.29 on the two-line board) on boards of 2.5 and 2.7 m of words, the
+  picture's middle put where the margin to the rim equals the margin to the point's edge (0.11 m all round, the same on every
+  board), at the panel's height. Tests `every_arm_points_along_its_road`, `the_lettering_is_centred_in_each_panel_on_both_faces`,
+  `every_signpost_board_is_seen_at_a_readable_angle_from_each_approach`. `tools/routes/signs.mjs` pictures every post from every
+  approach and every board from both faces. Weak points: a board along the road you are on is still seen at 21 degrees from 25 m
+  (the words foreshortened to a third of their length): read it from 12 m; and from the north on Post Road the Fern Lane board is 40 degrees at 25 m but 14 at
+  12 m (it turns edge-on as you come on).
+
+### What the seventh play changed: the talks (text effects, the layout, the pace, the words)
+
+- **Text effects in Nova** (`nova.ui.rich_text`, docs/project-format.md "Rich text"): markup a writer types in a line, `{shake}`,
+  `{wave}`, `{big}`, `{slow}`, `{pop}`, `{c=red}`, `{pause}`. Every letter of a talk rises softly into place with a quick fade as
+  it appears (0.16 s, a fifth of its size): the game's own little animation. One quad a letter, as plain text; everything is a
+  function of the line and the time, so a test sees the same picture every run.
+- **Laid out before it is typed:** the whole line is wrapped first and typed into its final places, big letters' room
+  included; no word starts on one line and jumps to the next, nothing reflows (test
+  `the_talk_is_laid_out_before_it_is_typed_and_never_reflows`).
+- **The pace:** Hazel 46 letters a second, Pip 60 (spaces count), a short pause after a comma, a longer one after a full stop,
+  the longest after "..."; the babble follows the letters as they come out and the mouth moves only while they do (it rests in
+  the pauses). X once shows the rest of the line at once (a tenth-of-a-second ripple), X again goes on; the "next" button fades
+  in and bobs softly once the line is out. The talk opens snappily: the camera glides in 0.4 s (was 0.55) and out in 0.45 s
+  (was 0.6), the box rises the last few units into place in 0.1 s, the first letter comes 0.06 s after.
+- **The words:** three lines at each hand-over (were five), one line each time after, short and warmer (the conversations above).
+- **Weak points:** the effects are judged from pictures at 1280x720, not yet read on the Retroid; `{shake}` at the dialogue's
+  size moves letters about 2 px, readable but subtle in a still; the face changes per line, not inside a line (Hazel smiles from
+  the start of "I'd fix that bridge", not at "...Thank you").
+### What the seventh play changed: the houses (a minimum thickness, painted surfaces, lived-in details)
+
+The owner: "The houses look barren still. Also we should have a minimum thickness to prevent stick looking things and keep that
+cozy, cartoony look. I guess because there's no texture?" and, for the world, "lived-in details".
+
+- **A chunky minimum** (`HOUSE.min` in `tools/models.mjs`, written into the house style's comment). At house scale a post, rail,
+  fence board, mast leg or brace (anything over 1.2 m long and under 20 cm wide) is at least **10 cm** through, a window bar or small
+  trim (over 0.5 m) at least **6 cm**, a board or plate (20 cm wide or more) at least 3 cm, and only flat paint under 3 cm (a
+  floorboard line, a wainscot) is thinner; indoors and on a desk (`min.indoor`) half of that. Round things count by their diameter.
+  What had to change: window bars 6 x 7 cm (were 3 cm deep), the mast's legs 20 cm (were 13), its rungs 11 cm and thinned out to every
+  1.2 m, its crosspieces 12 cm, its top spike 14 cm; **the guy wires are gone** (the game drew 1-pixel lines from its top): three
+  timber braces of 20 cm run from the legs at 5.5 m to stone pads 3.6 m out, so nothing is a thread; saw-horse and table legs 10 cm,
+  the held plank 20 x 6 cm, the mailbox post 14 cm, the porch rail's balusters as before; indoors the picture rails, the kick board,
+  the pigeonholes' shelves and the window bars. Each new prop is made to it (rails of a garden fence 10 cm, its pickets 12 x 7 cm,
+  the washing line a rope 10 cm thick, a bicycle's tubes 10 cm).
+  **Test:** `every_model_is_chunky_nothing_is_a_stick` (tests/mountain_post.rs) reads the minimum from `HOUSE.min` and measures every
+  solid of every model `tools/models.mjs` makes (about 1,000: a box by its size, a cylinder by its diameter, a tube by its diameter and
+  line, a mesh along its own principal axes, so a turned plank is measured as it is) and lists each stick by name and size. The bridge
+  and the signposts (another round's) and the ferns (felt sheets) are left out by name.
+- **Painted surfaces on buildings** (the owner's guess, "because there's no texture", was right: three more paint kinds beside the
+  trees' and the grass's, `docs/project-format.md`, "Painted surfaces"): `wood`, `roof` and `stone` in `mesh.wgsl`'s own block ("painted
+  buildings"), worked out in the model's space on the plane the surface lies in, so they fit any house turned any way:
+  **boards** every 32 cm (20 cm on a deck), each a shade warmer or cooler by a hash of its row, each length of it a little different,
+  a soft seam 2.5 cm wide, a lighter lip on the upper edge and grain streaks about a metre long; **roof tiles** in rows of 26 cm up
+  the slope (found from the surface itself, so the porch's shallow roof and the gable's steep one both fit), 36 cm tiles with every
+  other row half a tile along, each a little different, a soft scalloped shadow under each row and a joint between tiles; **stone**
+  in courses of 22 cm with blocks of about 42 cm in a different place on each course, each its own shade and a little rounded, soft
+  mortar and a slow mottle. Every part is faded to the plain colour (and a slightly darker average) where it is under a few pixels
+  wide, so far houses are calm: nothing shimmers. The walls' siding is now this paint, not geometry: the painted lines (thousands of
+  4 cm slivers on every wall) are gone. Walls, decks, steps, benches, fences, tables, planks, shutters and crates are `wood`; the roofs
+  (gable, porch, workshop) `roof`; plinths, chimneys, the mast's footing, the washing line's feet and the post office's side steps
+  `stone`. Cost: two to four reads of the noise picture a painted pixel (the grass's six or so are the dearest); the new kinds add
+  no vertices and no draw (the kind rides in each vertex's `emissive` like the others) and the models have fewer triangles of
+  siding than before. **Test:** `painted_walls_roofs_and_stone_vary_near_and_are_calm_far_off` (tests/paint_gpu.rs: near, each kind
+  varies more than the plain surface and stays as bright; at 400 m a pixel is calm) and `the_buildings_are_painted_as_boards_tiles_and_stone`
+  (the written .glb files carry the kinds).
+- **Lived-in details** (`tools/models.mjs` the new models, `tools/scene.mjs` `detail(...)`, which places each at a house in the house's
+  own metres, moved off a road if it must be; a scene file as always). Built into the houses: a **box of flowers under every window**
+  (rounded blooms in the house's colours), **shutters** (the post office's dark green pair each side, Pip's teal and mustard odd pair),
+  a **lantern** by each door (it glows), a **doormat**, **pots of flowers** each side, the post office's **side door** with two stone
+  steps in its left end wall; **Hazel's** wall rack of tools (axe, spade, saw), a rocking chair with rockers. Placed: **post office** a
+  bicycle with a basket against its right end wall, **crates and parcels and a sack** stacked by the side door, a long raised **flower
+  bed** each side of the steps, a **watering can**; **Hazel** (tools, timber, tidy) a vegetable **garden** with a picket fence (neat
+  rows of cabbage, lettuce, carrot and onion, a bean teepee), a **chopping block** with an axe and split logs and a second **wood pile**
+  by her workshop, a **wheelbarrow** with logs, a **ladder** on the cabin's end wall, a **rain barrel**, a watering can and a **bird
+  feeder**; **Pip** (antennas, wires, a messy charm) a stout **aerial** on his ridge with a thick pipe of cable down the corner, a
+  crooked-fenced **flower plot** with sunflowers at the back, **tyre planters**, a **tinker bench** in the open (his radio in pieces, a
+  coil of red cable as thick as a hose, a lamp), a **washing line** whose odd socks, shirt, sheet and long johns (`cloths`, its own
+  model, drawn 1.3 m up so that the wind moves them: `sway` is the more the higher above the model's origin) sway, a bird feeder, and
+  **the flag up on his mailbox** (`mailbox_up`: `flag_up` in the scene file, `entities/mailbox.lua`). The chimneys' smoke is as it
+  was. The paths and doors stay clear: **Test** `the_lived_in_details_are_placed_and_the_doors_stay_clear` (each is in the scene file,
+  and from each door a walk 2.2 m wide and 14 m long has none of their feet in it); that nothing stands on a road is the road test's
+  (`valley_roads_nothing_placed_stands_on_a_road` reads every object of the scene).
+- **Pictures** (1280 x 720, made by the agent, not committed): `build/gallery/houses/` before and after, each house from the walking and
+  the driving camera, the post office front, and a sheet of the new props (`new-props-sheet-1.png`, `-2.png`); the route is
+  `tools/routes/houses.json`.
+- **Weak points:** the houses are heavier: the post office 3,800 to 6,800 triangles, Hazel's cabin 2,600 to 4,700, Pip's 2,400 to 4,600
+  (the flower boxes, pots and lanterns are rounded), the two gardens 5,000 to 6,600 each (a picket and a cabbage is a rounded solid);
+  about 34,000 more triangles in the valley in all, in three places (the houses' yards), not measured on the Retroid. The boards' seams read a little strongly at 3 to 6 m
+  and fade out by about 60 m (a pixel of 9 cm); the roof tiles are a regular grid close up, which is the toy look but not a hand's.
+  The wood paint treats a post's side as a wall (a seam every 32 cm), so posts and fence rails are painted but cream trim is not.
+  `foliage` on the flower boxes' leaves was tried and dropped (its core darkening reads from the model's axis, far from a window).
+  The paint kinds' numbers (5, 6, 7) follow the water's: another round adding kinds should add after them.
+### What the seventh play changed: the music ("too repetitive")
+
+Four pieces for the felt piano now take turns, each playing once and ending, with quiet between them in which only the ambience
+plays (as in games where each part of the day has its own piece). All four are written note by note in `tools/music.mjs` by one
+builder, and each is five stems of one song (piano, bass, brushes, pad, celesta), so the layered driving rule works for every piece:
+
+| piece | key, tempo | length | character | form |
+| --- | --- | --- | --- | --- |
+| Fernhollow (kept) | F major, 68, 4/4 | 2:06 | the morning walk | intro A B C A''' and an ending (A', A'' and B' cut; no loop now) |
+| Thistle Lane | G major, 104, 4/4 | 1:46 | bright and skipping: dotted eighths over an oom-pa left hand | intro A A' B (E minor) C (a trio in C) A'' and a coda |
+| Stillwater | E flat major, 58, 4/4 | 2:03 | reflective and slow: long notes and sighs | intro A B (C minor) A' (closing on C minor) and a three-bar coda |
+| Meadowsweet | D major, 120, 3/4 | 1:53 | a folksy waltz: oom-pah-pah, a flat-seven C in the middle | intro A A' B (G, B minor) A'' (up an octave) A''' and a coda |
+
+Each ends by slowing into a rolled chord and a bar of silence (two in the waltz) for the room to ring out. Measured offline (whole
+pieces, BS.1770): the piano alone -18.0 LUFS in all four (0.01 LU apart); all five stems -16.6, -17.0, -16.9 and -16.9 (1.0 to 1.5
+dB over the piano, 0.49 LU apart); sound_report finds no clipping and no clicks in any of the eight renders, 1 ms of silence at the
+start and 1.1 to 4.1 s of silence at the end (the last 50 ms under -83 dBFS); on a small speaker the pieces lose 0.8 to 1.5 dB.
+
+**The playlist** (`lib/music.lua`, `music.playlist_step`): the first piece starts about 6 s after the game begins; the pieces come
+from a shuffled bag (all four before any again; a new bag never starts with the piece just played); between two pieces a quiet of
+20 to 60 s, one time in five 30 to 60 s longer. The driving layers follow whichever piece plays (the rule runs in the quiet too, so a
+piece that starts mid-drive starts with what the drive earned); the post office, the cards and the conversations behave as before
+(the piano alone, ducked). The playlist lives in the module, so walking in and out of the post office does not restart a piece; the
+ending card cuts a quiet to 2 s.
+
+**On the handheld:** only the playing piece is decoded (`nova.music.layers(..., { loop = false })`: the stems end together and their
+five decoder threads stop). Eight seconds before a piece starts, `nova.music.prepare` starts its decoders, so its opening (1.5 s a
+stem, 256 KB each) is decoded during the quiet and the piece does not start with five decoders bursting at once. The cost that grew:
+every Ogg in `music/` is held compressed in memory from the start, now 26 MB for the twenty stems (it was 11.5 MB for one piece's
+five); the brushes stems are the biggest (about 2 MB each). Not measured on the Retroid.
+
+`scripts/env.sh node examples/mountain-post/tools/music.mjs --audition` renders each piece (piano alone and full, for sound_report)
+and writes `build/audition/mountain-post-pieces-excerpts.m4a`: three minutes, 44 s of each piece from its first A, the piano alone
+for 21 s and then the four layers fading in. **Nobody has listened to any of it**: offline renders and measurements only.
+
+- **The post office name board**: it was on the wall, so the porch roof hid the lower line of words and the main roof slope buried the rest. It now stands on two short posts on the porch roof front edge (tools/models.mjs post_office), 4.0 x 0.9 m; its words (tools/art.mjs, signs section) are solid cream rounded capitals cropped to their ink, the two lines centred on one another and the block on the panel (2.7 x 0.66 m, margin 0.12 m), no faded alpha. Pictures: build/gallery/po-after/.

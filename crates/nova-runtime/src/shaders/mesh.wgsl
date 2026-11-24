@@ -202,7 +202,7 @@ struct VertexOut {
     @location(6) @interpolate(flat) dirt: f32,
     // xyz: the vertex in its piece's own space (dirt's blotches are fixed to it); w: metres above the model's base (its own origin)
     @location(7) local: vec4<f32>,
-    // how the surface is painted (`paint_of`): 0 plain, 1 a tree's crown, 2 a mass of canopy, 3 ground, 4 running water
+    // how the surface is painted (`paint_of`): 0 plain, 1 a tree's crown, 2 a mass of canopy, 3 ground, 4 running water, 5 boards, 6 roof tiles, 7 stone
     @location(8) @interpolate(flat) paint: f32,
 };
 
@@ -666,6 +666,156 @@ fn fs_detail(in: VertexOut) -> @location(0) vec4<f32> {
     return plain_light(in, base);
 }
 
+// ---- painted buildings: wood, roof, stone (kinds 5 to 7; docs/project-format.md, "Painted surfaces") ----
+// Worked out in the model's own space (`local`: the pattern is fixed to the house whichever way it is turned) on the plane the
+// surface lies in, found from the way its local position changes across the pixel (`lx`, `ly`). Each pattern is a regular rhythm
+// (a board, a row of tiles, a course of stones) with a hash of the row and the piece giving each a slightly different colour, soft
+// dark joints, and a stretched noise grain; every part of it is faded to the plain colour where it is under a few pixels wide
+// (`fp`, metres a pixel spans), so far houses are calm: no shimmer, no moire.
+
+// A hash of two numbers to 0..1 (the same on every GPU: no sine).
+fn hash21(p: vec2<f32>) -> f32 {
+    var q = fract(p * vec2<f32>(0.1031, 0.1030));
+    q = q + dot(q, q.yx + vec2<f32>(33.33));
+    return fract((q.x + q.y) * q.x);
+}
+
+// A surface's plane in its model's space: `p` the point on it and `gx`, `gy` its change across the pixel along the plane's two
+// directions, `fp` how many metres a pixel spans on it.
+struct Plane {
+    p: vec2<f32>,
+    gx: vec2<f32>,
+    gy: vec2<f32>,
+    fp: f32,
+};
+
+fn plane_in(local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, u: vec3<f32>, v: vec3<f32>) -> Plane {
+    var o: Plane;
+    o.p = vec2<f32>(dot(local, u), dot(local, v));
+    o.gx = vec2<f32>(dot(lx, u), dot(lx, v));
+    o.gy = vec2<f32>(dot(ly, u), dot(ly, v));
+    o.fp = max(max(abs(o.gx.x) + abs(o.gy.x), abs(o.gx.y) + abs(o.gy.y)), 1e-5);
+    return o;
+}
+
+// The plane a wall (or, for a floor, a deck, a top) lies in: along the wall and up it, or along x and z.
+fn plane_of_wall(local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, nl: vec3<f32>) -> Plane {
+    if (abs(nl.y) > 0.7) {
+        return plane_in(local, lx, ly, vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+    }
+    if (abs(nl.x) > abs(nl.z)) {
+        return plane_in(local, lx, ly, vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 1.0, 0.0));
+    }
+    return plane_in(local, lx, ly, vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0));
+}
+
+// Boards: courses of 0.32 m (0.2 m on a floor or deck) run along a wall, one shade each and a little different along their length,
+// a soft dark seam between them, a lighter lip on each upper edge, and grain stretched along them.
+fn paint_wood(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -> vec3<f32> {
+    let nl = safe_normalize(cross(lx, ly));
+    let pl = plane_of_wall(local, lx, ly, nl);
+    var h = 0.32;
+    if (abs(nl.y) > 0.7) { h = 0.2; }
+    let row = floor(pl.p.y / h);
+    let f = pl.p.y / h - row;
+    let r = hash21(vec2<f32>(row, 3.7));
+    let seg = floor((pl.p.x + r * 5.0) / 2.3);
+    let rs = hash21(vec2<f32>(row + 11.3, seg));
+    let calm = 1.0 - smoothstep(0.07, 0.2, pl.fp);
+    // each board its own shade and a little warmer or cooler, and each length of it a little different again
+    var c = rgb * (1.0 + ((r - 0.5) * 0.15 + (rs - 0.5) * 0.08) * calm);
+    c = c * mix(vec3<f32>(1.0), mix(vec3<f32>(1.04, 1.0, 0.94), vec3<f32>(0.96, 0.99, 1.04), hash21(vec2<f32>(row, 9.1))), 0.6 * calm);
+    // grain: streaks about a metre long and a few centimetres across, laid differently on each board
+    let ax = vec2<f32>(1.0, 0.0);
+    let ay = vec2<f32>(0.0, 1.0);
+    let g = paint_read(pl.p, pl.gx, pl.gy, paint_axes(ax, ay, 0.8, 18.0), vec2<f32>(r * 7.3, r * 3.1));
+    let g2 = paint_read(pl.p, pl.gx, pl.gy, paint_axes(ax, ay, 2.4, 46.0), vec2<f32>(rs * 5.1, r * 1.7));
+    c = c * (1.0 + ((g.g - 0.5) * 0.11 + (g2.b - 0.5) * 0.06) * (1.0 - smoothstep(0.03, 0.12, pl.fp)));
+    // the seam between boards (a soft dark line about 2.5 cm wide) and a lighter lip along the board's upper edge
+    let d = min(f, 1.0 - f) * h;
+    let fine = 1.0 - smoothstep(0.03, 0.09, pl.fp);
+    let seam = (1.0 - smoothstep(0.004, 0.012 + pl.fp * 0.8, d)) * fine;
+    let lip = smoothstep(0.82, 0.97, f) * fine;
+    // (where the seams are too fine to see, they still darken a little on average)
+    return c * (1.0 - 0.24 * seam + 0.05 * lip - 0.02 * (1.0 - fine));
+}
+
+// A roof's tiles: rows of 0.26 m up the slope, tiles 0.36 m wide, every other row half a tile along, each tile a little different;
+// a soft shadow under each row's lower edge scalloped to its tiles, and a joint between tiles.
+fn paint_roof(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -> vec3<f32> {
+    var nl = safe_normalize(cross(lx, ly));
+    if (nl.y < 0.0) { nl = -nl; }
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    var s_dir = up - nl * dot(nl, up);
+    if (dot(s_dir, s_dir) < 1e-4) { s_dir = vec3<f32>(0.0, 0.0, 1.0); }
+    s_dir = safe_normalize(s_dir);
+    let t_dir = safe_normalize(cross(nl, s_dir));
+    let pl = plane_in(local, lx, ly, t_dir, s_dir);
+    let rh = 0.26;
+    let tw = 0.36;
+    let row = floor(pl.p.y / rh);
+    let f = pl.p.y / rh - row;
+    let stag = 0.5 * (row - 2.0 * floor(row * 0.5));
+    let col = pl.p.x / tw + stag;
+    let id = floor(col);
+    let u = col - id;
+    let r = hash21(vec2<f32>(row, id));
+    let calm = 1.0 - smoothstep(0.06, 0.2, pl.fp);
+    var c = rgb * (1.0 + (r - 0.5) * 0.15 * calm);
+    c = c * mix(vec3<f32>(1.0), mix(vec3<f32>(1.04, 1.0, 0.93), vec3<f32>(0.95, 0.99, 1.05), hash21(vec2<f32>(id, row + 4.0))), 0.5 * calm);
+    // the shadow under a row's lower edge, the edge scalloped (a rounded tile): about the lowest fifth of the row
+    let scallop = 0.05 * (1.0 - cos(6.2832 * u));
+    let under = 1.0 - smoothstep(0.0, 0.2 + pl.fp / rh, f + scallop);
+    // a joint between tiles
+    let dj = min(u, 1.0 - u) * tw;
+    let joint = (1.0 - smoothstep(0.004, 0.014 + pl.fp * 0.8, dj)) * smoothstep(0.1, 0.3, f);
+    let fine = 1.0 - smoothstep(0.03, 0.1, pl.fp);
+    return c * (1.0 - 0.2 * under * fine - 0.14 * joint * fine + 0.04 * smoothstep(0.55, 0.9, f) * fine - 0.05 * (1.0 - fine));
+}
+
+// Stone: courses of 0.22 m, blocks of about 0.42 m in a different place on each course, each block its own shade, rounded (a little
+// darker towards its edges), the mortar between a soft dark, and a slow mottle of warmer and cooler across it.
+fn paint_stone(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>) -> vec3<f32> {
+    let nl = safe_normalize(cross(lx, ly));
+    let pl = plane_of_wall(local, lx, ly, nl);
+    let rh = 0.22;
+    let bw = 0.42;
+    let row = floor(pl.p.y / rh);
+    let f = pl.p.y / rh - row;
+    let col = pl.p.x / bw + hash21(vec2<f32>(row, 1.3)) * 9.0;
+    let id = floor(col);
+    let u = col - id;
+    let r = hash21(vec2<f32>(row + 21.0, id));
+    let calm = 1.0 - smoothstep(0.07, 0.2, pl.fp);
+    var c = rgb * (1.0 + (r - 0.5) * 0.22 * calm);
+    c = c * mix(vec3<f32>(1.0), mix(vec3<f32>(1.04, 1.02, 0.94), vec3<f32>(0.95, 0.99, 1.05), hash21(vec2<f32>(id + 3.0, row))), 0.6 * calm);
+    let m = paint_read(pl.p, pl.gx, pl.gy, paint_axes(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), 2.0, 2.0), vec2<f32>(0.31, 0.77));
+    c = c * (1.0 + (m.g - 0.5) * 0.12 * (1.0 - smoothstep(0.1, 0.3, pl.fp)));
+    // each block's rounding and the mortar round it (about 2 cm)
+    let e = min(min(u, 1.0 - u) * bw, min(f, 1.0 - f) * rh);
+    let rounded = smoothstep(0.0, 0.06, e);
+    let mortar = 1.0 - smoothstep(0.006, 0.018 + pl.fp * 0.8, e);
+    let fine = 1.0 - smoothstep(0.04, 0.12, pl.fp);
+    return c * (1.0 - (0.14 * (1.0 - rounded) + 0.22 * mortar) * fine - 0.06 * (1.0 - fine));
+}
+
+// The kinds 5 (wood), 6 (roof) and 7 (stone): the colour changes; the light is the plain look's.
+fn paint_building(rgb: vec3<f32>, local: vec3<f32>, lx: vec3<f32>, ly: vec3<f32>, n: vec3<f32>, kind: f32) -> Painted {
+    var o: Painted;
+    if (kind < 5.5) {
+        o.rgb = paint_wood(rgb, local, lx, ly);
+    } else if (kind < 6.5) {
+        o.rgb = paint_roof(rgb, local, lx, ly);
+    } else {
+        o.rgb = paint_stone(rgb, local, lx, ly);
+    }
+    o.normal = n;
+    o.wrap = 0.0;
+    o.rim = 0.0;
+    o.extra = vec3<f32>(0.0);
+    return o;
+}
+
 // The plain look's light on a surface of colour `base` (the picture times the vertex colour and the tint): fs_main's work, shared
 // with fs_detail.
 fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
@@ -681,7 +831,7 @@ fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
     let paint = in.paint;
     // (water's alpha is how deep it is there, not its cover)
     var deep = 1.0;
-    if (paint > 3.5) {
+    if (paint > 3.5 && paint < 4.5) {
         deep = base.a;
         base.a = 1.0;
     }
@@ -715,8 +865,10 @@ fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
             let gx = wx.xz;
             let gy = wy.xz;
             p = paint_ground(surface, in.world, geo, gx, gy, max(max(abs(gx.x) + abs(gy.x), abs(gx.y) + abs(gy.y)), 1e-5));
-        } else {
+        } else if (paint < 4.5) {
             p = paint_water(surface, in.world, in.uv, ux, uy, deep, max(abs(ux.x) + abs(uy.x), abs(ux.y) + abs(uy.y)));
+        } else {
+            p = paint_building(surface, in.local.xyz, lx, ly, geo, paint);
         }
         surface = p.rgb;
         n = p.normal;

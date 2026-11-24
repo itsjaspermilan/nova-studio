@@ -139,7 +139,7 @@ joining road is trimmed to its mouth; each corner is a fillet carrying the edge 
 4.5 m on gravel); and one patch fills what is left, every vertex shared with the pieces round it, triangulated finely enough (no edge
 over 2 m inside) for the hills to lift it. A Y at any angle works (a shallow one has a long gore and a small nose), as do crossroads,
 roads of different widths, two roads end to end (joined into one, a width change tapering over 15 m), a road into a pad (a yard or a
-turning circle of its own surface) and a gap where a bridge's deck carries the road (both ends square with a dark threshold strip).
+turning circle of its own surface) and a gap where a bridge's deck carries the road (both ends square with a dark threshold strip across the carriageway and its lit shoulder, the width a deck of the road's width covers; the road's middle line should run straight along the deck's axis for the last 10 m either side and its ground reach the deck's level there).
 Free ends get a rounded cap (`ends`: "round", "square", "flat"). Where two surfaces meet, `transition` "feather" (the default) runs the
 junction's surface 3 m into the lane (its apron, without a centre line; markings end with the tarmac) and then meets the other surface
 along a ragged broken edge with dust over the last metre and a half; "apron" makes that edge straight; "hard" cuts at the mouth.
@@ -200,7 +200,7 @@ points on a desktop (Apple M4); filling the lists in Lua costs more than that (a
 ### Painted surfaces
 
 A surface can be painted instead of flat-coloured (added 2026-11-23 for Fernhollow Post's grass, trees and creek, the owner's sixth
-play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Four kinds, each
+play: "Can we add a subtle texture to the grass? ... Same feedback for the trees, they just look like blobs now"). Seven kinds (the last three added 2026-11-23 for Fernhollow Post's houses), each
 an original look in the spirit of a hand-painted world, worked out in the plain look's shader (`mesh.wgsl`) from where the pixel is,
 over the surface's own colours:
 
@@ -210,6 +210,9 @@ over the surface's own colours:
 | `foliage` | a tree's crown: leaf clumps of about 0.7 m bend the light, leaf dabs of about 18 cm break the colour, what faces in towards the trunk or down is darker (the core), what faces out lighter; the sun wraps softly round it and lights its rim seen at a slant. The pattern is fixed in the model's own space, so it sways with the tree | a shape's `"paint": "foliage"` in a model file; `prop3d_make` with `style: "painted"` |
 | `canopy` | the same, for a long mass of trees along its model's x (its core worked out from that long middle line) | `"paint": "canopy"` |
 | `water` | running water: ripples stretched along the flow move downstream at about half a metre a second, the sky shows in them at a slant and the sun glints on them; the shallows are lighter and foam gathers along the waterline, broken by the ripples | `nova.mesh.make { paint = "water", uvs = ... }`: each point's UV is (metres across, metres downstream), and its colour's alpha is how deep the water is there (0 is 0.2 m above the bed, 255 is 0.6 m deep or more; make a place shallow to put foam round a post) |
+| `wood` | boards: courses of 0.32 m (0.2 m on a floor or deck) along a wall, one shade each (a little warmer or cooler), a little different along their length, a soft dark seam about 2.5 cm wide between them, a lighter lip on each upper edge and grain streaks about a metre long; the pattern is fixed in the model's own space | a shape's `"paint": "wood"` |
+| `roof` | tiles: rows of 0.26 m up the slope, tiles 0.36 m wide, every other row half a tile along, each a little different; a soft shadow under each row's scalloped lower edge and a joint between tiles; the slope is found from the surface itself, so it fits any pitch or turn | `"paint": "roof"` |
+| `stone` | courses of 0.22 m with blocks about 0.42 m long set differently on each course, each block its own shade and a little rounded, soft mortar, a slow mottle | `"paint": "stone"` |
 
 A model file says it per shape (`"paint": "foliage"`), which `model_write` writes to the `.glb` as the material's
 `"extras": { "nova": { "paint": "foliage" } }`; a name that is not a kind is a note and the shape is drawn plain. In the renderer the
@@ -217,7 +220,7 @@ kind travels in each vertex's `emissive` (the glow plus 1000 times the kind: `PA
 vertex layout and a painted model is instanced and batched like any other. The patterns come from one small picture of noise made by
 the engine (`gfx/paint.rs`: 128 by 128, four independent value noises 16 cells across, with its mip levels), read four to six times a
 painted pixel at different scales and slants; its mip levels average a pattern away where it is finer than a pixel, so far surfaces
-are calm. Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
+are calm (the seams, joints and mortar of the three building kinds are faded to a slightly darker average where they are under a few pixels wide, the shade of each board, tile and stone where a pixel spans over 7 to 20 cm). Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
 custom shader replaces it too. Cost on a desktop (Apple M4, Fernhollow's valley at 1280 by 720): see
 `docs/games/mountain-post.md`, "What the sixth play changed: grass, trees and the creek".
 
@@ -373,6 +376,7 @@ picture made for that screen (a paper map, a title) can be chosen and drawn one 
 | `nova.image_size(id)` | any | The size in pixels of a picture in `sprites/`. |
 | `nova.ui.text(x, y, text [, opts])` | UI | Vector text, top-left `x, y` (see "Text and fonts"). |
 | `nova.ui.text_size(text [, opts])`, `nova.ui.text_width(text [, opts_or_scale])` | | Measure text in logical units. |
+| `nova.ui.rich_text(x, y, text [, opts])`, `nova.ui.rich_text_letters(x, y, text [, opts])` | UI | Text with markup ({shake}, {wave}, {big}, {slow}, {pop}, {c=red}, {pause}) typed out on a clock into a layout made first (see "Rich text"). |
 
 **Ready-made UI art and nine-slices.** Kenney's UI packs (and most UI art) draw a panel or button as one small picture whose corners must stay
 the same size while the middle stretches. `nova.ui.panel("ui/btn_grey", x, y, w, h, { slice = { 14, 14, 14, 22 }, scale = 0.75 })` draws that picture at
@@ -1593,6 +1597,51 @@ call is cut. Letters are rasterised once per (font, character, pixel size) into 
 atlas; if it ever fills it is cleared and rebuilt. The engine's own overlays (the error banner, the F3
 stats) still use a small built-in pixel font.
 
+### Rich text: effects and typing (dialogue)
+
+`nova.ui.rich_text(x, y, text [, opts])` draws a line with markup a writer types into it, and types it out on a clock the game
+passes. The whole line is laid out first and the letters are typed into that layout, so a word never starts on one line and
+jumps to the next, and no letter moves as more come out. Each letter rises softly into place (a fifth of its size, with a quick
+fade, 0.16 s) as it appears; that is every rich text's own little animation (`appear = false` turns it off).
+
+```lua
+local t = 0     -- seconds since the line began: the game's own clock, so the same moment is the same picture
+function update(dt) t = t + dt end
+function draw()
+  local w, h, shown, done = nova.ui.rich_text(40, 600,
+    "{big}{wave}IT CAME!{/wave}{/big} It actually came! Tell her it {shake}hums{/shake}.{pause=0.3} {slow}...{/slow}Thanks.",
+    { font = "rounded", size = 22, width = 600, color = { 62, 54, 49 }, time = t, cps = 52, skip = skipped_at })
+end
+```
+
+| markup | does |
+| --- | --- |
+| `{shake}...{/shake}` | the letters jitter: small random offsets and tilts, 20 times a second (scared, angry, nervous) |
+| `{wave}...{/wave}` | the letters bob in a gentle sine running along the word (happy, sing-song) |
+| `{big}...{/big}` | 1.3 times larger and bolder (excitement, emphasis); the line is made taller for them |
+| `{slow}...{/slow}` | typed at a third of the speed (a dry pause, a drawl) |
+| `{pop}...{/pop}` | each letter pops in from small with a little overshoot |
+| `{c=red}...{/c}` | a colour: red, orange, gold, green, teal, blue, purple, pink, brown, grey, white, black, or `#rrggbb` |
+| `{pause}`, `{pause=0.6}` | a wait before the next letter (0.4 s, or the seconds given, up to 5) |
+| `{{` | a `{` |
+
+Tags nest; one left open runs to the end of the text. An unknown tag, or a close with nothing open, is an error naming it.
+
+Options: `font`, `size`, `color`, `bold`, `width` (wrap), `align`, `line_spacing` as `nova.ui.text`'s, and:
+- `time`: seconds since the line began. Letters come out at `cps` letters a second (default 52; spaces count), with a short pause
+  after a comma (0.11 s), a longer one after a full stop, `!` or `?` (0.24 s) and the longest after `...` (0.42 s, the dots
+  coming one by one). Without `time` the whole text is out and settled, and the effects move on the game's clock.
+- `skip`: the time the player asked for the whole line (a button pressed while it types): every letter not yet out comes out at
+  once, in a ripple a tenth of a second long.
+- `appear = false`: no rise as the letters come out.
+
+It returns its width and height (logical units), how many letters are out (spaces too) and whether the last is out.
+`nova.ui.rich_text_letters(x, y, text [, opts])` draws nothing and returns the same line as a table: `text` (the words without
+the markup), `last` (when the last letter comes out), `shown`, `done`, `width`, `height` and `letters`, one for each letter with
+`char`, `x`, `y` (its pen and baseline, where it rests), `line`, `size`, `at` (when it comes out), `shown`, its movement now
+(`dx`, `dy`, `scale`, `rotation`, `alpha`) and `fx` (`{ big = true, ... }`): for a babble voice that follows the letters, a mouth
+that moves while they come out, or a test. It costs what plain text costs: one quad a letter.
+
 
 ## Songs (`music/<name>.song.json`)
 
@@ -1691,6 +1740,8 @@ nova.sound.play("hit", { reverb = 0.3 })                  -- how much of a sound
 nova.music.layers({ "song_lead", "song_bass", "song_drums" }, { levels = { 1, 0, 0 }, fade = 1 })
                                      -- adaptive music: stems of one piece (song_write with stems) played sample-locked, each at a level 0 to 1
 nova.music.layer("song_drums", 1, { fade = 2, at = "bar" })   -- fade one stem in; at = "bar" waits for the piece's next bar line
+nova.music.prepare({ "next_lead", "next_bass" }, { loop = false })   -- start the next piece's decoders ahead, during a quiet
+nova.music.layers({ "next_lead", "next_bass" }, { levels = { 1, 0 }, loop = false })   -- a piece that plays once and ends
 nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
 nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```
@@ -1707,6 +1758,13 @@ steady `bpm` and `beats`); a change asked for `now` drops one of the same stem t
 all the time, silent or not (that is what keeps them in step): one decoder thread each (Ogg Vorbis at 44.1 kHz stereo, about what
 one music track costs), a ring of 1.5 s of decoded frames each (256 KB), and each file's compressed bytes in memory. Five stems of a
 3.5 minute piece are about 11 MB of Ogg.
+
+**Pieces that take turns.** `loop = false` plays the stems once: they end together and their decoders stop, so a game with several
+pieces (a playlist with quiet between them: `examples/mountain-post/lib/music.lua`) decodes only the piece that plays. Starting a
+piece starts one decoder per stem at once; `nova.music.prepare(names, { loop = false })` starts them ahead (a few seconds before,
+during the quiet), and the `nova.music.layers` of the same names and `loop` takes those decoders with their opening already
+decoded. Preparing other names, or playing any layers, stops decoders prepared for something else. Every Ogg in `music/` is still
+kept compressed in memory from the start (four pieces of five stems of about two minutes each: about 26 MB).
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
 (2 is an octave up; it also changes speed). `vary` (0 to 0.5) changes each play a little: the pitch by up to that share either way

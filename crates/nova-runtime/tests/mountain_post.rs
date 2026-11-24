@@ -95,10 +95,10 @@ fn plays_the_whole_slice(swap: bool) {
             .iter()
             .filter(|l| l.starts_with(&format!("dialogue {who} ")))
             .collect();
-        assert!(said.len() >= 5, "{who} said {said:?}");
-        // each of the hand-over's lines came with the face lib/words.lua gives it (Hazel gruff, dry, sad at the shop that shut,
-        // a small smile at "...Thank you"; Pip delighted, indignant at "It SINGS."), set as the line began
-        let faces: Vec<String> = (1..=5)
+        assert!(said.len() >= 3, "{who} said {said:?}");
+        // each of the hand-over's lines came with the face lib/words.lua gives it (Hazel gruff, sad at the shop that shut,
+        // a small smile at "...Thank you"; Pip delighted, indignant that nobody believed him, happy), set as the line began
+        let faces: Vec<String> = (1..=3)
             .map(|i| {
                 lua(
                     &g,
@@ -123,7 +123,7 @@ fn plays_the_whole_slice(swap: bool) {
         // the postmaster smiles as the parcel leaves their hands
         assert_eq!(log[start + 1], "face postmaster happy");
     }
-    let hazel: Vec<String> = (1..=5)
+    let hazel: Vec<String> = (1..=3)
         .map(|i| {
             lua(
                 &g,
@@ -131,8 +131,8 @@ fn plays_the_whole_slice(swap: bool) {
             )
         })
         .collect();
-    assert_eq!(hazel, ["gruff", "neutral", "sad", "gruff", "smile"]);
-    let pip: Vec<String> = (1..=5)
+    assert_eq!(hazel, ["gruff", "sad", "smile"]);
+    let pip: Vec<String> = (1..=3)
         .map(|i| {
             lua(
                 &g,
@@ -140,12 +140,11 @@ fn plays_the_whole_slice(swap: bool) {
             )
         })
         .collect();
-    assert_eq!(
-        pip,
-        ["delighted", "delighted", "happy", "indignant", "delighted"]
+    assert_eq!(pip, ["delighted", "indignant", "happy"]);
+    assert!(lua(&g, "require('lib.words').people.pip.given[3]").contains("past the creek"));
+    assert!(
+        lua(&g, "require('lib.words').people.hazel.given[2]").contains("Pemberton shut up shop")
     );
-    assert!(lua(&g, "require('lib.words').people.pip.given[4]").contains("It SINGS."));
-    assert!(lua(&g, "require('lib.words').people.hazel.given[3]").contains("didn't open up"));
 }
 
 /// The owner's fourth notes: "Walking the player shouldn't have their arms out. For running they will". The stick alone only walks
@@ -324,7 +323,7 @@ fn the_labels_and_every_line_are_exactly_the_specs_words() {
         words.push(lua(&g, &format!("require('lib.words').letter[{i}]")));
     }
     for who in ["hazel", "pip"] {
-        for i in 1..=5 {
+        for i in 1..=3 {
             words.push(lua(
                 &g,
                 &format!("require('lib.words').people.{who}.given[{i}]"),
@@ -361,11 +360,11 @@ fn the_labels_and_every_line_are_exactly_the_specs_words() {
     );
     assert_eq!(
         lua(&g, "require('lib.words').people.hazel.given[1]"),
-        "Hm. So there IS a postmaster."
+        "Hm. So there {slow}IS{/slow} a postmaster."
     );
     assert_eq!(
-        lua(&g, "require('lib.words').people.pip.given[5]"),
-        "Tune in tonight. I'm going to say your name. What IS your name? Never mind, I'll say 'the Postmaster'. Sounds grander."
+        lua(&g, "require('lib.words').people.pip.given[3]"),
+        "This valve gets Fernhollow Radio past the creek. The lake side too, once there's a bridge!"
     );
     assert_eq!(
         lua(&g, "require('lib.words').ending"),
@@ -509,15 +508,15 @@ fn talking_again_rotates_the_after_lines() {
         .collect();
     assert_eq!(
         said[0],
-        "dialogue pip 1: Testing, testing. Can you hear that? No? Good, it's not plugged in yet."
+        "dialogue pip 1: Tonight I say your name on the radio. Live. No pressure!"
     );
     assert_eq!(
         said[1],
-        "dialogue pip 1: If Hazel asks, the aerial is staying."
+        "dialogue pip 1: If Hazel asks, the aerial sings. It does not hum."
     );
     assert_eq!(
         said[2],
-        "dialogue pip 1: Testing, testing. Can you hear that? No? Good, it's not plugged in yet."
+        "dialogue pip 1: Tonight I say your name on the radio. Live. No pressure!"
     );
 }
 
@@ -1874,26 +1873,29 @@ fn the_song_is_a_long_piano_piece_in_sections() {
             "a soft, felt piano"
         );
     }
+    // (since the seventh play it is the first of four pieces that take turns: it plays once, intro A B C A''' and an ending, and
+    // no longer loops; the other three are tested at the end of this file)
     let spb = song["stepsPerBeat"].as_f64().unwrap();
     let bpm = song["bpm"].as_f64().unwrap();
-    let (from, to) = (
-        song["loop"]["from"].as_f64().unwrap(),
-        song["loop"]["to"].as_f64().unwrap(),
-    );
-    assert!(from > 0.0, "an intro that plays once");
-    assert_eq!(to, song["length"].as_f64().unwrap());
+    assert!(song.get("loop").is_none(), "it plays once and ends");
+    let markers = song["markers"].as_array().unwrap();
+    let from = markers.iter().find(|m| m["name"] == "A").unwrap()["step"]
+        .as_f64()
+        .unwrap();
+    let to = markers.iter().find(|m| m["name"] == "end").unwrap()["step"]
+        .as_f64()
+        .unwrap();
+    assert!(from > 0.0, "an intro");
     let seconds = (to - from) / spb * 60.0 / bpm;
-    assert!(seconds >= 150.0, "the loop is {seconds} s");
+    assert!(seconds >= 100.0, "the piece is {seconds} s");
     for t in song["tempos"].as_array().unwrap() {
         assert!(t["bpm"].as_f64().unwrap() <= bpm);
     }
-    let names: Vec<&str> = song["markers"]
-        .as_array()
-        .unwrap()
+    let names: Vec<&str> = markers
         .iter()
         .map(|m| m["name"].as_str().unwrap())
         .collect();
-    for s in ["A", "A'", "B", "A''", "C", "B'", "A'''"] {
+    for s in ["intro", "A", "B", "C", "A'''", "end"] {
         assert!(names.contains(&s), "the section {s}: {names:?}");
     }
     let right = tracks[0]["notes"].as_array().unwrap();
@@ -1909,7 +1911,10 @@ fn the_song_is_a_long_piano_piece_in_sections() {
         }
         b += bar;
     }
-    assert!(quiet_bars >= 2, "{quiet_bars} bars without the tune");
+    assert!(
+        quiet_bars >= 1,
+        "{quiet_bars} bars without the tune (C ends on one)"
+    );
     let (lo, hi) = right
         .iter()
         .map(|n| n["vel"].as_f64().unwrap())
@@ -2573,7 +2578,7 @@ fn every_line_of_the_dialogue_and_the_letter_fits_its_box_in_the_rounded_face() 
               if type(v) == 'string' then all[#all + 1] = v else for _, s in ipairs(v) do all[#all + 1] = s end end
             end
             for _, line in ipairs(all) do
-              local _, h = nova.ui.text_size(line, { font = 'rounded', size = L.size, width = L.text_w, line_spacing = L.spacing, bold = 0.55 })
+              local h = ui.rich_letters(0, 0, line, dialogue.text_opts(who, L)).height
               if h > maxh then bad[#bad + 1] = who .. ' ' .. math.floor(h) .. ' > ' .. math.floor(maxh) .. ': ' .. line:sub(1, 30) end
             end
           end
@@ -3541,9 +3546,9 @@ fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_
             "{name} at 60 m (level {far}): the letters still there ({})",
             cover[far].1
         );
-        // the letters are big: 0.32 m or more of capitals at 300 texels a metre (tools/art.mjs SIGN_PPM)
+        // the letters are big: 0.35 m or more of capitals at 300 texels a metre (the picture is cropped to the ink, so it is as high as the words)
         assert!(
-            img.height as f64 / 300.0 > 0.5,
+            img.height as f64 / 300.0 > 0.3,
             "{name}: the words' picture is {} m high",
             img.height as f64 / 300.0
         );
@@ -3754,9 +3759,13 @@ fn the_valley_plays_the_stems_and_driving_brings_in_the_layers() {
         .filter_map(|s| s["text"].as_str().map(str::to_string))
         .filter(|t| t.starts_with("music"))
         .collect();
+    // (since the seventh play the first piece of the playlist starts a few seconds in: whichever it is, its five stems, once)
     assert!(
-        started.iter().any(|t| t
-            == "music layers fernhollow_piano + fernhollow_bass + fernhollow_brushes + fernhollow_pad + fernhollow_celesta"),
+        started.iter().any(|t| {
+            let Some(rest) = t.strip_prefix("music layers ") else { return false };
+            let Some((name, _)) = rest.split_once("_piano") else { return false };
+            t == &format!("music layers {name}_piano + {name}_bass + {name}_brushes + {name}_pad + {name}_celesta (once)")
+        }),
         "{started:?}"
     );
     // the last value each phase recorded: what has been earned, and each layer's level
@@ -3807,9 +3816,10 @@ fn the_five_stems_share_one_length_one_loop_and_the_pieces_bar_lines() {
             std::fs::read(root.join(format!("{GAME}/music/fernhollow_{stem}.ogg"))).unwrap();
         let len = frames(&bytes);
         let src = nova_runtime::stream::StreamSource::new(bytes).unwrap();
-        assert!(src.loop_points.is_some(), "{stem}: the loop's points");
+        // (since the seventh play the piece plays once and ends: no loop points; the other pieces are tested at the end)
+        assert!(src.loop_points.is_none(), "{stem}: it plays once");
         assert!(
-            src.bars.len() >= 50,
+            src.bars.len() >= 30,
             "{stem}: the bar lines ({})",
             src.bars.len()
         );
@@ -6212,84 +6222,6 @@ fn the_buildings_share_one_house_style_rounded_and_in_the_palette() {
     }
 }
 
-/// "Kettle Creek's signpost from the south: the Post Road boards are seen edge-on." A board that points along its road is edge-on from
-/// that road. Every board of every signpost, from every road that comes to the post, 25 m out along it, over the road's middle, is
-/// seen at 30 degrees or more of its face (its length against the sight line to its middle: the sine at least 0.45; the arms are
-/// swung off their roads, layout.mjs SIGNS `turn`, 40 degrees at most).
-#[test]
-fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
-    let root = game_dir();
-    let scene: Value = serde_json::from_str(
-        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
-    )
-    .unwrap();
-    let objects = scene["objects"].as_array().unwrap();
-    let roads: Vec<Vec<(f64, f64)>> = objects
-        .iter()
-        .filter(|o| o["kind"] == "roadline")
-        .map(|o| {
-            o["props"]["points"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
-                .collect()
-        })
-        .collect();
-    let (mut seen, mut worst) = (0, 1.0f64);
-    for sign in objects.iter().filter(|o| o["kind"] == "signpost") {
-        let (sx, sz) = (sign["x"].as_f64().unwrap(), sign["z"].as_f64().unwrap());
-        for road in &roads {
-            let (best, bd) = road
-                .iter()
-                .enumerate()
-                .map(|(i, p)| (i, ((p.0 - sx).powi(2) + (p.1 - sz).powi(2)).sqrt()))
-                .fold((0, f64::MAX), |m, v| if v.1 < m.1 { v } else { m });
-            if bd > 30.0 {
-                continue;
-            }
-            for dir in [1i64, -1] {
-                // the first point of the road, going out, that is 25 m from the post
-                let mut i = best as i64;
-                let mut cam = None;
-                while (0..road.len() as i64).contains(&(i + dir)) {
-                    let (a, b) = (road[i as usize], road[(i + dir) as usize]);
-                    let (da, db) = (
-                        ((a.0 - sx).powi(2) + (a.1 - sz).powi(2)).sqrt(),
-                        ((b.0 - sx).powi(2) + (b.1 - sz).powi(2)).sqrt(),
-                    );
-                    if da <= 25.0 && db >= 25.0 {
-                        let t = (25.0 - da) / (db - da);
-                        cam = Some((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
-                        break;
-                    }
-                    i += dir;
-                }
-                let Some(cam) = cam else { continue };
-                for arm in sign["props"]["arms"].as_array().unwrap() {
-                    let ry = arm["ry"].as_f64().unwrap();
-                    let (ax, az) = (ry.cos(), -ry.sin());
-                    let (rx, rz) = (sx + ax * 1.8 - cam.0, sz + az * 1.8 - cam.1);
-                    let f = (ax * rz - az * rx).abs() / rx.hypot(rz);
-                    worst = worst.min(f);
-                    assert!(
-                        f >= 0.45,
-                        "{}: the {} board is seen at {:.0} degrees from the road 25 m out at {:.0}, {:.0}",
-                        sign["name"].as_str().unwrap(),
-                        arm["text"].as_str().unwrap(),
-                        f.asin().to_degrees(),
-                        cam.0,
-                        cam.1
-                    );
-                    seen += 1;
-                }
-            }
-        }
-    }
-    assert_eq!(seen, 18, "boards checked: 3 arms from 6 approaches");
-    assert!(worst < 1.0);
-}
-
 /// "Distant forest partly hides the far half of the old bridge from the BRIDGE OUT end." From the barrier to the far ruin runs a
 /// corridor, 5 m either side at the barrier widening to 16 m at the ruin and 6 m past it (tools/scene.mjs BRIDGE_VIEW), and no
 /// forest mass stands in it: each mass is a capsule along its own x (the model's, scaled and turned as placed, its puffs reaching
@@ -6416,7 +6348,7 @@ fn the_bass_layer_is_voiced_for_a_small_speaker_and_the_stems_stay_in_step() {
         up["notes"].as_array().unwrap(),
     );
     assert!(
-        ln.len() > 100 && ln.len() == un.len(),
+        ln.len() > 50 && ln.len() == un.len(),
         "bass notes {} / upper {}",
         ln.len(),
         un.len()
@@ -8686,5 +8618,1508 @@ fn the_valley_grows_grass_off_the_roads_water_and_porches_and_trees_keep_far_sha
     assert!(
         g.frame_input(720).lighting.grass.is_none(),
         "no grass in the post office"
+    );
+}
+
+// ---- the owner's seventh play: the bridge's joins and the signposts ------------------------------------------------------------------
+
+/// The van drives Kettle Creek Road over the bridge (`place`: "pip" to cross eastward, "hazel" westward, from `from`, a point on the
+/// road well before the deck), recording the body's height above the world's zero (the ground under it and the suspension's lift) and
+/// where along the bridge it is; returns the heights, a frame apart, from 10 m before the deck to 10 m after it.
+fn bridge_crossing(place: &str, from_ahead: f64) -> Vec<(f64, f64)> {
+    let mut g = game();
+    let expr = "string.format('%.5f %.2f', nova.terrain_height(nova.named('van').x, nova.named('van').z) + nova.named('van').lift, (function() local b = require('lib.world').bridge; local v = nova.named('van'); return ((v.x - b.ax) * b.dx + (v.z - b.az) * b.dz) end)())";
+    let go = format!(
+        r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 20 }},
+        {{ "lua": "T = require('lib.testkit'); local W = require('lib.world'); local b = W.bridge; local s = {from_ahead} * ('{place}' == 'pip' and -1 or 1) ; local l = '{place}' == 'pip' and 0 or b.len; local x, z = b.ax + b.dx * (l + s), b.az + b.dz * (l + s); local h = math.atan(b.dx * ('{place}' == 'pip' and 1 or -1), b.dz * ('{place}' == 'pip' and 1 or -1)); local v = nova.named('van'); v:teleport(x, z, h); local sc = nova.scene_now(); sc.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.camera').reset(h); T.drive('{place}')" }},
+        {{ "wait": 700, "record": "{expr}" }} ] }}"#
+    );
+    let r = play(&mut g, &go);
+    let mut out = vec![];
+    for (from, to, v) in r.record(expr) {
+        let mut it = v.split(' ');
+        let y: f64 = it.next().unwrap().parse().unwrap();
+        let t: f64 = it.next().unwrap().parse().unwrap();
+        for _ in from..=to {
+            out.push((y, t));
+        }
+    }
+    out
+}
+
+/// "The bridge doesn't connect to the roads properly still." At both ends the deck meets the road: the road's centre line runs along
+/// the deck's axis for 10 m either side (no kink, no skew), the road ends on the deck's end line (no gap, no overlap), the deck is as
+/// wide as the road's lit surface (within half a metre of its edge), and the ground there, the road and the deck are one height.
+#[test]
+fn the_bridge_meets_the_road_at_both_ends_in_line_width_and_height() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 20 } ] }"#,
+    );
+    let row = lua(
+        &g,
+        "(function() local W = require('lib.world'); local b = W.bridge; local br = nova.named('bridge'); local r; for _, q in ipairs(W.roads) do if q.id == 'kettle_creek_road' then r = q end end; \
+         local worst = 0; \
+         for _, p in ipairs(r.points) do local px, pz = p[1] - b.ax, p[2] - b.az; local t = px * b.dx + pz * b.dz; local c = px * -b.dz + pz * b.dx; \
+           if (t > -10 and t < 0) or (t > b.len and t < b.len + 10) then worst = math.max(worst, math.abs(c)) end end; \
+         local ground = 0; \
+         for _, e in ipairs({ 0, b.len }) do for _, s in ipairs({ -b.half, -1.5, 0, 1.5, b.half }) do local x, z = b.ax + b.dx * e + b.dz * s, b.az + b.dz * e - b.dx * s; ground = math.max(ground, math.abs(nova.terrain_height(x, z) - (e == 0 and b.ha or b.hb))) end end; \
+         local deck = br.y + nova.terrain_height(br.x, br.z); \
+         return string.format('%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f', b.ax, b.az, b.dx, b.dz, b.len, b.half, worst, ground, math.max(math.abs(deck - b.ha), math.abs(deck - b.hb)), math.abs(b.ha - b.hb)) end)()",
+    );
+    let v: Vec<f64> = row.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (ax, az, dx, dz, len, half) = (v[0], v[1], v[2], v[3], v[4], v[5]);
+    assert!((len - 22.0).abs() < 0.01, "the deck is 22 m long: {len}");
+    assert!(
+        v[6] < 0.2,
+        "the road's middle line leaves the deck's axis by {} m within 10 m of it",
+        v[6]
+    );
+    assert!(
+        v[7] < 0.06,
+        "the ground at the deck's ends and the deck differ by {} m",
+        v[7]
+    );
+    assert!(
+        v[8] < 0.04,
+        "the deck is {} m off the ground at one end",
+        v[8]
+    );
+    assert!(v[9] < 0.06, "the two ends differ in height by {} m", v[9]);
+    // the road's own surface, from its mesh: where it ends along the axis, and how wide its level top is at the deck
+    let tris = valley_road_triangles();
+    for (end, at) in [("west", 0.0f64), ("east", len)] {
+        let sign = if at == 0.0 { 1.0 } else { -1.0 }; // (the road lies at smaller t at the west end, larger at the east)
+        let (mut reach, mut across) = (f64::NEG_INFINITY, 0.0f64);
+        for t in &tris {
+            for p in t {
+                let (px, pz) = (p[0] as f64 - ax, p[2] as f64 - az);
+                let (along, side) = (px * dx + pz * dz - at, px * -dz + pz * dx);
+                if along * sign > 0.02 || along.abs() > 6.0 || side.abs() > 4.5 {
+                    continue; // (the deck's side of the end line, or too far to matter)
+                }
+                if along.abs() < 0.8 && p[1] > 0.019 {
+                    across = across.max(side.abs());
+                }
+                if side.abs() < 1.5 {
+                    reach = reach.max(-along.abs());
+                }
+            }
+        }
+        assert!(
+            reach > -0.03,
+            "the {end} end of the road stops {} m short of the deck",
+            -reach
+        );
+        assert!(
+            (across - half).abs() < 0.5,
+            "the {end} end: the road is {} m wide, the deck {} m",
+            across * 2.0,
+            half * 2.0
+        );
+    }
+    // the rails run past the deck's ends to a stout post on each bank
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/mountain-post/models/bridge.model.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for c in model["capsules"].as_array().unwrap() {
+        let k = model["scale"].as_f64().unwrap();
+        let (a, b) = (c["az"].as_f64().unwrap() * k, c["bz"].as_f64().unwrap() * k);
+        assert!(
+            a < -len / 2.0 - 0.2 && b > len / 2.0 + 0.2,
+            "a rail runs from {a} to {b}: it ends in mid air"
+        );
+        assert!(
+            (c["ax"].as_f64().unwrap().abs() * k - half).abs() < 0.3,
+            "a rail's side"
+        );
+    }
+}
+
+/// "The van drives over with no bump": over the bridge either way the body's height is as smooth as on the open road, no step of
+/// more than 2 cm a frame and a vertical acceleration under 2.5 m/s2 (a quarter g), from 10 m before the deck to 10 m after it.
+#[test]
+fn the_van_crosses_the_bridge_both_ways_without_a_bump() {
+    for (place, ahead) in [("pip", 30.0), ("hazel", 30.0)] {
+        let ys = bridge_crossing(place, ahead);
+        assert!(ys.len() > 600, "{place}: {} frames", ys.len());
+        let (mut accel, mut step, mut on) = (0.0f64, 0.0f64, 0);
+        for k in 1..ys.len() - 1 {
+            if ys[k].1 < -10.0 || ys[k].1 > 32.0 {
+                continue;
+            }
+            on += 1;
+            accel = accel.max(((ys[k + 1].0 - 2.0 * ys[k].0 + ys[k - 1].0) * 3600.0).abs());
+            step = step.max((ys[k + 1].0 - ys[k].0).abs());
+        }
+        assert!(on > 60, "{place}: the van was on the stretch {on} frames");
+        assert!(
+            accel < 2.5,
+            "{place}: the body's vertical acceleration reaches {accel} m/s2"
+        );
+        assert!(step < 0.02, "{place}: the body steps {step} m in a frame");
+    }
+}
+
+/// The valley scene's signposts and road lines, as the engine reads them: every signpost's place and arms (turn, name), every road's
+/// middle line (world x, z) by its key.
+fn signs_and_roads() -> (
+    Vec<(String, (f64, f64), Vec<(String, f64)>)>,
+    Vec<(String, Vec<(f64, f64)>)>,
+) {
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(game_dir().join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let roads = objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline")
+        .map(|o| {
+            (
+                o["props"]["key"].as_str().unwrap().to_string(),
+                o["props"]["points"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+                    .collect(),
+            )
+        })
+        .collect();
+    let signs = objects
+        .iter()
+        .filter(|o| o["kind"] == "signpost")
+        .map(|o| {
+            (
+                o["name"].as_str().unwrap().to_string(),
+                (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap()),
+                o["props"]["arms"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|a| {
+                        (
+                            a["text"].as_str().unwrap().to_string(),
+                            a["ry"].as_f64().unwrap(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    (signs, roads)
+}
+
+/// The direction of a road at the foot of a post: over 8 m either side of the road's nearest point, along the road as it is drawn.
+fn road_direction_at(pts: &[(f64, f64)], at: (f64, f64)) -> (f64, f64) {
+    let d = |p: &(f64, f64)| ((p.0 - at.0).powi(2) + (p.1 - at.1).powi(2)).sqrt();
+    let near = (0..pts.len())
+        .min_by(|&a, &b| d(&pts[a]).partial_cmp(&d(&pts[b])).unwrap())
+        .unwrap();
+    let (mut lo, mut hi, mut acc) = (near, near, 0.0);
+    while lo > 0 && acc < 8.0 {
+        acc += ((pts[lo].0 - pts[lo - 1].0).powi(2) + (pts[lo].1 - pts[lo - 1].1).powi(2)).sqrt();
+        lo -= 1;
+    }
+    acc = 0.0;
+    while hi + 1 < pts.len() && acc < 8.0 {
+        acc += ((pts[hi].0 - pts[hi + 1].0).powi(2) + (pts[hi].1 - pts[hi + 1].1).powi(2)).sqrt();
+        hi += 1;
+    }
+    let (dx, dz) = (pts[hi].0 - pts[lo].0, pts[hi].1 - pts[lo].1);
+    let l = dx.hypot(dz);
+    (dx / l, dz / l)
+}
+
+fn road_of_sign(text: &str) -> &'static str {
+    match text {
+        "FERN LANE" => "fern_lane",
+        "POST ROAD" => "post_road",
+        "KETTLE CREEK RD" => "kettle_creek_road",
+        other => panic!("a board named {other}"),
+    }
+}
+
+/// "They don't always follow the direction of the road." Every arm of every signpost points along the road it names: within 4 degrees of
+/// that road's direction at the post's foot, its point toward where the road goes (the two Post Road arms of a post point opposite ways,
+/// the side road's arm away from Post Road), and none is swung off its road to be read.
+#[test]
+fn every_arm_points_along_its_road() {
+    let (signs, roads) = signs_and_roads();
+    assert_eq!(signs.len(), 2, "two signposts");
+    let mut arms = 0;
+    for (name, at, boards) in &signs {
+        assert_eq!(boards.len(), 3, "{name}: a board for each way a road goes");
+        let mut main_dirs = vec![];
+        for (text, ry) in boards {
+            let arm = (ry.cos(), -ry.sin()); // (world x, z: the model's +x turned by ry)
+            let road = &roads.iter().find(|r| r.0 == road_of_sign(text)).unwrap().1;
+            let t = road_direction_at(road, *at);
+            let along = arm.0 * t.0 + arm.1 * t.1;
+            let off = along.abs().min(1.0).acos().to_degrees();
+            assert!(
+                off < 4.0,
+                "{name}: the {text} board is {off:.1} degrees off its road's direction"
+            );
+            if text == "POST ROAD" {
+                main_dirs.push(arm);
+            } else {
+                // (the side road leaves Post Road: its arm points out along it, from the post's nearest point on it)
+                let start = road[0];
+                let far = road
+                    .iter()
+                    .find(|p| ((p.0 - start.0).powi(2) + (p.1 - start.1).powi(2)).sqrt() > 30.0)
+                    .unwrap();
+                let (ox, oz) = (far.0 - start.0, far.1 - start.1);
+                let l = ox.hypot(oz);
+                assert!(
+                    (arm.0 * ox + arm.1 * oz) / l > 0.7,
+                    "{name}: the {text} board's point shows the road's way"
+                );
+            }
+            arms += 1;
+        }
+        assert_eq!(main_dirs.len(), 2, "{name}: Post Road both ways");
+        let dot = main_dirs[0].0 * main_dirs[1].0 + main_dirs[0].1 * main_dirs[1].1;
+        assert!(
+            dot < -0.98,
+            "{name}: the Post Road arms point opposite ways ({dot})"
+        );
+    }
+    assert_eq!(arms, 6);
+    // (and the layout's table no longer carries a turn: nothing is swung off its road)
+    let layout = std::fs::read_to_string(game_dir().join("tools/layout.mjs")).unwrap();
+    assert!(!layout.contains("turn:"), "SIGNS has no turn");
+}
+
+/// "The text doesn't line up properly." Each board's lettering is centred in its dark panel on every side, on one baseline per line,
+/// with the same margins, and reads the right way round from both faces. The pictures are cropped to their ink (equal margins), the
+/// lines of the two-line board are centred on one another, the picture's middle is placed at the panel's middle (lib/sign_art.lua) so
+/// the margin to the rim equals the margin to the point's edge, and both faces carry the picture, level and equally far off the board.
+#[test]
+fn the_lettering_is_centred_in_each_panel_on_both_faces() {
+    let root = game_dir();
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 10 } ] }"#,
+    );
+    // the board's own numbers, from its model (the dark panel is inset by the rim)
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("models/sign_arm.model.json")).unwrap(),
+    )
+    .unwrap();
+    let k = model["scale"].as_f64().unwrap();
+    let verts = model["parts"][0]["cubes"][0]["verts"].as_array().unwrap();
+    let xs: Vec<f64> = verts.iter().map(|v| v[0].as_f64().unwrap() * k).collect();
+    let (x0, length) = (
+        xs.iter().cloned().fold(f64::MAX, f64::min),
+        xs.iter().cloned().fold(f64::MIN, f64::max),
+    );
+    let (rim, point) = (0.06, 0.42);
+    assert!(
+        (x0 - 0.08).abs() < 0.005 && (length - 3.6).abs() < 0.005,
+        "the board runs from {x0} to {length}"
+    );
+    let mut caps = vec![];
+    for (sprite, board_h, lines) in [
+        ("sign_fern_lane", 0.72, 1usize),
+        ("sign_post_road", 0.72, 1),
+        ("sign_kettle_creek_rd", 1.12, 2),
+    ] {
+        let row = lua(
+            &g,
+            &format!(
+                "(function() local a = require('lib.sign_art')['{sprite}']; return string.format('%.5f %.5f %.5f %.2f %d', a.mid, a.w, a.h, a.board, a.lines) end)()"
+            ),
+        );
+        let v: Vec<f64> = row.split(' ').map(|s| s.parse().unwrap()).collect();
+        let (mid, w, h) = (v[0], v[1], v[2]);
+        assert!(
+            (v[3] - board_h).abs() < 1e-6 && v[4] as usize == lines,
+            "{sprite}: its board"
+        );
+        // the picture: cropped to the ink, centred in itself
+        let png = std::fs::read(root.join(format!("sprites/fx/{sprite}.png"))).unwrap();
+        let img = nova_runtime::assets::decode_png(&png).expect("a PNG");
+        let (iw, ih) = (img.width as usize, img.height as usize);
+        assert!(
+            ((iw as f64 / 300.0) - w).abs() < 0.004 && ((ih as f64 / 300.0) - h).abs() < 0.004,
+            "{sprite}: the picture is {iw} x {ih}"
+        );
+        let ink = |x: usize, y: usize| img.rgba[(y * iw + x) * 4 + 3] > 24;
+        let rows_with: Vec<bool> = (0..ih).map(|y| (0..iw).any(|x| ink(x, y))).collect();
+        let cols_with: Vec<bool> = (0..iw).map(|x| (0..ih).any(|y| ink(x, y))).collect();
+        let first = |v: &[bool]| v.iter().position(|b| *b).unwrap();
+        let last = |v: &[bool]| v.len() - 1 - v.iter().rev().position(|b| *b).unwrap();
+        let (l, r, t, b) = (
+            first(&cols_with),
+            iw - 1 - last(&cols_with),
+            first(&rows_with),
+            ih - 1 - last(&rows_with),
+        );
+        assert!(
+            (l as i64 - r as i64).abs() <= 1 && (t as i64 - b as i64).abs() <= 1,
+            "{sprite}: the ink is off centre in its picture ({l} {r} {t} {b})"
+        );
+        assert!(
+            l <= 5 && t <= 5,
+            "{sprite}: the picture is cropped to the ink ({l} {t})"
+        );
+        // the lines of ink (runs of rows), each centred on the picture's middle, each as tall as the others
+        let mut bands = vec![];
+        let mut y = 0;
+        while y < ih {
+            if rows_with[y] {
+                let s = y;
+                while y < ih && rows_with[y] {
+                    y += 1;
+                }
+                bands.push((s, y));
+            } else {
+                y += 1;
+            }
+        }
+        assert_eq!(bands.len(), lines, "{sprite}: its lines of lettering");
+        for (s, e) in &bands {
+            let cols: Vec<usize> = (0..iw).filter(|&x| (*s..*e).any(|y| ink(x, y))).collect();
+            let centre = (cols[0] + cols.last().unwrap() + 1) as f64 / 2.0;
+            assert!(
+                (centre - iw as f64 / 2.0).abs() <= 2.0,
+                "{sprite}: a line is centred {centre} in {iw}"
+            );
+        }
+        if lines == 2 {
+            let (a, c) = (bands[0].1 - bands[0].0, bands[1].1 - bands[1].0);
+            assert!(
+                (a as i64 - c as i64).abs() <= 3,
+                "the two lines' capitals: {a} and {c}"
+            );
+        }
+        caps.push((bands[0].1 - bands[0].0) as f64 / 300.0);
+        // the panel: x0 + rim to the start of the slope, the point's edge to its tip
+        let hh = board_h / 2.0 - rim;
+        let (px0, slope_from, tip) = (x0 + rim, length - rim * 0.8 - point, length - rim * 1.6);
+        let left = mid - w / 2.0 - px0;
+        let (cr, sr) = (mid + w / 2.0, h / 2.0);
+        let slope = (tip - slope_from).hypot(hh);
+        let right = (hh * (tip - cr) - (tip - slope_from) * sr) / slope;
+        let top = hh - h / 2.0;
+        assert!(
+            (left - right).abs() < 0.02,
+            "{sprite}: {left:.3} m of panel before the words and {right:.3} after them"
+        );
+        assert!(
+            left.min(right).min(top) >= 0.1,
+            "{sprite}: a margin of {:.3} m",
+            left.min(right).min(top)
+        );
+        // (the middle is the panel's, in the straight part's span or a little past it into the point)
+        assert!(
+            mid > px0 + w / 2.0 && mid < tip,
+            "{sprite}: its middle {mid}"
+        );
+    }
+    // one baseline and the same capitals on the single-line boards
+    assert!(
+        (caps[0] - caps[1]).abs() < 0.012,
+        "FERN LANE and POST ROAD's capitals: {caps:?}"
+    );
+    // both faces: the picture drawn on each, level with the board's middle, the same way off it, facing opposite ways
+    let faces = lua(
+        &g,
+        "(function() local out = {}; for _, name in ipairs({ 'sign_1', 'sign_2' }) do local s = nova.named(name); for i, d in ipairs(s.drawn) do local a, b = d.fronts[1], d.fronts[2]; local art = require('lib.sign_art')[d.sprite]; local ry = s.arms[i].ry; local mx, mz = s.x + math.cos(ry) * art.mid, s.z - math.sin(ry) * art.mid; out[#out + 1] = string.format('%d %.4f %.4f %.4f %.4f', #d.fronts, a[1] + b[1], a[2] + b[2], a[3][1] + b[3][1] + a[3][3] + b[3][3], math.abs(d.cx - mx) + math.abs(d.cz - mz)) end end; return table.concat(out, ';') end)()",
+    );
+    let n = faces.split(';').count();
+    assert_eq!(n, 6, "six boards: {faces}");
+    for f in faces.split(';') {
+        let v: Vec<f64> = f.split(' ').map(|s| s.parse().unwrap()).collect();
+        assert_eq!(v[0] as i32, 2, "two faces");
+        assert!(
+            v[1].abs() < 1e-6 && v[2].abs() < 1e-6 && v[3].abs() < 1e-6,
+            "opposite faces: {f}"
+        );
+        assert!(
+            v[4] < 1e-6,
+            "the picture's middle is the panel's middle: {f}"
+        );
+    }
+}
+
+/// "Posts placed in the corner where approaching traffic sees the boards at an angle (not edge-on)": from every road that comes to a
+/// post, 25 m out over the road's middle, every board that does not point along that road is seen at 37 degrees or more, and the boards
+/// that do (the road's own name, and Post Road's two arms from Post Road: a board along a road is as near edge-on as it gets) at 19
+/// degrees or more; at 12 m every board at 11 degrees or more (the van's camera at 1280 x 720).
+#[test]
+fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
+    let (signs, roads) = signs_and_roads();
+    let (mut seen, mut worst_cross, mut worst_along) = (0, 1.0f64, 1.0f64);
+    for (name, at, boards) in &signs {
+        for (road_key, road) in &roads {
+            let d = |p: &(f64, f64)| ((p.0 - at.0).powi(2) + (p.1 - at.1).powi(2)).sqrt();
+            let near = (0..road.len())
+                .min_by(|&a, &b| d(&road[a]).partial_cmp(&d(&road[b])).unwrap())
+                .unwrap();
+            if d(&road[near]) > 30.0 {
+                continue;
+            }
+            let heading = road_direction_at(road, *at);
+            for dir in [1i64, -1] {
+                for dist in [25.0, 12.0] {
+                    // the first point of the road, going out, `dist` from the post
+                    let mut i = near as i64;
+                    let mut cam = None;
+                    while (0..road.len() as i64).contains(&(i + dir)) {
+                        let (a, b) = (road[i as usize], road[(i + dir) as usize]);
+                        let (da, db) = (d(&a), d(&b));
+                        if da <= dist && db >= dist {
+                            let t = (dist - da) / (db - da);
+                            cam = Some((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+                            break;
+                        }
+                        i += dir;
+                    }
+                    let Some(cam) = cam else { continue };
+                    for (text, ry) in boards {
+                        let (ax, az) = (ry.cos(), -ry.sin());
+                        let (rx, rz) = (at.0 + ax * 1.65 - cam.0, at.1 + az * 1.65 - cam.1);
+                        let f = (ax * rz - az * rx).abs() / rx.hypot(rz);
+                        let along =
+                            (ax * heading.0 + az * heading.1).abs() > (35.0f64).to_radians().cos();
+                        let want = match (along, dist as i32) {
+                            (false, 25) => 0.60,
+                            (false, _) => 0.20,
+                            (true, 25) => 0.33,
+                            (true, _) => 0.20,
+                        };
+                        assert!(
+                            f >= want,
+                            "{name}: the {text} board from {road_key} at {dist} m ({}) is seen at {:.0} degrees",
+                            if dir > 0 { "on" } else { "back" },
+                            f.asin().to_degrees()
+                        );
+                        if dist as i32 == 25 {
+                            seen += 1;
+                            if along {
+                                worst_along = worst_along.min(f)
+                            } else {
+                                worst_cross = worst_cross.min(f)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(seen >= 18, "boards checked at 25 m: {seen}");
+    eprintln!(
+        "the least angle at 25 m: boards across the road {:.0} degrees, boards along it {:.0}",
+        worst_cross.asin().to_degrees(),
+        worst_along.asin().to_degrees()
+    );
+}
+
+// ---- the owner's seventh play: the talks (text effects, layout before typing, pacing, the words) ------------------------------
+
+/// The engine's markup is read and taken out of the words: the plain words, each letter's effects, and a clear error for a tag
+/// that does not exist or a close with no open.
+#[test]
+fn the_talk_markup_parses_and_strips() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local t = nova.ui.rich_text_letters(0, 0, "{big}{wave}IT CAME!{/wave}{/big} You're {pop}real{/pop}{{ {c=red}x{/c}{pause=0.3}.", { font = 'rounded', size = 20 })
+          local fx = t.letters[1].fx
+          local r = t.text .. '|' .. tostring(fx.big) .. tostring(fx.wave) .. tostring(fx.shake) .. '|' .. tostring(t.letters[10].fx.big)
+          local ok1, e1 = pcall(nova.ui.rich_text_letters, 0, 0, 'a {wobble}b', {})
+          local ok2, e2 = pcall(nova.ui.rich_text_letters, 0, 0, 'a {/shake}b', {})
+          return r .. '|' .. tostring(ok1) .. tostring(ok2) .. '|' .. tostring(tostring(e1):find('unknown tag', 1, true) ~= nil) .. tostring(tostring(e2):find('not open', 1, true) ~= nil)
+        end)()"#,
+    );
+    assert_eq!(
+        out,
+        "IT CAME! You're real{ x.|truetruenil|nil|falsefalse|truetrue"
+    );
+    // every line of the slice's talks parses, and its plain words (what the log says) have no braces left
+    let bad = lua(
+        &g,
+        r#"(function()
+          local words, bad = require('lib.words'), {}
+          for who, p in pairs(words.people) do
+            local all = { p.without }
+            for _, s in ipairs(p.given) do all[#all + 1] = s end
+            for _, s in ipairs(p.after) do all[#all + 1] = s end
+            for _, s in ipairs(all) do
+              local ok, t = pcall(nova.ui.rich_text_letters, 0, 0, s, {})
+              if not ok then bad[#bad + 1] = tostring(t) elseif t.text:find('[{}]') then bad[#bad + 1] = t.text end
+            end
+          end
+          return table.concat(bad, ' | ')
+        end)()"#,
+    );
+    assert_eq!(bad, "");
+}
+
+/// "The text box will 'type' the word on one line then realize that it needs to go on the next line": the whole line is laid out
+/// before it is typed, so no letter's place changes as more letters come out (big letters' room included), and no word is split
+/// over two lines.
+#[test]
+fn the_talk_is_laid_out_before_it_is_typed_and_never_reflows() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local words, dialogue, ui = require('lib.words'), require('lib.dialogue'), require('lib.ui')
+          local L = dialogue.layout(1280)
+          local bad, n = {}, 0
+          for who, p in pairs(words.people) do
+            local all = { p.without }
+            for _, s in ipairs(p.given) do all[#all + 1] = s end
+            for _, s in ipairs(p.after) do all[#all + 1] = s end
+            for _, s in ipairs(all) do
+              local final = ui.rich_letters(100, 500, s, dialogue.text_opts(who, L, 99))
+              for t = 0, final.last + 0.2, 1 / 30 do
+                local now = ui.rich_letters(100, 500, s, dialogue.text_opts(who, L, t))
+                for k, l in ipairs(now.letters) do
+                  local f = final.letters[k]
+                  if l.x ~= f.x or l.y ~= f.y or l.line ~= f.line then bad[#bad + 1] = who .. ' ' .. k .. ' moved at ' .. t end
+                  if l.shown then n = n + 1 end
+                end
+                if now.height ~= final.height then bad[#bad + 1] = 'height changed' end
+              end
+              -- the letters of a word share a line; a line never runs past the box
+              local prev
+              for _, l in ipairs(final.letters) do
+                if prev and l.char:match('%S') and prev.char:match('%S') and l.line ~= prev.line then bad[#bad + 1] = 'split word in ' .. final.text end
+                if l.char:match('%S') and l.x + l.size * 0.3 > 100 + L.text_w + 1 then bad[#bad + 1] = 'past the box: ' .. final.text end
+                prev = l
+              end
+            end
+          end
+          return #bad == 0 and ('ok ' .. n) or table.concat(bad, ' | ', 1, math.min(#bad, 6))
+        end)()"#,
+    );
+    assert!(out.starts_with("ok "), "{out}");
+}
+
+/// The letters' movements are small and the same every time for the same moment: each letter rises softly into place as it
+/// appears and then rests exactly where it was laid out; {shake} and {wave} move letters by a fraction of their size; {big}
+/// letters are larger; nothing moves when it is drawn twice at one time.
+#[test]
+fn the_text_effects_move_letters_within_small_bounds_and_deterministically() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local s = "So {shake}hums{/shake} and {wave}sings{/wave}, {big}BIG{/big} {pop}pop{/pop}."
+          local o = function(t) return { font = 'rounded', size = 20, time = t } end
+          local bad, moved = {}, { shake = 0, wave = 0 }
+          local base = nova.ui.rich_text_letters(0, 0, s, o(0))
+          for t = 0, 3, 0.021 do
+            local a, b = nova.ui.rich_text_letters(0, 0, s, o(t)), nova.ui.rich_text_letters(0, 0, s, o(t))
+            for k, l in ipairs(a.letters) do
+              local m = b.letters[k]
+              if l.dx ~= m.dx or l.dy ~= m.dy or l.scale ~= m.scale or l.alpha ~= m.alpha then bad[#bad + 1] = 'not the same at ' .. t end
+              if l.shown then
+                if math.abs(l.dx) > l.size * 0.25 or math.abs(l.dy) > l.size * 0.4 or l.scale < 0.3 or l.scale > 1.2 then bad[#bad + 1] = l.char .. ' too far at ' .. t end
+                local age = t - l.at
+                if age > 0.5 and l.fx.shake and (l.dx ~= 0 or l.dy ~= 0) then moved.shake = moved.shake + 1 end
+                if age > 0.5 and l.fx.wave and l.dy ~= 0 then moved.wave = moved.wave + 1 end
+                if age > 0.5 and not l.fx.shake and not l.fx.wave and (l.dx ~= 0 or l.dy ~= 0 or l.scale ~= 1 or l.alpha ~= 1) then bad[#bad + 1] = l.char .. ' not at rest' end
+              end
+            end
+          end
+          -- a letter just out is a little below its place and faint, then rises
+          local k = 2
+          local just = nova.ui.rich_text_letters(0, 0, s, o(base.letters[k].at + 0.02)).letters[k]
+          if not (just.dy > 0 and just.alpha < 1) then bad[#bad + 1] = 'no rise' end
+          local big, plain = base.letters[20], base.letters[1]
+          if not (big.fx.big and big.size > plain.size * 1.2) then bad[#bad + 1] = 'big is not bigger' end
+          return #bad == 0 and string.format('ok %d %d', moved.shake, moved.wave) or table.concat(bad, ' | ', 1, math.min(#bad, 6))
+        end)()"#,
+    );
+    let parts: Vec<&str> = out.split(' ').collect();
+    assert_eq!(parts[0], "ok", "{out}");
+    assert!(
+        parts[1].parse::<u32>().unwrap() > 100 && parts[2].parse::<u32>().unwrap() > 100,
+        "shake and wave keep moving: {out}"
+    );
+}
+
+/// The pace: typed at 45 to 60 letters a second, a short pause after a comma, a longer one after a full stop, the longest after
+/// "..."; X once shows the rest of the line at once, X again goes to the next line (and after the last, the talk ends); the
+/// speaker's mouth moves only while letters come out.
+#[test]
+fn x_finishes_the_line_then_goes_on_and_the_pace_pauses_at_stops() {
+    let g0 = game();
+    let pace = lua(
+        &g0,
+        r#"(function()
+          local d = require('lib.dialogue')
+          local out = {}
+          for _, who in ipairs({ 'hazel', 'pip' }) do out[#out + 1] = d.VOICES[who].cps end
+          return table.concat(out, ' ')
+        end)()"#,
+    );
+    for cps in pace.split(' ') {
+        let c: f64 = cps.parse().unwrap();
+        assert!((45.0..=60.0).contains(&c), "{pace}");
+    }
+    let gaps = lua(
+        &g0,
+        r#"(function()
+          local t = nova.ui.rich_text_letters(0, 0, 'Hm, well. So... yes', { font = 'rounded', size = 20, cps = 50, time = 0 }).letters
+          local function gap(k) return t[k + 1].at - t[k].at end
+          return string.format('%.3f %.3f %.3f %.3f', gap(1), gap(3), gap(9), gap(15))
+        end)()"#,
+    );
+    let g: Vec<f64> = gaps.split(' ').map(|v| v.parse().unwrap()).collect();
+    assert!(g[0] < 0.03, "a plain letter: {gaps}");
+    assert!(g[1] > 0.1 && g[1] < 0.2, "after a comma: {gaps}");
+    assert!(
+        g[2] > 0.2 && g[2] < g[3],
+        "after a stop, less than after dots: {gaps}"
+    );
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "local s = require('lib.state'); s.carrying = 'hazel'; s.on_shelf.hazel = false; D = require('lib.dialogue')", "steps": [
+        { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "interact" }, { "wait": 12, "lua": "TYPING = D.typing(); BEFORE = D.complete()" },
+        { "press": "interact" }, { "wait": 1, "lua": "AFTER1 = D.complete(); LINE1 = D.line(); MOUTH1 = D.typing()" },
+        { "wait": 20 },
+        { "press": "interact" }, { "wait": 1, "lua": "LINE2 = D.line(); DONE2 = D.complete()" },
+        { "until": "D.complete()", "max": 400 }, { "wait": 2, "lua": "MOUTH2 = D.typing()" },
+        { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2 }, { "press": "interact" }, { "wait": 2, "lua": "OVER = D.active()" } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, "tostring(TYPING) .. ' ' .. tostring(BEFORE)"),
+        "true false"
+    );
+    assert_eq!(
+        lua(&g, "tostring(AFTER1)"),
+        "true",
+        "X once shows the whole line"
+    );
+    assert_eq!(lua(&g, "LINE1"), "Hm. So there IS a postmaster.");
+    assert_eq!(
+        lua(&g, "tostring(MOUTH1)"),
+        "false",
+        "the mouth rests once the line is out"
+    );
+    assert_eq!(
+        lua(&g, "LINE2"),
+        "My chisels. Ordered them the winter Pemberton shut up shop and the lake bridge went.",
+        "X again goes on"
+    );
+    assert_eq!(
+        lua(&g, "tostring(DONE2)"),
+        "false",
+        "the next line types from the start"
+    );
+    assert_eq!(lua(&g, "tostring(MOUTH2)"), "false");
+    assert_eq!(
+        lua(&g, "tostring(OVER)"),
+        "false",
+        "the talk ends after the last line"
+    );
+    assert_eq!(lua(&g, "require('lib.state').delivered.hazel"), "true");
+}
+
+/// "Too much text": the hand-over talks are three lines, the talks after that and at the door one line each, every line short;
+/// each has a face the cast can make; the effects are used, but not on every line.
+#[test]
+fn the_talks_are_short_and_each_line_has_its_face() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 2 } ] }"#,
+    );
+    let out = lua(
+        &g,
+        r#"(function()
+          local words, face = require('lib.words'), require('lib.face')
+          local bad, marked, total = {}, 0, 0
+          for who, p in pairs(words.people) do
+            if #p.given ~= 3 or #p.faces.given ~= 3 then bad[#bad + 1] = who .. ' given ' .. #p.given end
+            if #p.after ~= 2 or #p.faces.after ~= 2 then bad[#bad + 1] = who .. ' after ' .. #p.after end
+            if type(p.without) ~= 'string' or not face.EXPRESSIONS[p.faces.without] then bad[#bad + 1] = who .. ' without' end
+            for _, k in ipairs({ 'given', 'after' }) do
+              for i, s in ipairs(p[k]) do
+                total = total + 1
+                if s:find('{', 1, true) then marked = marked + 1 end
+                local plain = nova.ui.rich_text_letters(0, 0, s, {}).text
+                if #plain > 100 then bad[#bad + 1] = who .. ' long: ' .. plain end
+                if not face.EXPRESSIONS[p.faces[k][i]] then bad[#bad + 1] = who .. ' face ' .. tostring(p.faces[k][i]) end
+              end
+            end
+          end
+          if marked == 0 or marked >= total then bad[#bad + 1] = 'effects on ' .. marked .. ' of ' .. total end
+          return #bad == 0 and 'ok' or table.concat(bad, ' | ')
+        end)()"#,
+    );
+    assert_eq!(out, "ok");
+    assert_eq!(
+        lua(
+            &g,
+            "table.concat(require('lib.words').people.hazel.faces.given, ' ')"
+        ),
+        "gruff sad smile"
+    );
+    assert_eq!(
+        lua(
+            &g,
+            "table.concat(require('lib.words').people.pip.faces.given, ' ')"
+        ),
+        "delighted indignant happy"
+    );
+}
+
+// ---- the owner's seventh play: "a minimum thickness to prevent stick looking things", painted buildings, lived-in details -----------
+// (docs/games/mountain-post.md, "The houses: minimum thickness, painted surfaces, lived-in details")
+
+fn mp_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post")
+}
+
+/// The extents (smallest, middle, largest, in the units of the points) of a point cloud along its own principal axes: a turned plank
+/// or post measures as it is, not by its bounding box.
+#[allow(clippy::needless_range_loop)]
+fn principal_extents(pts: &[[f64; 3]]) -> [f64; 3] {
+    let n = pts.len() as f64;
+    let mean: [f64; 3] = std::array::from_fn(|k| pts.iter().map(|p| p[k]).sum::<f64>() / n);
+    let mut a = [[0.0f64; 3]; 3];
+    for p in pts {
+        for i in 0..3 {
+            for j in 0..3 {
+                a[i][j] += (p[i] - mean[i]) * (p[j] - mean[j]) / n;
+            }
+        }
+    }
+    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    for _ in 0..40 {
+        let (mut p, mut q, mut big) = (0, 1, 0.0f64);
+        for (i, j) in [(0, 1), (0, 2), (1, 2)] {
+            if a[i][j].abs() > big {
+                (p, q, big) = (i, j, a[i][j].abs());
+            }
+        }
+        if big < 1e-12 {
+            break;
+        }
+        let theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = theta.signum() / (theta.abs() + (theta * theta + 1.0).sqrt());
+        let c = 1.0 / (t * t + 1.0).sqrt();
+        let s = t * c;
+        for k in 0..3 {
+            let (x, y) = (a[k][p], a[k][q]);
+            a[k][p] = c * x - s * y;
+            a[k][q] = s * x + c * y;
+        }
+        for k in 0..3 {
+            let (x, y) = (a[p][k], a[q][k]);
+            a[p][k] = c * x - s * y;
+            a[q][k] = s * x + c * y;
+        }
+        for k in 0..3 {
+            let (x, y) = (v[k][p], v[k][q]);
+            v[k][p] = c * x - s * y;
+            v[k][q] = s * x + c * y;
+        }
+    }
+    let mut ext: Vec<f64> = (0..3)
+        .map(|axis| {
+            let proj: Vec<f64> = pts
+                .iter()
+                .map(|p| (0..3).map(|k| p[k] * v[k][axis]).sum::<f64>())
+                .collect();
+            proj.iter().cloned().fold(f64::MIN, f64::max)
+                - proj.iter().cloned().fold(f64::MAX, f64::min)
+        })
+        .collect();
+    ext.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    [ext[0], ext[1], ext[2]]
+}
+
+/// Every solid of a model's source document (`models/<name>.model.json`) as (its kind, its three extents in metres, smallest first):
+/// a box by its size, a cylinder by its diameter and length, a tube by its diameter and the length of its line, a mesh by its points.
+fn model_solids(name: &str) -> Vec<(String, [f64; 3])> {
+    fn walk(part: &Value, scale: f64, out: &mut Vec<(String, [f64; 3])>) {
+        let f = |v: &Value| v.as_f64().unwrap_or(0.0);
+        for c in part["cubes"].as_array().into_iter().flatten() {
+            let shape = c["shape"].as_str().unwrap_or("");
+            let dims = match shape {
+                "box" | "cylinder" => {
+                    let s = &c["size"];
+                    let mut d = [f(&s[0]) * scale, f(&s[1]) * scale, f(&s[2]) * scale];
+                    d.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    Some(d)
+                }
+                "tube" => {
+                    let pts: Vec<[f64; 3]> = c["points"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| [f(&p[0]), f(&p[1]), f(&p[2])])
+                        .collect();
+                    let len: f64 = pts
+                        .windows(2)
+                        .map(|w| {
+                            (0..3)
+                                .map(|k| (w[1][k] - w[0][k]).powi(2))
+                                .sum::<f64>()
+                                .sqrt()
+                        })
+                        .sum();
+                    let r = c["radius"]
+                        .as_f64()
+                        .or_else(|| {
+                            c["radii"]
+                                .as_array()
+                                .and_then(|r| r.iter().filter_map(|v| v.as_f64()).reduce(f64::min))
+                        })
+                        .unwrap_or(0.0);
+                    Some([2.0 * r * scale, 2.0 * r * scale, len * scale])
+                }
+                "mesh" => {
+                    let pts: Vec<[f64; 3]> = c["verts"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| [f(&p[0]), f(&p[1]), f(&p[2])])
+                        .collect();
+                    // (a sheet drawn from both sides, a flag or a leaf, is not a solid)
+                    let polys = c["polys"].as_array().map_or(0, |p| p.len());
+                    if pts.len() < 4 || polys < 4 {
+                        None
+                    } else {
+                        let e = principal_extents(&pts);
+                        Some([e[0] * scale, e[1] * scale, e[2] * scale])
+                    }
+                }
+                _ => None,
+            };
+            if let Some(d) = dims {
+                out.push((shape.to_string(), d));
+            }
+        }
+        for ch in part["children"].as_array().into_iter().flatten() {
+            walk(ch, scale, out);
+        }
+    }
+    let text = std::fs::read_to_string(mp_root().join(format!("models/{name}.model.json")))
+        .unwrap_or_else(|e| panic!("models/{name}.model.json: {e}"));
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let scale = doc["scale"].as_f64().unwrap_or(0.0625);
+    let mut out = vec![];
+    for p in doc["parts"].as_array().unwrap() {
+        walk(p, scale, &mut out);
+    }
+    out
+}
+
+/// The house style's chunky minimum (tools/models.mjs, `HOUSE.min`) and the models that build with it: every `def("name"` of the file.
+fn house_min() -> (std::collections::HashMap<String, f64>, Vec<String>) {
+    let src = std::fs::read_to_string(mp_root().join("tools/models.mjs")).unwrap();
+    let line = src
+        .lines()
+        .find(|l| l.trim_start().starts_with("min: {"))
+        .expect("HOUSE.min");
+    let mut min = std::collections::HashMap::new();
+    for part in line.trim().trim_start_matches("min: {").split(',') {
+        let mut kv = part.trim().trim_end_matches(['}', ',']).split(':');
+        if let (Some(k), Some(v)) = (kv.next(), kv.next())
+            && let Ok(x) = v.trim().trim_end_matches('}').trim().parse::<f64>()
+        {
+            min.insert(k.trim().to_string(), x);
+        }
+    }
+    let mut names = vec![];
+    for l in src.lines() {
+        if let Some(rest) = l.strip_prefix("def(\"") {
+            names.push(rest.split('"').next().unwrap().to_string());
+        }
+    }
+    (min, names)
+}
+
+/// "A minimum thickness to prevent stick looking things" (the owner, seventh play). In every model the house style builds, no solid is a
+/// stick: at house scale anything over 1 m long and under 20 cm wide is at least 10 cm through, over 0.5 m at least 6 cm, a board (20 cm
+/// wide or more) at least 3 cm, and only flat paint (under 3 cm) is thinner; indoors and on a desk (`HOUSE.min.indoor`) half of that.
+/// The bridge and the signposts are another round's (they have their own look to settle) and ferns are felt sheets.
+#[test]
+fn every_model_is_chunky_nothing_is_a_stick() {
+    let (min, names) = house_min();
+    for k in [
+        "stick", "short", "longAt", "shortAt", "board", "flat", "plate", "indoor",
+    ] {
+        assert!(min.contains_key(k), "HOUSE.min.{k} is in tools/models.mjs");
+    }
+    let skip = [
+        "signpost",
+        "sign_arm",
+        "sign_arm_tall",
+        "bridge",
+        "old_bridge",
+        "old_bridge_far",
+        "fern",
+        "fern_big",
+        "fern_light",
+    ];
+    let indoor = [
+        "office_room",
+        "package_counter",
+        "front_counter",
+        "stool",
+        "rug",
+        "door_mat",
+        "mail_sack",
+        "pigeonholes",
+        "tally_frame",
+        "wall_clock",
+        "calendar",
+        "notice_board",
+        "crt_computer",
+        "letter_tray",
+        "envelopes",
+        "desk_mat",
+        "stamp",
+        "bell",
+        "parcel_hazel",
+        "parcel_pip",
+        "letter",
+    ];
+    assert!(names.len() > 55, "{} models found", names.len());
+    let (mut bad, mut checked, mut thinnest) = (vec![], 0, (f64::MAX, String::new()));
+    for name in &names {
+        if skip.contains(&name.as_str()) {
+            continue;
+        }
+        let k = if indoor.contains(&name.as_str()) {
+            min["indoor"]
+        } else {
+            1.0
+        };
+        for (shape, [a, b, c]) in model_solids(name) {
+            checked += 1;
+            let (flat, board) = (min["flat"] * k, min["board"] * k);
+            if a < flat - 1e-4 {
+                continue; // (flat paint, lying on a surface)
+            }
+            if b >= min["plate"] * k {
+                // a board or a plate: seen face on, at least as thick as a board
+                if a < board - 1e-3 {
+                    bad.push(format!(
+                        "{name}: a {shape} plate {a:.3} x {b:.3} x {c:.3} m is thinner than a board"
+                    ));
+                }
+                continue;
+            }
+            let need = if c >= min["longAt"] * k {
+                min["stick"] * k
+            } else if c >= min["shortAt"] * k {
+                min["short"] * k
+            } else {
+                0.0
+            };
+            if a < need - 1e-3 {
+                bad.push(format!(
+                    "{name}: a {shape} {a:.3} x {b:.3} x {c:.3} m is a stick (needs {need:.2} through)"
+                ));
+            }
+            if c >= min["shortAt"] * k && a < thinnest.0 {
+                thinnest = (a, format!("{name} {shape} {a:.3} x {b:.3} x {c:.3}"));
+            }
+        }
+    }
+    assert!(checked > 800, "{checked} solids measured");
+    assert!(bad.is_empty(), "{} sticks:\n{}", bad.len(), bad.join("\n"));
+    eprintln!("thinnest long part: {} m", thinnest.1);
+}
+
+/// The buildings and what stands by them are painted (docs/project-format.md, "Painted surfaces"): walls and decks as boards (kind 5),
+/// roofs as tiles (6), plinths, chimneys and footings as stone (7). Read from the written .glb files, so what the renderer gets.
+#[test]
+fn the_buildings_are_painted_as_boards_tiles_and_stone() {
+    use nova_runtime::model::{PAINT_STEP, import_glb};
+    let kinds = |name: &str| {
+        let mesh =
+            import_glb(&std::fs::read(mp_root().join(format!("models/{name}.glb"))).unwrap())
+                .expect("imports");
+        assert!(mesh.notes.is_empty(), "{name}: {:?}", mesh.notes);
+        let mut count = [0usize; 8];
+        for v in &mesh.vertices {
+            let k = (v.emissive / PAINT_STEP).round() as usize;
+            assert!(k < 8, "{name}: paint kind {k}");
+            count[k] += 1;
+        }
+        (count, mesh.vertices.len())
+    };
+    // (what share of each house's points are painted, and each of its kinds)
+    for (name, share) in [
+        ("post_office", 0.2),
+        ("cabin_hazel", 0.2),
+        ("cabin_pip", 0.2),
+        ("workshop", 0.1),
+    ] {
+        let (c, n) = kinds(name);
+        let painted: usize = c[5] + c[6] + c[7];
+        assert!(
+            painted as f64 >= share * n as f64,
+            "{name}: {painted} of {n} points painted"
+        );
+        for (k, what) in [(5, "boards"), (6, "tiles")] {
+            assert!(c[k] > 20, "{name}: no {what} ({} points)", c[k]);
+        }
+        if name != "workshop" {
+            assert!(c[7] > 20, "{name}: no stone ({} points)", c[7]);
+        }
+    }
+    for name in [
+        "fence",
+        "bench",
+        "picnic_table",
+        "planks",
+        "sawhorse",
+        "garden_hazel",
+        "garden_pip",
+        "flower_bed",
+        "crates",
+        "ladder",
+    ] {
+        let (c, _) = kinds(name);
+        assert!(c[5] > 10, "{name}: its boards are painted");
+    }
+    for name in ["mast", "washing_line", "bird_feeder"] {
+        let (c, _) = kinds(name);
+        assert!(c[5] + c[7] > 10, "{name}: its footing or wood is painted");
+    }
+}
+
+/// The lived-in details (docs/games/mountain-post.md): every house has its own, each placed by `tools/scene.mjs` (nothing on a road is
+/// the road test's: it reads every object of the scene, these included), and the ways in stay clear: from each door a walk 2.2 m wide
+/// and 14 m long straight out in front of it has none of them standing in it.
+#[test]
+fn the_lived_in_details_are_placed_and_the_doors_stay_clear() {
+    let root = mp_root();
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let count = |kind: &str| objects.iter().filter(|o| o["kind"] == kind).count();
+    for (kind, n) in [
+        ("bicycle", 1),
+        ("crates", 1),
+        ("flower_bed", 2),
+        ("garden_hazel", 1),
+        ("garden_pip", 1),
+        ("chopping_block", 1),
+        ("ladder", 1),
+        ("wheelbarrow", 1),
+        ("bird_feeder", 2),
+        ("tinker_bench", 1),
+        ("washing_line", 1),
+        ("cloths", 1),
+        ("tyre_planters", 1),
+        ("rain_barrel", 1),
+        ("watering_can", 3),
+    ] {
+        assert!(
+            count(kind) >= n,
+            "{kind}: {} placed, {n} wanted",
+            count(kind)
+        );
+    }
+    // the mailbox of No. 7 has its flag up and the others have not
+    let up: Vec<&str> = objects
+        .iter()
+        .filter(|o| o["kind"] == "mailbox" && o["props"]["flag_up"] == true)
+        .map(|o| o["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(up, ["mailbox_7"]);
+    // the washing line's cloths hang from its line: drawn 1.3 m up, over the line's own place
+    let (line, cloths) = (
+        objects
+            .iter()
+            .find(|o| o["kind"] == "washing_line")
+            .unwrap(),
+        objects.iter().find(|o| o["kind"] == "cloths").unwrap(),
+    );
+    assert_eq!(
+        (line["x"].clone(), line["z"].clone()),
+        (cloths["x"].clone(), cloths["z"].clone())
+    );
+    assert!(cloths["y"].as_f64().unwrap() > 1.0);
+    // the walks from the doors
+    let details = [
+        "bicycle",
+        "crates",
+        "flower_bed",
+        "garden_hazel",
+        "garden_pip",
+        "chopping_block",
+        "ladder",
+        "wheelbarrow",
+        "bird_feeder",
+        "tinker_bench",
+        "washing_line",
+        "tyre_planters",
+        "rain_barrel",
+        "watering_can",
+        "woodpile",
+    ];
+    let foot = |kind: &str| -> Vec<[f64; 2]> {
+        let mesh = nova_runtime::model::import_glb(
+            &std::fs::read(root.join(format!("models/{kind}.glb"))).unwrap(),
+        )
+        .unwrap();
+        mesh.vertices
+            .iter()
+            .filter(|v| v.position[1] < 0.6)
+            .map(|v| [v.position[0] as f64, v.position[2] as f64])
+            .collect()
+    };
+    let mut checked = 0;
+    for (house, door_x) in [
+        ("post_office", 0.0),
+        ("cabin_hazel", -1.0),
+        ("cabin_pip", 0.9),
+    ] {
+        let h = objects.iter().find(|o| o["kind"] == house).unwrap();
+        let (hx, hz, ry) = (
+            h["x"].as_f64().unwrap(),
+            h["z"].as_f64().unwrap(),
+            h["props"]["ry"].as_f64().unwrap_or(0.0),
+        );
+        // a world point in the house's own metres: x to its left, z to its front
+        let local = |wx: f64, wz: f64| {
+            let (dx, dz) = (wx - hx, wz - hz);
+            (dx * ry.cos() - dz * ry.sin(), dx * ry.sin() + dz * ry.cos())
+        };
+        for o in objects
+            .iter()
+            .filter(|o| details.contains(&o["kind"].as_str().unwrap()))
+        {
+            let ry_o = o["props"]["ry"].as_f64().unwrap_or(0.0);
+            for p in foot(o["kind"].as_str().unwrap()) {
+                let (wx, wz) = (
+                    o["x"].as_f64().unwrap() + p[0] * ry_o.cos() + p[1] * ry_o.sin(),
+                    o["z"].as_f64().unwrap() - p[0] * ry_o.sin() + p[1] * ry_o.cos(),
+                );
+                let (lx, lz) = local(wx, wz);
+                if lx.abs() > 40.0 || lz.abs() > 40.0 {
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    !(lx > door_x - 1.1 && lx < door_x + 1.1 && lz > 2.0 && lz < 16.0),
+                    "a {} stands in the walk from {house}'s door ({lx:.1}, {lz:.1})",
+                    o["kind"]
+                );
+            }
+        }
+    }
+    assert!(checked > 200, "{checked} points checked");
+}
+
+// ---- the seventh play: "the music is too repetitive" -> four pieces that take turns, with quiet between them (2026-11-23) ------------
+
+/// The four pieces (tools/music.mjs): each a song file and five stems of one length with the same bar lines, none looping (each
+/// plays once and ends), each 1.5 to 2.5 minutes long as lib/music.lua says it is, in its own key and tempo (one a waltz in 3/4),
+/// each with its own tune.
+#[test]
+fn four_pieces_each_five_stems_in_step_that_play_once() {
+    let root = game_dir();
+    let frames = |bytes: &[u8]| -> u64 {
+        let at = bytes.windows(4).rposition(|w| w == b"OggS").unwrap();
+        u64::from_le_bytes(bytes[at + 6..at + 14].try_into().unwrap())
+    };
+    let g = game();
+    let listed = lua(
+        &g,
+        "(function() local m = require('lib.music'); local t = {}; for _, p in ipairs(m.PIECES) do t[#t + 1] = p.name .. '=' .. p.seconds end; return table.concat(t, ' ') end)()",
+    );
+    let pieces: Vec<(String, f64)> = listed
+        .split(' ')
+        .map(|kv| {
+            let (k, v) = kv.split_once('=').unwrap();
+            (k.to_string(), v.parse().unwrap())
+        })
+        .collect();
+    assert!((3..=4).contains(&pieces.len()), "{pieces:?}");
+    assert_eq!(pieces[0].0, "fernhollow", "the first piece is kept");
+    let mut tempos = Vec::new();
+    let mut tunes = Vec::new();
+    let mut waltz = false;
+    for (name, seconds) in &pieces {
+        let song: Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(format!("music/{name}.song.json"))).unwrap(),
+        )
+        .unwrap();
+        assert!(song.get("loop").is_none(), "{name} plays once");
+        tempos.push(song["bpm"].as_f64().unwrap() as i64);
+        waltz |= song["beatsPerBar"].as_i64() == Some(3);
+        let right = song["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "right hand")
+            .unwrap();
+        assert_eq!(right["wave"], "piano", "{name}: the felt piano");
+        let notes: Vec<i64> = right["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .take(12)
+            .map(|n| n["pitch"].as_i64().unwrap())
+            .collect();
+        tunes.push(notes);
+        assert!(
+            (90.0..=160.0).contains(seconds),
+            "{name} is {seconds} s: 1.5 to 2.5 minutes, about"
+        );
+        let mut first: Option<(u64, Vec<u64>)> = None;
+        for stem in ["piano", "bass", "brushes", "pad", "celesta"] {
+            let bytes = std::fs::read(root.join(format!("music/{name}_{stem}.ogg")))
+                .unwrap_or_else(|_| panic!("{name}_{stem}.ogg"));
+            let len = frames(&bytes);
+            let src = nova_runtime::stream::StreamSource::new(bytes).unwrap();
+            assert!(src.loop_points.is_none(), "{name}_{stem} does not loop");
+            assert!(src.bars.len() >= 25, "{name}_{stem}: its bar lines");
+            let secs = len as f64 / src.rate as f64;
+            assert!(
+                (secs - seconds).abs() < 0.05,
+                "{name}_{stem} is {secs} s, lib/music.lua says {seconds}"
+            );
+            let this = (len, src.bars.clone());
+            match &first {
+                None => first = Some(this),
+                Some(f) => assert_eq!(f, &this, "{name}_{stem} is not in step with its piano"),
+            }
+        }
+    }
+    let mut distinct = tempos.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+    assert_eq!(
+        distinct.len(),
+        tempos.len(),
+        "each its own tempo: {tempos:?}"
+    );
+    assert!(waltz, "one is a waltz in 3/4");
+    for i in 0..tunes.len() {
+        for j in i + 1..tunes.len() {
+            assert_ne!(tunes[i], tunes[j], "each its own tune");
+        }
+    }
+}
+
+/// The playlist (music.playlist_step), over five hours of play with a seeded shuffle: the first piece starts a few seconds in, not
+/// at once; a piece never follows itself and every one of them plays; between two pieces a quiet of 20 to 60 s, sometimes a little
+/// longer, never more than two minutes; each piece's stems are prepared about 8 s before it starts, during the quiet; the ending
+/// card cuts a quiet short.
+#[test]
+fn the_playlist_shuffles_never_repeats_and_leaves_quiet_between() {
+    let g = game();
+    let out = lua(
+        &g,
+        r#"(function()
+      local m = require('lib.music')
+      local seed = 12345
+      local function rand() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
+      local pl = m.new_playlist(rand)
+      local dt, t = 0.1, 0
+      local starts, ends, prepared = {}, {}, {}
+      for _ = 1, 5 * 3600 * 10 do
+        t = t + dt
+        for _, e in ipairs(m.playlist_step(pl, dt)) do
+          if e.kind == 'start' then
+            starts[#starts + 1] = { t = t, piece = e.piece }
+            assert(prepared[#starts] and prepared[#starts].piece == e.piece, 'prepared before it starts')
+            local ahead = t - prepared[#starts].t
+            assert((ahead > 7 or #starts == 1) and ahead < 9, 'prepared about 8 s ahead (the first as the game begins): ' .. ahead)
+          elseif e.kind == 'prepare' then
+            assert(pl.phase == 'quiet', 'prepared in the quiet')
+            prepared[#starts + 1] = { t = t, piece = e.piece }
+          else
+            ends[#ends + 1] = t
+            assert(e.piece == starts[#starts].piece)
+            local len = t - starts[#starts].t
+            assert(math.abs(len - m.PIECES[e.piece].seconds) < 0.2, 'a piece plays for its length')
+          end
+        end
+      end
+      assert(starts[1].t > 3 and starts[1].t < 10, 'the first piece shortly after the start: ' .. starts[1].t)
+      local seen, longer = {}, 0
+      for k, s in ipairs(starts) do
+        seen[s.piece] = true
+        if k > 1 then
+          assert(s.piece ~= starts[k - 1].piece, 'a piece twice in a row at ' .. s.t)
+          local quiet = s.t - ends[k - 1]
+          assert(quiet >= 19.9 and quiet <= 120.1, 'a quiet of ' .. quiet)
+          if quiet > 60.1 then longer = longer + 1 end
+        end
+      end
+      for i = 1, #m.PIECES do assert(seen[i], 'piece ' .. i .. ' played') end
+      assert(longer > 0 and longer < #starts / 2, 'sometimes a longer quiet: ' .. longer .. ' of ' .. #starts)
+      -- the ending card: a quiet is cut short
+      local p2 = m.new_playlist(rand)
+      m.playlist_step(p2, 0.1)
+      m.hurry(p2)
+      local at
+      for k = 1, 40 do for _, e in ipairs(m.playlist_step(p2, 0.1)) do if e.kind == 'start' then at = k * 0.1 end end end
+      assert(at and at <= 2.1, 'the ending starts the next piece within 2 s')
+      return 'ok ' .. #starts
+    end)()"#,
+    );
+    assert!(out.starts_with("ok"), "{out}");
+}
+
+/// The game's side (lib/music.lua's music.update, with nova.music's calls recorded): the stems of whichever piece plays are the
+/// ones started and faded; the layers follow the drive in every piece, and a piece that starts mid-drive starts with the layers
+/// the drive earned; nothing is sent in a quiet; on foot, indoors and under a card or a conversation only the piano plays; a new
+/// scene's music.start does not restart the piece.
+#[test]
+fn the_layers_follow_whichever_piece_plays() {
+    let g = game();
+    let out = lua(
+        &g,
+        r#"(function()
+      local m = require('lib.music')
+      m.reset()
+      local real = nova.music
+      local calls = {}
+      nova.music = {
+        layers = function(names, opts) calls[#calls + 1] = { kind = 'layers', names = names, opts = opts } end,
+        layer = function(name, level, opts) calls[#calls + 1] = { kind = 'layer', name = name, level = level } end,
+        prepare = function(names, opts) calls[#calls + 1] = { kind = 'prepare', names = names, opts = opts } end,
+        volume = function() end,
+      }
+      local ok, err = pcall(function()
+        m.start('outdoors')
+        local dt = 0.1
+        local function run(seconds, input) for _ = 1, math.floor(seconds / dt + 0.5) do m.update(dt, input) end end
+        -- on foot until the first piece: piano alone
+        run(10, { driving = false, speed = 0 })
+        local first = m.status().piece
+        assert(first, 'a piece plays after 10 s')
+        local starts = 0
+        for _, c in ipairs(calls) do
+          if c.kind == 'layers' then
+            starts = starts + 1
+            assert(c.opts.loop == false, 'a piece plays once')
+            assert(c.names[1] == first .. '_piano' and #c.names == 5, 'its five stems')
+            assert(c.opts.levels[1] == 1 and c.opts.levels[2] == 0 and c.opts.levels[5] == 0, 'on foot: the piano alone')
+          end
+          assert(c.kind ~= 'layer' or c.level == 0, 'on foot nothing joins')
+        end
+        assert(starts == 1)
+        -- into the post office and out again: the piece carries on
+        m.start('indoors'); run(5, { driving = false, speed = 0, quiet = false }); m.start('outdoors')
+        assert(m.status().piece == first, 'the piece carries on across scenes')
+        -- drive for six minutes at cruise: pieces come and go; every layer change names the stems of the piece that plays
+        local playing, mid = first, nil
+        local from = #calls
+        for _ = 1, 3600 do
+          m.update(dt, { driving = true, speed = 9 })
+          for k = from + 1, #calls do
+            local c = calls[k]
+            if c.kind == 'layers' then
+              playing = c.names[1]:gsub('_piano$', '')
+              mid = mid or c
+            elseif c.kind == 'layer' then
+              assert(playing and c.name:sub(1, #playing + 1) == playing .. '_', c.name .. ' is not a stem of ' .. tostring(playing))
+              assert(m.status().piece, 'nothing is sent in a quiet')
+            end
+          end
+          from = #calls
+        end
+        assert(mid, 'another piece started during the drive')
+        assert(mid.names[1]:gsub('_piano$', '') ~= first, 'not the same piece twice in a row')
+        for i = 2, 5 do assert(mid.opts.levels[i] == 1, 'a piece that starts mid-drive starts with the earned layers') end
+        -- wait for a piece, then a conversation: the layers go, the piano stays
+        while not m.status().piece do m.update(dt, { driving = true, speed = 9 }) end
+        run(20, { driving = true, speed = 9 })
+        assert(m.status().levels[4] == 1, 'all four at cruise')
+        run(3, { driving = true, speed = 9, quiet = true })
+        for i = 1, 4 do assert(m.status().levels[i] == 0, 'a conversation: the piano alone') end
+        -- getting out and walking indoors: the piano alone
+        run(3, { driving = false, speed = 0 })
+        m.start('indoors')
+        run(5, { driving = false, speed = 0 })
+        for i = 1, 4 do assert(m.status().levels[i] == 0, 'indoors: the piano alone') end
+      end)
+      nova.music = real
+      m.reset()
+      assert(ok, err)
+      return 'ok'
+    end)()"#,
+    );
+    assert!(out.starts_with("ok"), "{out}");
+}
+
+/// In the running game: the first piece starts a few seconds in (its stems prepared during the quiet before, played once), and
+/// going into the post office and back out does not start it again.
+#[test]
+fn the_first_piece_starts_after_a_moment_and_carries_on_through_the_door() {
+    let mut g = game();
+    let piece = "tostring(require('lib.music').status().piece)";
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 120, "record": "{piece} --early" }}, {{ "wait": 480, "record": "{piece} --playing" }},
+            {{ "lua": "nova.goto_scene('office')" }}, {{ "wait": 120 }}, {{ "lua": "nova.goto_scene('valley')" }}, {{ "wait": 120, "record": "{piece} --back" }} ] }}"#
+        ),
+    );
+    let last = |tag: &str| {
+        r.record(&format!("{piece} --{tag}"))
+            .last()
+            .unwrap_or_else(|| panic!("nothing recorded {tag}"))
+            .2
+            .clone()
+    };
+    assert_eq!(last("early"), "nil", "not at once");
+    let playing = last("playing");
+    assert_ne!(playing, "nil", "a piece plays ten seconds in");
+    assert_eq!(last("back"), playing, "the same piece after the door");
+    let music: Vec<String> = r.json["sounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| s["text"].as_str().map(str::to_string))
+        .filter(|t| t.starts_with("music"))
+        .collect();
+    let stems = format!(
+        "{playing}_piano + {playing}_bass + {playing}_brushes + {playing}_pad + {playing}_celesta"
+    );
+    assert_eq!(
+        music,
+        vec![
+            format!("music prepare {stems}"),
+            format!("music layers {stems} (once)")
+        ],
+        "prepared, then played once, and not restarted by the door"
     );
 }

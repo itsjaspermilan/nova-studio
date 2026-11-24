@@ -3,7 +3,7 @@
 // one set of toys and not as an asset dump.
 //
 // The rule, in short: everything rounded and chunky, like painted wooden or felt toys; details are flat paint (a stripe, a
-// window, a number) rather than fiddly geometry; nothing thinner than about 6 cm; proportions a little squat and generous, never
+// window, a number) rather than fiddly geometry; nothing thinner than the chunky minimum (tools/models.mjs HOUSE.min: 10 cm for a post or rail, 6 cm for trim, a flat painted line under 3 cm); proportions a little squat and generous, never
 // realistic; one small warm palette, a little muted, no pure black or white; a dark is a warm brown-grey (`ink`).
 
 export const PAL = {

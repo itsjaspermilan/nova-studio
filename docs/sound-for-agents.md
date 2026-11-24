@@ -377,6 +377,25 @@ the speed at once (no bar lines: the owner wanted them to thin as the van slows)
 so cruising wobbles do not make it pump. Measured offline (whole piece, LUFS): piano -18.0, +bass -17.4, +brushes -16.9, +pad -16.4,
 +celesta -16.3; no clicks in any stage or in the drive clip. **Nobody has listened to it.**
 
+## Pieces that take turns (Mountain Post, 2026-11-23)
+
+The owner, of the one looping piece: "Too repetitive." The fix chosen was several pieces that take turns with quiet between them, so
+`examples/mountain-post/tools/music.mjs` now builds four pieces from one builder (a piece is its tempo, beats a bar, chords,
+left-hand patterns and a `write` that lays out sections note by note; the builder derives the four driving layers from the chords
+and the tune, so every piece keeps them) and `lib/music.lua` plays them as a shuffled playlist. What it took in Nova:
+
+- **Pieces that end.** `nova.music.layers(names, { loop = false })` plays the stems once; they end together and their decoders stop.
+  A song for this has no `loop` and ends on rests: the renderer wraps tails that run past the end onto the start, so the last bar
+  should be silence long enough for the room (3 to 4 s here); sound_report then finds no click at either end.
+- **Starting without a burst.** `nova.music.prepare(names, { loop = false })` starts the stems' decoders ahead; the next
+  `nova.music.layers` of the same names takes them with their opening decoded. Call it a few seconds before, in the quiet.
+- **Matching the pieces.** Each piece's master target is set so that its piano alone measures -18 LUFS; the full stacks came out
+  within 0.5 LU of each other without further work, because every piece's layers are made the same way.
+- **3/4.** A waltz is `beatsPerBar: 3`; the bar lines (and so `at = "bar"`) follow it.
+
+Costs: every Ogg in `music/` is held compressed from the start (20 stems of about two minutes: 26 MB); one piece is decoded at a
+time. **Nobody has listened to the pieces.**
+
 ## Not done, and why
 
 - **No listening test.** Measurements are not a listening test; the owner should play the game and say.

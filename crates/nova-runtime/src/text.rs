@@ -173,6 +173,61 @@ impl TextEngine {
             .all(|c| c.is_whitespace() || f.lookup_glyph_index(c) != 0)
     }
 
+    /// The font's ascent and line height at `px` pixels tall (what [`TextEngine::layout`] uses).
+    pub fn line_metrics(&self, font: usize, px: f32) -> (f32, f32) {
+        match self.fonts[font].horizontal_line_metrics(px) {
+            Some(m) => (m.ascent, m.new_line_size),
+            None => (px * 0.8, px * 1.2),
+        }
+    }
+
+    /// The kerning between `prev` and `ch` (when both are at `px`) and `ch`'s advance, in pixels.
+    pub fn advance(&self, font: usize, prev: Option<char>, ch: char, px: f32) -> (f32, f32) {
+        let f = &self.fonts[font];
+        let kern = prev
+            .and_then(|p| f.horizontal_kern(p, ch, px))
+            .unwrap_or(0.0);
+        (kern, f.metrics(ch, px).advance_width)
+    }
+
+    /// One letter's quad, its pen at `pen_x` and its baseline at `baseline` (physical pixels, whole ones keep it sharp), or None
+    /// for a blank one (a space). The rich text (`rich_text.rs`) moves, grows and fades it afterwards.
+    #[allow(clippy::too_many_arguments)]
+    pub fn letter(
+        &mut self,
+        font: usize,
+        ch: char,
+        px: f32,
+        grow: f32,
+        pen_x: f32,
+        baseline: f32,
+        scale: f32,
+        color: [u8; 4],
+    ) -> Option<SpriteInstance> {
+        let g = self.glyph(font, ch, px, grow);
+        if g.w == 0 || g.h == 0 {
+            return None;
+        }
+        let atlas = ATLAS_SIZE as f32;
+        let left = pen_x.round() + g.xmin as f32;
+        let top = baseline.round() - (g.ymin as f32 + g.h as f32);
+        Some(SpriteInstance {
+            center: [
+                (left + g.w as f32 * 0.5) / scale,
+                (top + g.h as f32 * 0.5) / scale,
+            ],
+            size: [g.w as f32 / scale, g.h as f32 / scale],
+            uv: [
+                g.x as f32 / atlas,
+                g.y as f32 / atlas,
+                (g.x + g.w) as f32 / atlas,
+                (g.y + g.h) as f32 / atlas,
+            ],
+            color,
+            rotation: 0.0,
+        })
+    }
+
     /// Lays text out at `px` pixels tall. `wrap` is a width in pixels to break lines at.
     pub fn layout(&self, font: usize, text: &str, px: f32, wrap: Option<f32>) -> Layout {
         let f = &self.fonts[font];
