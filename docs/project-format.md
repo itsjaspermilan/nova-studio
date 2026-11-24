@@ -120,6 +120,10 @@ only a camera, a light or anything else placed by hand adds `nova.terrain_height
 metre beside the car on a slope is lifted by the ground there, so it floats off (or sinks into) the body. Either give such a
 part's height as the car's (a wheel's `y` relative to the body, the ground's difference left out: what car.lua does), or draw
 the model with `lift = "origin"`: every piece is then lifted by the ground under the model's origin, as one rigid thing.
+**Wheels** hang as in driving games when they are the body's children in the model: give the body `rx`/`rz` (pitch, lean) and
+`y`, and each wheel `y` (its spring's travel, along the body's own up, since a part's `x y z` are in its parent's frame), `ry`
+(steer, about the body's up) and `rx` (spin; the turn is Ry * Rx * Rz) — never lift a root-level wheel straight up beside a
+tilted body (Fernhollow Post's `entities/van.lua`, `Van:place_wheels`).
 **Trees on a slope:** lifted vertex by vertex, a tall thing is sheared: its crown's downhill side drops with the ground, so on a
 hillside every cone leans the way the slope does. Give trees, tall plants and posts `lift = "upright"` (in `nova.model`'s or
 `nova.scenery.add`'s options, or on a static entity class beside `sway`): its foot (the lowest 0.6 m above its origin) still

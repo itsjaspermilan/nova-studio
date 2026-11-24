@@ -1545,3 +1545,17 @@ way does not yet take its fallen tree or gates away.
 
 12. On the van on slopes (with a screenshot): "the wheels don't act like a normal car in video games. It turns slanted and extends out of
     the vehicle for some reason. Like other video games have cars, can we do it how other games handle cars"
+
+    Done (entities/van.lua, tools/van.mjs): the wheels were root parts of the model beside the body. The body leaned and pitched about
+    its own foot while each wheel stayed upright and was only lifted straight up by the world, so on a bank the body swung away from
+    its wheels (out of the wells, slanted against the body). Now the wheels are the body's children and hang as in driving games: a
+    fixed mount each (the axle in the model), the spring moving the wheel only along the body's up (`Van.TRAVEL`: 10 cm down, 8 cm
+    up, the most the round well allows), steered about the body's up and spun about the axle (part `ry`, `rx`: Ry * Rx inside the
+    body). The travel comes from a ray down the body's -up to the ground **as drawn**: the meadow is 4 m flat squares
+    (entities/valley_ground.lua) that stand up to 22 cm off `nova.terrain_height` on the curved steep banks, so a tyre put on
+    terrain_height sank into the grass at one end and floated at the other; the van now reads that mesh (`Van.ground_at`), roads at
+    terrain_height, decks and the bridge at their own height. A wheel that would need more than its travel up lifts the body (the
+    bump stop). The body may lean and pitch up to 0.6 rad (it stopped at 0.3, about 17 degrees). Tests: `the_vans_wheels_hang_from_the_body_as_in_a_driving_game`
+    (a 20 degree climb, descent and side slopes, full lock, a kerb: against the engine's posing) and `..._over_the_bridge`. Pictures:
+    `tools/routes/van-wheels.json` (out `build/gallery/van-wheels`). Weak point: the postmaster and the camera still stand on
+    terrain_height, which on those banks is not quite the drawn grass.
