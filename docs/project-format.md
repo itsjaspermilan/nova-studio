@@ -1673,6 +1673,8 @@ nova.sound.play("hit", { reverb = 0.3 })                  -- how much of a sound
 nova.music.layers({ "song_lead", "song_bass", "song_drums" }, { levels = { 1, 0, 0 }, fade = 1 })
                                      -- adaptive music: stems of one piece (song_write with stems) played sample-locked, each at a level 0 to 1
 nova.music.layer("song_drums", 1, { fade = 2, at = "bar" })   -- fade one stem in; at = "bar" waits for the piece's next bar line
+nova.music.prepare({ "next_lead", "next_bass" }, { loop = false })   -- start the next piece's decoders ahead, during a quiet
+nova.music.layers({ "next_lead", "next_bass" }, { levels = { 1, 0 }, loop = false })   -- a piece that plays once and ends
 nova.music.position()                -- seconds into the track (nil when no music plays; wraps on loops)
 nova.music.seek(30)                  -- jump to 30 s; true, or false when nothing is playing
 ```
@@ -1689,6 +1691,13 @@ steady `bpm` and `beats`); a change asked for `now` drops one of the same stem t
 all the time, silent or not (that is what keeps them in step): one decoder thread each (Ogg Vorbis at 44.1 kHz stereo, about what
 one music track costs), a ring of 1.5 s of decoded frames each (256 KB), and each file's compressed bytes in memory. Five stems of a
 3.5 minute piece are about 11 MB of Ogg.
+
+**Pieces that take turns.** `loop = false` plays the stems once: they end together and their decoders stop, so a game with several
+pieces (a playlist with quiet between them: `examples/mountain-post/lib/music.lua`) decodes only the piece that plays. Starting a
+piece starts one decoder per stem at once; `nova.music.prepare(names, { loop = false })` starts them ahead (a few seconds before,
+during the quiet), and the `nova.music.layers` of the same names and `loop` takes those decoders with their opening already
+decoded. Preparing other names, or playing any layers, stops decoders prepared for something else. Every Ogg in `music/` is still
+kept compressed in memory from the start (four pieces of five stems of about two minutes each: about 26 MB).
 
 `volume` 0 to 4 (default 1), `pan` -1 (left) to 1 (right) with an equal-power law, `pitch` 0.05 to 16
 (2 is an octave up; it also changes speed). `vary` (0 to 0.5) changes each play a little: the pitch by up to that share either way

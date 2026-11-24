@@ -1182,3 +1182,37 @@ cozy, cartoony look. I guess because there's no texture?" and, for the world, "l
   The wood paint treats a post's side as a wall (a seam every 32 cm), so posts and fence rails are painted but cream trim is not.
   `foliage` on the flower boxes' leaves was tried and dropped (its core darkening reads from the model's axis, far from a window).
   The paint kinds' numbers (5, 6, 7) follow the water's: another round adding kinds should add after them.
+### What the seventh play changed: the music ("too repetitive")
+
+Four pieces for the felt piano now take turns, each playing once and ending, with quiet between them in which only the ambience
+plays (as in games where each part of the day has its own piece). All four are written note by note in `tools/music.mjs` by one
+builder, and each is five stems of one song (piano, bass, brushes, pad, celesta), so the layered driving rule works for every piece:
+
+| piece | key, tempo | length | character | form |
+| --- | --- | --- | --- | --- |
+| Fernhollow (kept) | F major, 68, 4/4 | 2:06 | the morning walk | intro A B C A''' and an ending (A', A'' and B' cut; no loop now) |
+| Thistle Lane | G major, 104, 4/4 | 1:46 | bright and skipping: dotted eighths over an oom-pa left hand | intro A A' B (E minor) C (a trio in C) A'' and a coda |
+| Stillwater | E flat major, 58, 4/4 | 2:03 | reflective and slow: long notes and sighs | intro A B (C minor) A' (closing on C minor) and a three-bar coda |
+| Meadowsweet | D major, 120, 3/4 | 1:53 | a folksy waltz: oom-pah-pah, a flat-seven C in the middle | intro A A' B (G, B minor) A'' (up an octave) A''' and a coda |
+
+Each ends by slowing into a rolled chord and a bar of silence (two in the waltz) for the room to ring out. Measured offline (whole
+pieces, BS.1770): the piano alone -18.0 LUFS in all four (0.01 LU apart); all five stems -16.6, -17.0, -16.9 and -16.9 (1.0 to 1.5
+dB over the piano, 0.49 LU apart); sound_report finds no clipping and no clicks in any of the eight renders, 1 ms of silence at the
+start and 1.1 to 4.1 s of silence at the end (the last 50 ms under -83 dBFS); on a small speaker the pieces lose 0.8 to 1.5 dB.
+
+**The playlist** (`lib/music.lua`, `music.playlist_step`): the first piece starts about 6 s after the game begins; the pieces come
+from a shuffled bag (all four before any again; a new bag never starts with the piece just played); between two pieces a quiet of
+20 to 60 s, one time in five 30 to 60 s longer. The driving layers follow whichever piece plays (the rule runs in the quiet too, so a
+piece that starts mid-drive starts with what the drive earned); the post office, the cards and the conversations behave as before
+(the piano alone, ducked). The playlist lives in the module, so walking in and out of the post office does not restart a piece; the
+ending card cuts a quiet to 2 s.
+
+**On the handheld:** only the playing piece is decoded (`nova.music.layers(..., { loop = false })`: the stems end together and their
+five decoder threads stop). Eight seconds before a piece starts, `nova.music.prepare` starts its decoders, so its opening (1.5 s a
+stem, 256 KB each) is decoded during the quiet and the piece does not start with five decoders bursting at once. The cost that grew:
+every Ogg in `music/` is held compressed in memory from the start, now 26 MB for the twenty stems (it was 11.5 MB for one piece's
+five); the brushes stems are the biggest (about 2 MB each). Not measured on the Retroid.
+
+`scripts/env.sh node examples/mountain-post/tools/music.mjs --audition` renders each piece (piano alone and full, for sound_report)
+and writes `build/audition/mountain-post-pieces-excerpts.m4a`: three minutes, 44 s of each piece from its first A, the piano alone
+for 21 s and then the four layers fading in. **Nobody has listened to any of it**: offline renders and measurements only.

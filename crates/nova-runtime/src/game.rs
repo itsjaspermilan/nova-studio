@@ -119,6 +119,9 @@ struct Shared {
     current_music: Option<(Option<StreamSource>, bool)>,
     /// The stems of adaptive music that plays now: their names and voice ids (see `nova.music.layers`).
     music_layers: Vec<(String, u64)>,
+    /// Stems whose decoders were started ahead by `nova.music.prepare` (name, whether it loops, the feed): the next
+    /// `nova.music.layers` of those names takes them, so a piece that follows a quiet starts with its opening already decoded.
+    music_prepared: Vec<(String, bool, crate::stream::StreamFeed)>,
     /// The name and voice id of the one music track that plays (`nova.music.play` of the same name carries on).
     music_playing: Option<(String, u64)>,
     /// Seconds into that track as last reported by the audio thread.
@@ -3454,6 +3457,11 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             };
             let volume = number_option(&opts, "volume")?.unwrap_or(1.0).clamp(0.0, 4.0) as f32;
             let fade = number_option(&opts, "fade")?.unwrap_or(0.0).clamp(0.0, 60.0) as f32;
+            // `loop = false`: the piece plays once and ends (a playlist of pieces with quiet between them)
+            let looping = match &opts {
+                Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(true),
+                None => true,
+            };
             // a bar is `bar` seconds, or `beats` (4) beats at `bpm`
             let bar = match (number_option(&opts, "bar")?, number_option(&opts, "bpm")?) {
                 (Some(b), _) if b.is_finite() && b > 0.0 => b,
@@ -3513,16 +3521,26 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                 }
                 let id = sh.next_sound;
                 sh.next_sound += 1;
+                // a stem prepared ahead (nova.music.prepare) starts from the frames its decoder has ready; any other starts now
+                let ready = sh
+                    .music_prepared
+                    .iter()
+                    .position(|(n, l, _)| *n == name && *l == looping)
+                    .map(|i| sh.music_prepared.swap_remove(i).2);
+                let stream = match ready {
+                    Some(feed) => Some(feed),
+                    None => streamed.filter(|_| sh.music_decoding).map(|src| src.start(looping)),
+                };
                 ids.push((name, id));
                 plays.push((
                     Box::new(mixer::Play {
                         id,
-                        stream: streamed.filter(|_| sh.music_decoding).map(|src| src.start(true)),
+                        stream,
                         sample,
                         volume,
                         pan: 0.0,
                         pitch: 1.0,
-                        looping: true,
+                        looping,
                         music: true,
                         fade_in: fade,
                         limit: 0,
@@ -3534,12 +3552,61 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             sh.music_playing = None;
             sh.music_position = None;
             sh.music_layers = ids;
+            sh.music_prepared.clear(); // (stems prepared for something else: their decoders stop)
             if sh.sound_log.len() < 4096 {
                 let stems: Vec<&str> = sh.music_layers.iter().map(|(n, _)| n.as_str()).collect();
-                let line = format!("music layers {}", stems.join(" + "));
+                let line = format!("music layers {}{}", stems.join(" + "), if looping { "" } else { " (once)" });
                 sh.sound_log.push(line);
             }
             sh.audio.push(mixer::Command::PlayLayers { layers: plays, bar_seconds: bar, bars });
+            Ok(())
+        })?,
+    )?;
+    // prepare({ "next_piano", "next_bass" }, { loop = false }): start the stems' decoders ahead, so the next nova.music.layers of
+    // them begins with its opening decoded (a piece after a quiet starts at once, with no burst of decoding as it starts)
+    let s = shared.clone();
+    music.set(
+        "prepare",
+        lua.create_function(move |_, (names, opts): (Table, Option<Table>)| {
+            let mut sh = s.borrow_mut();
+            let count = names.raw_len();
+            if count == 0 || count > 8 {
+                return Err(lua_err("nova.music.prepare({ names }) takes from 1 to 8 stems (the names of music files)"));
+            }
+            let looping = match &opts {
+                Some(t) => t.get::<Option<bool>>("loop")?.unwrap_or(true),
+                None => true,
+            };
+            let mut wanted = Vec::new();
+            for i in 1..=count {
+                let name: String = names.get(i).map_err(|_| lua_err("nova.music.prepare: every stem is a name (text)"))?;
+                let Some(src) = find_stream(&sh.streams, &name).cloned() else {
+                    return Err(lua_err(format!("nova.music.prepare: '{name}' is not streamed music (an Ogg file in 'music/')")));
+                };
+                wanted.push((name, src));
+            }
+            // the same stems prepared again keep their decoders; any others stop
+            let mut kept = Vec::new();
+            let mut old = std::mem::take(&mut sh.music_prepared);
+            for (name, src) in wanted {
+                match old.iter().position(|(n, l, _)| *n == name && *l == looping) {
+                    Some(i) => kept.push(old.swap_remove(i)),
+                    None if sh.music_decoding => {
+                        let feed = src.start(looping);
+                        kept.push((name, looping, feed));
+                    }
+                    None => {}
+                }
+            }
+            sh.music_prepared = kept;
+            if sh.sound_log.len() < 4096 {
+                let mut stems = Vec::new();
+                for i in 1..=count {
+                    stems.push(names.get::<String>(i)?);
+                }
+                let line = format!("music prepare {}", stems.join(" + "));
+                sh.sound_log.push(line);
+            }
             Ok(())
         })?,
     )?;
@@ -4635,6 +4702,7 @@ impl Game {
             streams,
             current_music: None,
             music_layers: Vec::new(),
+            music_prepared: Vec::new(),
             music_playing: None,
             music_position: None,
             focused: true,
