@@ -119,9 +119,11 @@ local function wrap(a) return (a + pi) % TAU - pi end
 local function smooth(u) return u * u * (3 - 2 * u) end
 M.qmul, M.qrot, M.qeuler = qmul, qrot, qeuler
 
--- A number by the speed: a plain number, or points { { speed, value }, ... } in order, straight between them.
+-- A number by the speed: a plain number, points { { speed, value }, ... } in order, straight between them, or a function of the
+-- speed (a walker that changes its manner, on a stair say, gives one).
 local function by_speed(v, s)
   if type(v) == "number" then return v end
+  if type(v) == "function" then return v(s) end
   if s <= v[1][1] then return v[1][2] end
   for i = 2, #v do
     if s <= v[i][1] then
@@ -198,6 +200,10 @@ local DEFAULTS = {
   lean_accel = 0.012,                                     -- more lean while speeding up, back while slowing (radians per m/s^2)
   stretch = 1.12, squash = 0.84,                          -- how far a leg may lengthen or shorten to reach its foot
   toe_roll = 0.75, heel_roll = 0.35,                      -- how far a foot may roll onto its toe behind or its heel in front (radians)
+  toe_off = 0,                                            -- (by speed) the heel rising off the ground at the end of each stance (radians onto the toe)
+  heel_strike = 0.12,                                     -- (by speed) the toes' lift as a foot comes down onto its heel (radians)
+  heel_settle = 14,                                       -- how quickly a foot that landed on its heel rolls down flat (per second)
+  lift_peak = 0.5,                                        -- where in the swing (a share of it) the foot is highest: under a half, it lifts first and then reaches
   settle = 2.4,                                           -- cycles a second of the steps that finish a stop or turn on the spot
   settle_speed = 0.3,                                     -- below this (m/s) a stop is settled (a foot in the air comes down, a foot left behind steps up)
   reach = 0.06,                                           -- a standing foot further than this from its place under the hip steps up
@@ -336,10 +342,11 @@ function Gait:update(dt, e, anim, extra)
   -- (and before that: a foot behind rolled near the most it may onto its toe is about to be out of reach)
   for _, L in ipairs(self.legs) do
     if L.planted then
-      local lim = (L.pitch or 0) >= 0 and o.toe_roll or o.heel_roll
-      local r = abs(L.pitch or 0) / lim
+      local np = L.npitch or L.pitch or 0
+      local lim = np >= 0 and o.toe_roll or o.heel_roll
+      local r = abs(np) / lim
       -- (onto its heel only counts once it has stood a moment: every foot lands on its heel)
-      if r > 0.7 and ((L.pitch or 0) > 0 or (L.age or 0) > 0.12) then d = d + min(1, (r - 0.7) / 0.3) * 4 * dt * stride end
+      if r > 0.7 and (np > 0 or (L.age or 0) > 0.12) then d = d + min(1, (r - 0.7) / 0.3) * 4 * dt * stride end
       L.age = (L.age or 0) + dt
       -- (a foot the body has turned away from, in a turn at a walk, steps round too)
       if abs(wrap(L.yaw - face)) > o.turn then d = d + 2 * dt * stride end
@@ -384,6 +391,7 @@ function Gait:update(dt, e, anim, extra)
         L.steps = L.steps + 1
         L.landed = true
         L.land_roll = min(0, L.pitch or 0) -- (it lands heel first and rolls down onto the sole)
+        L.npitch = nil
         L.step_up = false
         L.age = 0
       end
@@ -421,7 +429,10 @@ function Gait:update(dt, e, anim, extra)
       local su = smooth(u)
       L.sx, L.sz = L.fx + (tx - L.fx) * su, L.fz + (tz - L.fz) * su
       L.syaw = L.fyaw + wrap(face - L.fyaw) * su
-      L.lift = lift * sin(pi * u) * (slow and 0.6 or 1)
+      -- (the highest point of the arc at `lift_peak` of the swing: earlier, the foot is picked up and then reaches out to land)
+      local lp = max(0.2, min(0.8, o.lift_peak))
+      local uw = u <= lp and 0.5 * u / lp or 0.5 + 0.5 * (u - lp) / (1 - lp)
+      L.lift = lift * sin(pi * uw) * (slow and 0.6 or 1)
       -- (the ground it swings over, in the world: from where it lifted to where it lands, and never below the ground under it, so
       -- a foot goes up a step with the lift of its swing rather than jumping onto it)
       local g0, g1 = L.g0 or ground_w(self, L.fx, L.fz), ground_w(self, tx, tz)
@@ -651,9 +662,38 @@ function Gait:update(dt, e, anim, extra)
     local axx, axy, axz
     if L.planted then
       local a = need(L, sx, sy, sz)
+      local a0 = a
+      L.npitch = a0 -- (the roll the foot needs to be reached at all: what hurries the cycle, not the push-off below)
+      -- (late in its stance, a foot behind the body peels up onto its toe, the heel rising: the push-off of a walk)
+      local toff = by_speed(o.toe_off, speed) * walking
+      if toff > 0 and a >= 0 then
+        local prog = ((self.phase - L.offset) % 1) / max(stance, 0.05)
+        local fwd = (L.mx - sx) * sin(L.myaw) + (L.mz - sz) * cos(L.myaw)
+        if fwd < 0 then a = max(a, toff * smooth(max(0, min(1, (prog - 0.5) / 0.5)))) end
+      end
       -- (just landed heel first: it rolls down onto the sole in a moment, never further than it must)
-      L.land_roll = (L.land_roll or 0) * exp(-14 * dt)
+      L.land_roll = (L.land_roll or 0) * exp(-o.heel_settle * dt)
       if a <= 0 then a = min(a, L.land_roll) end
+      -- (a roll more than it needs, the push-off or the heel, only so far as the leg still reaches the ankle so moved without
+      -- being shortened or lengthened past its limits: the foot stays where it stands)
+      if a ~= a0 then
+        local fwd = (L.mx - sx) * sin(L.myaw) + (L.mz - sz) * cos(L.myaw)
+        local short = L.length * (self.flex and o.squash * FLEX_SQUASH or o.squash) * 1.02
+        local long = (self.flex and fwd < 0) and L.length * o.stretch * FLEX_STRETCH * 0.98 or Lmax(L) * 0.99
+        local function ok(r)
+          local x, y, z = ankle(L, r)
+          local dd = sqrt((x - sx) ^ 2 + (y - sy) ^ 2 + (z - sz) ^ 2)
+          return dd >= short and dd <= long
+        end
+        if not ok(a) then
+          local lo, hi = 0, 1 -- (the share of the way from a0 to a)
+          for _ = 1, 14 do
+            local mid = (lo + hi) / 2
+            if ok(a0 + (a - a0) * mid) then lo = mid else hi = mid end
+          end
+          a = a0 + (a - a0) * lo
+        end
+      end
       L.pitch, L.pivot = a, a > 1e-4 and "toe" or a < -1e-4 and "heel" or "flat"
       axx, axy, axz = ankle(L, a)
       -- (on a hillside the sole lies along the ground under it: tipped toe up or down and rolled to the side with the slope, and
@@ -663,7 +703,7 @@ function Gait:update(dt, e, anim, extra)
     else
       -- (swinging: rolled off the toe at first, reaching forward to land on the heel, as it must or a little)
       local u = L.u or 0
-      local land = min(need(L, sx, sy, sz), -0.12 * walking)
+      local land = min(need(L, sx, sy, sz), -by_speed(o.heel_strike, speed) * walking)
       L.pitch, L.pivot = (L.fpitch or 0) * (1 - smooth(u)) + land * smooth(u), "air"
       axx, axy, axz = ankle(L, L.pitch)
       axy = axy + (L.lift or 0)

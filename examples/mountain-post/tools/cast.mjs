@@ -6,13 +6,14 @@
 import { tool } from "./lib.mjs";
 import { CAST } from "./palette.mjs";
 
-// the postmaster: a fox in a marigold knitted cardigan over a cream shirt, olive-brown cord trousers, a big oatmeal bucket hat with a
-// teal band and an envelope pin, a teal neckerchief, an envelope patch on the chest. (The owner's sixth notes: no messenger bag,
-// nothing like a police uniform; then "a little drab"; then a red hat with blue near it was "too much like the Paddington colours".
-// Of four outfits pictured in the valley, close and beside the blue van, this one reads best as his own: the pale hat stands out
-// against the grass, the road and the blue van at eight metres where sage and moss hats sank into the grass and a plum one went dark,
-// the marigold is sunny and not his orange fur, and the teal band and neckerchief tie it together; docs/games/mountain-post.md)
-tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: CAST.marigold, trim_color: CAST.cord, shoe_color: CAST.boot, hat: "bucket", hat_color: CAST.oatmeal, hat_band_color: CAST.tealBright, hat_pin: "envelope", emblem: "envelope", accessory: "scarf", accent_color: CAST.tealBright });
+// the postmaster: a fox in a marigold knitted cardigan over a cream shirt, olive-brown cord trousers, a soft oatmeal postal cap with a
+// deep teal band and peak and an envelope pin, a teal neckerchief, an envelope patch on the chest. (The owner's sixth notes: no
+// messenger bag, nothing like a police uniform; then "a little drab"; then a red hat with blue near it was "too much like the
+// Paddington colours"; then, at the eighth play, "I liked the post master cap that we had earlier. The bucket hat makes the character
+// look like some kind of explorer". Of three caps pictured close and at the game's distance on the road and beside the blue van, the
+// oatmeal crown reads best: it stands out against the grass, the road and the van where a soft teal crown ran into the neckerchief
+// and the van's blue, and an olive band and peak looked khaki, the explorer again; docs/games/mountain-post.md)
+tool("character3d_make", { name: "postmaster", species: "fox", build: "chibi", head_scale: 1.75, outfit: "cardigan", outfit_color: CAST.marigold, trim_color: CAST.cord, shoe_color: CAST.boot, hat: "peaked", hat_color: CAST.oatmeal, hat_band_color: CAST.tealDeep, hat_pin: "envelope", emblem: "envelope", accessory: "scarf", accent_color: CAST.tealBright });
 // Hazel Brock: a bear, retired carpenter: a warm rust work shirt, olive trousers, a canvas apron with a pencil in its pocket
 tool("character3d_make", { name: "hazel", species: "bear", build: "chibi", head_scale: 1.75, outfit: "shirt", outfit_color: CAST.hazelShirt, trim_color: CAST.hazelTrousers, accessory: "apron" });
 // Pip Tansy: a young rabbit with a radio station: a sunny vest with a bolt on it, bright blue trousers, red headphones

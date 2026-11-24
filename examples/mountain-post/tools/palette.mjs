@@ -28,7 +28,7 @@ export const PAL = {
 /// The cast's clothes (tools/cast.mjs): a little brighter and cleaner than the world's paint, so the people read against the grass, the
 /// road, the blue van and their own fur (the owner, 2026-11-23: "The colour scheme for the player seems a little drab").
 export const CAST = {
-  marigold: "#f2a21e", oatmeal: "#f1e4c6", cord: "#7a6a3e", tealBright: "#2aa69b", boot: "#4a3a33",
+  marigold: "#f2a21e", oatmeal: "#f1e4c6", cord: "#7a6a3e", tealBright: "#2aa69b", tealDeep: "#1f7f78", boot: "#4a3a33",
   hazelShirt: "#c8693f", hazelTrousers: "#5b6e44", pipVest: "#f4b82e", pipTrousers: "#3f74b4",
 };
 

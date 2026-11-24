@@ -46,9 +46,18 @@ local RAMP_LEAD = 0.0 -- (metres the stretch leads going up; half as much it lag
 local wrap = function(a) return (a + math.pi) % (2 * math.pi) - math.pi end
 
 -- the gait: Nova's feet-on-the-ground walking (nova.gait), with the postmaster's own bounce and the parts that follow the body
+-- (the owner's eighth play: "he kind of looks like he's shuffling when he's walking". A walk that reads as walking: each foot peels
+-- up onto its toe as it leaves the ground (toe_off), is picked up high early in its swing and then reaches forward (lift, lift_peak)
+-- to land on its heel with the toes up (heel_strike) and roll down flat; the hips bob, sway and roll over the standing foot more)
 local GAIT = {
-  bounce = { { 0, 0 }, { 1.6, 0.02 }, { 2.2, 0.026 }, { 3.0, 0.03 } },
-  lift = { { 0, 0.025 }, { 1.6, 0.045 }, { 3.0, 0.075 } },
+  bounce = { { 0, 0 }, { 0.8, 0.02 }, { 1.6, 0.03 }, { 2.2, 0.03 }, { 3.0, 0.032 } },
+  lift = { { 0, 0.04 }, { 0.8, 0.06 }, { 1.6, 0.07 }, { 3.0, 0.085 } },
+  lift_peak = 0.42,
+  toe_off = { { 0, 0 }, { 0.4, 0.35 }, { 1.6, 0.55 }, { 2.2, 0.45 }, { 3.0, 0.35 } },
+  heel_strike = { { 0, 0.08 }, { 0.8, 0.22 }, { 1.6, 0.3 }, { 3.0, 0.18 } },
+  heel_settle = 10,
+  roll = { { 0, 0 }, { 1.6, 0.05 }, { 3.0, 0.025 } },
+  shift = { { 0, 0 }, { 1.6, 0.014 } },
   -- (the run clip already leans well into it: a little more with speed, more while speeding up, back while stopping)
   lean = { { 0, 0 }, { 1.6, 0.05 }, { 3.0, 0.07 } },
   follow = {
@@ -66,6 +75,25 @@ local GAIT = {
     { part = "arm_r", stiffness = 200, damping = 0.3, max = 0.2, rz = { up = -0.004 } },
   },
 }
+
+-- the step it takes on and near stairs (the walk before the eighth play), eased into over about a tenth of a second
+local STAIRS = {
+  bounce = { { 0, 0 }, { 1.6, 0.02 }, { 2.2, 0.026 }, { 3.0, 0.03 } },
+  lift = { { 0, 0.025 }, { 1.6, 0.045 }, { 3.0, 0.075 } },
+  lift_peak = 0.5, toe_off = 0, heel_strike = 0.12, heel_settle = 14,
+  roll = { { 0, 0 }, { 1.6, 0.03 }, { 3.0, 0.02 } },
+  shift = { { 0, 0 }, { 1.6, 0.008 } },
+}
+local STAIR_KEYS = { "bounce", "lift", "lift_peak", "toe_off", "heel_strike", "heel_settle", "roll", "shift" }
+-- (a value by the speed: a number, or { { speed, value }, ... } straight between them, as nova.gait reads them)
+local function at_speed(v, s)
+  if type(v) == "number" then return v end
+  if s <= v[1][1] then return v[1][2] end
+  for i = 2, #v do
+    if s <= v[i][1] then return v[i - 1][2] + (v[i][2] - v[i - 1][2]) * (s - v[i - 1][1]) / (v[i][1] - v[i - 1][1]) end
+  end
+  return v[#v][2]
+end
 
 local Postmaster = nova.entity { model = "postmaster", tags = { "postmaster", "player" }, velocity = false }
 
@@ -101,7 +129,8 @@ function Postmaster:create()
   self.speed_spring = nova.spring { stiffness = EASE_WALK ^ 2, damping = 1 }
   self.look = 0                  -- where the head looks first, from where the body faces (radians)
   self.walker = nova.gait("postmaster", {
-    bounce = GAIT.bounce, lift = GAIT.lift, lean = GAIT.lean, follow = GAIT.follow,
+    bounce = GAIT.bounce, lift = GAIT.lift, lean = GAIT.lean, follow = GAIT.follow, lift_peak = GAIT.lift_peak, toe_off = GAIT.toe_off,
+    heel_strike = GAIT.heel_strike, heel_settle = GAIT.heel_settle, roll = GAIT.roll, shift = GAIT.shift,
     ground = function(x, z, e)
       if self.indoors then return 0 end
       e = e or self
@@ -248,6 +277,19 @@ function Postmaster:update(dt)
   -- the feet: the animator moved on by the ground covered, the feet planted, the hips and the springs (nova.gait)
   local extra = self.carry_w > 0.01 and self.carry_layer or nil
   self.carry_layer[1].weight = self.carry_w
+  -- (on and near the porch steps the walk eases back to the quieter step it had before the eighth play, which the stair glide is
+  -- tuned for: a big bob, push-off and heel strike there would squash a leg past its limit and poke a sole into a tread)
+  self.stairs_k = (self.stairs_k or 0) + (((near or on_stairs) and 1 or 0) - (self.stairs_k or 0)) * math.min(1, dt * 8)
+  local o, k = self.walker.o, self.stairs_k
+  for _, name in ipairs(STAIR_KEYS) do
+    if type(GAIT[name]) == "number" then o[name] = GAIT[name] * (1 - k) + STAIRS[name] * k
+    else
+      -- (a function of the speed the gait measures, made once per walker)
+      self.stair_fns = self.stair_fns or {}
+      self.stair_fns[name] = self.stair_fns[name] or function(s) local q = self.stairs_k or 0; return at_speed(GAIT[name], s) * (1 - q) + at_speed(STAIRS[name], s) * q end
+      o[name] = self.stair_fns[name]
+    end
+  end
   self.walker:update(dt, self, self.anim, extra)
   for i = #self.dust, 1, -1 do
     local p = self.dust[i]

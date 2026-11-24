@@ -18,7 +18,10 @@ import { GAME, tool } from "./lib.mjs";
 // The speeds (m/s) the clips are made for, and how far each leg swings: forward (negative, the leg's front up) and back, in degrees.
 export const TARGET = { walk: 1.6, run: 3.0, trot: 2.2 };
 const OLD = { walk: { fwd: 26, back: 26, speed: 0.767 }, run: { fwd: 42, back: 18, speed: 1.633 }, trot: { fwd: 28, back: 20, speed: 0.997 } };
-const NEW = { walk: { fwd: 48, back: 48 }, run: { fwd: 66, back: 38 }, trot: { fwd: 50, back: 36 } };
+// (the owner's eighth play, "he kind of looks like he's shuffling": the walk a little longer again, 51 degrees each way, so each step
+// covers more ground at a slightly calmer beat, 0.476 s a cycle at 1.6 m/s (0.455 before); and the arms swing further against the legs, ARMS)
+const NEW = { walk: { fwd: 51, back: 51 }, run: { fwd: 66, back: 38 }, trot: { fwd: 50, back: 36 } };
+const ARMS = { walk: 40 / 26 };
 const ORIGINAL = { walk: 0.56, run: 0.3, trot: 0.4 };
 const rad = (d) => (d * Math.PI) / 180;
 const reach = (s) => Math.sin(rad(s.fwd)) + Math.sin(rad(s.back));   // (how far the ankle travels in a step, per leg length)
@@ -57,6 +60,8 @@ function restrideJson(model) {
       for (const key of track.keys) key.t = Math.round(key.t * k * 10000) / 10000;
       if (track.prop === "rotation" && (part === "leg_l" || part === "leg_r")) {
         for (const key of track.keys) key.value[0] = Math.round(leg(name, key.value[0]) * 1000) / 1000;
+      } else if (track.prop === "rotation" && ARMS[name] && (part === "arm_l" || part === "arm_r")) {
+        for (const key of track.keys) key.value[0] = Math.round(key.value[0] * ARMS[name] * 1000) / 1000;
       } else if (track.prop === "position" && part === "hips") {
         const top = Math.max(...track.keys.map((key) => key.value[1]));
         for (const key of track.keys) key.value[1] = Math.round(hips(name, key.value[1], top) * 1000) / 1000;
