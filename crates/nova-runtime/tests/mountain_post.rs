@@ -11753,3 +11753,174 @@ fn the_roads_houses_bridge_barrier_and_reed_pond_stay_inside_and_the_secret_ways
         );
     }
 }
+
+/// The owner's eighth play, on a steep grass bank: "the wheels don't act like a normal car in video games. It turns slanted and
+/// extends out of the vehicle". The wheels were the model's own root parts beside the body: the body leaned and pitched about its
+/// foot while each wheel stayed upright and was only lifted straight up, so on a slope the body swung away from them. Now they are
+/// the body's children (tools/van.mjs) and hang the way driving games hang them: each at its fixed mount, moved by its spring only
+/// along the body's up within Van.TRAVEL, steered about the body's up and spun about its axle, its travel found by a ray down the
+/// body's -up to the ground as drawn. On a plane of a set slope under the van (its `ground_at`), checked against the engine's own
+/// posing of the model (nova.model_pose): flat, a 20 degree climb and descent, a 20 degree side slope each way, full lock on the
+/// side slope and on the climb, and one front wheel up a 15 cm kerb.
+#[test]
+fn the_vans_wheels_hang_from_the_body_as_in_a_driving_game() {
+    const CHECK: &str = r#"(function()
+      local v = nova.named('van')
+      local pose, rest = nova.model_pose('van', { parts = v.parts_table }), nova.model_pose('van')
+      local b = v.parts_table.body
+      local h0 = nova.terrain_height(v.x, v.z)
+      local sh, ch = math.sin(v.heading), math.cos(v.heading)
+      local ox, oy, oz = v:to_world(0, 0, 0)
+      local function dir(x, y, z) local a, b, c = v:to_world(x, y, z); return a - ox, b - oy, c - oz end
+      local U = { dir(0, 1, 0) }
+      local bx, by, bz = dir(1, 0, 0)
+      -- (nova.model_pose's `low` is the lowest corner of a part's box of shapes, turned as posed: the wheel's box across its axle
+      -- is measured by rolling a wheel a quarter turn each way at rest, its height and length are the tyre's 0.27 radius)
+      local function box_x(name)
+        local a = nova.model_pose('van', { parts = { [name] = { rz = math.pi / 2 } } })[name]
+        local b = nova.model_pose('van', { parts = { [name] = { rz = -math.pi / 2 } } })[name]
+        return { a.low - a.y, b.y - b.low }
+      end
+      local PROF = { { -0.09, 0.22 }, { -0.06, 0.26 }, { -0.03, 0.27 }, { 0.03, 0.27 }, { 0.06, 0.26 }, { 0.09, 0.22 } }
+      local side, tlo, thi, updot, steer, low, hub, gap = 0, 0, 0, 0, 0, 0, 0, 0
+      for i, s in ipairs(v.stations) do
+        local p, r = pose[s.name], rest[s.name]
+        -- the engine's hub, back in the body's own frame: less the lift, then the pitch, then the roll undone
+        local x, y, z = p.x, p.y - b.y, p.z
+        local c, sn = math.cos(-b.rx), math.sin(-b.rx)
+        y, z = y * c - z * sn, y * sn + z * c
+        c, sn = math.cos(-b.rz), math.sin(-b.rz)
+        x, y = x * c - y * sn, x * sn + y * c
+        side = math.max(side, math.sqrt((x - r.x) ^ 2 + (z - r.z) ^ 2))
+        tlo, thi = math.min(tlo, y - r.y), math.max(thi, y - r.y)
+        -- the engine's hub turned by the heading is the van's own wheel_hub
+        local hx, hy, hz = v:wheel_hub(i)
+        hub = math.max(hub, math.abs(v.x + ch * p.x + sh * p.z - hx) + math.abs(p.y - hy) + math.abs(v.z - sh * p.x + ch * p.z - hz))
+        -- the axle: square to the body's up, turned from the body's side by the drawn steer (front) or not at all (rear)
+        local ax, ay, az = v:wheel_axle(i)
+        updot = math.max(updot, math.abs(ax * U[1] + ay * U[2] + az * U[3]))
+        local want = s.front and math.abs(v:drawn_steer()) or 0
+        steer = math.max(steer, math.abs(math.acos(math.min(1, ax * bx + ay * by + az * bz)) - want))
+        -- the wheel's box turned by the body, then the steer about the body's up, then the spin about the axle (Ry * Rx, as the
+        -- van asks): its lowest corner against the engine's, so the engine turns the wheel exactly so
+        local part = v.parts_table[s.name]
+        local spin, st = part.rx or 0, part.ry or 0
+        local lo = math.huge
+        for _, cx in ipairs(box_x(s.name)) do for _, cy in ipairs({ -0.27, 0.27 }) do for _, cz in ipairs({ -0.27, 0.27 }) do
+          local y1, z1 = cy * math.cos(spin) - cz * math.sin(spin), cy * math.sin(spin) + cz * math.cos(spin)
+          local x2, z2 = cx * math.cos(st) + z1 * math.sin(st), -cx * math.sin(st) + z1 * math.cos(st)
+          local _, wy = dir(x2, y1, z2)
+          lo = math.min(lo, hy + wy)
+        end end end
+        low = math.max(low, math.abs(lo - p.low))
+        -- the gap between the tyre and the ground plane under it, measured square to the plane and given as a height
+        local wy = hy + h0
+        local g0 = PLANE(hx, hz)
+        local nx, nz = -(PLANE(hx + 0.01, hz) - PLANE(hx - 0.01, hz)) / 0.02, -(PLANE(hx, hz + 0.01) - PLANE(hx, hz - 0.01)) / 0.02
+        local nl = math.sqrt(nx * nx + 1 + nz * nz); nx, nz = nx / nl, nz / nl; local ny = 1 / nl
+        local na = nx * ax + ny * ay + nz * az
+        local perp = math.sqrt(math.max(0, 1 - na * na))
+        local d = math.huge
+        for _, q in ipairs(PROF) do d = math.min(d, ny * (wy - g0) + q[1] * na - q[2] * perp) end
+        local gv = d / ny
+        if math.abs(gv) > math.abs(gap) then gap = gv end
+      end
+      return string.format('%.5f %.5f %.5f %.6f %.6f %.5f %.5f %.5f %.2f %.2f', side, tlo, thi, updot, steer, low, hub, gap, math.deg(v.pitch), math.deg(v.roll))
+    end)()"#;
+    // (slope forward in degrees, slope to the left, front steer in shares of lock, the right front wheel up a 15 cm kerb)
+    let cases: [(&str, f64, f64, f64, bool); 8] = [
+        ("flat", 0.0, 0.0, 0.0, false),
+        ("a 20 degree climb", 20.0, 0.0, 0.0, false),
+        ("a 20 degree descent", -20.0, 0.0, 0.0, false),
+        ("a 20 degree side slope", 0.0, 20.0, 0.0, false),
+        ("the other side slope", 0.0, -20.0, 0.0, false),
+        ("full lock on the side slope", 0.0, 20.0, 2.0, false),
+        ("full lock the other way on the climb", 20.0, 0.0, -2.0, false),
+        ("one front wheel up a kerb", 0.0, 0.0, 0.0, true),
+    ];
+    for (name, fwd, left, steer, kerb) in cases {
+        let mut g = game();
+        play(
+            &mut g,
+            &format!(
+                r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 5, "lua": "local v = nova.named('van'); local X, Z, H = 4.5, -132, 0.4; local base = nova.terrain_height(X, Z); local sh, ch = math.sin(H), math.cos(H); local tf, ts = math.tan(math.rad({fwd})), math.tan(math.rad({left})); local kx, kz = X + sh * 0.72 - ch * 0.55, Z + ch * 0.72 + sh * 0.55; PLANE = function(x, z) local dx, dz = x - X, z - Z; local y = base + (dx * sh + dz * ch) * tf + (dx * ch - dz * sh) * ts; if {kerb} and math.abs(x - kx) < 0.35 and math.abs(z - kz) < 0.35 then y = y + 0.15 end; return y end; v.ground_at = function(kind, x, z) return PLANE(x, z) end; v:teleport(X, Z, H)" }}, {{ "wait": 240, "lua": "local v = nova.named('van'); v.steer, v.spin, v.spin_rear = {steer}, 0.7, 0.4" }}, {{ "wait": 2 }} ] }}"#
+            ),
+        );
+        let out = lua(&g, CHECK);
+        let n: Vec<f64> = out.split(' ').map(|w| w.parse().unwrap()).collect();
+        let (side, tlo, thi, updot, steer_off, low, hub, gap) =
+            (n[0], n[1], n[2], n[3], n[4], n[5], n[6], n[7]);
+        let travel = (
+            num(&g, "nova.named('van').TRAVEL.down"),
+            num(&g, "nova.named('van').TRAVEL.up"),
+        );
+        assert!(
+            side < 0.002,
+            "{name}: a wheel's hub moved {side} m off its mount across the body's up ({out})"
+        );
+        assert!(
+            tlo >= -travel.0 - 0.001 && thi <= travel.1 + 0.001,
+            "{name}: a wheel travelled {tlo} to {thi} m along the body's up, past {travel:?} ({out})"
+        );
+        assert!(
+            updot < 1e-3,
+            "{name}: an axle leans out of square with the body's up by {updot} ({out})"
+        );
+        assert!(
+            steer_off < 1e-3,
+            "{name}: an axle is {steer_off} rad off the body's side turned by the steer ({out})"
+        );
+        assert!(
+            low < 0.002,
+            "{name}: the lowest corner of a wheel's box is {low} m off where the body, steer and spin put it ({out})"
+        );
+        assert!(
+            hub < 0.003,
+            "{name}: the engine's hub and Van:wheel_hub differ by {hub} m ({out})"
+        );
+        assert!(gap.abs() < 0.03, "{name}: a tyre is {gap} m off the ground ({out})");
+        if fwd != 0.0 {
+            assert!(
+                (n[8] + fwd).abs() < 1.5,
+                "{name}: the body pitches with the slope ({out})"
+            );
+        }
+        if left != 0.0 {
+            assert!(
+                (n[9] - left).abs() < 1.5,
+                "{name}: the body leans with the slope ({out})"
+            );
+        }
+        if kerb {
+            assert!(
+                thi > 0.03,
+                "{name}: the kerb pushed the wheel up into its well ({out})"
+            );
+        }
+    }
+}
+
+/// And on the move: driving to Pip's over the bridge (onto its deck and off again at speed), every frame every wheel stays within
+/// its travel, and a wheel that is not hanging at the bottom of its travel has its tyre on the ground as drawn.
+#[test]
+fn the_vans_wheels_stay_in_their_wells_and_on_the_ground_over_the_bridge() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "WHEELS = function() local v = nova.named('van'); if not v.travel or not v.susp.ready then return true end; local h0 = nova.terrain_height(v.x, v.z); for i, s in ipairs(v.stations) do local t = v.travel[i]; if t < -v.TRAVEL.down - 1e-6 or t > v.TRAVEL.up + 1e-6 then WHY = s.name .. ' travel ' .. t; return false end; if t > -v.TRAVEL.down + 1e-4 then local x, y, z = v:to_world(s.left, t, s.fwd); local gap = y + h0 - v.ground_at(v.susp.kind[i], x, z); if math.abs(gap) > 0.03 then WHY = string.format('%s %.3f off the %s', s.name, gap, v.susp.kind[i]); return false end end end; MOST = math.max(MOST or 0, math.abs(v.speed)); return true end",
+          "steps": [
+            { "wait": 5, "lua": "local v = nova.named('van'); v:teleport(-40, 26, -1.57); nova.scene_now().mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.testkit').drive('pip')" },
+            { "until": "nova.named('van').x < -118", "max": 2400, "always": "WHEELS()" } ] }"#,
+    );
+    assert!(
+        r.warnings().is_empty(),
+        "{:?}: {}",
+        r.warnings(),
+        lua(&g, "tostring(WHY)")
+    );
+    assert!(
+        num(&g, "nova.named('van').x") < -118.0,
+        "the van crossed the bridge"
+    );
+    assert!(num(&g, "MOST") > 5.0, "at speed: {}", num(&g, "MOST"));
+}

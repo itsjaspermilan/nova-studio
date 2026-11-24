@@ -42,8 +42,8 @@
 // blended when any vertex was see-through, which is why glass made a body see-through: crates/nova-runtime/src/gfx.rs, `solid_first`).
 //
 // Parts: `body` (the shell and the cab; its children `door_l` and `door_r`, hinged at the back corners and leaning with the back, the
-// `steering` wheel, the lamps) and the four wheels `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr` at their axles (entities/van.lua hangs
-// each on a spring).
+// `steering` wheel, the lamps, and the four wheels `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr` at their axles: entities/van.lua slides
+// each along the body's up on its spring, steers the front ones about the body's up and spins them about their axles).
 import { bevelled, box, cyl, mesh, model, part, shade, tube } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
@@ -567,8 +567,10 @@ const tailpipe = (() => {
 })();
 
 export const van = model([
-  part("body", [0, 0, 0], [...body, ...letters], [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse, tailpipe]),
-  wheel("wheel_fl", TR, AXF), wheel("wheel_fr", -TR, AXF), wheel("wheel_rl", TR, AXR), wheel("wheel_rr", -TR, AXR),
+  part("body", [0, 0, 0], [...body, ...letters], [door("door_l", 1), door("door_r", -1), steering, lampHead, lampAmberF, lampTail, lampAmberB, lampRevOff, lampBrake, lampReverse, tailpipe,
+    // (the wheels are the body's children, as in any driving game: each hangs at its fixed mount in the body's frame and only slides
+    // along the body's own up on its spring, steers about it and spins about its axle; entities/van.lua)
+    wheel("wheel_fl", TR, AXF), wheel("wheel_fr", -TR, AXF), wheel("wheel_rl", TR, AXR), wheel("wheel_rr", -TR, AXR)]),
 ], { texture: { size: LETTERS.tex, smooth: true }, boxes: [{ x: 0, z: (Z0 + Z1) / 2, hw: HW + 0.02, hl: (Z1 - Z0) / 2, turn: 0 }] });
 
 // The measures, checked against the reference's (printed by the recipe; the tests read the model).

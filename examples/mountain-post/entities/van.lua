@@ -119,6 +119,9 @@ Van.BODY = { offs = { 0.83, 0, -0.83 }, r = 0.66 }
 Van.LIGHTS = { head = true, beams = false, beam_reach = 16, beam_color = { 255, 236, 200 } }
 Van.HEADLAMPS = { { 0.47, 0.5, 1.43 }, { -0.47, 0.5, 1.43 } }   -- (the lenses' middles, the van's own metres)
 local GRAVITY = 9.8
+-- The wheels' travel on their springs, along the body's own up (metres from where they sit in the model): up into the well, down
+-- out of it. `tilt`: the steepest the body may lean or pitch on its springs (radians), past the valley's steepest playable bank.
+Van.TRAVEL = { up = 0.08, down = 0.10, tilt = 0.6 }
 local WHEEL_NAMES = { "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr" }
 
 -- Where the model's wheels are (from its parts), as stations of the suspension. (car.lua's wheel_layout)
@@ -145,7 +148,9 @@ local function ride_of(layout)
   local omega = hz * 2 * math.pi
   local sag = GRAVITY / (omega * omega)
   local n = #layout.stations
-  local r = { omega = omega, zeta = zeta, sag = sag, k = omega * omega / n, c = 2 * zeta * omega / n, bump = 0.11, droop = 0.14,
+  -- (bump and droop are the wheels' travel, Van.TRAVEL: a wheel never leaves its round well, 0.34 m about a middle 2 cm over the
+  -- axle, for a 0.27 m tyre, so 8 cm up is the most it can rise in it; the bump stop starts a centimetre before)
+  local r = { omega = omega, zeta = zeta, sag = sag, k = omega * omega / n, c = 2 * zeta * omega / n, bump = Van.TRAVEL.up - 0.01, droop = Van.TRAVEL.down,
     roll = math.rad(6), pitch = math.rad(3.4), arb = 0.3 }
   r.ip = (0.42 * layout.wheelbase) ^ 2
   r.ir = (0.4 * layout.track) ^ 2
@@ -159,6 +164,54 @@ local BUMPS = { road = 0.004, gravel = 0.018, bridge = 0.008, grass = 0.03 }
 local function ground_bump(x, z, size)
   return size * (math.sin(x * 0.9 + 1.3) * math.sin(z * 0.7 + 0.4) + 0.5 * math.sin(x * 1.9 - z * 1.1) + 0.3 * math.sin(z * 2.7 + x * 0.5))
 end
+
+-- The ground as it is DRAWN under a tyre. On the meadow that is entities/valley_ground.lua's mesh: 4 m squares from the map's corner
+-- (world.limits), each cut corner to corner into two flat triangles, the points lifted by the hills. On a steep curved bank those
+-- flat squares stand up to 22 cm off nova.terrain_height (the heightmap's 2 m samples, smoothly blended), so a tyre put on
+-- terrain_height sank into the drawn grass at one end of the van and floated at the other. Roads and driveways are ribbons that
+-- follow the hills every metre or two (terrain_height); decks and the bridge stand at their own height (world.height). Off a road the
+-- tyre goes from the one to the other over `BLEND` metres past the ribbon's edge, so nothing steps under a wheel (the mesh's 15 cm
+-- dip beside a road, which keeps it under the ribbon, is left out: there a tyre may stand a little over the drawn grass).
+-- `kind` is chosen once per wheel a frame (`ground_kind`): "deck", or how far onto the meadow (0 on a road to 1); the corners'
+-- heights are kept (the hills never change).
+local GRID, BLEND, corner_h = 4, 2.0, {}
+local function mesh_corner(i, j)
+  local key = i * 65536 + j
+  local h = corner_h[key]
+  if not h then
+    local L = world.limits
+    h = nova.terrain_height(L.x0 + i * GRID, L.z0 + j * GRID)
+    corner_h[key] = h
+  end
+  return h
+end
+local function ground_kind(x, z)
+  if world.lift(x, z) > 0 then return "deck" end
+  if not world.limits or world.surface(x, z) ~= "grass" then return 0 end
+  local edge = math.huge
+  for _, what in ipairs({ "road", "drive" }) do
+    local r, d = world.nearest(what, x, z)
+    if r then edge = math.min(edge, d - r.width / 2 - 0.3) end
+  end
+  return math.max(0, math.min(1, edge / BLEND))
+end
+local function ground_at(kind, x, z)
+  if kind == "deck" then return world.height(x, z) end
+  local th = nova.terrain_height(x, z)
+  if kind <= 0 then return th end
+  local L = world.limits
+  local fx, fz = (x - L.x0) / GRID, (z - L.z0) / GRID
+  local i, j = math.floor(fx), math.floor(fz)
+  local u, v = fx - i, fz - j
+  local a, c = mesh_corner(i, j), mesh_corner(i + 1, j + 1)
+  -- (the square's two triangles share its diagonal from (i, j) to (i + 1, j + 1): valley_ground's a-c-b and a-d-c)
+  local m
+  if u >= v then m = a + u * (mesh_corner(i + 1, j) - a) + v * (c - mesh_corner(i + 1, j))
+  else m = a + v * (mesh_corner(i, j + 1) - a) + u * (c - mesh_corner(i, j + 1)) end
+  return th + (m - th) * kind
+end
+-- (the van asks through these fields: a test can give one van a ground of its own, a plane at a set slope)
+Van.ground_at, Van.ground_kind = ground_at, ground_kind
 
 function Van:create()
   self.heading = self.ry or 0
@@ -184,7 +237,7 @@ function Van:create()
   for _, s in ipairs(self.stations) do self.parts_table[s.name] = s.front and { rx = 0, ry = 0, y = 0 } or { rx = 0, y = 0 } end
   local n = #self.stations
   local function list(v) local t = {} for i = 1, n do t[i] = v end return t end
-  self.susp = { y = 0, vy = 0, p = 0, vp = 0, r = 0, vr = 0, ready = false, s = list(0), touch = list(true), load = list(1), g = list(0), t = list(0), gv = list(0), bump = list(0) }
+  self.susp = { y = 0, vy = 0, p = 0, vp = 0, r = 0, vr = 0, ready = false, kind = list("deck"), s = list(0), touch = list(true), load = list(1), g = list(0), t = list(0), gv = list(0), bump = list(0) }
   self.pitch, self.roll, self.lift = 0, 0, 0
   self.last_vf = 0
   -- (lifted by the hills as one thing, by the ground under its middle: the springs below put each wheel on its own ground)
@@ -467,7 +520,8 @@ function Van:suspension(dt, accel, lateral_accel)
   for i = 1, n do
     local s = st[i]
     local wx, wz = self.x + sinh * s.fwd + cosh * s.left, self.z + cosh * s.fwd - sinh * s.left
-    local g = world.height(wx, wz)
+    sp.kind[i] = self.ground_kind(wx, wz)
+    local g = self.ground_at(sp.kind[i], wx, wz)
     sp.t[i] = nova.terrain_height(wx, wz)
     sp.bump[i] = sp.bump[i] + (ground_bump(wx, wz, size) - sp.bump[i]) * follow
     g = g + sp.bump[i]
@@ -518,28 +572,83 @@ function Van:suspension(dt, accel, lateral_accel)
     vy = vy + (fy - GRAVITY) * h
     vp = vp + (mp + want_p * kp * pressed) / ride.ip * h
     vr = vr + (mr + want_r * kr * pressed) / ride.ir * h
-    sp.y, sp.p, sp.r = y + vy * h, math.max(-0.3, math.min(0.3, p + vp * h)), math.max(-0.3, math.min(0.3, r + vr * h))
+    local tilt = math.tan(Van.TRAVEL.tilt)
+    sp.y, sp.p, sp.r = y + vy * h, math.max(-tilt, math.min(tilt, p + vp * h)), math.max(-tilt, math.min(tilt, r + vr * h))
     sp.vy, sp.vp, sp.vr = vy, vp, vr
   end
-  local worst = 0
-  for i = 1, n do
-    local s = st[i]
-    local over = sp.g[i] - (sp.y + s.fwd * sp.p + s.left * sp.r) - bump
-    if over > worst then worst = over end
-  end
-  if worst > 0.02 then
-    sp.y = sp.y + worst - 0.02
-    if sp.vy < 0 then sp.vy = sp.vy * 0.3 end
-  end
+  -- (the solver's p and r are the body's rise per metre forward and to the left: drawn as the angles whose tangents they are)
+  self.pitch, self.roll = -math.atan(sp.p), math.atan(sp.r)
   self.lift = sp.y - h0
-  self.pitch, self.roll = -sp.p, sp.r
+  self:place_wheels()
 end
 
--- How far a wheel's axle is above (or below) where it sits in the model, as the model is drawn: lifted by the ground under the
--- van's middle (`lift = "origin"`), so the wheel's own ground is in `sp.s` and the spring's travel.
-function Van:wheel_offset(i)
-  local sp, s = self.susp, self.stations[i]
-  return sp.y + s.fwd * sp.p + s.left * sp.r + sp.s[i] - (sp.h0 or sp.t[i])
+-- The wheels, the way driving games hang them: each is the body's child at a fixed mount (its axle in the model, tools/van.mjs),
+-- and its spring moves it only along the body's own up, by `travel` (from Van.TRAVEL.down below to Van.TRAVEL.up above where it
+-- sits in the model). The travel is found by a ray from the mount down the body's -up to the ground as drawn under the tyre's foot
+-- (`ground_at`: the meadow's mesh, a road, the bridge's deck, a porch step), so the tyre touches what is seen; the surface's small
+-- bumps, which are not drawn, are felt by the body only. The wheel's turn is the body's, then
+-- the steering about the body's up (front wheels), then the spin about its axle (Van:draw: the part's ry and rx, Ry * Rx inside
+-- the body); never the ground's slope on its own. A wheel that would need more than its travel up lifts the body along the world's
+-- up instead (the bump stop), so it never leaves its well.
+local UP = { 0, 0, 0 }
+function Van:body_up()
+  local p, r = self.pitch or 0, self.roll or 0
+  -- (Rx(pitch) * Rz(roll) applied to (0, 1, 0), as Van:to_world turns a point)
+  UP[1], UP[2], UP[3] = -math.sin(r), math.cos(r) * math.cos(p), math.cos(r) * math.sin(p)
+  return UP
+end
+
+-- The travel a wheel needs for its tyre to touch the ground (not limited): the tyre's foot is the mount less the radius, along up.
+function Van:wheel_reach(i)
+  local s, sp = self.stations[i], self.susp
+  local h0 = sp.h0 or nova.terrain_height(self.x, self.z)
+  local uy = self:body_up()[2]
+  local t = 0
+  for _ = 1, 4 do
+    local cx, cy, cz = self:to_world(s.left, t, s.fwd)
+    local g = self.ground_at(sp.kind[i] or "deck", cx, cz) -- (the drawn ground: the small bumps are the body's to feel)
+    t = t + (g - (cy + h0)) / uy
+  end
+  return t
+end
+
+function Van:place_wheels()
+  local sp, T = self.susp, Van.TRAVEL
+  self.travel = self.travel or {}
+  local need, worst = {}, 0
+  for i = 1, #self.stations do
+    need[i] = self:wheel_reach(i)
+    worst = math.max(worst, need[i] - T.up)
+  end
+  if worst > 0 then
+    -- (the bump stop: the body rises along the world's up until the most pressed wheel is at the top of its travel)
+    local d = worst * self:body_up()[2]
+    sp.y, self.lift = sp.y + d, self.lift + d
+    if sp.vy < 0 then sp.vy = sp.vy * 0.3 end
+    for i = 1, #need do need[i] = need[i] - worst end
+  end
+  for i = 1, #self.stations do
+    self.travel[i] = math.max(-T.down, math.min(T.up, need[i]))
+  end
+end
+
+-- The front wheels' drawn steer about the body's up (radians; the part's ry).
+function Van:drawn_steer()
+  return -math.max(-FEEL.drawn_lock, math.min(FEEL.drawn_lock, (self.steer or 0) * FEEL.lock))
+end
+
+-- Where a wheel is as it is drawn (for the tests and anything that must touch it): its hub in the world (x, y over the ground under
+-- the van's middle, as Van:to_world, z), and its axle, a unit vector out of its left face: the body's turn, then the steer.
+function Van:wheel_hub(i)
+  local s = self.stations[i]
+  return self:to_world(s.left, s.y + (self.travel and self.travel[i] or 0), s.fwd)
+end
+function Van:wheel_axle(i)
+  local a = self.stations[i].front and self:drawn_steer() or 0
+  local ox, oy, oz = self:to_world(0, 0, 0)
+  -- (the part's x axis turned by the steer about the body's up, Ry(a) * (1, 0, 0) = (cos a, 0, -sin a), then by the body)
+  local x, y, z = self:to_world(math.cos(a), 0, -math.sin(a))
+  return x - ox, y - oy, z - oz
 end
 
 -- Where a point of the van's body is in the world, from the van's own metres (right +x is left, as the model): for the
@@ -610,10 +719,11 @@ function Van:draw()
   pt.body.rx, pt.body.rz, pt.body.y = self.pitch, self.roll, self.lift or 0
   -- (the wheels as drawn turn no further than `drawn_lock`: at the crawl's full lock, 31 degrees, the tyre's back would push through
   -- the round well and the doorway's step; 25 degrees keeps it inside, and nobody reads the last few degrees off a turning wheel)
-  local sv = -math.max(-FEEL.drawn_lock, math.min(FEEL.drawn_lock, self.steer * FEEL.lock))
+  -- (the wheels are the body's children in the model: `y` slides each along the body's up, `ry` steers about it, `rx` spins it)
+  local sv = self:drawn_steer()
   for i, s in ipairs(self.stations) do
     local part = pt[s.name]
-    part.y = self.susp.ready and self:wheel_offset(i) or 0
+    part.y = self.susp.ready and self.travel and self.travel[i] or 0
     part.rx = s.front and self.spin or (self.spin_rear or 0)
     if s.front then part.ry = sv end
   end
