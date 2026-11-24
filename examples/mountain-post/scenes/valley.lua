@@ -28,6 +28,7 @@ local Valley = nova.scene {}
 -- side), and behind the back, clear of the doors as they swing out to the sides.
 Valley.DOOR = { 1.12, 0, 0.5 }   -- beside the left doorway (tools/van.mjs DOORWAY), the van's own metres
 Valley.BACK = { 0, 0, -2.05 }   -- behind the rear doors
+Valley.OUT_OF_DOOR = 6.5        -- metres out of the post office's door they stand on coming out (Valley:enter)
 local DOOR, BACK = Valley.DOOR, Valley.BACK
 local BACK_OPEN, BACK_SHUT = 2.1, 2.6  -- the rear doors open as the postmaster comes this near the back, and shut again past the other
 -- near enough to load or take: once the doors are open (BACK_OPEN), all but at once (with 1.35 m the doors swung open as the
@@ -80,13 +81,15 @@ function Valley:enter()
   if state.van then self.van:teleport(state.van.x, state.van.z, state.van.heading) end
   -- out of the office's door: standing at the foot of the porch, facing away from the door, free to go at once; the camera
   -- straight behind them at the default (the owner: "We can have the camera start behind the player while on foot and exiting a
-  -- building"); they stand at the foot of the porch, 4 m out, the porch roof and posts cut away round the low camera (lib/camera.lua)
+  -- building"); they stand OUT_OF_DOOR metres out, a little way down the path from the foot of the porch: the high walking camera
+  -- (lib/camera.lua FOOT, since the tenth notes) then looks down past the porch's roof and its name board, not through them (at 4 m
+  -- out the roof and the board filled the lower half of the picture); what is still near it is cut away (lib/camera.lua NEAR)
   local door = nova.named("office_door")
-  -- (by the post office's door more is cut away round the camera, which stands in the building behind them: lib/camera.lua NEAR)
+  -- (by the post office's door more is cut away round the camera, which stands over the building behind them: lib/camera.lua NEAR)
   camera.NEAR = { { door.x, door.z, r = camera.PORCH.r, near = camera.PORCH.near } }
   if state.came_out then
     local fx, fz = math.sin(door.ry or 0), math.cos(door.ry or 0)
-    self.p.x, self.p.z, self.p.face = door.x + fx * 4.0, door.z + fz * 4.0, door.ry or 0
+    self.p.x, self.p.z, self.p.face = door.x + fx * Valley.OUT_OF_DOOR, door.z + fz * Valley.OUT_OF_DOOR, door.ry or 0
     camera.reset(door.ry or 0)
   else
     camera.reset(self.p.face)
@@ -285,7 +288,7 @@ function Valley:get_in()
   v:rock(0.3, -0.18)
   v.back_want = 0
   camera.reset(v.heading)
-  camera.glide(0.7)
+  camera.glide(camera.GET_IN)
   self.mode = "van"
   v.driven = true
   v.engine_on = true
@@ -316,7 +319,7 @@ function Valley:get_out()
   v:rock(-0.25, 0.15)
   self.mode = "foot"
   camera.reset(v.heading)
-  camera.glide(0.6)
+  camera.glide(camera.GET_OUT)
   nova.log("got out")
 end
 

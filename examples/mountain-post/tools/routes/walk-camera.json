@@ -1,0 +1,136 @@
+{
+ "start_scene": "valley",
+ "lua": "CAM = require('lib.camera'); T = require('lib.testkit'); W = require('lib.world'); PARK = function(x, z, h) local v = nova.named('van'); v.autopilot = nil; v.driven = false; v.engine_on = false; v:teleport(x, z, h); nova.scene_now().mode = 'foot'; local p = nova.named('postmaster'); p.seated = false; p.control = true end; AT = function(x, z, face) local p = nova.named('postmaster'); p.x, p.z, p.face = x, z, face; p.walk_to, p.walk_path = nil, nil; CAM.pinned = nil; CAM.reset(face) end; WALK = function(dx, dz, pace) local p = nova.named('postmaster'); p.walk_pace = pace or 2.3; p.walk_to = { p.x + dx, p.z + dz } end",
+ "route": [
+  {
+   "wait": 30,
+   "lua": "PARK(300, 300, 0)"
+  },
+  {
+   "lua": "local d = nova.named('office_door'); local o = nova.scene_now().OUT_OF_DOOR or 4; AT(d.x + math.sin(d.ry) * o, d.z + math.cos(d.ry) * o, d.ry)"
+  },
+  {
+   "wait": 50,
+   "capture": "01 out of the post office door"
+  },
+  {
+   "lua": "WALK(-12, 3)"
+  },
+  {
+   "wait": 70,
+   "capture": "02 walking away from the post office"
+  },
+  {
+   "lua": "AT(60, -66, 0); WALK(0, 18)"
+  },
+  {
+   "wait": 90,
+   "capture": "03 walking in a meadow"
+  },
+  {
+   "lua": "AT(-19.72, -236, 0); WALK(0, 12, 1.4)"
+  },
+  {
+   "wait": 80,
+   "capture": "03b under a pine"
+  },
+  {
+   "lua": "AT(60, -66, 0); WALK(0, 18)"
+  },
+  {
+   "wait": 150
+  },
+  {
+   "lua": "WALK(-16, 14)"
+  },
+  {
+   "wait": 40,
+   "capture": "04 a turn 0.7 s in"
+  },
+  {
+   "wait": 50,
+   "capture": "05 a turn 1.5 s in"
+  },
+  {
+   "lua": "PARK(4.5, -132, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); p.face = 0; p.walk_to = nil; CAM.reset(0)"
+  },
+  {
+   "wait": 40,
+   "capture": "06 at the van door"
+  },
+  {
+   "lua": "nova.scene_now():get_in()"
+  },
+  {
+   "wait": 27,
+   "capture": "07 getting in mid ease"
+  },
+  {
+   "wait": 43,
+   "capture": "08 in the van"
+  },
+  {
+   "lua": "T.drive('hazel')"
+  },
+  {
+   "wait": 200,
+   "capture": "09 driving"
+  },
+  {
+   "until": "math.abs(nova.named('van').yaw_rate or 0) > 0.2 and math.abs(nova.named('van').speed) > 4",
+   "max": 2500,
+   "capture": "10 driving in a bend"
+  },
+  {
+   "lua": "nova.named('van').autopilot = nil"
+  },
+  {
+   "hold": [
+    "brake"
+   ],
+   "until": "nova.named('van'):stopped()",
+   "max": 400
+  },
+  {
+   "wait": 20,
+   "lua": "nova.scene_now():get_out()"
+  },
+  {
+   "wait": 24,
+   "capture": "11 getting out mid ease"
+  },
+  {
+   "wait": 60,
+   "capture": "12 out of the van"
+  },
+  {
+   "lua": "PARK(4.5, -132, 0); local s = nova.scene_now(); local v = nova.named('van'); local p = nova.named('postmaster'); p.x, p.z = s:van_point({ 0, 0, -2.2 }); p.face = v.heading; p.walk_to = nil; CAM.reset(p.face)"
+  },
+  {
+   "wait": 60,
+   "capture": "13 the van panel"
+  },
+  {
+   "lua": "PARK(300, 300, 0); local h = nova.named('hazel'); local a = h.face or 0; AT(h.x + math.sin(a) * 2.0, h.z + math.cos(a) * 2.0, a + math.pi)"
+  },
+  {
+   "wait": 40,
+   "capture": "14 the talk tip"
+  },
+  {
+   "hold": [
+    "interact"
+   ],
+   "frames": 2
+  },
+  {
+   "wait": 12,
+   "capture": "15 talk mid glide"
+  },
+  {
+   "wait": 40,
+   "capture": "16 talk"
+  }
+ ],
+ "out": "build/gallery/walk-camera"
+}
