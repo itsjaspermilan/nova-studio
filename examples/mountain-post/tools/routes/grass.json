@@ -1,0 +1,92 @@
+{
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); W = require('lib.world'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(h) end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; TALL = {}; for _, o in ipairs(nova.scene_data('valley').objects) do local k = o.kind; if k:match('^pine') or k:match('^larch') or k == 'birch' or k:match('^forest') or k:match('cabin') or k == 'post_office' or k == 'workshop' then TALL[#TALL + 1] = { o.x, o.z, k:match('^forest') and 12 or 2.6, k } end end; KIND = function(kind, x, z) local best, bo = 1e9, nil for _, t in ipairs(TALL) do local d = (t[1] - x) ^ 2 + (t[2] - z) ^ 2 if t[4] == kind and d < best then best, bo = d, t end end return bo[1], bo[2] end; CLEAR = function(x, z, d) local ba, bs = 0, -1 for i = 0, 35 do local a = i / 36 * 6.2832 local ex, ez = x + math.sin(a) * d, z + math.cos(a) * d local m = 1e9 for _, t in ipairs(TALL) do if math.abs(t[1] - x) + math.abs(t[2] - z) > 0.5 then local px, pz = t[1] - ex, t[2] - ez local sx, sz = x - ex, z - ez local u = math.max(0, math.min(0.92, (px * sx + pz * sz) / (sx * sx + sz * sz))) local q = math.sqrt((px - sx * u) ^ 2 + (pz - sz * u) ^ 2) - t[3] if q < m then m = q end end end if m > bs then bs, ba = m, a end end return ba end; TREE = function(kind, x, z, d, up, look, fov) local tx, tz = KIND(kind, x, z) local a = CLEAR(tx, tz, d) AT(tx + math.sin(a) * d, up, tz + math.cos(a) * d, tx, look, tz, fov) end; CREEK = function(zz) for _, w in ipairs(W.water) do if w.id == 'creek' then local best, bp = 1e9, nil for _, p in ipairs(w.points) do if math.abs(p[2] - zz) < best then best, bp = math.abs(p[2] - zz), p end end return bp[1], bp[2] end end end",
+  "route": [
+    {
+      "wait": 40,
+      "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 36, -150, 0.9; CAM.reset(0.9)"
+    },
+    {
+      "wait": 120,
+      "capture": "meadow, walking camera"
+    },
+    {
+      "lua": "AT(38, 1.9, -150, 90, 0.5, -95, 55)"
+    },
+    {
+      "wait": 4,
+      "capture": "meadow, low look across"
+    },
+    {
+      "lua": "CAM.pinned = nil; IN_VAN(0.3, -165, 0.1)"
+    },
+    {
+      "hold": [
+        "go"
+      ],
+      "until": "nova.named('van').z > -128",
+      "max": 900
+    },
+    {
+      "hold": [
+        "go"
+      ],
+      "wait": 2,
+      "capture": "driving along Post Road"
+    },
+    {
+      "lua": "AT(36, 3.2, -150, 100, 0, -40, 55)"
+    },
+    {
+      "wait": 4,
+      "capture": "tree shadows into the distance"
+    },
+    {
+      "lua": "TREE('birch', 14.74, -166.4, 8, 2.6, 3.2, 50)"
+    },
+    {
+      "wait": 4,
+      "capture": "a birch close up"
+    },
+    {
+      "lua": "TREE('birch', 14.74, -166.4, 40, 1.7, 3, 50)"
+    },
+    {
+      "wait": 4,
+      "capture": "a birch at 40 m"
+    },
+    {
+      "lua": "TREE('pine', 31.83, -157.15, 9, 2.6, 2.8, 50)"
+    },
+    {
+      "wait": 4,
+      "capture": "a pine close up"
+    },
+    {
+      "lua": "TREE('larch', 21.45, -153.15, 40, 1.7, 4, 50)"
+    },
+    {
+      "wait": 4,
+      "capture": "pines and larches at 40 m"
+    },
+    {
+      "lua": "AT(60, 14, -175, 130, 4, -238, 55)"
+    },
+    {
+      "wait": 4,
+      "capture": "the forest edge"
+    },
+    {
+      "lua": "AT(150, 16, 40, 40, 0, -60, 55)"
+    },
+    {
+      "wait": 4,
+      "capture": "the hillside from Fern Lane"
+    }
+  ],
+  "print": [
+    "nova.stats().triangles",
+    "nova.stats().draws"
+  ],
+  "out": "build/grass/after"
+}

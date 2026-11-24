@@ -1,0 +1,18 @@
+{
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(h) end",
+  "route": [
+    { "wait": 60, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 36, -150, 0.9; CAM.reset(0.9)" },
+    { "wait": 300, "capture": "walking: the meadow (GPU ms over the last second)" },
+    { "lua": "AT(38, 1.9, -150, 90, 0.5, -95, 55)" },
+    { "wait": 300, "capture": "low across the meadow to the trees" },
+    { "lua": "CAM.pinned = nil; IN_VAN(13.5, -170.5, 0.3); T.drive('bridge_out')" },
+    { "wait": 300, "capture": "driving camera along Post Road" },
+    { "lua": "nova.named('van').autopilot = nil; AT(36, 3.2, -150, 100, 0, -40, 55)" },
+    { "wait": 300, "capture": "tree shadows into the distance" },
+    { "lua": "AT(60, 14, -175, 130, 4, -238, 55)" },
+    { "wait": 300, "capture": "the forest edge" }
+  ],
+  "print": ["nova.perf().gpu_ms", "nova.perf().render_ms", "nova.perf().triangles", "nova.perf().fps"],
+  "out": "build/grass/bench"
+}

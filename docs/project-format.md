@@ -206,7 +206,7 @@ over the surface's own colours:
 
 | Kind | Looks like | Made by |
 | --- | --- | --- |
-| `ground` | big soft patches (about 20 m and 7 m) of warmer and cooler colour; near the camera, dabs of lighter and darker colour about 1.1 m by 0.25 m and finer blade streaks, laid one way here and another there, gone where a dab would be under a few pixels (calm far off: no shimmer, no moire); slopes facing the sun a little warmer, those turned away a little cooler | `nova.mesh.make { paint = "ground" }`, `ground3d_make` with `painted: true` |
+| `ground` | big soft patches (about 20 m and 7 m) of warmer and cooler colour; dabs of lighter and darker colour in three sizes (1.1 m by 0.25 m with finer blade streaks near the camera, three times that, and sweeps of 10 m by 2.2 m), laid one way here and another there, each size gone where it would be under a few pixels across the view while the next size carries on (no fade line; the painted look reaches 80 m and more; calm far off: no shimmer, no moire); slopes facing the sun a little warmer, those turned away a little cooler | `nova.mesh.make { paint = "ground" }`, `ground3d_make` with `painted: true` |
 | `foliage` | a tree's crown: leaf clumps of about 0.7 m bend the light, leaf dabs of about 18 cm break the colour, what faces in towards the trunk or down is darker (the core), what faces out lighter; the sun wraps softly round it and lights its rim seen at a slant. The pattern is fixed in the model's own space, so it sways with the tree | a shape's `"paint": "foliage"` in a model file; `prop3d_make` with `style: "painted"` |
 | `canopy` | the same, for a long mass of trees along its model's x (its core worked out from that long middle line) | `"paint": "canopy"` |
 | `water` | running water: ripples stretched along the flow move downstream at about half a metre a second, the sky shows in them at a slant and the sun glints on them; the shallows are lighter and foam gathers along the waterline, broken by the ripples | `nova.mesh.make { paint = "water", uvs = ... }`: each point's UV is (metres across, metres downstream), and its colour's alpha is how deep the water is there (0 is 0.2 m above the bed, 255 is 0.6 m deep or more; make a place shallow to put foam round a post) |
@@ -220,6 +220,57 @@ painted pixel at different scales and slants; its mip levels average a pattern a
 are calm. Painting is the plain look's: with `"materials": true` a model is lit by its glTF material instead and is not painted; a
 custom shader replaces it too. Cost on a desktop (Apple M4, Fernhollow's valley at 1280 by 720): see
 `docs/games/mountain-post.md`, "What the sixth play changed: grass, trees and the creek".
+
+The noise is read with anisotropic filtering (up to 8 samples, since 2026-11-23), and how far the ground's strokes carry is
+decided by a pixel's size across the view (or an eighth of its length along the view, whichever is more): a stroke on ground seen
+at a slant keeps its shape instead of smearing along the view. Before, a pixel's length along the view decided, and from the
+walking camera the dabs were gone at about 20 m.
+
+### Grass
+
+`nova.grass { ... }` grows blades of grass round the camera (added 2026-11-23 for Fernhollow Post, the owner's seventh play: "I
+like BoTW's grass system"; an original take on the idea, nothing of that game's): clumps of six tapering blades, dense near the
+camera and thinning out to `distance`, swaying in `nova.wind`, coloured from the ground under them, lit by the sun and darkened
+in the shadows, and bending away from what passes through them. They cast no shadow.
+
+```lua
+nova.grass {
+  map = "terrain/grass.png", x = -250, z = -265, cell = 0.5,  -- where it grows (or `size`: metres from the first pixel to the last)
+  colors = { x = -250, z = -265, cell = 4, columns = 126, rows = 142, data = { r, g, b, ... } },  -- the ground's own colours
+  height = 0.3, width = 0.07, density = 10, distance = 32, sway = 1,
+}
+nova.grass_bend(hero.x, hero.z, 0.75)   -- each frame, from draw: the grass round a foot or a wheel lies down (up to 8 a frame)
+nova.grass()                            -- no grass
+```
+
+| Option | Default | What it is |
+| --- | --- | --- |
+| `map` | everywhere | a picture laid over the ground like a heightmap (`x`, `z` its first pixel, `size` or `cell`): its grey (or red) says where grass grows, 255 in full, 0 none, between fewer and shorter clumps. Paint it black on roads, paths, water, porches and under houses |
+| `color` | a meadow green | the blades' colour (sRGB) where there is no `colors` grid |
+| `colors` | none | the ground's colours on a grid (sRGB, row by row along +z; `x`, `z` its first point, `cell` metres apart, blended between): a blade's root is the colour of the ground it stands on; the big warm and cool patches of a `ground` painted surface are laid over it the same way, so the grass and the ground under it match |
+| `height` | 0.42 | a blade's height in metres (each clump varies from 0.6 to 1.4 times it) |
+| `width` | 0.07 | a blade's width at its root in metres |
+| `density` | 10 | clumps a square metre near the camera |
+| `distance` | 32 | metres from the camera where the last clumps sink away; the grass thins from a quarter of this |
+| `sway` | 1 | how much the wind moves it (0 still) |
+
+**How it works** (`gfx/grass.rs`, `shaders/grass.wgsl`). Nothing is stored per blade. The ground round the camera is cut into
+squares of 8 m; each square that is in reach and in view (its bounds against the camera's view, on the CPU) is one instanced draw
+of the same small list of points: clump number `k` stands at the `k`-th point of a low-discrepancy (R2) sequence over the square,
+so the first `n` clumps of any square are spread evenly over it. A far square draws only its first few clumps, and a clump whose
+number is past the count for its own distance sinks smoothly into the ground, so the grass thins with no line; the clumps that
+are kept grow a little wider to keep the cover. The vertex shader makes each blade (five points, three triangles) from the
+vertex number, reads the map and the colour grid, leans it outwards, with the wind (a swell that travels across the meadow along
+the wind, a quicker flutter, and a sheen where a gust bends it) and away from the bending points, and lights each point: the
+ground's light, softened towards the tip, with one filtered shadow lookup. The fragment shader only writes the colour. The
+squares are drawn nearest first, after the solid models.
+
+**Cost** (Retroid Pocket 6, Fernhollow's meadow, 1280 by 720, MSAA 4x): see `docs/games/mountain-post.md`, "The seventh play:
+grass, trees and shadows".
+
+`examples/mountain-post/tools/grass.mjs` makes Fernhollow's map from the road network's real surface (`surfaceIndex`, junctions
+included), the water, the porches and the footprints of what stands on the ground; `entities/valley_ground.lua` passes its own
+ground colours as the grid and sends the postmaster's feet and the van's axles as bending points.
 
 ### Icon and box art
 
@@ -555,7 +606,23 @@ less to draw); it is also left out when it would be no finer than the `radius` m
 `docs/switch-class-graphics.md`), whose near cascade does the same. `softness` (0.25 to 4, 1 by default) is the width of the soft
 edge in texels of the map: 1 is about four texels from light to dark, more is softer. A shadow is attached to what casts it: the
 map's bias is half a texel, and the rest of what keeps a surface from shadowing itself is a push along its normal that grows with
-how slanted the surface is to the sun. A model shape can glow by itself in the dark
+how slanted the surface is to the sun.
+
+**Shadows far off** (added 2026-11-23, Fernhollow Post: "the shadows from the trees disappear even though the tree is still in
+view"). `nova.shadows { radius = 40, near = 6, far = 110 }` keeps the big things' shadows out to `far` metres along the view
+(10 to 400; 0, the default, leaves everything as before). The `radius` map is then laid over the ground the camera sees out to
+where a map of that size holds it (about 34 m ahead at radius 40 and a 55 degree view: a disc round that part of the view, its
+size fixed, so its texels are as sharp as before), and a third map takes the rest of the view out to `far` (a disc round that
+slice, coarser: about 11 cm a texel at 110 m), into which only the casters whose bounding radius is over 1.2 m are drawn (trees,
+houses, walls, masses of forest; not flowers, stones or fence rails, whose shadows are under a pixel there anyway). The `radius`
+map's shadow blends into the far one over the last 15% of its reach, and the far one fades out over its own last 15%. Both
+centres move in whole texels and the far map's size changes only in steps of 4 m (as the field of view follows the speed), so
+nothing shimmers. It costs one more shadow pass, of the big casters only (measured on the Retroid in
+`docs/games/mountain-post.md`, "The seventh play: grass, trees and shadows"). With `shadow_cascades` 2 or 3 it is ignored: the
+cascades already reach `3 x radius`. The renderer keeps three shadow layers whatever the game asks for (an unused one costs 16 MB
+of memory, no time).
+
+A model shape can glow by itself in the dark
 (`emissive`, see the model format). Scene files can set `sky` and `fog` too.
 
 **The land under the sky** (added 2026-11-20). `nova.sky { ..., ground = { 110, 120, 80 } }` says what colour the land around is. Models

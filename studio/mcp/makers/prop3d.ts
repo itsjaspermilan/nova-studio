@@ -106,11 +106,18 @@ function clump(m: Mesh3, c: V3, r: V3, color: string, rand: Rand, o: { seg?: num
 
 /// A soft cone tier into `m`: a rounded point, a fat rim and a flat-ish underside, `r` at its widest; every other side reaches a
 /// little less far and each tip droops by its own amount, so the rim reads as bunches of needles (never further out than `r`).
-function raggedTier(m: Mesh3, y0: number, h: number, r: number, color: string, rand: Rand, seg = 11): void {
-  const prof: [number, number][] = [[0, y0 + h * 0.05], [r * 0.86, y0], [r, y0 + h * 0.1], [r * 0.93, y0 + h * 0.24], [r * 0.62, y0 + h * 0.58], [r * 0.2, y0 + h * 0.95], [0, y0 + h]];
-  const reach = [0, 1, 1, 0.8, 0.45, 0.2, 0], turn = rand() * Math.PI * 2;
+/// (2026-11-23, Fernhollow's seventh play: "Trees look a little blobby still") A drooping skirt of branches: the underside is hollow
+/// (so it faces down and is painted darker), every other side is a long branch tip that reaches out and hangs down, the sides
+/// between are notched in deep, so the rim reads as separate bunches of needles.
+function raggedTier(m: Mesh3, y0: number, h: number, r: number, color: string, rand: Rand, seg = 12): void {
+  const prof: [number, number][] = [[0, y0 + h * 0.16], [r * 0.8, y0 - h * 0.02], [r, y0 + h * 0.05], [r * 0.9, y0 + h * 0.19], [r * 0.56, y0 + h * 0.55], [r * 0.18, y0 + h * 0.93], [0, y0 + h]];
+  const reach = [0, 1, 1, 0.85, 0.5, 0.2, 0], turn = rand() * Math.PI * 2;
   const out: number[] = [], droop: number[] = [];
-  for (let j = 0; j < seg; j++) { out.push(1 - (j % 2 ? 0.12 : 0.02) - rand() * 0.07); droop.push(-rand() * 0.11 * h); }
+  for (let j = 0; j < seg; j++) {
+    const tip = j % 2 === 0;
+    out.push(1 - (tip ? rand() * 0.05 : 0.24 + rand() * 0.08));
+    droop.push(-(tip ? 0.1 + rand() * 0.12 : 0.02 + rand() * 0.03) * h);
+  }
   const inside: V3 = [0, y0 + h * 0.3, 0];
   const bottom = m.v(0, prof[0]![1], 0), top = m.v(0, prof[6]![1], 0);
   const rows: number[][] = [];
@@ -135,15 +142,25 @@ const PAINTED: Partial<Record<PropKind, (rand: Rand, c: C) => Built>> = {
     const h = between(rand, 1.7, 2.2), lean: [number, number] = [between(rand, -0.18, 0.18), between(rand, -0.18, 0.18)];
     const trunk = new Mesh3(c.trunk);
     trunk.rings([{ y: 0, rx: 0.42 }, { y: 0.3, rx: 0.28 }, { y: h * 0.55, rx: 0.23, cx: lean[0] * 0.5, cz: lean[1] * 0.5 }, { y: h + 0.6, rx: 0.16, cx: lean[0], cz: lean[1] }], 8, c.trunk!, { smooth: true });
+    // (2026-11-23) a darker core, a ring of separate leaf clusters round it (every other one higher, notches between them where the
+    // sky shows at the crown's edge) and one on top; each cluster with a lighter cap where the sun falls, and a branch out to it
     const crown = new Mesh3(c.leaf, { paint: "foliage" });
     const top: V3 = [lean[0], h + 1.45, lean[1]];
-    clump(crown, top, [1.55, 1.25, 1.55], c.leaf!, rand, { seg: 11, rows: 8, bulges: 5 });
-    const lumps = 4 + Math.floor(rand() * 2);
+    clump(crown, top, [1.05, 0.9, 1.05], tone(c.leaf!, -0.3), rand, { seg: 8, rows: 5, bulges: 3, amp: 0.12 });
+    const lumps = 5 + Math.floor(rand() * 2), clusters: [V3, number][] = [];
     for (let i = 0; i < lumps; i++) {
-      const a = (i / lumps) * Math.PI * 2 + rand() * 0.8, d = between(rand, 1.15, 1.45), r = between(rand, 0.85, 1.1);
-      clump(crown, [top[0] + Math.cos(a) * d, top[1] + between(rand, -0.75, 0.15), top[2] + Math.sin(a) * d], [r, r * 0.82, r], tone(c.leaf!, between(rand, -0.25, 0.25)), rand, { seg: 9, rows: 6, bulges: 3 });
+      const a = (i / lumps) * Math.PI * 2 + between(rand, -0.25, 0.25), d = between(rand, 1.2, 1.4), r = between(rand, 0.78, 0.95);
+      clusters.push([[top[0] + Math.cos(a) * d, top[1] + (i % 2 ? 0.3 : -0.35) + between(rand, -0.1, 0.1), top[2] + Math.sin(a) * d], r]);
     }
-    return { meshes: [trunk, crown], colliders: [{ x: 0, z: 0, r: 0.36 }], entity: { static: true, solid: false, sway: 0.2 }, says: "a broadleaf tree with a painted crown of leaf clumps; its trunk blocks (a circle of 0.36), you walk under its crown" };
+    clusters.push([[top[0] + between(rand, -0.2, 0.2), top[1] + 1.05, top[2] + between(rand, -0.2, 0.2)], 0.85]);
+    for (const [p, r] of clusters) {
+      const color = tone(c.leaf!, between(rand, -0.2, 0.15));
+      clump(crown, p, [r, r * 0.85, r], color, rand, { seg: 8, rows: 6, bulges: 3, amp: 0.16 });
+      const ox = p[0] - top[0], oz = p[2] - top[2], d = Math.hypot(ox, oz) || 1;
+      clump(crown, [p[0] + (ox / d) * r * 0.12, p[1] + r * 0.42, p[2] + (oz / d) * r * 0.12], [r * 0.58, r * 0.5, r * 0.58], tone(color, 0.35), rand, { seg: 6, rows: 4, bulges: 2, amp: 0.12 });
+      trunk.tube([[top[0] * 0.6, h + 0.2, top[2] * 0.6], [top[0] + ox * 0.45, (h + 0.2 + p[1]) * 0.5 + 0.1, top[2] + oz * 0.45], [top[0] + ox * 0.8, p[1] - r * 0.3, top[2] + oz * 0.8]], [0.09, 0.06, 0.035], 5, c.trunk!, { smooth: true });
+    }
+    return { meshes: [trunk, crown], colliders: [{ x: 0, z: 0, r: 0.36 }], entity: { static: true, solid: false, sway: 0.2 }, says: "a broadleaf tree with a painted crown of leaf clusters (lighter caps, branches between them); its trunk blocks (a circle of 0.36), you walk under its crown" };
   },
   pine(rand, c) {
     const trunk = new Mesh3(c.trunk);
@@ -153,9 +170,9 @@ const PAINTED: Partial<Record<PropKind, (rand: Rand, c: C) => Built>> = {
     const tiers = 4 + Math.floor(rand() * 2), height = between(rand, 4.6, 5.6);
     let y = 0.8;
     for (let i = 0; i < tiers; i++) {
-      const t = i / tiers, r = (1.55 - 1.15 * t) * between(rand, 0.94, 1.06), th = (height - 0.8) / tiers + 0.7;
+      const t = i / tiers, r = (1.55 - 1.15 * t) * between(rand, 0.94, 1.06), th = (height - 0.8) / tiers + 0.45; // (2026-11-23: less overlap, so the tiers read as separate shelves)
       raggedTier(crown, y, th, r, tone(green, i * 0.12 + between(rand, -0.1, 0.1)), rand);
-      y += th - 0.7;
+      y += th - 0.45;
     }
     return { meshes: [trunk, crown], colliders: [{ x: 0, z: 0, r: 0.3 }], entity: { static: true, solid: false, sway: 0.14 }, says: "a pine of soft ragged tiers, painted; its trunk blocks (a circle of 0.3)" };
   },
@@ -166,7 +183,9 @@ const PAINTED: Partial<Record<PropKind, (rand: Rand, c: C) => Built>> = {
     const n = 3 + Math.floor(rand() * 2);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + rand(), r = between(rand, 0.34, 0.46);
-      clump(m, [Math.cos(a) * 0.45, r * 0.8, Math.sin(a) * 0.45], [r, r * 0.85, r], tone(green, between(rand, -0.3, 0.2)), rand, { seg: 8, rows: 5, bulges: 3, amp: 0.12 });
+      const col = tone(green, between(rand, -0.3, 0.2)), p: V3 = [Math.cos(a) * 0.5, r * 0.8, Math.sin(a) * 0.5];
+      clump(m, p, [r, r * 0.85, r], col, rand, { seg: 8, rows: 5, bulges: 3, amp: 0.12 });
+      clump(m, [p[0] * 1.06, p[1] + r * 0.4, p[2] * 1.06], [r * 0.56, r * 0.46, r * 0.56], tone(col, 0.35), rand, { seg: 6, rows: 4, bulges: 2, amp: 0.1 }); // (a lighter cap)
     }
     return { meshes: [m], colliders: [{ x: 0, z: 0, r: 0.5 }], entity: { static: true, solid: false, sway: 0.08 }, says: "a round bush of painted leaf clumps; it blocks as a circle of 0.5" };
   },

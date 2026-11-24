@@ -12,12 +12,14 @@ use crate::model::{Image, MeshData, MeshVertex, Wrap};
 
 mod custom;
 mod fx2d;
+pub mod grass;
 pub mod paint;
 pub use custom::{MAX_SHADED_DRAWS, MaterialVertex};
 pub use fx2d::{
     Blend2d, Fx2d, Fx2dFrame, Light2d, MAX_LIGHTS_2D, MAX_MIRRORED, Rain2d, Reflect2d,
     SHADOW_STYLE, Shape2d, Style2d,
 };
+pub use grass::{Grass, GroundPicture};
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -226,6 +228,11 @@ pub struct Shadows {
     pub near: f32,
     /// How wide the soft edge is, in texels of the map (1 is the engine's 3x3 filter, about four texels from light to dark).
     pub softness: f32,
+    /// Metres along the view out to which the big things (trees, houses) keep their shadows; 0: as far as `radius` reaches.
+    /// With the single map only: the wide map then covers the view's first `radius` metres or so (fitted to what the camera
+    /// sees rather than centred on its target) and a third, coarser map the rest out to `far`, drawn with only the casters
+    /// bigger than [`FAR_CASTER`] metres across. Added 2026-11-23 (Fernhollow Post: trees lost their shadows while in view).
+    pub far: f32,
 }
 
 impl Default for Shadows {
@@ -235,9 +242,14 @@ impl Default for Shadows {
             strength: 0.6,
             near: DEFAULT_SHADOW_NEAR,
             softness: 1.0,
+            far: 0.0,
         }
     }
 }
+
+/// The smallest caster (the radius of its bounding sphere, metres) drawn into the far shadow map (`Shadows::far`): a tree, a
+/// house, a wall; not a flower, a stone or a tuft.
+pub const FAR_CASTER: f32 = 1.2;
 
 /// How far (metres from the camera) the fine near shadow map reaches when a game does not say.
 pub const DEFAULT_SHADOW_NEAR: f32 = 12.0;
@@ -472,6 +484,8 @@ pub struct Lighting {
     pub quality: Quality,
     /// The 2D effects of this frame (lights, added light, shadows, reflections, rain); None when a game asks for none.
     pub fx2d: Option<Fx2d>,
+    /// Blades of grass round the camera (`nova.grass`, gfx/grass.rs); None draws none.
+    pub grass: Option<Grass>,
 }
 
 impl Default for Lighting {
@@ -499,6 +513,7 @@ impl Default for Lighting {
             outlines: Vec::new(),
             quality: Quality::default(),
             fx2d: None,
+            grass: None,
         }
     }
 }
@@ -851,6 +866,8 @@ struct CascadePlan {
     bias: f32,
     /// Metres a texel spans.
     texel: f32,
+    /// Only casters at least this big (their bounding sphere's radius, metres) are drawn into it (the far map: [`FAR_CASTER`]).
+    min_caster: f32,
 }
 
 /// Side of the (square) shadow map in texels.
@@ -1087,6 +1104,44 @@ fn solid_first(vertices: &[MeshVertex], indices: &[u32]) -> (Vec<u32>, u32) {
     (solid, n)
 }
 
+/// `Shadows::far`: where the wide map (a square of `radius` either side) is laid and the view depth where it stops, and the far
+/// map's centre, radius and end. Each map holds a disc on the ground round the part of the view it serves: the view's slice seen
+/// from above (as far ahead as the view's pitch stretches it, as wide as its sides reach), with a margin for what stands up from
+/// the ground. The wide map keeps its size, so its texels stay as sharp as before; the far map's size changes only in steps of
+/// 4 m (as the field of view follows the speed), and both centres move in whole texels, so the shadows do not shimmer.
+fn far_plans(
+    sh: Shadows,
+    camera: &Camera,
+    forward: Vec3,
+    aspect: f32,
+    tan_half: f32,
+    view_far: f32,
+) -> Option<(Vec3, f32, (Vec3, f32, f32))> {
+    const MARGIN: f32 = 6.0;
+    let level = Vec3::new(forward.x, 0.0, forward.z);
+    let stretch = 1.0 / level.length().max(0.5);
+    let flat = level.normalize_or(Vec3::Z);
+    let tan_h = tan_half * aspect;
+    let r = sh.radius.max(0.5);
+    // the wide map's disc round the slice [0, mid]: r = mid * k + MARGIN
+    let k = ((0.5 * stretch).powi(2) + tan_h * tan_h).sqrt();
+    let mid = ((r - MARGIN) / k).max(1.0);
+    let end = sh.far.min(view_far);
+    if end <= mid * 1.2 {
+        return None;
+    }
+    let at = |c: f32| Vec3::new(camera.eye.x, camera.target.y, camera.eye.z) + flat * c;
+    // the far map's disc round the slice [0.8 mid, end] (it holds the band where the wide map's shadow blends into it)
+    let a = 0.8 * mid;
+    let rf = ((0.5 * (end - a) * stretch).powi(2) + (end * tan_h).powi(2)).sqrt() + MARGIN;
+    let rf = (rf / 4.0).ceil() * 4.0;
+    Some((
+        at(0.5 * mid * stretch),
+        mid,
+        (at(0.5 * (a + end) * stretch), rf, end),
+    ))
+}
+
 fn instance_visible(
     planes: &[glam::Vec4; 6],
     bounds: ([f32; 3], f32),
@@ -1235,6 +1290,8 @@ pub struct Gfx {
     extras: custom::Extras,
     /// The 2D effects (lights, added light, shadows, reflections, rain).
     fx2d: fx2d::Fx2dGpu,
+    /// Blades of grass (`nova.grass`).
+    grass: grass::GrassGpu,
 }
 
 /// How many mip levels a smoothly filtered picture (a billboard's, a glTF texture with linear filtering) gets: the whole chain,
@@ -1715,9 +1772,10 @@ impl Gfx {
                     },
                     count: None,
                 },
+                // (the grass reads the noise's big patches per point, in the vertex stage)
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
@@ -1727,7 +1785,7 @@ impl Gfx {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
@@ -1993,8 +2051,9 @@ impl Gfx {
         });
 
         // The sun's shadow map: a depth texture the world is drawn into from the sun's side, then sampled by every mesh. One layer
-        // per cascade, and at least two: with one cascade the second is the fine map of what is near the camera (`Shadows::near`).
-        let shadow_layer_count = quality.cascades.max(2);
+        // per cascade; with one cascade the second is the fine map of what is near the camera (`Shadows::near`) and the third the
+        // far map of the big casters (`Shadows::far`). (Three layers always: an unused one costs memory, 16 MB, but no time.)
+        let shadow_layer_count = MAX_CASCADES;
         let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("shadow map"),
             size: wgpu::Extent3d {
@@ -2052,9 +2111,10 @@ impl Gfx {
         let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("shadow layout"),
             entries: &[
+                // (the grass looks its shadow up per point, in the vertex stage)
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
                         view_dimension: wgpu::TextureViewDimension::D2Array,
@@ -2064,7 +2124,7 @@ impl Gfx {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
@@ -2682,6 +2742,14 @@ impl Gfx {
             &sprite_view_layout,
             &texture_layout,
         );
+        let grass = grass::GrassGpu::new(
+            &device,
+            world_format,
+            samples,
+            &globals_layout,
+            &shadow_layout,
+            DEPTH_FORMAT,
+        );
         let extras = custom::Extras::new(
             &device,
             &queue,
@@ -2776,6 +2844,7 @@ impl Gfx {
             depth_resolve_layout,
             extras,
             fx2d,
+            grass,
         }
     }
 
@@ -3734,19 +3803,28 @@ impl Gfx {
                 if cascade_count <= 1 {
                     let r = sh.radius.max(0.5);
                     let extent = r * 4.0;
-                    let (vp, texel) = fit(input.camera.target, r, extent);
+                    // With `far` (Shadows::far): the wide map is laid over the ground the view sees out to where a map of
+                    // `radius` holds it, and a third map takes the rest of the view out to `far` (see `far_plans`).
+                    let split = (sh.far > 0.0)
+                        .then(|| far_plans(sh, &input.camera, forward, aspect, tan_half, far))
+                        .flatten();
+                    let (vp, texel) = match split {
+                        Some((mid_centre, _, _)) => fit(mid_centre, r, extent),
+                        None => fit(input.camera.target, r, extent),
+                    };
                     let wide = CascadePlan {
                         vp,
-                        far: WIDE_FAR,
+                        far: split.map_or(WIDE_FAR, |s| s.1),
                         bias: bias(texel, extent),
                         texel,
+                        min_caster: 0.0,
                     };
                     // The near map: the view's first `near` metres drawn into a map of their own (the bounding sphere of that
                     // slice, moved in whole texels like the wide one), a few times finer than the wide map, blended into it
                     // over the last 15% of its reach. Left out when it would not be finer.
                     let reach = sh.near.min(far);
                     let (cdist, rn) = sphere(near_cam, reach.max(near_cam + 0.5));
-                    if sh.near > 0.0 && rn < 0.75 * r {
+                    let mut plans = if sh.near > 0.0 && rn < 0.75 * r {
                         let (vp, texel) = fit(input.camera.eye + forward * cdist, rn, extent);
                         vec![
                             CascadePlan {
@@ -3754,12 +3832,25 @@ impl Gfx {
                                 far: reach,
                                 bias: bias(texel, extent),
                                 texel,
+                                min_caster: 0.0,
                             },
                             wide,
                         ]
                     } else {
                         vec![wide]
+                    };
+                    if let Some((_, _, (centre, rf, end))) = split {
+                        let extent = (rf * 2.0).max(extent);
+                        let (vp, texel) = fit(centre, rf, extent);
+                        plans.push(CascadePlan {
+                            vp,
+                            far: end,
+                            bias: bias(texel, extent),
+                            texel,
+                            min_caster: FAR_CASTER,
+                        });
                     }
+                    plans
                 } else {
                     // Cascades: the view's depth from the camera to `distance` cut into slices (a blend of equal and
                     // geometric steps: fine near the camera, coarse far away), each slice's bounding sphere drawn into its
@@ -3780,6 +3871,7 @@ impl Gfx {
                             far: end,
                             bias: bias(texel, extent),
                             texel,
+                            min_caster: 0.0,
                         });
                         start = end;
                     }
@@ -4015,6 +4107,14 @@ impl Gfx {
         }
         // What the camera can see.
         let planes = frustum_planes(&view_proj);
+        let grass_frame = self.grass.prepare(
+            &self.device,
+            &self.queue,
+            lit.grass.as_ref(),
+            input.camera.eye,
+            &planes,
+            &lit.terrain,
+        );
         let world_models: Vec<ModelDraw> = input
             .models
             .iter()
@@ -4126,14 +4226,24 @@ impl Gfx {
                 let light_planes = frustum_planes(&plan.vp);
                 casters()
                     .filter(|m| match self.mesh(m.mesh) {
-                        Some(mesh) => instance_visible(
-                            &light_planes,
-                            mesh.bounds,
-                            mesh.skin.is_some(),
-                            &m.instance.matrix,
-                            lit.terrain.lift(),
-                        ),
-                        None => true,
+                        Some(mesh) => {
+                            // (the far map takes only the big casters: a tree's shadow far off, not a flower's)
+                            (plan.min_caster <= 0.0
+                                || mesh.bounds.1
+                                    * glam::Mat4::from_cols_array_2d(&m.instance.matrix)
+                                        .x_axis
+                                        .truncate()
+                                        .length()
+                                    >= plan.min_caster)
+                                && instance_visible(
+                                    &light_planes,
+                                    mesh.bounds,
+                                    mesh.skin.is_some(),
+                                    &m.instance.matrix,
+                                    lit.terrain.lift(),
+                                )
+                        }
+                        None => plan.min_caster <= 0.0,
                     })
                     .copied()
                     .collect()
@@ -4356,8 +4466,18 @@ impl Gfx {
             }
 
             for translucent in [false, true] {
+                // the grass after the solid models (the ground under it is in the depth buffer) and before the see-through ones
+                if let (true, Some(frame)) = (translucent, &grass_frame) {
+                    stats.draw_calls +=
+                        self.grass
+                            .draw(&mut pass, frame, &self.globals_group, &self.shadow_group);
+                    stats.triangles += frame.triangles();
+                }
                 if world_models.is_empty() && shaded_models.is_empty() {
-                    break;
+                    if translucent {
+                        break;
+                    }
+                    continue;
                 }
                 pass.set_pipeline(if translucent {
                     &self.mesh_blend_pipeline

@@ -43,7 +43,7 @@ function Valley:enter()
   if bridge then bridge:settle() end
   -- late morning, clear: the sun high in the south-east, soft shadows, haze in the distance, a gentle wind in the larches
   nova.light { dir = { 0.42, -0.82, 0.38 }, color = { 255, 243, 222 }, ambient = { 120, 128, 142 } }
-  nova.shadows { radius = 40, strength = 0.72, near = 6, softness = 1.4 }
+  nova.shadows { radius = 40, strength = 0.72, near = 6, softness = 1.4, far = 110 } -- (far: the trees keep their shadows out to 110 m)
   nova.sky { top = { 92, 150, 214 }, horizon = { 206, 226, 236 } }
   nova.fog { color = { 196, 216, 228 }, near = 90, far = 1100 }
   nova.wind { direction = 60, strength = 1.1 }

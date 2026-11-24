@@ -6879,7 +6879,8 @@ fn no_toe_goes_into_a_step_and_the_cast_stands_upright_on_a_hillside() {
 // ---- the sixth play's note 5: painted grass, trees and creek (docs/games/mountain-post.md, "What the sixth play changed") ----
 
 /// Every tree, bush and forest mass of the valley is painted (a tree's leaves as foliage, a forest mass as canopy: model.rs
-/// PAINT_STEP in each vertex's emissive), with its trunk left plain, and none costs more triangles than its budget (the valley draws
+/// PAINT_STEP in each vertex's emissive), with its trunk left plain, and none costs more triangles than its budget (raised 2026-11-23 for the
+/// seventh play's clearer crowns: separate leaf clusters with lighter caps and branches, more tiers; the valley draws
 /// about 440 trees and 66 masses).
 #[test]
 fn the_valleys_trees_are_painted_and_within_their_triangles() {
@@ -6887,19 +6888,19 @@ fn the_valleys_trees_are_painted_and_within_their_triangles() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples/mountain-post/models");
     for (kind, paint, budget, leafy) in [
-        ("pine", 1.0, 450, 0.8),
-        ("pine2", 1.0, 600, 0.8),
-        ("pine3", 1.0, 450, 0.8),
-        ("pine_far", 1.0, 200, 0.7),
-        ("larch", 1.0, 520, 0.8),
-        ("larch_small", 1.0, 520, 0.8),
-        ("larch_far", 1.0, 200, 0.7),
-        ("birch", 1.0, 750, 0.75),
-        ("bush", 1.0, 450, 1.0),
-        ("bush2", 1.0, 450, 1.0),
-        ("forest_long", 2.0, 600, 1.0),
-        ("forest_tall", 2.0, 500, 1.0),
-        ("forest_round", 2.0, 500, 1.0),
+        ("pine", 1.0, 560, 0.8),
+        ("pine2", 1.0, 680, 0.8),
+        ("pine3", 1.0, 560, 0.8),
+        ("pine_far", 1.0, 300, 0.7),
+        ("larch", 1.0, 640, 0.8),
+        ("larch_small", 1.0, 640, 0.8),
+        ("larch_far", 1.0, 300, 0.7),
+        ("birch", 1.0, 1050, 0.75),
+        ("bush", 1.0, 500, 1.0),
+        ("bush2", 1.0, 500, 1.0),
+        ("forest_long", 2.0, 740, 1.0),
+        ("forest_tall", 2.0, 620, 1.0),
+        ("forest_round", 2.0, 620, 1.0),
     ] {
         let mesh =
             import_glb(&std::fs::read(root.join(format!("{kind}.glb"))).unwrap()).expect("imports");
@@ -8582,5 +8583,108 @@ fn the_vans_glass_and_linings_stay_inside_its_skin() {
     assert!(
         checked > 40,
         "the panes and the linings were checked: {checked} points"
+    );
+}
+
+// ---- the owner's seventh play (2026-11-23): grass, trees and their shadows ---------------------------------------------------------
+
+/// "The grass texture fades away too soon from the player's view ... I like BoTW's grass system" and "the shadows from the trees
+/// disappear even though the tree is still in view". In the valley the engine's grass grows from terrain/grass.png (made by
+/// tools/grass.mjs) in the ground's own colours: none on any road, gravel lane, junction or the bridge, none in the creek or the
+/// gorge, none on a porch or under a house, full in the open meadow; the postmaster's feet bend it as she walks; and the trees keep
+/// their shadows out to 110 m (`nova.shadows { far }`). Leaving the valley turns the grass off.
+#[test]
+fn the_valley_grows_grass_off_the_roads_water_and_porches_and_trees_keep_far_shadows() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 3 } ] }"#,
+    );
+    let input = g.frame_input(720);
+    let grass = input
+        .lighting
+        .grass
+        .clone()
+        .expect("the valley grows grass");
+    let shadows = input.lighting.shadows.expect("the sun casts shadows");
+    drop(input);
+    assert!(
+        shadows.far >= 100.0,
+        "the trees keep their shadows far off: far = {}",
+        shadows.far
+    );
+    assert!(
+        grass.colors.is_some(),
+        "the grass takes the ground's colours"
+    );
+    let map = grass.map.clone().expect("grass grows by its map");
+    let at = |x: f64, z: f64| -> Option<u8> {
+        let i = ((x - map.x0 as f64) / map.cell as f64).round();
+        let j = ((z - map.z0 as f64) / map.cell as f64).round();
+        (i >= 0.0 && j >= 0.0 && i < map.width as f64 && j < map.rows as f64)
+            .then(|| map.texels[j as usize * map.width as usize + i as usize])
+    };
+    // every 4 m over the valley: what the ground is there (lib/world.lua's own answers)
+    let grid = lua(
+        &g,
+        "(function() local W = require('lib.world'); local L = W.limits; local o = {} \
+           for x = L.x0 + 2, L.x1 - 2, 4 do for z = L.z0 + 2, L.z1 - 2, 4 do \
+             local s = W.surface(x, z); local w, d = W.nearest('water', x, z); \
+             if s ~= 'grass' then o[#o + 1] = x .. ',' .. z .. ',' .. s \
+             elseif w and d < w.width / 2 then o[#o + 1] = x .. ',' .. z .. ',water' end end end \
+           for _, d in ipairs(W.decks) do o[#o + 1] = d.x .. ',' .. d.z .. ',porch' end \
+           for _, n in ipairs({ 'post_office', 'cabin_hazel', 'cabin_pip', 'workshop' }) do local e = nova.named(n); \
+             if e then o[#o + 1] = e.x .. ',' .. e.z .. ',house' end end \
+           return table.concat(o, ';') end)()",
+    );
+    let mut kinds = std::collections::BTreeMap::new();
+    for item in grid.split(';') {
+        let p: Vec<&str> = item.split(',').collect();
+        let (x, z) = (p[0].parse::<f64>().unwrap(), p[1].parse::<f64>().unwrap());
+        let Some(v) = at(x, z) else { continue };
+        assert!(
+            v <= 10,
+            "no grass on the {} at {x:.1}, {z:.1} (the map says {v})",
+            p[2]
+        );
+        *kinds.entry(p[2].to_string()).or_insert(0) += 1;
+    }
+    for k in ["road", "gravel", "water", "porch", "house"] {
+        assert!(
+            kinds.get(k).copied().unwrap_or(0) > 0,
+            "the {k} was checked: {kinds:?}"
+        );
+    }
+    assert_eq!(
+        at(36.0, -150.0),
+        Some(255),
+        "the meadow where the walk starts is grass in full"
+    );
+    // the postmaster's feet bend it
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); p.x, p.z = 36, -150" }, { "wait": 2 } ] }"#,
+    );
+    let bends = g
+        .frame_input(720)
+        .lighting
+        .grass
+        .clone()
+        .expect("grass")
+        .bends;
+    assert!(
+        bends
+            .iter()
+            .any(|b| (b[0] - 36.0).abs() < 1.0 && (b[2] + 150.0).abs() < 1.0),
+        "the postmaster's feet bend the grass: {bends:?}"
+    );
+    // indoors there is none
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "nova.goto_scene('office')" }, { "wait": 30 } ] }"#,
+    );
+    assert!(
+        g.frame_input(720).lighting.grass.is_none(),
+        "no grass in the post office"
     );
 }
