@@ -380,7 +380,7 @@ function Valley:update(dt)
     v.ctl.handbrake = nova.input.down("handbrake") and 1 or 0
     if v.autopilot and not v.autopilot.done then v.autopilot:steer(v, dt)
     else v.ctl.go, v.ctl.brake, v.ctl.steer = nova.input.axis("go"), nova.input.axis("brake"), nova.input.axis("steer") end
-    -- the lever: A one gear towards L, X one towards P (the owner flipped it back, 2026-11-23: "flip X and A while driving again")
+    -- the lever: A one gear towards D, X one towards P (P R D; the ninth notes removed N and L)
     if nova.input.pressed("confirm") then v:shift(1) elseif nova.input.pressed("interact") then v:shift(-1) end
     -- (L3, the left stick's click: the horn; X was, before the lever)
     if nova.input.pressed("horn") then

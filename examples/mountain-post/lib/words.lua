@@ -88,7 +88,7 @@ words.controls_rows = {
     { keys = { "L2" }, word = "Brake", actions = { "brake" } },
     { keys = { "Left stick" }, word = "Steer", actions = { "steer" } },
     { keys = { "B" }, word = "Handbrake (hold)", actions = { "handbrake" } },
-    { keys = { "A" }, word = "Gear towards L", actions = { "confirm" } },
+    { keys = { "A" }, word = "Gear towards D", actions = { "confirm" } },
     { keys = { "X" }, word = "Gear towards P", actions = { "interact" } },
     { keys = { "L3" }, word = "Horn", actions = { "horn" } },
     { keys = { "Y" }, word = "Get out (stopped)", actions = { "van" } },

@@ -250,7 +250,7 @@ export function doorOutline(g = 0) {
   return pts;
 }
 const SW = SIDE_WINDOW;
-const WIN = { x: HW - 0.11, y0: 1.0, y1: 1.5 };   // the windscreen's opening (front view)
+const WIN = { x: HW - 0.11, y0: 1.0, y1: 1.44 };  // the windscreen's opening (front view; 0.5 high before the owner's ninth notes: "a little shorter vertically", 12% off the top)
 // the opening behind the rear doors into the hold (its sill the hold's floor: ARCH_Y + ARCH + 0.05, just over the rear wells' linings)
 const BACK_OPEN = { x: 0.465, y0: ARCH_Y + ARCH + 0.05, y1: 1.45 }; // (a little inside the doors' edges all round: no daylight past them)
 export const cuts = [

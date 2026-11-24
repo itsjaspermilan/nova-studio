@@ -1,0 +1,16 @@
+{
+  "size": "1280x720",
+  "start_scene": "valley",
+  "out": "build/gallery/ninth-windscreen",
+  "lua": "CAM = require('lib.camera'); W = require('lib.world'); LOOK = function(lx, ly, lz, ty, fov, tx, tz) local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local g = W.height(v.x, v.z); local ax, _, az = v:to_world(tx or 0, 0, tz or 0); CAM.pinned = { v.x + s * lz + c * lx, g + ly, v.z + c * lz - s * lx, ax, g + (ty or 0.85), az, fov or 30 } end; local v = nova.named('van'); v:teleport(4.5, -132, 0); local s = nova.scene_now(); local p = nova.named('postmaster'); p.x, p.z = s:van_point(s.DOOR); s:get_in(); v.gear = 'D'",
+  "route": [
+    { "wait": 40, "lua": "LOOK(3.0, 1.9, 4.6, 1.0, 30, 0, 0.6)" },
+    { "wait": 3, "capture": "front-34: the van from the front and the left, higher: the postmaster seated behind the shorter windscreen" },
+    { "lua": "LOOK(0, 1.6, 4.4, 1.05, 28, 0, 0.6)" },
+    { "wait": 3, "capture": "front-high: from the front, a little above" },
+    { "lua": "LOOK(5.0, 1.5, 0.8, 1.0, 26, 0, 0.3)" },
+    { "wait": 3, "capture": "side-left: the left side, the driver in the open doorway and behind the glass" },
+    { "lua": "CAM.pinned = nil" },
+    { "wait": 60, "capture": "chase: the game's own camera, behind and above" }
+  ]
+}
