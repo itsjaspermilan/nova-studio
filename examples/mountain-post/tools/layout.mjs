@@ -34,13 +34,13 @@ export const ROADS = [
   },
   {
     id: "kettle_creek_road", name: "Kettle Creek Road", surface: "road_gravel", width: 4.6,
-    control: [[10, 24], [44, 26], [74, 40], [94, 52], [116, 58], [140, 66], [162, 84], [176, 102]],
-    profile: [[0, 8.3], [70, 6], [92, 3.4], [112, 3.4], [200, 7]],
+    control: [[10, 24], [44, 26], [66, 38], [81.5, 46.7], [94.66, 51.49], [115.34, 59.01], [124.74, 62.43], [140, 66], [162, 84], [176, 102]],
+    profile: [[0, 8.3], [40, 6], [68, 3.4], [114, 3.4], [200, 7]],
   },
 ];
 
 // Where each road crosses the creek: the bridge (the road is cut there; the bridge's deck carries it).
-export const BRIDGE = { a: [96, 53], b: [114, 57.5], deck: 3.4 + 0, width: 4.4 };
+export const BRIDGE = { a: [94.66, 51.49], b: [115.34, 59.01], deck: 3.4 + 0, width: 5.6 };
 // Where the bridge's deck (22 m long, models.mjs, centred between a and b) ends: the road stops there with a threshold strip, and the
 // bridge stands its deck level with the road at both.
 export const DECK_ENDS = (() => {
@@ -80,14 +80,15 @@ export const PLACES = {
   pip: { name: "Pip Tansy", number: 7, street: "Kettle Creek Road", building: [192, 114], face: [-0.62, -0.78], door: [188.5, 109.5], gate: [177, 101], mailbox: [174, 98], resident: [186, 106], mast: [199, 104] },
 };
 
-// The signposts at each junction: where the post stands and which roads its arms name, each arm pointing along its road (the owner's
-// fifth play: one board each way a road goes, so Post Road has an arm each way at both junctions, level with each other). `turn`
-// (degrees, added to the arm's turn about the post) swings an arm off its road's line, never more than 40: a board pointing straight
-// along a road is seen edge-on from that road (the owner's sixth play, Kettle Creek's post from the south: "Post Road" edge-on at 25 m),
-// so each arm is swung until every board, from every road that comes to the post, 25 m out, is seen at 30 degrees or more (the numbers
-// come from a search over the turns that keeps the arms 50 degrees or more apart; test
+
+// The signposts at each junction: where the post stands and which roads its arms name. Every arm points along its road (the owner's
+// seventh play: "they don't always follow the direction of the road"): the board is parallel to the road's direction at the post's foot
+// and its point shows the way that road goes (`dir` +1 along the road as ROADS draws it, -1 back along it; tools/scene.mjs works out the
+// angle), one arm for each way a road goes. Nothing is swung off its road to be read: the lettering is on both faces of every board, and
+// each post stands in the corner of its junction (10 to 13 m from the crossing, 1.4 to 3 m off the road's edge) where the traffic coming
+// in sees the boards at the widest angle (a search over the corners; tests `every_arm_points_along_its_road` and
 // `every_signpost_board_is_seen_at_a_readable_angle_from_each_approach`).
 export const SIGNS = [
-  { at: [-15.5, -72], arms: [{ text: "FERN LANE", toward: [-40, -78], turn: -30 }, { text: "POST ROAD", toward: [-6, -110], turn: 35 }, { text: "POST ROAD", toward: [-4, -30], turn: -40 }] },
-  { at: [5.5, 30], arms: [{ text: "KETTLE CREEK RD", toward: [44, 26], turn: -40 }, { text: "POST ROAD", toward: [12, 62], turn: -35 }, { text: "POST ROAD", toward: [-2, -10], turn: -40 }] },
+  { at: [-15.5, -72], arms: [{ text: "FERN LANE", road: "fern_lane", dir: 1 }, { text: "POST ROAD", road: "post_road", dir: -1 }, { text: "POST ROAD", road: "post_road", dir: 1 }] },
+  { at: [17, 16.5], arms: [{ text: "KETTLE CREEK RD", road: "kettle_creek_road", dir: 1 }, { text: "POST ROAD", road: "post_road", dir: -1 }, { text: "POST ROAD", road: "post_road", dir: 1 }] },
 ];

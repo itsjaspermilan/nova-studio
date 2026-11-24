@@ -14,6 +14,8 @@ local TALL_Y = 3.2
 -- (tools/models.mjs SIGN and tools/art.mjs SIGN_PPM: the board's length, its point, the panel's front, the words' texels a metre)
 local SIGN = { length = 3.6, point = 0.42, front = 0.06 + 0.014, ppm = 300 }
 
+local ART = require("lib.sign_art")
+
 local function sprite_of(text) return "sign_" .. text:lower():gsub("[^a-z]+", "_"):gsub("_$", "") end
 -- A name too long for one line goes on the tall board, on two lines.
 function Signpost.tall(text) return #(text or "") > 12 end
@@ -35,8 +37,11 @@ function Signpost:create()
     local nx, nz = math.sin(ry), math.cos(ry) -- its face
     -- the words: in the middle of the panel's straight part, a little towards the point, 2 cm off each face (well clear of it: no
     -- flicker between the two at any distance)
+    -- (each picture is cropped to the ink of its words and has its place on the arm worked out from the board (lib/sign_art.lua, made
+    -- with the pictures by tools/art.mjs): the middle of the picture is the middle of the panel, so the words are centred in it)
+    local art = ART[sprite]
     local iw, ih = nova.image_size("fx/" .. sprite)
-    local mid = (0.14 + L - SIGN.point) / 2 + 0.06
+    local mid = art and art.mid or (L / 2)
     local off = SIGN.front + 0.02
     self.drawn[i] = {
       model = tall and "sign_arm_tall" or "sign_arm",

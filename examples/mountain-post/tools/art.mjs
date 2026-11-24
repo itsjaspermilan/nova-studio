@@ -3,10 +3,11 @@
 // tools/map.mjs.) Run from the repository's root: scripts/env.sh node examples/mountain-post/tools/art.mjs [section ...]
 // (sections: words, minimap, title, icons; none: all of them)
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REPO, tool } from "./lib.mjs";
+import { inflateSync } from "node:zlib";
+import { put, REPO, tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
 const RED = "#b9372b";
@@ -29,20 +30,132 @@ function wordsWidth(text, size) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
-if (doing("words")) {
-  if (!existsSync(NOVA)) throw new Error(`the sign words are measured with the runtime: build it (${NOVA})`);
-  // (a long name goes on two lines on the taller board, every board being 3.6 m long: KETTLE CREEK over ROAD, 0.29 m capitals)
-  for (const [key, lines] of [["FERN LANE", ["FERN LANE"]], ["POST ROAD", ["POST ROAD"]], ["KETTLE CREEK RD", ["KETTLE CREEK", "ROAD"]]]) {
-    const cap = lines.length > 1 ? 0.29 : 0.36;
-    const size = Math.round((cap * SIGN_PPM) / 0.7); // (the rounded face's capitals are 0.7 of its size)
-    const stroke = Math.round(size * 0.07);
-    const lineH = Math.round(size * 1.02 + stroke * 2), gap = Math.round(cap * SIGN_PPM * 0.42);
-    const w = Math.max(...lines.map((t) => wordsWidth(t, size))) + stroke * 2 + 24, h = lineH * lines.length + gap * (lines.length - 1);
-    const name = `fx/sign_${key.toLowerCase().replace(/[^a-z]+/g, "_")}`;
-    img(name, [w, h], lines.map((text, i) => (
-      { text, at: [w / 2, Math.round(i * (lineH + gap) + lineH / 2 + size * 0.35)], size, font: "rounded", align: "center", fill: "#f8efd8", stroke: { color: "#f8efd8", width: stroke } }
-    )));
+// ---- the signposts' lettering (the owner's seventh play: "the text doesn't line up properly") ----------------------------------------------
+// Each picture is cropped to the INK of its words (its own pixels, measured here), the lines of a long name centred on one another by their
+// ink and a fixed gap apart, so entities/signpost.lua, which puts the middle of the picture at the middle of the panel, centres the words on
+// the board exactly. The panel's middle (`mid`, metres along the arm) is the one where the words' margin to the rim at the arm's start equals
+// their margin to the slanted edge of the point, measured on the board's own outline (the same numbers as tools/models.mjs SIGN); the
+// capitals are as large as that leaves a margin of at least MARGIN (the same on every board of a kind), all on one baseline per line.
+// The numbers go to lib/sign_art.lua for the game and the tests.
+const SIGN = { length: 3.6, h: 0.72, tall: 1.12, rim: 0.06, point: 0.42 }; // (= tools/models.mjs SIGN)
+const SIGN_MARGIN = 0.11; // metres of dark panel between the words' ink and the board's rim, all round
+function rgbaOf(file) {
+  const b = readFileSync(file);
+  let p = 8, W = 0, H = 0;
+  const idat = [];
+  while (p < b.length) {
+    const len = b.readUInt32BE(p), type = b.toString("ascii", p + 4, p + 8), data = b.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") { W = data.readUInt32BE(0); H = data.readUInt32BE(4); if (data[8] !== 8 || data[9] !== 6) throw new Error("8-bit RGBA expected"); }
+    if (type === "IDAT") idat.push(data);
+    p += 12 + len;
   }
+  const raw = inflateSync(Buffer.concat(idat)), stride = W * 4, px = Buffer.alloc(H * stride);
+  for (let y = 0; y < H; y++) {
+    const f = raw[y * (stride + 1)], row = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    for (let i = 0; i < stride; i++) {
+      const a = i >= 4 ? px[y * stride + i - 4] : 0, up = y ? px[(y - 1) * stride + i] : 0, c = i >= 4 && y ? px[(y - 1) * stride + i - 4] : 0;
+      let v = row[i];
+      if (f === 1) v += a; else if (f === 2) v += up; else if (f === 3) v += (a + up) >> 1;
+      else if (f === 4) { const pa = Math.abs(up - c), pb = Math.abs(a - c), pc = Math.abs(a + up - 2 * c); v += pa <= pb && pa <= pc ? a : pb <= pc ? up : c; }
+      px[y * stride + i] = v & 255;
+    }
+  }
+  return { W, H, alpha: (x, y) => px[(y * W + x) * 4 + 3] };
+}
+/// The ink box (alpha over 24) of a picture: { x0, x1, y0, y1 } in texels, x1 and y1 one past the last.
+function inkBox(file) {
+  const im = rgbaOf(file);
+  let x0 = im.W, x1 = 0, y0 = im.H, y1 = 0;
+  for (let y = 0; y < im.H; y++) for (let x = 0; x < im.W; x++) if (im.alpha(x, y) > 24) { x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
+  return { x0, x1, y0, y1 };
+}
+/// The dark panel's outline on a board (arm axis x, centred on y = 0): from tools/models.mjs `signArm`.
+function panelOf(length, h) {
+  const { rim, point } = SIGN, x0 = 0.08 + rim, x1 = length - rim * 0.8, hh = h / 2 - rim;
+  return { x0, slopeFrom: x1 - point, tip: length - rim * 1.6, hh };
+}
+/// Where the middle of the words (w by h metres) goes along the arm so the margin to the rim equals the margin to the point's edge,
+/// and that margin (the least distance from the words' box to the panel's outline).
+function placeWords(length, boardH, w, h) {
+  const P = panelOf(length, boardH), slope = Math.hypot(P.tip - P.slopeFrom, P.hh), top = P.hh - h / 2;
+  // the point's edge from (slopeFrom, hh) to (tip, 0): distance from the box's top-right corner to it (a line, perpendicular)
+  const edge = (cx) => {
+    const cxr = cx + w / 2, cyr = h / 2;
+    return ((P.hh * (P.tip - cxr)) - (P.tip - P.slopeFrom) * cyr) / slope;
+  };
+  let lo = P.x0 + w / 2, hi = P.tip;
+  for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (mid - w / 2 - P.x0 > edge(mid)) hi = mid; else lo = mid; }
+  const cx = (lo + hi) / 2;
+  return { mid: cx, margin: Math.min(cx - w / 2 - P.x0, edge(cx), top) };
+}
+if (doing("signs")) {
+  if (!existsSync(NOVA)) throw new Error(`the sign words are measured with the runtime: build it (${NOVA})`);
+  const rows = [];
+  // (a long name goes on two lines on the taller board: KETTLE CREEK over ROAD)
+  for (const [key, lines] of [["FERN LANE", ["FERN LANE"]], ["POST ROAD", ["POST ROAD"]], ["KETTLE CREEK RD", ["KETTLE CREEK", "ROAD"]]]) {
+    const tall = lines.length > 1, boardH = tall ? SIGN.tall : SIGN.h;
+    let cap = tall ? 0.31 : 0.36, made = null;
+    for (; cap > 0.2; cap -= 0.005) {
+      const size = Math.round((cap * SIGN_PPM) / 0.7), stroke = Math.round(size * 0.07); // (the rounded face's capitals are 0.7 of its size)
+      // each line on its own, to find its ink
+      const inks = lines.map((text) => {
+        const W = wordsWidth(text, size) + 80, H = Math.round(size * 2), at = [W / 2, Math.round(size * 1.3)];
+        img("fx/_sign_line", [W, H], [{ text, at, size, font: "rounded", align: "center", fill: "#f8efd8", stroke: { color: "#f8efd8", width: stroke } }]);
+        const b = inkBox(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"));
+        return { text, W, at, b, w: b.x1 - b.x0, h: b.y1 - b.y0 };
+      });
+      const pad = 3, gap = Math.round(inks[0].h * 0.55), w = Math.max(...inks.map((l) => l.w)) + 2 * pad, h = inks.reduce((s, l) => s + l.h, 0) + gap * (lines.length - 1) + 2 * pad;
+      const put = placeWords(SIGN.length, boardH, w / SIGN_PPM, h / SIGN_PPM);
+      if (put.margin < SIGN_MARGIN) continue;
+      made = { size, stroke, inks, pad, gap, w, h, ...put };
+      break;
+    }
+    if (!made) throw new Error(`${key}: no capitals fit the board with a margin of ${SIGN_MARGIN} m`);
+    const { size, stroke, inks, pad, gap, w, h } = made;
+    let y = pad;
+    const shapes = inks.map((l) => {
+      // (the line's ink centred on the picture's middle, its ink top at y)
+      const at = [Math.round(w / 2 - ((l.b.x0 + l.b.x1) / 2 - l.at[0])), Math.round(y - (l.b.y0 - l.at[1]))];
+      y += l.h + gap;
+      return { text: l.text, at, size, font: "rounded", align: "center", fill: "#f8efd8", stroke: { color: "#f8efd8", width: stroke } };
+    });
+    const name = `fx/sign_${key.toLowerCase().replace(/[^a-z]+/g, "_")}`;
+    img(name, [w, h], shapes);
+    rows.push({ name: name.replace("fx/", ""), w, h, mid: made.mid, margin: made.margin, cap: inks[0].h / SIGN_PPM, lines: lines.length, board: boardH });
+    console.log(`${key}: capitals ${(inks[0].h / SIGN_PPM).toFixed(3)} m, words ${(w / SIGN_PPM).toFixed(2)} x ${(h / SIGN_PPM).toFixed(2)} m, middle ${made.mid.toFixed(3)} m along the arm, margin ${made.margin.toFixed(3)} m`);
+  }
+  rmSync(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"), { force: true });
+  const lua = rows.map((r) => `  ${r.name} = { mid = ${r.mid.toFixed(4)}, w = ${(r.w / SIGN_PPM).toFixed(4)}, h = ${(r.h / SIGN_PPM).toFixed(4)}, board = ${r.board}, lines = ${r.lines} },`).join("\n");
+  put("lib/sign_art.lua", `-- Made by tools/art.mjs (the signs section). Do not edit; run the recipe again.\n-- Each road name's lettering picture: the metres along the arm where the middle of the picture goes (the panel's optical middle), its size\n-- in metres (the picture is cropped to the ink), the board's height and its lines.\nreturn {\n${lua}\n}\n`);
+}
+
+// The post office's name board (4.0 x 0.9 m dark panel on the porch roof, tools/models.mjs "post_office"): the same rules as the signposts:
+// the picture cropped to the ink, the lines centred on one another by their ink, the block centred on the panel (the game draws the
+// picture's middle at the panel's middle: scenes/valley.lua), solid cream capitals in the rounded face (no faded alpha: it read broken).
+if (doing("signs") || doing("words")) {
+  const lines = [{ text: "FERNHOLLOW", cap: 0.15 }, { text: "POST OFFICE", cap: 0.3 }];
+  const inks = lines.map((l) => {
+    const size = Math.round((l.cap * SIGN_PPM) / 0.7), stroke = Math.max(2, Math.round(size * 0.06));
+    const W = wordsWidth(l.text, size) + 80, H = Math.round(size * 2), at = [W / 2, Math.round(size * 1.3)];
+    const shape = { text: l.text, at, size, font: "rounded", align: "center", fill: "#f3e6c8", stroke: { color: "#f3e6c8", width: stroke } };
+    img("fx/_sign_line", [W, H], [shape]);
+    const b = inkBox(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"));
+    return { ...l, size, stroke, at, b, w: b.x1 - b.x0, h: b.y1 - b.y0 };
+  });
+  rmSync(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"), { force: true });
+  const pad = 3, gap = Math.round(inks[1].h * 0.4), w = Math.max(...inks.map((l) => l.w)) + 2 * pad, h = inks.reduce((s, l) => s + l.h, 0) + gap + 2 * pad;
+  if (w / SIGN_PPM > 3.6 || h / SIGN_PPM > 0.7) throw new Error(`the post office's words (${w / SIGN_PPM} x ${h / SIGN_PPM} m) do not fit its board with a margin`);
+  let y = pad;
+  const shapes = inks.map((l) => {
+    const at = [Math.round(w / 2 - ((l.b.x0 + l.b.x1) / 2 - l.at[0])), Math.round(y - (l.b.y0 - l.at[1]))];
+    y += l.h + gap;
+    return { text: l.text, at, size: l.size, font: "rounded", align: "center", fill: "#f3e6c8", stroke: { color: "#f3e6c8", width: l.stroke } };
+  });
+  img("fx/po_sign", [w, h], shapes);
+  console.log(`po_sign: ${(w / SIGN_PPM).toFixed(2)} x ${(h / SIGN_PPM).toFixed(2)} m on a 4.0 x 0.9 panel`);
+}
+if (doing("words")) {
+  // (the road names' lettering is the "signs" section, below)
   // The mailboxes' numbers: big and dark on a cream plate filling the box's side
   for (const n of [3, 7]) {
     img(`fx/num_${n}`, [176, 160], [
@@ -54,10 +167,6 @@ if (doing("words")) {
     { text: "BRIDGE", at: [256, 84], size: 86, font: "comic", align: "center", fill: RED, opacity: 0.95 },
     { text: "OUT", at: [256, 172], size: 92, font: "comic", align: "center", fill: RED, opacity: 0.95 },
     { line: [[40, 104], [470, 98]], width: 5, fill: RED, opacity: 0.6, cap: "round" },
-  ]);
-  img("fx/po_sign", [512, 104], [
-    { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "rounded", align: "center", fill: "#e9dcbccc" },
-    { text: "POST OFFICE", at: [256, 88], size: 52, font: "rounded", align: "center", fill: "#efe2c2dd" },
   ]);
   // (the van's sides: chunky painted letters thick enough to read from the chase camera; since the van turned blue (the owner: "make
   // the van blue with a red stripe"), cream letters, POST edged in the stripe's red, for contrast on the mail blue)

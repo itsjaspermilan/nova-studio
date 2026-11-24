@@ -1101,6 +1101,43 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
   realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
   three lines, warmer and simpler words, faster text with a press to finish the line.)
 
+### What the seventh play changed: the bridge's joins and the signposts (2026-11-23)
+
+- **The bridge** ("doesn't connect to the roads properly still"). Pictured close from both banks, from the walking and the driving
+  camera, from the side at deck height and from above (`build/gallery/bridge-before/`), the faults were: the road came at the deck
+  skewed (Kettle Creek Road's line bent 8 degrees off the deck's axis at the west end, 2.5 at the east, so the square-cut end and the
+  deck's end met at a wedge); the ground at the west end stood 0.34 m above the deck and at the east end 0.34 m below it (the road's
+  profile fell too steeply for the terrain's 11 % grade limit, so the deck, a flat average of the two, was buried at one end and
+  floating at the other, and the deck's collision sloped while its picture did not); the deck was 4.6 m wide against a road lit 5.6 m
+  wide, its threshold strip only 4.4 m across; the rails ended at the deck's end in mid air; and the last row of planks was
+  swallowed by the bank. Now (`tools/layout.mjs`, `tools/models.mjs` "bridge", `scripts/lib/roadnet.mjs`): the road's control points run
+  straight along the deck's axis (the deck's 22 m, at 20 degrees, between two control points of the road with another 10 m of straight
+  line either side), the road's profile drops to the deck's level 30 m before it (ground within 4 cm of the deck at both ends and
+  across its width), the deck is 5.6 m wide, the road's lit width (and the threshold strip, which now covers the carriageway and its
+  lit shoulder), 53 planks laid flush to both end lines on a stone sill, and a stout capped end post on a stone footing stands at each
+  corner on the bank, 0.3 m past the deck, with the rails running from post to post (`entities/bridge.lua` `half` 2.8). The van's
+  body height over the deck either way (frame by frame, from 10 m before to 10 m after): no step over 2 cm a frame, vertical
+  acceleration 1.2 m/s2 at most (the open gravel road: about 1). Tests `the_bridge_meets_the_road_at_both_ends_in_line_width_and_height`,
+  `the_van_crosses_the_bridge_both_ways_without_a_bump`. `tools/routes/roads.mjs` pictures both ends.
+- **The signposts** ("they don't always follow the direction of the road and the text doesn't line up properly"). The sixth play's
+  fix swung each arm up to 40 degrees off its road so it could be read from the approaches; that is what the owner saw. Every arm
+  now points along its road again (`layout.mjs` SIGNS names a road and a way along it, `scene.mjs` takes the road's direction over
+  8 m either side of the post's foot; within 4 degrees, the point showing the way the road goes), and readability comes from the
+  corner the post stands in (Kettle Creek's moved to the south-east corner of its junction, 3 m off the road: the least angle a
+  board is seen at from 25 m, from any road that comes to a post, is 21 degrees for a board along that road and 40 degrees for one
+  across it; at 12 m none is under 14) and from the lettering being on both faces (it was already; checked from the back: the words read
+  the right way round, the point on the other side). The lettering's faults, found by looking from 5 m at both faces of every board:
+  the words were 2.98 to 3.11 m wide on a panel 3.0 m long, so they ran into the point and off the rim; the picture's box, not its ink,
+  was centred (a descender's room under capitals); the two lines of KETTLE CREEK / ROAD were centred by their advance widths. Now
+  (`tools/art.mjs`, section "signs", `lib/sign_art.lua`): each picture is cropped to the ink of its words (3 texels round), the lines
+  centred on one another by their ink, the capitals 0.36 m (0.29 on the two-line board) on boards of 2.5 and 2.7 m of words, the
+  picture's middle put where the margin to the rim equals the margin to the point's edge (0.11 m all round, the same on every
+  board), at the panel's height. Tests `every_arm_points_along_its_road`, `the_lettering_is_centred_in_each_panel_on_both_faces`,
+  `every_signpost_board_is_seen_at_a_readable_angle_from_each_approach`. `tools/routes/signs.mjs` pictures every post from every
+  approach and every board from both faces. Weak points: a board along the road you are on is still seen at 21 degrees from 25 m
+  (the words foreshortened to a third of their length): read it from 12 m; and from the north on Post Road the Fern Lane board is 40 degrees at 25 m but 14 at
+  12 m (it turns edge-on as you come on).
+
 ### What the seventh play changed: the talks (text effects, the layout, the pace, the words)
 
 - **Text effects in Nova** (`nova.ui.rich_text`, docs/project-format.md "Rich text"): markup a writer types in a line, `{shake}`,
@@ -1216,3 +1253,5 @@ five); the brushes stems are the biggest (about 2 MB each). Not measured on the 
 `scripts/env.sh node examples/mountain-post/tools/music.mjs --audition` renders each piece (piano alone and full, for sound_report)
 and writes `build/audition/mountain-post-pieces-excerpts.m4a`: three minutes, 44 s of each piece from its first A, the piano alone
 for 21 s and then the four layers fading in. **Nobody has listened to any of it**: offline renders and measurements only.
+
+- **The post office name board**: it was on the wall, so the porch roof hid the lower line of words and the main roof slope buried the rest. It now stands on two short posts on the porch roof front edge (tools/models.mjs post_office), 4.0 x 0.9 m; its words (tools/art.mjs, signs section) are solid cream rounded capitals cropped to their ink, the two lines centred on one another and the block on the panel (2.7 x 0.66 m, margin 0.12 m), no faded alpha. Pictures: build/gallery/po-after/.

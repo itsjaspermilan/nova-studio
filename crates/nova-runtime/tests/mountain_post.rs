@@ -3546,9 +3546,9 @@ fn the_road_signs_lettering_keeps_its_strokes_at_a_distance_and_the_boards_face_
             "{name} at 60 m (level {far}): the letters still there ({})",
             cover[far].1
         );
-        // the letters are big: 0.32 m or more of capitals at 300 texels a metre (tools/art.mjs SIGN_PPM)
+        // the letters are big: 0.35 m or more of capitals at 300 texels a metre (the picture is cropped to the ink, so it is as high as the words)
         assert!(
-            img.height as f64 / 300.0 > 0.5,
+            img.height as f64 / 300.0 > 0.3,
             "{name}: the words' picture is {} m high",
             img.height as f64 / 300.0
         );
@@ -6222,84 +6222,6 @@ fn the_buildings_share_one_house_style_rounded_and_in_the_palette() {
     }
 }
 
-/// "Kettle Creek's signpost from the south: the Post Road boards are seen edge-on." A board that points along its road is edge-on from
-/// that road. Every board of every signpost, from every road that comes to the post, 25 m out along it, over the road's middle, is
-/// seen at 30 degrees or more of its face (its length against the sight line to its middle: the sine at least 0.45; the arms are
-/// swung off their roads, layout.mjs SIGNS `turn`, 40 degrees at most).
-#[test]
-fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
-    let root = game_dir();
-    let scene: Value = serde_json::from_str(
-        &std::fs::read_to_string(root.join("scenes/valley.scene.json")).unwrap(),
-    )
-    .unwrap();
-    let objects = scene["objects"].as_array().unwrap();
-    let roads: Vec<Vec<(f64, f64)>> = objects
-        .iter()
-        .filter(|o| o["kind"] == "roadline")
-        .map(|o| {
-            o["props"]["points"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
-                .collect()
-        })
-        .collect();
-    let (mut seen, mut worst) = (0, 1.0f64);
-    for sign in objects.iter().filter(|o| o["kind"] == "signpost") {
-        let (sx, sz) = (sign["x"].as_f64().unwrap(), sign["z"].as_f64().unwrap());
-        for road in &roads {
-            let (best, bd) = road
-                .iter()
-                .enumerate()
-                .map(|(i, p)| (i, ((p.0 - sx).powi(2) + (p.1 - sz).powi(2)).sqrt()))
-                .fold((0, f64::MAX), |m, v| if v.1 < m.1 { v } else { m });
-            if bd > 30.0 {
-                continue;
-            }
-            for dir in [1i64, -1] {
-                // the first point of the road, going out, that is 25 m from the post
-                let mut i = best as i64;
-                let mut cam = None;
-                while (0..road.len() as i64).contains(&(i + dir)) {
-                    let (a, b) = (road[i as usize], road[(i + dir) as usize]);
-                    let (da, db) = (
-                        ((a.0 - sx).powi(2) + (a.1 - sz).powi(2)).sqrt(),
-                        ((b.0 - sx).powi(2) + (b.1 - sz).powi(2)).sqrt(),
-                    );
-                    if da <= 25.0 && db >= 25.0 {
-                        let t = (25.0 - da) / (db - da);
-                        cam = Some((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
-                        break;
-                    }
-                    i += dir;
-                }
-                let Some(cam) = cam else { continue };
-                for arm in sign["props"]["arms"].as_array().unwrap() {
-                    let ry = arm["ry"].as_f64().unwrap();
-                    let (ax, az) = (ry.cos(), -ry.sin());
-                    let (rx, rz) = (sx + ax * 1.8 - cam.0, sz + az * 1.8 - cam.1);
-                    let f = (ax * rz - az * rx).abs() / rx.hypot(rz);
-                    worst = worst.min(f);
-                    assert!(
-                        f >= 0.45,
-                        "{}: the {} board is seen at {:.0} degrees from the road 25 m out at {:.0}, {:.0}",
-                        sign["name"].as_str().unwrap(),
-                        arm["text"].as_str().unwrap(),
-                        f.asin().to_degrees(),
-                        cam.0,
-                        cam.1
-                    );
-                    seen += 1;
-                }
-            }
-        }
-    }
-    assert_eq!(seen, 18, "boards checked: 3 arms from 6 approaches");
-    assert!(worst < 1.0);
-}
-
 /// "Distant forest partly hides the far half of the old bridge from the BRIDGE OUT end." From the barrier to the far ruin runs a
 /// corridor, 5 m either side at the barrier widening to 16 m at the ruin and 6 m past it (tools/scene.mjs BRIDGE_VIEW), and no
 /// forest mass stands in it: each mass is a capsule along its own x (the model's, scaled and turned as placed, its puffs reaching
@@ -8592,6 +8514,511 @@ fn the_vans_glass_and_linings_stay_inside_its_skin() {
     assert!(
         checked > 40,
         "the panes and the linings were checked: {checked} points"
+    );
+}
+
+// ---- the owner's seventh play: the bridge's joins and the signposts ------------------------------------------------------------------
+
+/// The van drives Kettle Creek Road over the bridge (`place`: "pip" to cross eastward, "hazel" westward, from `from`, a point on the
+/// road well before the deck), recording the body's height above the world's zero (the ground under it and the suspension's lift) and
+/// where along the bridge it is; returns the heights, a frame apart, from 10 m before the deck to 10 m after it.
+fn bridge_crossing(place: &str, from_ahead: f64) -> Vec<(f64, f64)> {
+    let mut g = game();
+    let expr = "string.format('%.5f %.2f', nova.terrain_height(nova.named('van').x, nova.named('van').z) + nova.named('van').lift, (function() local b = require('lib.world').bridge; local v = nova.named('van'); return ((v.x - b.ax) * b.dx + (v.z - b.az) * b.dz) end)())";
+    let go = format!(
+        r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 20 }},
+        {{ "lua": "T = require('lib.testkit'); local W = require('lib.world'); local b = W.bridge; local s = {from_ahead} * ('{place}' == 'pip' and -1 or 1) ; local l = '{place}' == 'pip' and 0 or b.len; local x, z = b.ax + b.dx * (l + s), b.az + b.dz * (l + s); local h = math.atan(b.dx * ('{place}' == 'pip' and 1 or -1), b.dz * ('{place}' == 'pip' and 1 or -1)); local v = nova.named('van'); v:teleport(x, z, h); local sc = nova.scene_now(); sc.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; require('lib.camera').reset(h); T.drive('{place}')" }},
+        {{ "wait": 700, "record": "{expr}" }} ] }}"#
+    );
+    let r = play(&mut g, &go);
+    let mut out = vec![];
+    for (from, to, v) in r.record(expr) {
+        let mut it = v.split(' ');
+        let y: f64 = it.next().unwrap().parse().unwrap();
+        let t: f64 = it.next().unwrap().parse().unwrap();
+        for _ in from..=to {
+            out.push((y, t));
+        }
+    }
+    out
+}
+
+/// "The bridge doesn't connect to the roads properly still." At both ends the deck meets the road: the road's centre line runs along
+/// the deck's axis for 10 m either side (no kink, no skew), the road ends on the deck's end line (no gap, no overlap), the deck is as
+/// wide as the road's lit surface (within half a metre of its edge), and the ground there, the road and the deck are one height.
+#[test]
+fn the_bridge_meets_the_road_at_both_ends_in_line_width_and_height() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 20 } ] }"#,
+    );
+    let row = lua(
+        &g,
+        "(function() local W = require('lib.world'); local b = W.bridge; local br = nova.named('bridge'); local r; for _, q in ipairs(W.roads) do if q.id == 'kettle_creek_road' then r = q end end; \
+         local worst = 0; \
+         for _, p in ipairs(r.points) do local px, pz = p[1] - b.ax, p[2] - b.az; local t = px * b.dx + pz * b.dz; local c = px * -b.dz + pz * b.dx; \
+           if (t > -10 and t < 0) or (t > b.len and t < b.len + 10) then worst = math.max(worst, math.abs(c)) end end; \
+         local ground = 0; \
+         for _, e in ipairs({ 0, b.len }) do for _, s in ipairs({ -b.half, -1.5, 0, 1.5, b.half }) do local x, z = b.ax + b.dx * e + b.dz * s, b.az + b.dz * e - b.dx * s; ground = math.max(ground, math.abs(nova.terrain_height(x, z) - (e == 0 and b.ha or b.hb))) end end; \
+         local deck = br.y + nova.terrain_height(br.x, br.z); \
+         return string.format('%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f', b.ax, b.az, b.dx, b.dz, b.len, b.half, worst, ground, math.max(math.abs(deck - b.ha), math.abs(deck - b.hb)), math.abs(b.ha - b.hb)) end)()",
+    );
+    let v: Vec<f64> = row.split(' ').map(|s| s.parse().unwrap()).collect();
+    let (ax, az, dx, dz, len, half) = (v[0], v[1], v[2], v[3], v[4], v[5]);
+    assert!((len - 22.0).abs() < 0.01, "the deck is 22 m long: {len}");
+    assert!(
+        v[6] < 0.2,
+        "the road's middle line leaves the deck's axis by {} m within 10 m of it",
+        v[6]
+    );
+    assert!(
+        v[7] < 0.06,
+        "the ground at the deck's ends and the deck differ by {} m",
+        v[7]
+    );
+    assert!(
+        v[8] < 0.04,
+        "the deck is {} m off the ground at one end",
+        v[8]
+    );
+    assert!(v[9] < 0.06, "the two ends differ in height by {} m", v[9]);
+    // the road's own surface, from its mesh: where it ends along the axis, and how wide its level top is at the deck
+    let tris = valley_road_triangles();
+    for (end, at) in [("west", 0.0f64), ("east", len)] {
+        let sign = if at == 0.0 { 1.0 } else { -1.0 }; // (the road lies at smaller t at the west end, larger at the east)
+        let (mut reach, mut across) = (f64::NEG_INFINITY, 0.0f64);
+        for t in &tris {
+            for p in t {
+                let (px, pz) = (p[0] as f64 - ax, p[2] as f64 - az);
+                let (along, side) = (px * dx + pz * dz - at, px * -dz + pz * dx);
+                if along * sign > 0.02 || along.abs() > 6.0 || side.abs() > 4.5 {
+                    continue; // (the deck's side of the end line, or too far to matter)
+                }
+                if along.abs() < 0.8 && p[1] > 0.019 {
+                    across = across.max(side.abs());
+                }
+                if side.abs() < 1.5 {
+                    reach = reach.max(-along.abs());
+                }
+            }
+        }
+        assert!(
+            reach > -0.03,
+            "the {end} end of the road stops {} m short of the deck",
+            -reach
+        );
+        assert!(
+            (across - half).abs() < 0.5,
+            "the {end} end: the road is {} m wide, the deck {} m",
+            across * 2.0,
+            half * 2.0
+        );
+    }
+    // the rails run past the deck's ends to a stout post on each bank
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/mountain-post/models/bridge.model.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for c in model["capsules"].as_array().unwrap() {
+        let k = model["scale"].as_f64().unwrap();
+        let (a, b) = (c["az"].as_f64().unwrap() * k, c["bz"].as_f64().unwrap() * k);
+        assert!(
+            a < -len / 2.0 - 0.2 && b > len / 2.0 + 0.2,
+            "a rail runs from {a} to {b}: it ends in mid air"
+        );
+        assert!(
+            (c["ax"].as_f64().unwrap().abs() * k - half).abs() < 0.3,
+            "a rail's side"
+        );
+    }
+}
+
+/// "The van drives over with no bump": over the bridge either way the body's height is as smooth as on the open road, no step of
+/// more than 2 cm a frame and a vertical acceleration under 2.5 m/s2 (a quarter g), from 10 m before the deck to 10 m after it.
+#[test]
+fn the_van_crosses_the_bridge_both_ways_without_a_bump() {
+    for (place, ahead) in [("pip", 30.0), ("hazel", 30.0)] {
+        let ys = bridge_crossing(place, ahead);
+        assert!(ys.len() > 600, "{place}: {} frames", ys.len());
+        let (mut accel, mut step, mut on) = (0.0f64, 0.0f64, 0);
+        for k in 1..ys.len() - 1 {
+            if ys[k].1 < -10.0 || ys[k].1 > 32.0 {
+                continue;
+            }
+            on += 1;
+            accel = accel.max(((ys[k + 1].0 - 2.0 * ys[k].0 + ys[k - 1].0) * 3600.0).abs());
+            step = step.max((ys[k + 1].0 - ys[k].0).abs());
+        }
+        assert!(on > 60, "{place}: the van was on the stretch {on} frames");
+        assert!(
+            accel < 2.5,
+            "{place}: the body's vertical acceleration reaches {accel} m/s2"
+        );
+        assert!(step < 0.02, "{place}: the body steps {step} m in a frame");
+    }
+}
+
+/// The valley scene's signposts and road lines, as the engine reads them: every signpost's place and arms (turn, name), every road's
+/// middle line (world x, z) by its key.
+fn signs_and_roads() -> (
+    Vec<(String, (f64, f64), Vec<(String, f64)>)>,
+    Vec<(String, Vec<(f64, f64)>)>,
+) {
+    let scene: Value = serde_json::from_str(
+        &std::fs::read_to_string(game_dir().join("scenes/valley.scene.json")).unwrap(),
+    )
+    .unwrap();
+    let objects = scene["objects"].as_array().unwrap();
+    let roads = objects
+        .iter()
+        .filter(|o| o["kind"] == "roadline")
+        .map(|o| {
+            (
+                o["props"]["key"].as_str().unwrap().to_string(),
+                o["props"]["points"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+                    .collect(),
+            )
+        })
+        .collect();
+    let signs = objects
+        .iter()
+        .filter(|o| o["kind"] == "signpost")
+        .map(|o| {
+            (
+                o["name"].as_str().unwrap().to_string(),
+                (o["x"].as_f64().unwrap(), o["z"].as_f64().unwrap()),
+                o["props"]["arms"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|a| {
+                        (
+                            a["text"].as_str().unwrap().to_string(),
+                            a["ry"].as_f64().unwrap(),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect();
+    (signs, roads)
+}
+
+/// The direction of a road at the foot of a post: over 8 m either side of the road's nearest point, along the road as it is drawn.
+fn road_direction_at(pts: &[(f64, f64)], at: (f64, f64)) -> (f64, f64) {
+    let d = |p: &(f64, f64)| ((p.0 - at.0).powi(2) + (p.1 - at.1).powi(2)).sqrt();
+    let near = (0..pts.len())
+        .min_by(|&a, &b| d(&pts[a]).partial_cmp(&d(&pts[b])).unwrap())
+        .unwrap();
+    let (mut lo, mut hi, mut acc) = (near, near, 0.0);
+    while lo > 0 && acc < 8.0 {
+        acc += ((pts[lo].0 - pts[lo - 1].0).powi(2) + (pts[lo].1 - pts[lo - 1].1).powi(2)).sqrt();
+        lo -= 1;
+    }
+    acc = 0.0;
+    while hi + 1 < pts.len() && acc < 8.0 {
+        acc += ((pts[hi].0 - pts[hi + 1].0).powi(2) + (pts[hi].1 - pts[hi + 1].1).powi(2)).sqrt();
+        hi += 1;
+    }
+    let (dx, dz) = (pts[hi].0 - pts[lo].0, pts[hi].1 - pts[lo].1);
+    let l = dx.hypot(dz);
+    (dx / l, dz / l)
+}
+
+fn road_of_sign(text: &str) -> &'static str {
+    match text {
+        "FERN LANE" => "fern_lane",
+        "POST ROAD" => "post_road",
+        "KETTLE CREEK RD" => "kettle_creek_road",
+        other => panic!("a board named {other}"),
+    }
+}
+
+/// "They don't always follow the direction of the road." Every arm of every signpost points along the road it names: within 4 degrees of
+/// that road's direction at the post's foot, its point toward where the road goes (the two Post Road arms of a post point opposite ways,
+/// the side road's arm away from Post Road), and none is swung off its road to be read.
+#[test]
+fn every_arm_points_along_its_road() {
+    let (signs, roads) = signs_and_roads();
+    assert_eq!(signs.len(), 2, "two signposts");
+    let mut arms = 0;
+    for (name, at, boards) in &signs {
+        assert_eq!(boards.len(), 3, "{name}: a board for each way a road goes");
+        let mut main_dirs = vec![];
+        for (text, ry) in boards {
+            let arm = (ry.cos(), -ry.sin()); // (world x, z: the model's +x turned by ry)
+            let road = &roads.iter().find(|r| r.0 == road_of_sign(text)).unwrap().1;
+            let t = road_direction_at(road, *at);
+            let along = arm.0 * t.0 + arm.1 * t.1;
+            let off = along.abs().min(1.0).acos().to_degrees();
+            assert!(
+                off < 4.0,
+                "{name}: the {text} board is {off:.1} degrees off its road's direction"
+            );
+            if text == "POST ROAD" {
+                main_dirs.push(arm);
+            } else {
+                // (the side road leaves Post Road: its arm points out along it, from the post's nearest point on it)
+                let start = road[0];
+                let far = road
+                    .iter()
+                    .find(|p| ((p.0 - start.0).powi(2) + (p.1 - start.1).powi(2)).sqrt() > 30.0)
+                    .unwrap();
+                let (ox, oz) = (far.0 - start.0, far.1 - start.1);
+                let l = ox.hypot(oz);
+                assert!(
+                    (arm.0 * ox + arm.1 * oz) / l > 0.7,
+                    "{name}: the {text} board's point shows the road's way"
+                );
+            }
+            arms += 1;
+        }
+        assert_eq!(main_dirs.len(), 2, "{name}: Post Road both ways");
+        let dot = main_dirs[0].0 * main_dirs[1].0 + main_dirs[0].1 * main_dirs[1].1;
+        assert!(
+            dot < -0.98,
+            "{name}: the Post Road arms point opposite ways ({dot})"
+        );
+    }
+    assert_eq!(arms, 6);
+    // (and the layout's table no longer carries a turn: nothing is swung off its road)
+    let layout = std::fs::read_to_string(game_dir().join("tools/layout.mjs")).unwrap();
+    assert!(!layout.contains("turn:"), "SIGNS has no turn");
+}
+
+/// "The text doesn't line up properly." Each board's lettering is centred in its dark panel on every side, on one baseline per line,
+/// with the same margins, and reads the right way round from both faces. The pictures are cropped to their ink (equal margins), the
+/// lines of the two-line board are centred on one another, the picture's middle is placed at the panel's middle (lib/sign_art.lua) so
+/// the margin to the rim equals the margin to the point's edge, and both faces carry the picture, level and equally far off the board.
+#[test]
+fn the_lettering_is_centred_in_each_panel_on_both_faces() {
+    let root = game_dir();
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 10 } ] }"#,
+    );
+    // the board's own numbers, from its model (the dark panel is inset by the rim)
+    let model: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("models/sign_arm.model.json")).unwrap(),
+    )
+    .unwrap();
+    let k = model["scale"].as_f64().unwrap();
+    let verts = model["parts"][0]["cubes"][0]["verts"].as_array().unwrap();
+    let xs: Vec<f64> = verts.iter().map(|v| v[0].as_f64().unwrap() * k).collect();
+    let (x0, length) = (
+        xs.iter().cloned().fold(f64::MAX, f64::min),
+        xs.iter().cloned().fold(f64::MIN, f64::max),
+    );
+    let (rim, point) = (0.06, 0.42);
+    assert!(
+        (x0 - 0.08).abs() < 0.005 && (length - 3.6).abs() < 0.005,
+        "the board runs from {x0} to {length}"
+    );
+    let mut caps = vec![];
+    for (sprite, board_h, lines) in [
+        ("sign_fern_lane", 0.72, 1usize),
+        ("sign_post_road", 0.72, 1),
+        ("sign_kettle_creek_rd", 1.12, 2),
+    ] {
+        let row = lua(
+            &g,
+            &format!(
+                "(function() local a = require('lib.sign_art')['{sprite}']; return string.format('%.5f %.5f %.5f %.2f %d', a.mid, a.w, a.h, a.board, a.lines) end)()"
+            ),
+        );
+        let v: Vec<f64> = row.split(' ').map(|s| s.parse().unwrap()).collect();
+        let (mid, w, h) = (v[0], v[1], v[2]);
+        assert!(
+            (v[3] - board_h).abs() < 1e-6 && v[4] as usize == lines,
+            "{sprite}: its board"
+        );
+        // the picture: cropped to the ink, centred in itself
+        let png = std::fs::read(root.join(format!("sprites/fx/{sprite}.png"))).unwrap();
+        let img = nova_runtime::assets::decode_png(&png).expect("a PNG");
+        let (iw, ih) = (img.width as usize, img.height as usize);
+        assert!(
+            ((iw as f64 / 300.0) - w).abs() < 0.004 && ((ih as f64 / 300.0) - h).abs() < 0.004,
+            "{sprite}: the picture is {iw} x {ih}"
+        );
+        let ink = |x: usize, y: usize| img.rgba[(y * iw + x) * 4 + 3] > 24;
+        let rows_with: Vec<bool> = (0..ih).map(|y| (0..iw).any(|x| ink(x, y))).collect();
+        let cols_with: Vec<bool> = (0..iw).map(|x| (0..ih).any(|y| ink(x, y))).collect();
+        let first = |v: &[bool]| v.iter().position(|b| *b).unwrap();
+        let last = |v: &[bool]| v.len() - 1 - v.iter().rev().position(|b| *b).unwrap();
+        let (l, r, t, b) = (
+            first(&cols_with),
+            iw - 1 - last(&cols_with),
+            first(&rows_with),
+            ih - 1 - last(&rows_with),
+        );
+        assert!(
+            (l as i64 - r as i64).abs() <= 1 && (t as i64 - b as i64).abs() <= 1,
+            "{sprite}: the ink is off centre in its picture ({l} {r} {t} {b})"
+        );
+        assert!(
+            l <= 5 && t <= 5,
+            "{sprite}: the picture is cropped to the ink ({l} {t})"
+        );
+        // the lines of ink (runs of rows), each centred on the picture's middle, each as tall as the others
+        let mut bands = vec![];
+        let mut y = 0;
+        while y < ih {
+            if rows_with[y] {
+                let s = y;
+                while y < ih && rows_with[y] {
+                    y += 1;
+                }
+                bands.push((s, y));
+            } else {
+                y += 1;
+            }
+        }
+        assert_eq!(bands.len(), lines, "{sprite}: its lines of lettering");
+        for (s, e) in &bands {
+            let cols: Vec<usize> = (0..iw).filter(|&x| (*s..*e).any(|y| ink(x, y))).collect();
+            let centre = (cols[0] + cols.last().unwrap() + 1) as f64 / 2.0;
+            assert!(
+                (centre - iw as f64 / 2.0).abs() <= 2.0,
+                "{sprite}: a line is centred {centre} in {iw}"
+            );
+        }
+        if lines == 2 {
+            let (a, c) = (bands[0].1 - bands[0].0, bands[1].1 - bands[1].0);
+            assert!(
+                (a as i64 - c as i64).abs() <= 3,
+                "the two lines' capitals: {a} and {c}"
+            );
+        }
+        caps.push((bands[0].1 - bands[0].0) as f64 / 300.0);
+        // the panel: x0 + rim to the start of the slope, the point's edge to its tip
+        let hh = board_h / 2.0 - rim;
+        let (px0, slope_from, tip) = (x0 + rim, length - rim * 0.8 - point, length - rim * 1.6);
+        let left = mid - w / 2.0 - px0;
+        let (cr, sr) = (mid + w / 2.0, h / 2.0);
+        let slope = (tip - slope_from).hypot(hh);
+        let right = (hh * (tip - cr) - (tip - slope_from) * sr) / slope;
+        let top = hh - h / 2.0;
+        assert!(
+            (left - right).abs() < 0.02,
+            "{sprite}: {left:.3} m of panel before the words and {right:.3} after them"
+        );
+        assert!(
+            left.min(right).min(top) >= 0.1,
+            "{sprite}: a margin of {:.3} m",
+            left.min(right).min(top)
+        );
+        // (the middle is the panel's, in the straight part's span or a little past it into the point)
+        assert!(
+            mid > px0 + w / 2.0 && mid < tip,
+            "{sprite}: its middle {mid}"
+        );
+    }
+    // one baseline and the same capitals on the single-line boards
+    assert!(
+        (caps[0] - caps[1]).abs() < 0.012,
+        "FERN LANE and POST ROAD's capitals: {caps:?}"
+    );
+    // both faces: the picture drawn on each, level with the board's middle, the same way off it, facing opposite ways
+    let faces = lua(
+        &g,
+        "(function() local out = {}; for _, name in ipairs({ 'sign_1', 'sign_2' }) do local s = nova.named(name); for i, d in ipairs(s.drawn) do local a, b = d.fronts[1], d.fronts[2]; local art = require('lib.sign_art')[d.sprite]; local ry = s.arms[i].ry; local mx, mz = s.x + math.cos(ry) * art.mid, s.z - math.sin(ry) * art.mid; out[#out + 1] = string.format('%d %.4f %.4f %.4f %.4f', #d.fronts, a[1] + b[1], a[2] + b[2], a[3][1] + b[3][1] + a[3][3] + b[3][3], math.abs(d.cx - mx) + math.abs(d.cz - mz)) end end; return table.concat(out, ';') end)()",
+    );
+    let n = faces.split(';').count();
+    assert_eq!(n, 6, "six boards: {faces}");
+    for f in faces.split(';') {
+        let v: Vec<f64> = f.split(' ').map(|s| s.parse().unwrap()).collect();
+        assert_eq!(v[0] as i32, 2, "two faces");
+        assert!(
+            v[1].abs() < 1e-6 && v[2].abs() < 1e-6 && v[3].abs() < 1e-6,
+            "opposite faces: {f}"
+        );
+        assert!(
+            v[4] < 1e-6,
+            "the picture's middle is the panel's middle: {f}"
+        );
+    }
+}
+
+/// "Posts placed in the corner where approaching traffic sees the boards at an angle (not edge-on)": from every road that comes to a
+/// post, 25 m out over the road's middle, every board that does not point along that road is seen at 37 degrees or more, and the boards
+/// that do (the road's own name, and Post Road's two arms from Post Road: a board along a road is as near edge-on as it gets) at 19
+/// degrees or more; at 12 m every board at 11 degrees or more (the van's camera at 1280 x 720).
+#[test]
+fn every_signpost_board_is_seen_at_a_readable_angle_from_each_approach() {
+    let (signs, roads) = signs_and_roads();
+    let (mut seen, mut worst_cross, mut worst_along) = (0, 1.0f64, 1.0f64);
+    for (name, at, boards) in &signs {
+        for (road_key, road) in &roads {
+            let d = |p: &(f64, f64)| ((p.0 - at.0).powi(2) + (p.1 - at.1).powi(2)).sqrt();
+            let near = (0..road.len())
+                .min_by(|&a, &b| d(&road[a]).partial_cmp(&d(&road[b])).unwrap())
+                .unwrap();
+            if d(&road[near]) > 30.0 {
+                continue;
+            }
+            let heading = road_direction_at(road, *at);
+            for dir in [1i64, -1] {
+                for dist in [25.0, 12.0] {
+                    // the first point of the road, going out, `dist` from the post
+                    let mut i = near as i64;
+                    let mut cam = None;
+                    while (0..road.len() as i64).contains(&(i + dir)) {
+                        let (a, b) = (road[i as usize], road[(i + dir) as usize]);
+                        let (da, db) = (d(&a), d(&b));
+                        if da <= dist && db >= dist {
+                            let t = (dist - da) / (db - da);
+                            cam = Some((a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t));
+                            break;
+                        }
+                        i += dir;
+                    }
+                    let Some(cam) = cam else { continue };
+                    for (text, ry) in boards {
+                        let (ax, az) = (ry.cos(), -ry.sin());
+                        let (rx, rz) = (at.0 + ax * 1.65 - cam.0, at.1 + az * 1.65 - cam.1);
+                        let f = (ax * rz - az * rx).abs() / rx.hypot(rz);
+                        let along =
+                            (ax * heading.0 + az * heading.1).abs() > (35.0f64).to_radians().cos();
+                        let want = match (along, dist as i32) {
+                            (false, 25) => 0.60,
+                            (false, _) => 0.20,
+                            (true, 25) => 0.33,
+                            (true, _) => 0.20,
+                        };
+                        assert!(
+                            f >= want,
+                            "{name}: the {text} board from {road_key} at {dist} m ({}) is seen at {:.0} degrees",
+                            if dir > 0 { "on" } else { "back" },
+                            f.asin().to_degrees()
+                        );
+                        if dist as i32 == 25 {
+                            seen += 1;
+                            if along {
+                                worst_along = worst_along.min(f)
+                            } else {
+                                worst_cross = worst_cross.min(f)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(seen >= 18, "boards checked at 25 m: {seen}");
+    eprintln!(
+        "the least angle at 25 m: boards across the road {:.0} degrees, boards along it {:.0}",
+        worst_cross.asin().to_degrees(),
+        worst_along.asin().to_degrees()
     );
 }
 

@@ -228,8 +228,20 @@ let BRIDGE_VIEW = null;
   obj("spot", [end[0] - dir[0] * 6, end[1] - dir[1] * 6], {}, "bridge_out_view");
 }
 
-// (an arm's turn about its post: pointing along its road, then swung off it by `turn` degrees: layout.mjs SIGNS; and the way it points on the map)
-const armRy = (s, a) => ry_facing(a.toward[0] - s.at[0], a.toward[1] - s.at[1]) - Math.PI / 2 + ((a.turn ?? 0) * Math.PI) / 180;
+// (an arm's turn about its post: along its road's direction at the post's foot, never swung off it: layout.mjs SIGNS)
+const armTangent = (s, a) => {
+  // (its road's direction at the foot of the post: over 8 m either side of the nearest point of the road's middle line, the way the arm points)
+  const pts = roadLines[a.road];
+  let best = 0, bd = Infinity;
+  pts.forEach((p, i) => { const d = Math.hypot(p[0] - s.at[0], p[1] - s.at[1]); if (d < bd) (bd = d, (best = i)); });
+  let lo = best, hi = best, acc = 0;
+  while (lo > 0 && acc < 8) acc += Math.hypot(pts[lo][0] - pts[lo - 1][0], pts[lo][1] - pts[lo - 1][1]), lo--;
+  acc = 0;
+  while (hi < pts.length - 1 && acc < 8) acc += Math.hypot(pts[hi][0] - pts[hi + 1][0], pts[hi][1] - pts[hi + 1][1]), hi++;
+  const d = norm([pts[hi][0] - pts[lo][0], pts[hi][1] - pts[lo][1]]);
+  return [d[0] * a.dir, d[1] * a.dir];
+};
+const armRy = (s, a) => { const d = armTangent(s, a); return ry_facing(d[0], d[1]) - Math.PI / 2; };
 const armDir = (s, a) => [-Math.cos(r2(armRy(s, a))), -Math.sin(r2(armRy(s, a)))];
 // ---- signposts: at each junction, an arm for each road pointing along it ------------------------------------------------------------
 SIGNS_AT.forEach((s, i) => {
