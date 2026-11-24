@@ -59,11 +59,13 @@ words.people = {
 words.ending = "Two delivered. A few hundred to go."
 
 -- The words the van's panel says (no button is drawn in play: the Controls page lists them).
-words.hint = { load = "Load package" }
+words.hint = {}
 -- the small tip floating over a parcel (or the letter) that can be taken (lib/ui.lua ui.tip)
 words.tip = { letter = "Letter from the Mayor" }
 -- the panel floating over the van's open back doors (lib/ui.lua ui.van_panel)
-words.van = { tag = "Van", empty = "The van is empty", full = "The van is full" }
+words.van = { tag = "Van", empty = "The van is empty", full = "The van is full", take = "Take", store = "Store" }
+-- the small tips over a resident close enough to talk to (lib/ui.lua ui.tip, an X chip on its corner)
+words.talk = { talk = "Talk", give = "Hand over" }
 words.pause = { title = "Paused", resume = "Resume", controls = "Controls", quit = "Quit" }
 -- the title menu's second choice, and the Controls page (lib/cards.lua: cards.CONTROLS lists the rows)
 words.controls = { title = "Controls", foot = "On foot", van = "Driving", back = "Back", choose = "Choose", move = "Move" }
@@ -76,7 +78,7 @@ words.controls_rows = {
     { keys = { "Left stick" }, word = "Walk", actions = { "move_x", "move_y" } },
     { keys = { "B" }, word = "Run (hold)", actions = { "run" } },
     { keys = { "X" }, word = "Talk, read, put back", actions = { "interact" } },
-    { keys = { "A" }, word = "Take from the van", actions = { "confirm" } },
+    { keys = { "A" }, word = "Take or store at the van", actions = { "confirm" } },
     { keys = { "Y" }, word = "Get in the van", actions = { "van" } },
     { keys = { "L1", "R1" }, word = "Choose a parcel", actions = { "prev", "next" } },
     { keys = { "Right stick" }, word = "Look round", actions = { "look_x", "look_y" } },

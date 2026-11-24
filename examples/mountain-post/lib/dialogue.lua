@@ -115,14 +115,23 @@ function dialogue.draw(w, h)
   ui.tag(x + SP.xl, y - SP.xl, cur.name, v.colour)
   ui.rich_text(x + L.left, y + L.pad_top, cur.lines[cur.i], dialogue.text_opts(cur.who, L, math.max(0, cur.t), cur.skip))
   if cur.done then
-    -- the "next" button, bobbing softly once the line is out
+    -- once the line is out: with more to come, a small slate arrow at the bottom centre, bobbing softly ("more"); the last line has
+    -- no arrow (nothing more follows). Either way an X chip on the box's bottom-right corner (X goes on / closes).
     local since = cur.t - math.min(cur.skip or cur.last, cur.last)
     local a = math.min(1, math.max(0, since / 0.15))
-    local bob = math.sin(cur.t * 4.5) * 2
-    -- (a small slate arrow pointing down, no button: chev_r turned a quarter)
-    local sz = ui.SP.l
-    nova.ui.sprite("ui/kit/chev_r", x + bw - L.left - sz / 2, y + bh - ui.inset().bottom - ui.PAD_LONG.y - sz / 2 + bob,
-      { w = sz, h = sz, rotation = math.pi / 2, color = { 112 * 1.1, 102 * 1.1, 96 * 1.1, math.floor(255 * a) } })
+    if cur.i < #cur.lines then
+      local bob = math.sin(cur.t * 4.5) * 2
+      local sz = ui.SP.l -- (chev_r turned a quarter: pointing down)
+      nova.ui.sprite("ui/kit/chev_r", x + bw / 2, y + bh - ui.inset().bottom - ui.SP.xs - sz / 2 + bob,
+        { w = sz, h = sz, rotation = math.pi / 2, color = { 112 * 1.1, 102 * 1.1, 96 * 1.1, math.floor(255 * a) } })
+      dialogue.arrow_shown = true
+    else
+      dialogue.arrow_shown = false
+    end
+    ui.corner_chip(x, y, bw, bh, "X", a)
+  else
+    dialogue.arrow_shown = false
+    ui.chip_box = nil
   end
 end
 
