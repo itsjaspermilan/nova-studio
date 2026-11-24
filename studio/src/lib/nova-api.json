@@ -296,15 +296,15 @@
  {
   "name": "nova.sky",
   "kind": "function",
-  "signature": "nova.sky{ top = {r, g, b}, horizon = {r, g, b} [, sun = {x, y, z}, stars = 0..1, clouds = 0..1, ground = {r, g, b}] }",
-  "doc": "Paints a sky behind everything in 3D: `horizon` where it meets the ground (and below), blending up to `top` overhead. Colours are 0 to 255, as you would pick them on screen. Stays until changed; `nova.sky(nil)` goes back to the plain clear colour. `sun` is the direction towards the sun, and its height is the time of day: the sky draws a sun there (white overhead, orange as it sinks, gone under the horizon) with a halo, a glow along the horizon on the sun's side that is strongest under a low sun, clouds that it lights (bright edges towards it, dark undersides, orange at sunset), stars that come out as it sets, and a moon opposite it. The colours are yours (`top`, `horizon`: what the sky is at that hour); a game that wants a day to pass blends them with the sun's height as it moves it (Pine Ridge Rally's lib/sky.lua does, from a table of colours by the sun's height). `stars` (0 to 1) is how many stars show, `clouds` (0 to 1) how much of the sky is cloud, drifting slowly. `ground` is the colour of the land around: models lit by their materials (`\"materials\"` in nova.json: car paint, metal, glass) are then lit by it from below and mirror it under the horizon, and are darker near their own base, so that they take on the colours of the place they stand in.",
+  "signature": "nova.sky{ top = {r, g, b}, horizon = {r, g, b} [, sun = {x, y, z} or true, stars = 0..1, clouds = 0..1, ground = {r, g, b}, style = \"painted\", sun_size = 4, far_hills = { color = {r, g, b}, height = 3 }] }",
+  "doc": "Paints a sky behind everything in 3D: `horizon` where it meets the ground (and below), blending up to `top` overhead. Colours are 0 to 255, as you would pick them on screen. Stays until changed; `nova.sky(nil)` goes back to the plain clear colour. `sun` is the direction towards the sun, and its height is the time of day: the sky draws a sun there (white overhead, orange as it sinks, gone under the horizon) with a halo, a glow along the horizon on the sun's side that is strongest under a low sun, clouds that it lights (bright edges towards it, dark undersides, orange at sunset), stars that come out as it sets, and a moon opposite it. The colours are yours (`top`, `horizon`: what the sky is at that hour); a game that wants a day to pass blends them with the sun's height as it moves it (Pine Ridge Rally's lib/sky.lua does, from a table of colours by the sun's height). `stars` (0 to 1) is how many stars show, `clouds` (0 to 1) how much of the sky is cloud, drifting slowly. `ground` is the colour of the land around: models lit by their materials (`\"materials\"` in nova.json: car paint, metal, glass) are then lit by it from below and mirror it under the horizon, and are darker near their own base, so that they take on the colours of the place they stand in. `sun = true` puts the sun where nova.light comes from, so the sun in the sky and the shadows always agree. `style = \"painted\"` paints a soft backdrop instead: a gentle gradient, rounded clouds with flat shading and soft edges in three bands round the horizon (far and small low down, near and big higher up) drifting with the wind (`clouds` is how many), a round sun `sun_size` degrees across with a wide soft glow, and with `far_hills` a far range of rounded hills along the horizon, `height` degrees high, its feet in the fog's colour.",
   "group": "Drawing"
  },
  {
   "name": "nova.fog",
   "kind": "function",
-  "signature": "nova.fog{ color = {r, g, b}, near = 40, far = 250 }",
-  "doc": "Fades 3D models into `color` between `near` and `far` metres from the camera, which hides things popping in at a distance. Use the sky's horizon colour for it to blend in. Stays until changed; `nova.fog(nil)` turns it off.",
+  "signature": "nova.fog{ color = {r, g, b}, near = 40, far = 250 [, height = 30, floor = 0, desaturate = 0..1, sun = 0..1] }",
+  "doc": "Fades 3D models into `color` between `near` and `far` metres from the camera, which hides things popping in at a distance. Use the sky's horizon colour for it to blend in. Stays until changed; `nova.fog(nil)` turns it off. Any of `height`, `floor`, `desaturate` or `sun` makes it a haze, as air does it (aerial perspective): it starts gently past `near`, builds through the middle distance and is still complete at `far` (so the end of the view never shows); it is thicker low down, below `floor` (a valley's floor, as a height) and over `height` metres above it, than high up; far things lose `desaturate` of their colour before they lose their shape; and on the sun's side of the view it is lit by the sun (`sun`). The same haze is drawn into a painted sky's horizon and far hills.",
   "group": "Drawing"
  },
  {
@@ -2126,6 +2126,20 @@
   "kind": "function",
   "signature": "nova.billboard_frames(sprite) -> number | nil",
   "doc": "How many frames a picture in sprites/fx/ has (1 for a plain PNG), or nil when there is no such picture.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.ambient",
+  "kind": "function",
+  "signature": "nova.ambient{ radius = 30, seed = 1, leaves = { count, trees = { {x, z, h}, ... }, colors }, streaks = { count, every = 3 }, motes = { count }, butterflies = { count, flowers = { {x, z}, ... }, colors }, birds = { count, every = 30, perches = { {x, z}, ... } } }",
+  "doc": "Floating life round the camera, kept and drawn by the engine (no Lua runs for it each frame): leaves that fall from the crowns of the trees near the camera (each tree x, z and its crown's height h) and tumble along the wind, white wind curls that draw themselves along the wind, roll into a loop and fade (one every `every` seconds, sooner in a strong wind), pollen and dust motes near the camera that glint when it looks towards the sun, butterflies fluttering over the flowers near it, and a small flock now and then that passes over high up or comes down at a perch (a spot on the ground by a tree) to peck about and flies off when the camera comes near. Everything follows nova.wind, is drawn as soft blended pictures painted by the engine (with the haze and the hills, never cut by nova.see_through, casting no shadow) and stays within about `radius` metres of the camera (flocks a little farther). Each kind has a cap (64 leaves, 8 curls, 96 motes, 12 butterflies, 12 birds); a kind left out is off. Stays until changed, across scenes; nova.ambient() turns it all off.",
+  "group": "3D"
+ },
+ {
+  "name": "nova.ambient_info",
+  "kind": "function",
+  "signature": "nova.ambient_info() -> { leaves, streaks, motes, butterflies, birds, birds_down, farthest, quads }",
+  "doc": "What nova.ambient has now: how many of each kind, how many birds are on the ground, the farthest of them from the camera on the ground (metres) and how many pictures it drew last frame. For tests.",
   "group": "3D"
  },
  {

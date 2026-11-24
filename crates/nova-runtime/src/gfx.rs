@@ -213,6 +213,45 @@ pub struct Sky {
     /// The colour of the land under the sky (linear), when the game gives one: surfaces lit by their material are lit by it from
     /// below and mirror it under the horizon.
     pub ground: Option<[f32; 3]>,
+    /// The sun stands where `nova.light` comes from (`sun = true`), so the sky's sun and the shadows always agree. Wins over `sun`.
+    pub sun_from_light: bool,
+    /// The painted look (`style = "painted"`): rounded clouds with flat shading and soft edges in bands round the horizon,
+    /// drifting with the wind, and a soft round sun with a wide glow, instead of the noise clouds and the photographic sun.
+    pub painted: bool,
+    /// The painted sun's disc, degrees across (0: the default, 4).
+    pub sun_size: f32,
+    /// A far range painted along the horizon (`far_hills = { color, height }`): its colour (linear) and its height in degrees.
+    pub far_hills: Option<([f32; 3], f32)>,
+}
+
+impl Default for Sky {
+    fn default() -> Self {
+        Self {
+            top: [0.2, 0.4, 0.8],
+            horizon: [0.7, 0.8, 0.9],
+            sun: None,
+            stars: 0.0,
+            clouds: 0.0,
+            time: 0.0,
+            ground: None,
+            sun_from_light: false,
+            painted: false,
+            sun_size: 0.0,
+            far_hills: None,
+        }
+    }
+}
+
+impl Sky {
+    /// The way to the sun this sky draws (unit), if it shows one: the light's own when the sun follows the light (`light_dir` is the
+    /// way the light travels).
+    pub fn sun_towards(&self, light_dir: [f32; 3]) -> Option<Vec3> {
+        if self.sun_from_light {
+            Some((-Vec3::from(light_dir)).normalize_or(Vec3::Y))
+        } else {
+            self.sun.map(|s| Vec3::from(s).normalize_or(Vec3::Y))
+        }
+    }
 }
 
 /// The sun's shadows, in a square of ground `radius` metres either side of what the camera looks at (more is blurrier).
@@ -248,6 +287,40 @@ pub struct Fog {
     pub color: [f32; 3],
     pub near: f32,
     pub far: f32,
+    /// Aerial perspective instead of the plain linear fade (`nova.fog`'s `height`, `floor`, `desaturate`, `sun`): see [`Haze`].
+    pub haze: Option<Haze>,
+}
+
+/// Distance haze as air does it: it builds quickly past `near` and then more slowly (still complete at `far`, so the end of the view
+/// never shows), thicker low down (a valley's floor) than up high, far things lose their colour before they lose their shape, and the
+/// haze towards the sun is lit by it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Haze {
+    /// Metres over which the haze thins with height above `floor` (thicker below, thinner above).
+    pub height: f32,
+    /// The height (y) where the haze is thickest: the valley's floor.
+    pub floor: f32,
+    /// How much colour far things lose, 0 to 1, growing with the haze.
+    pub desaturate: f32,
+    /// How much the sun lights the haze on its side of the sky, 0 to 1.
+    pub sun: f32,
+}
+
+impl Fog {
+    /// How much of the haze colour covers a point `distance` metres from an eye at height `eye_y`, the point at height `y`: what the
+    /// shaders do (`fog_amount` in mesh.wgsl), for tests and the CPU.
+    pub fn amount(&self, distance: f32, eye_y: f32, y: f32) -> f32 {
+        let t = ((distance - self.near) / (self.far - self.near).max(1e-3)).clamp(0.0, 1.0);
+        match self.haze {
+            None => t,
+            Some(h) => {
+                let mid = 0.5 * (eye_y + y) - h.floor;
+                let low = (-mid.max(0.0) / h.height.max(0.1)).exp();
+                let shaped = 1.0 - (1.0 - t).powf(1.2 + 0.5 * low);
+                shaped.powf(1.7 - 0.4 * low)
+            }
+        }
+    }
 }
 
 /// The hills (`nova.terrain`): the ground's height as a sum of up to [`MAX_TERRAIN_WAVES`] sine waves over the ground. Each wave is
@@ -839,6 +912,10 @@ struct Globals {
     see_through_near: [f32; 4],
     /// x, y: the world picture's size in pixels (the outlines' width is in pixels).
     outline_view: [f32; 4],
+    /// The painted sky (sky.wgsl): x 1 when painted, y the sun's disc's radius (radians), z the haze's sun glow (0 to 1); w unused.
+    sky_paint: [f32; 4],
+    /// rgb: the far hills painted along the horizon; w: their height (radians), 0 for none.
+    sky_far: [f32; 4],
 }
 
 /// One cascade of the sun's shadow: the matrix that draws the map and what the shader needs to read it.
@@ -2905,10 +2982,8 @@ impl Gfx {
             Some(k) => (
                 k.top,
                 k.horizon,
-                k.sun.map_or([0.0, 1.0, 0.0, 0.0], |s| {
-                    let d = Vec3::from(s).normalize_or(Vec3::Y);
-                    [d.x, d.y, d.z, 1.0]
-                }),
+                k.sun_towards(lit.direction)
+                    .map_or([0.0, 1.0, 0.0, 0.0], |d| [d.x, d.y, d.z, 1.0]),
             ),
             None => (lit.ambient, lit.ambient, [0.0, 1.0, 0.0, 0.0]),
         };
@@ -3840,14 +3915,22 @@ impl Gfx {
                 [k.horizon[0], k.horizon[1], k.horizon[2], 1.0]
             }),
             fog_color: fog.map_or([0.0; 4], |f| [f.color[0], f.color[1], f.color[2], 1.0]),
-            fog_range: fog.map_or([0.0; 4], |f| [f.near, f.far.max(f.near + 0.001), 0.0, 0.0]),
+            // (the haze rides in spare slots: fog_range z its height, w its floor; voxel z how much colour far things lose, w how
+            // much the sun lights it. A height of 0 is the plain linear fog)
+            fog_range: fog.map_or([0.0; 4], |f| {
+                let (height, floor) = f.haze.map_or((0.0, 0.0), |h| (h.height.max(0.1), h.floor));
+                [f.near, f.far.max(f.near + 0.001), height, floor]
+            }),
             light_view_proj,
             shadow,
-            voxel: [lit.day, lit.look.toon, 0.0, 0.0],
+            voxel: {
+                let (desaturate, sun) = fog
+                    .and_then(|f| f.haze)
+                    .map_or((0.0, 0.0), |h| (h.desaturate, h.sun));
+                [lit.day, lit.look.toon, desaturate, sun]
+            },
             sky_sun: sky.map_or([0.0, 1.0, 0.0, 0.0], |k| {
-                let d = k
-                    .sun
-                    .map_or(Vec3::Y, |s| Vec3::from(s).normalize_or(Vec3::Y));
+                let d = k.sun_towards(lit.direction).unwrap_or(Vec3::Y);
                 [d.x, d.y, d.z, k.stars]
             }),
             wind: [
@@ -3871,7 +3954,11 @@ impl Gfx {
                 [
                     k.clouds,
                     k.time,
-                    if k.sun.is_some() { 1.0 } else { 0.0 },
+                    if k.sun.is_some() || k.sun_from_light {
+                        1.0
+                    } else {
+                        0.0
+                    },
                     0.0,
                 ]
             }),
@@ -3903,6 +3990,13 @@ impl Gfx {
                 [from, amount.clamp(0.0, 1.0), 0.0, 0.0]
             }),
             outline_view: [world_size.0 as f32, world_size.1 as f32, 0.0, 0.0],
+            sky_paint: sky.filter(|k| k.painted).map_or([0.0; 4], |k| {
+                let across = if k.sun_size > 0.0 { k.sun_size } else { 4.0 };
+                [1.0, (across * 0.5).to_radians(), 0.0, 0.0]
+            }),
+            sky_far: sky
+                .and_then(|k| k.far_hills)
+                .map_or([0.0; 4], |(c, h)| [c[0], c[1], c[2], h.to_radians()]),
         };
         self.sync_heightmap(lit.terrain.map.as_ref());
         self.queue
@@ -3957,6 +4051,8 @@ impl Gfx {
                 see_through_opts: [0.0; 4],
                 see_through_near: [0.0; 4],
                 outline_view: [0.0; 4],
+                sky_paint: [0.0; 4],
+                sky_far: [0.0; 4],
             };
             self.queue
                 .write_buffer(&self.ui_globals, 0, bytemuck::bytes_of(&ui_globals));

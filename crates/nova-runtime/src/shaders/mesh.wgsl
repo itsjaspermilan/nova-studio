@@ -665,13 +665,8 @@ fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
     if (in.emissive < 0.0) {
         // a voxel surface: light is baked per vertex (x: sky, y: torch/lava), the face shade and ambient occlusion are in the colour
         let light = in.normal.x * globals.voxel.x * vec3<f32>(1.0) + in.normal.y * vec3<f32>(1.0, 0.86, 0.7);
-        var vrgb = base.rgb * min(light + vec3<f32>(0.03), vec3<f32>(1.0));
-        if (globals.fog_color.w > 0.5) {
-            let d = distance(in.world, globals.eye.xyz);
-            let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
-            vrgb = mix(vrgb, globals.fog_color.rgb, f);
-        }
-        return vec4<f32>(vrgb, base.a);
+        let vrgb = base.rgb * min(light + vec3<f32>(0.03), vec3<f32>(1.0));
+        return vec4<f32>(fog_over(in.world, vrgb), base.a);
     }
     let geo = safe_normalize(in.normal);
     var n = geo;
@@ -737,13 +732,8 @@ fn plain_light(in: VertexOut, base_in: vec4<f32>) -> vec4<f32> {
         light = light + globals.point_color[i].rgb * (falloff * falloff * lambert * cone);
     }
     // a glowing surface shows its colour at full brightness however dark the scene is
-    var rgb = surface * (light + vec3<f32>(glow)) + extra;
-    if (globals.fog_color.w > 0.5) {
-        let d = distance(in.world, globals.eye.xyz);
-        let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
-        rgb = mix(rgb, globals.fog_color.rgb, f);
-    }
-    return vec4<f32>(rgb, base.a);
+    let rgb = surface * (light + vec3<f32>(glow)) + extra;
+    return vec4<f32>(fog_over(in.world, rgb), base.a);
 }
 
 // ---- skinned meshes: the joints' matrices for the frame sit in a texture, four texels (columns) a matrix ----
@@ -1085,9 +1075,29 @@ fn fs_material(in: MaterialOut) -> @location(0) vec4<f32> {
     } else {
         rgb = rgb + in.emission.rgb * lamp;
     }
-    if (globals.fog_color.w > 0.5) {
-        let f = clamp((away - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
-        rgb = mix(rgb, globals.fog_color.rgb, f);
+    return vec4<f32>(fog_over(in.world, rgb), base.a);
+}
+
+// ---- distance fog and haze (nova.fog), the last step of every lit surface; gfx.rs `Fog::amount` is the same sum on the CPU ----
+// Plain fog fades linearly from fog_range.x to fog_range.y. With a haze height (fog_range.z > 0) it is aerial perspective: it builds
+// quickly past the start and then slowly (still complete at the end, so where the view stops never shows), more so low down (below
+// fog_range.w, the valley's floor, and over fog_range.z metres above it) than high up; far things lose their colour first (voxel.z)
+// and the haze on the sun's side of the view is lit by the sun (voxel.w).
+fn fog_over(world: vec3<f32>, rgb: vec3<f32>) -> vec3<f32> {
+    if (globals.fog_color.w < 0.5) {
+        return rgb;
     }
-    return vec4<f32>(rgb, base.a);
+    let d = distance(world, globals.eye.xyz);
+    let t = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+    if (globals.fog_range.z <= 0.0) {
+        return mix(rgb, globals.fog_color.rgb, t);
+    }
+    let mid = 0.5 * (globals.eye.y + world.y) - globals.fog_range.w;
+    let low = exp(-max(mid, 0.0) / globals.fog_range.z);
+    let f = pow(max(1.0 - pow(max(1.0 - t, 1e-6), 1.2 + 0.5 * low), 1e-6), 1.7 - 0.4 * low);
+    let grey = dot(rgb, vec3<f32>(0.299, 0.587, 0.114));
+    let faded = mix(rgb, vec3<f32>(grey), min(f * 1.6, 1.0) * globals.voxel.z);
+    let sunward = max(dot((world - globals.eye.xyz) / max(d, 1e-3), -globals.light_dir.xyz), 0.0);
+    let haze = globals.fog_color.rgb + globals.light_color.rgb * (globals.voxel.w * 0.3 * pow(sunward, 6.0));
+    return mix(faded, haze, f);
 }

@@ -1,0 +1,15 @@
+{
+  "start_scene": "valley",
+  "lua": "CAM = require('lib.camera'); AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end; INFO = function() local i = nova.ambient_info(); return string.format('leaves %d streaks %d motes %d bfly %d birds %d down %d far %.1f quads %d', i.leaves, i.streaks, i.motes, i.butterflies, i.birds, i.birds_down, i.farthest, i.quads) end",
+  "route": [
+    { "wait": 10, "lua": "pcall(function() require('lib.atmosphere').start(3) end); local p = nova.named('postmaster'); p.x, p.z = 36, -150; AT(30, 1.6, -140, 21, 2.5, -153, 60)" },
+    { "wait": 300, "capture": "life 1: by the larches" },
+    { "wait": 90, "capture": "life 2" },
+    { "wait": 90, "capture": "life 3" },
+    { "lua": "AT(34, 1.7, -170, 18, 1.2, -186, 60)" },
+    { "wait": 120, "capture": "life 4: the post office garden" },
+    { "wait": 300, "capture": "life 5: later" }
+  ],
+  "print": ["INFO()"],
+  "out": "build/atmosphere/life"
+}

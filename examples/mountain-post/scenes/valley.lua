@@ -20,6 +20,7 @@ local words = require("lib.words")
 local parcels = require("lib.parcels")
 local music = require("lib.music")
 local gear_hud = require("lib.gear_hud")
+local atmosphere = require("lib.atmosphere")
 
 local Valley = nova.scene {}
 
@@ -41,13 +42,18 @@ function Valley:enter()
   require("lib.terrain_line")()
   local bridge = nova.named("bridge")
   if bridge then bridge:settle() end
-  -- late morning, clear: the sun high in the south-east, soft shadows, haze in the distance, a gentle wind in the larches
-  nova.light { dir = { 0.42, -0.82, 0.38 }, color = { 255, 243, 222 }, ambient = { 120, 128, 142 } }
+  -- late morning, clear: the sun in the south-east, soft shadows, haze in the distance, a gentle wind in the larches
+  -- The sky is painted (the owner, seventh play: "no skybox or sun visible", "no blur and fading in the distance"): its sun stands
+  -- where the light comes from (sun = true, so it always agrees with the shadows), rounded clouds drift in bands round the horizon
+  -- with a far blue range under them, and the land fades into a blue-grey haze from about 45 m, nearly gone by 300, a little
+  -- thicker low in the valley, far colours fading first. The view ends at 380 m, where the haze is complete.
+  nova.light { dir = { 0.55, -0.66, 0.5 }, color = { 255, 243, 222 }, ambient = { 120, 128, 142 } }
   nova.shadows { radius = 40, strength = 0.72, near = 6, softness = 1.4 }
-  nova.sky { top = { 92, 150, 214 }, horizon = { 206, 226, 236 } }
-  nova.fog { color = { 196, 216, 228 }, near = 90, far = 1100 }
+  nova.sky { top = { 86, 146, 214 }, horizon = { 214, 228, 232 }, sun = true, style = "painted", sun_size = 4.5, clouds = 0.6,
+    far_hills = { color = { 150, 174, 200 }, height = 2.8 } }
+  nova.fog { color = { 200, 216, 226 }, near = 50, far = 380, height = 22, floor = 4, desaturate = 0.25, sun = 0.5 }
   nova.wind { direction = 60, strength = 1.1 }
-  nova.look { ao = 0.4, ao_radius = 0.8, saturation = 1.08, vignette = 0.16, bloom = 0.2, bloom_threshold = 0.82 }
+  nova.look { ao = 0.4, ao_radius = 0.8, saturation = 1.08, vignette = 0.16, bloom = 0.2, bloom_threshold = 0.92 }
   nova.scenery.range = 380
   self.p = nova.named("postmaster")
   self.van = nova.named("van")
@@ -86,6 +92,7 @@ function Valley:enter()
     camera.reset(self.p.face)
   end
   ambience.start(nova.named("mast"))
+  atmosphere.start()
   music.start("outdoors")
   nova.sound.play("door", { volume = state.came_out and 0.5 or 0, vary = 0.05 })
   self.chimneys = {}
@@ -112,6 +119,7 @@ end
 function Valley:leave()
   nova.pause(false)
   ambience.stop()
+  atmosphere.stop()
   state.van = { x = self.van.x, z = self.van.z, heading = self.van.heading }
   self.van.engine:stop()
   world.clear()

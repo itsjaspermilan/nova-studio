@@ -85,6 +85,7 @@ fn render(gfx: &mut Gfx, quality: Quality) -> Vec<u8> {
             clouds: 0.0,
             time: 0.0,
             ground: None,
+            ..Default::default()
         }),
         shadows: Some(Shadows {
             radius: 20.0,

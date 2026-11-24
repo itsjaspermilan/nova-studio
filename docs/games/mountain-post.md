@@ -1088,3 +1088,38 @@ Judged right: the walking and running ("Feels right"), the van ("Pleasant as is"
   words. "I don't like that when the text starts to appear, sometimes the text box will 'type' the word on one line then
   realize that it needs to go on the next line." (Coordinator's defaults where not specified: shorter first talks of two or
   three lines, warmer and simpler words, faster text with a press to finish the line.)
+
+## The sky, the haze and the floating life (after the seventh play, 2026-11-23)
+
+The owner: "Something feels missing from the world and I can't pinpoint it. Maybe the fact that there's no blur and fading in the
+distance? Maybe because there's no skybox or sun visible? Maybe because there's nothing floating around the area, like leaves or wind
+strokes or something?" All three are in (the engine parts are documented in `docs/project-format.md`, "A painted sky, a sun where the
+light is, and haze" and "Floating life"); `scenes/valley.lua` and `lib/atmosphere.lua` set them.
+
+- **Sky and sun.** `nova.sky { style = "painted", sun = true, ... }`: a soft gradient from a pale warm horizon to clear blue, rounded
+  cream clouds in three bands round the horizon (two flat tones, a bluer underside, soft edges, a lit rim towards the sun) drifting
+  with the wind, a round sun with a wide glow, and a far blue range of rounded hills along the horizon with its feet in the haze.
+  The sun stands where the light comes from, so it agrees with the shadows; the light was lowered a little (from about 55 to 42
+  degrees up, still late morning) so that the sun and its glow are in view when you look up the valley towards the south-east.
+  The far mountain models (`far_mountain`, 900 m out) were never drawn (the view ends at 400 m); the painted range stands in for them.
+- **Haze.** `nova.fog { near = 50, far = 380, height = 22, floor = 4, desaturate = 0.25, sun = 0.5 }`: aerial perspective from
+  about 50 m, a third of the way by 200 m, most of the way by 300 m and complete at 380 m (inside the view's end, which never
+  shows), thicker low in the valley, far colours fading first, warmer towards the sun. (It was a plain fog from 90 m to 1100 m: there
+  was almost none in the view.) The bloom threshold went from 0.82 to 0.92 so that the cream clouds do not glow.
+- **Floating life** (`lib/atmosphere.lua`): 22 leaves from the crowns of the trees near you, a white wind curl every four or five
+  seconds, 36 motes of pollen that glint when you look towards the sun, 5 butterflies over the flowers, bushes and gardens, and a
+  flock of up to 5 birds every half a minute or so that passes over or comes down on the grass by a tree and flies off when you come
+  near. All of it is the engine's (`nova.ambient`), round the camera, following `nova.wind`; off indoors.
+
+Pictures (1280 x 720, `build/gallery/`, not committed): `atmosphere-<view>-before.png` and `-after.png` for the valley towards the sun,
+away from it, from the bridge down the creek, a high view over the valley, the walking camera in the meadow and driving on Post Road,
+and `atmosphere-life-*.png` (leaves, curls, butterflies, motes, close). The routes are `tools/routes/atmosphere.json` and
+`tools/routes/life.json`. Tests: `the_valleys_sky_shows_the_sun_where_the_light_comes_from_and_the_land_fades_into_a_haze`,
+`floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors`, and `tests/atmosphere_gpu.rs` (the sun's place on the
+picture against the light, plain and painted; the haze against distance on the GPU and on the CPU).
+
+**Cost.** No Lua runs for any of it each frame (`lib/atmosphere.lua` reads the scene once on entering the valley); the floating life is
+moved in Rust (about 120 quads a frame at most with the game's counts, a handful of instanced draws). On a desktop (Apple M4, the
+`nature-bench` route, two runs each, the machine busy with other builds) the render time a frame moved by -0.4 to +0.4 ms, within its
+noise. **Not measured on the Retroid**: it was unreachable over SSH (host down) while this was done; `scripts/handheld-bench.sh` is the
+way to measure it (the target is at most about 1 ms of GPU added at 1280 x 720).

@@ -565,6 +565,75 @@ horizon (with a darker line just below the horizon, the far land seen edge on), 
 light is dimmed, because a thing standing on the ground shades the ground at its foot. Without `ground` nothing changes. It costs
 no picture read. (With `ibl` the sky cube is used instead and `ground` is not.)
 
+**A painted sky, a sun where the light is, and haze** (added 2026-11-23, for Fernhollow Post). All three are opt-in; a game that sets
+none of the new options draws exactly as before.
+
+```lua
+nova.light { dir = { 0.55, -0.66, 0.5 } }
+nova.sky { top = { 86, 146, 214 }, horizon = { 214, 228, 232 }, sun = true, style = "painted", sun_size = 4.5, clouds = 0.6,
+  far_hills = { color = { 150, 174, 200 }, height = 2.8 } }
+nova.fog { color = { 200, 216, 226 }, near = 50, far = 380, height = 22, floor = 4, desaturate = 0.25, sun = 0.5 }
+```
+
+* `sun = true` puts the sky's sun where `nova.light` comes from (the opposite of its `dir`), every frame: the sun you see and the
+  shadows always agree, also when the game turns the light. (`sun = { x, y, z }` still places it by hand.)
+* `style = "painted"` draws a backdrop painted round the camera, like a toy theatre's, instead of the noise clouds and the photographic
+  sun: a soft gradient from `horizon` to `top`; rounded clouds, each a few circles on a flat base, shaded in two flat tones (the lit body
+  and a bluer underside, parted by a gently wavy line) with soft edges and a lit rim on the sun's side, in three bands round the horizon
+  (far, small and hazy low down; near and big higher up) that drift at their own speeds, faster in a strong wind (`clouds` 0 to 1 is how
+  many cells of a band hold one); and a round sun `sun_size` degrees across (4 by default) with a wide soft glow. Clouds stand by the way
+  you look, never by where you are, so they never come nearer (a sky, not a ceiling). `far_hills` paints a far range of rounded hills
+  along the horizon, `height` degrees high (two ridges, the back one paler), their feet in the fog's colour: what stands beyond the end of
+  the view (which is at most 400 m, so mountains placed as models farther away are never drawn).
+* `nova.fog`'s `height`, `floor`, `desaturate` and `sun` (any of them) make the fog a **haze**, as air does it (aerial perspective): it
+  starts gently past `near`, builds through the middle distance and is complete at `far` (so where the view ends never shows: put `far`
+  a little inside the view, Fernhollow's is 380). It is thicker low down: below `floor` (a height: a valley's floor) and over `height`
+  metres above it more than high up, measured halfway between the eye and the point, so the far side of a valley seen from its floor sits
+  back more than the same distance seen from a hilltop. Far things lose `desaturate` (0 to 1) of their colour before they lose their
+  shape, which is the cheap way to soften far detail (no blur pass: it costs a few instructions a pixel and no picture read). On the
+  sun's side of the view the haze is lit by the sun (`sun`, 0 to 1), in the land and the sky alike. `Fog::amount` (gfx.rs) is the same
+  sum on the CPU; the test is `tests/atmosphere_gpu.rs`.
+
+What it costs: the painted sky is the one full-screen sky draw it always was, with three bands of at most two clouds a pixel (ten circle
+distances and a few hashes) and the far hills (four smooth bumps); the haze is a handful of instructions in the last step of every lit
+pixel. Measured on the Retroid in `docs/games/mountain-post.md` ("The sky, the haze and the floating life").
+
+**Floating life** (`nova.ambient`, added 2026-11-23). Leaves, wind curls, motes, butterflies and birds round the camera, kept and drawn
+by the engine:
+
+```lua
+nova.ambient {
+  radius = 30,                                                  -- metres round the camera (5 to 120)
+  leaves = { count = 22, trees = { { x, z, crown_height }, ... }, colors = { { 196, 204, 92 }, { 226, 190, 74 } } },
+  streaks = { count = 2, every = 4.5 },                         -- white wind curls, one every so many seconds
+  motes = { count = 36 },                                       -- pollen and dust near the camera
+  butterflies = { count = 5, flowers = { { x, z }, ... }, colors = { { 255, 236, 170 } } },
+  birds = { count = 5, every = 28, perches = { { x, z }, ... } },
+}
+nova.ambient()                                                  -- all off
+```
+
+* **Leaves** come from the crowns of the trees in `trees` that are near the camera (from half to almost all of `crown_height` up),
+  tumble down swinging across the wind as the wind carries them, lie on the ground a moment and fade. Without `trees` they come from
+  anywhere round the camera.
+* **Wind curls** (`streaks`): a soft white stroke ahead of the camera that draws itself along the wind, gently waving, rolls up into a
+  loop at its end, and is wiped away from its tail as it fades. One every `every` seconds or so (sooner in a strong wind), none when the
+  wind is still.
+* **Motes** float in a box ahead of the camera (a mote that drifts out comes back in on the other side, so there are always as many),
+  rising and falling slowly and carried a little by the wind; they are faint, and glint when the camera looks towards the sun.
+* **Butterflies** flutter about the `flowers` near the camera, a wander that keeps coming back to its flower, wings beating.
+* **Birds**: every `every` seconds or so a flock of up to `count` either passes over high up, across the view, flapping and gliding,
+  or (when a `perches` spot is near) glides in and comes down there to peck and hop about, and flies up and away when its time is up or
+  the camera comes within about six metres.
+
+Each kind has a hard cap (64 leaves, 8 curls, 96 motes, 12 butterflies, 12 birds) and leaving a kind out turns it off. Nothing is
+kept farther from the camera than about `radius` (a flock passing over up to about twice that): what drifts out is dropped and a new one
+starts near the camera, so the cost does not grow with the size of the world. It all runs in Rust after the scripts each frame (no Lua),
+moves with `nova.wind`, stops while the game is paused with `nova.pause`, and is the same each run for the same `seed`. The pictures are
+painted by the engine (no files): soft blended quads, one instanced draw per kind of picture, lit a little by the sun, in the haze, lifted
+by the hills, never cut by `nova.see_through`, casting no shadow. Positions are on the flat ground the game draws on (heights are
+above the ground). `nova.ambient_info()` says how many of each there are and the farthest from the camera (for tests).
+
 **Dirt** (added 2026-11-20). `nova.model("car", x, y, z, { dirt = 0.6, dirt_color = { 140, 115, 85 } })` draws the model with dirt
 on it: `dirt` is how much, 0 (clean, the default) to 1, and `dirt_color` its colour (a dull brown when left out). The shader draws
 it with no picture: it is thrown up from the ground, so it lies thick at the foot of the model and its ragged edge climbs as the
