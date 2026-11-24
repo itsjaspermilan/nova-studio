@@ -1,0 +1,23 @@
+{
+  "start_scene": "valley",
+  "lua": "T = require('lib.testkit'); CAM = require('lib.camera'); W = require('lib.world'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; nova.named('postmaster').seated = true; CAM.reset(h) end; AT = function(ex, ey, ez, tx, ty, tz, fov) CAM.pinned = { ex, nova.terrain_height(ex, ez) + ey, ez, tx, nova.terrain_height(tx, tz) + ty, tz, fov or 50 } end",
+  "route": [
+    { "wait": 40, "lua": "local p = nova.named('postmaster'); p.x, p.z, p.face = 36, -150, 0.9; CAM.reset(0.9); pcall(function() require('lib.atmosphere').start(4) end)" },
+    { "wait": 150, "capture": "1 walking camera in the meadow" },
+    { "wait": 240, "capture": "1b walking camera in the meadow, later" },
+    { "wait": 240, "capture": "1c walking camera in the meadow, later still" },
+    { "lua": "AT(104, 1.8, -64, 30, 30, -131, 65)" },
+    { "wait": 6, "capture": "2 the valley toward the sun" },
+    { "lua": "AT(104, 1.8, -64, 178, 6, 3, 60)" },
+    { "wait": 6, "capture": "3 the valley away from the sun" },
+    { "lua": "AT(-104, 5.0, 55.25, -60, 1.5, 140, 55)" },
+    { "wait": 6, "capture": "4 from the bridge down the creek" },
+    { "lua": "AT(130, 45, -120, -60, 0, 90, 55)" },
+    { "wait": 6, "capture": "5 a high view over the valley" },
+    { "lua": "CAM.pinned = nil; IN_VAN(13.5, -170.5, 0.3); T.drive('bridge_out')" },
+    { "until": "nova.named('van').z > -110", "max": 1800 },
+    { "wait": 2, "capture": "6 driving on Post Road" }
+  ],
+  "print": ["nova.perf().render_ms", "nova.stats().draws", "(function() local i = nova.ambient_info(); return string.format('leaves %d streaks %d motes %d bfly %d birds %d down %d far %.1f quads %d', i.leaves, i.streaks, i.motes, i.butterflies, i.birds, i.birds_down, i.farthest, i.quads) end)()"],
+  "out": "build/atmosphere/after"
+}

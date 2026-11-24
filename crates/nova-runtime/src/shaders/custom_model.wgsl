@@ -37,8 +37,16 @@ fn nova_fog(s: Surface, rgb: vec3<f32>) -> vec3<f32> {
         return rgb;
     }
     let d = distance(s.world, globals.eye.xyz);
-    let f = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
-    return mix(rgb, globals.fog_color.rgb, f);
+    let t = clamp((d - globals.fog_range.x) / (globals.fog_range.y - globals.fog_range.x), 0.0, 1.0);
+    if (globals.fog_range.z <= 0.0) {
+        return mix(rgb, globals.fog_color.rgb, t);
+    }
+    // the haze (mesh.wgsl fog_over): thicker low down, far colour fades first, lit towards the sun
+    let low = exp(-max(0.5 * (globals.eye.y + s.world.y) - globals.fog_range.w, 0.0) / globals.fog_range.z);
+    let f = pow(max(1.0 - pow(max(1.0 - t, 1e-6), 1.2 + 0.5 * low), 1e-6), 1.7 - 0.4 * low);
+    let faded = mix(rgb, vec3<f32>(dot(rgb, vec3<f32>(0.299, 0.587, 0.114))), min(f * 1.6, 1.0) * globals.voxel.z);
+    let sunward = max(dot((s.world - globals.eye.xyz) / max(d, 1e-3), -globals.light_dir.xyz), 0.0);
+    return mix(faded, globals.fog_color.rgb + globals.light_color.rgb * (globals.voxel.w * 0.3 * pow(sunward, 6.0)), f);
 }
 
 // Only a post effect can read the finished picture; elsewhere this is transparent black.

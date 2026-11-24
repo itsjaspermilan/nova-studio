@@ -10019,3 +10019,126 @@ fn the_first_piece_starts_after_a_moment_and_carries_on_through_the_door() {
         "prepared, then played once, and not restarted by the door"
     );
 }
+
+// ---- the owner's seventh play (2026-11-23): "Something feels missing": the sky, the sun, the haze, the floating life --------------
+
+/// "Maybe because there's no skybox or sun visible?" / "no blur and fading in the distance?" The valley's sky is the painted one
+/// with its sun where the light comes from (so the sun and the shadows agree), with clouds and far hills; its fog is a haze from about
+/// 50 m, complete by 380 m (inside the view's 400) and thicker low in the valley.
+#[test]
+fn the_valleys_sky_shows_the_sun_where_the_light_comes_from_and_the_land_fades_into_a_haze() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5 } ] }"#,
+    );
+    let render = &r.json["end"]["render"];
+    let sky = &render["sky"];
+    assert_eq!(sky["painted"], true, "{sky}");
+    assert_eq!(sky["sun_from_light"], true, "{sky}");
+    assert_eq!(sky["far_hills"], true, "{sky}");
+    assert!(sky["clouds"].as_f64().unwrap() > 0.3, "{sky}");
+    let light: Vec<f64> = render["light"]["direction"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let sun: Vec<f64> = sky["sun"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    let len = light.iter().map(|v| v * v).sum::<f64>().sqrt();
+    for k in 0..3 {
+        assert!(
+            (sun[k] + light[k] / len).abs() < 0.01,
+            "the sun is where the light comes from: {sun:?} vs {light:?}"
+        );
+    }
+    // high enough for late morning, low enough to be seen from the ground when you look up a little
+    assert!(sun[1] > 0.5 && sun[1] < 0.8, "the sun's height: {sun:?}");
+    let fog = &render["fog"];
+    let (near, far) = (fog["near"].as_f64().unwrap(), fog["far"].as_f64().unwrap());
+    assert!(
+        (40.0..=60.0).contains(&near) && (250.0..=390.0).contains(&far),
+        "{fog}"
+    );
+    assert!(
+        fog["haze"]["height"].as_f64().unwrap() > 0.0,
+        "a haze, thicker low down: {fog}"
+    );
+    assert!(
+        fog["haze"]["desaturate"].as_f64().unwrap() > 0.0,
+        "far colours fade first: {fog}"
+    );
+}
+
+/// "Maybe because there's nothing floating around the area, like leaves or wind strokes or something?" The valley has leaves,
+/// wind curls, motes, butterflies and birds round the camera, each within the engine's cap and the game's count, none farther from the
+/// camera than its reach, also after the camera has crossed the valley; a flock comes by; and none of it is in the office.
+#[test]
+fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
+    let mut g = game();
+    let info = "(function() local i = nova.ambient_info(); return string.format('%d %d %d %d %d %d %.2f %d', i.leaves, i.streaks, i.motes, \
+                i.butterflies, i.birds, i.birds_down, i.farthest, i.quads) end)()";
+    let r = play(
+        &mut g,
+        &format!(
+            r#"{{ "start_scene": "valley", "steps": [ {{ "wait": 5, "lua": "require('lib.atmosphere').start(3)" }},
+            {{ "wait": 900, "record": "{info}" }},
+            {{ "wait": 2, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 30; require('lib.camera').reset(0)" }},
+            {{ "wait": 900, "record": "{info}" }} ] }}"#
+        ),
+    );
+    let runs = r.record(info);
+    assert!(runs.len() > 100, "recorded: {}", runs.len());
+    let (mut most, mut saw_birds, mut saw_streak, mut saw_leaf) =
+        ([0usize; 6], false, false, false);
+    for (_, _, v) in &runs {
+        let n: Vec<f64> = v.split(' ').map(|x| x.parse().unwrap()).collect();
+        let (leaves, streaks, motes, butterflies, birds) = (
+            n[0] as usize,
+            n[1] as usize,
+            n[2] as usize,
+            n[3] as usize,
+            n[4] as usize,
+        );
+        for (k, c) in [leaves, streaks, motes, butterflies, birds, n[5] as usize]
+            .into_iter()
+            .enumerate()
+        {
+            most[k] = most[k].max(c);
+        }
+        // the game's counts (lib/atmosphere.lua), under the engine's caps
+        assert!(
+            leaves <= 22 && streaks <= 2 && motes <= 36 && butterflies <= 5 && birds <= 5,
+            "too many: {v}"
+        );
+        // camera-local: within the radius (30 m), a flock passing over within about twice it
+        assert!(
+            n[6] <= 30.0 * 2.2 + 1.0,
+            "something far from the camera: {v}"
+        );
+        assert!(n[7] as usize <= 22 + 2 * 24 + 36 + 5 + 5, "quads: {v}");
+        saw_birds |= birds > 0;
+        saw_streak |= streaks > 0;
+        saw_leaf |= leaves > 0;
+    }
+    assert_eq!(most[2], 36, "the motes are all there: {most:?}");
+    assert!(
+        saw_birds && saw_streak && saw_leaf,
+        "birds, wind curls and leaves came by: {most:?}"
+    );
+    // and indoors there is none of it
+    play(
+        &mut g,
+        r#"{ "start_scene": "office", "steps": [ { "wait": 30 } ] }"#,
+    );
+    assert_eq!(
+        lua(&g, info).split(' ').take(5).collect::<Vec<_>>(),
+        ["0", "0", "0", "0", "0"],
+        "nothing floats indoors"
+    );
+}

@@ -66,6 +66,7 @@ fn builtin_module(name: &str) -> Option<&'static str> {
     }
 }
 
+mod ambient_api;
 mod animated;
 mod billboard_api;
 mod debug_api;
@@ -148,6 +149,8 @@ struct Shared {
     next_sound: u64,
     save: SaveStore,
     mesh_ids: HashMap<String, usize>,
+    /// `nova.ambient`: the life floating round the camera (`game/ambient_api.rs`).
+    ambient: ambient_api::Ambient,
     /// Shape keys of the loaded models and the blended copies made of them (`game/morph_api.rs`).
     morph: morph_api::Variants,
     /// Point lights asked for this frame, and what the last frames made of them (which are lit, how far each has faded in).
@@ -1976,19 +1979,55 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
             let top = picture_color(&opts, "top")?
                 .ok_or_else(|| lua_err("nova.sky needs top = {r, g, b}: the colour overhead (and horizon = {r, g, b} for the line where it meets the ground)"))?;
             let horizon = picture_color(&opts, "horizon")?.unwrap_or(top);
-            let sun = match opts.get::<Option<Table>>("sun")? {
-                Some(t) => Some([
-                    t.get::<Option<f32>>(1)?.unwrap_or(0.0),
-                    t.get::<Option<f32>>(2)?.unwrap_or(1.0),
-                    t.get::<Option<f32>>(3)?.unwrap_or(0.0),
-                ]),
+            // sun = { x, y, z } (the way to it), or true: where nova.light comes from, so the sun and the shadows always agree
+            let (sun, sun_from_light) = match opts.get::<Value>("sun")? {
+                Value::Table(t) => (
+                    Some([
+                        t.get::<Option<f32>>(1)?.unwrap_or(0.0),
+                        t.get::<Option<f32>>(2)?.unwrap_or(1.0),
+                        t.get::<Option<f32>>(3)?.unwrap_or(0.0),
+                    ]),
+                    false,
+                ),
+                Value::Boolean(b) => (None, b),
+                Value::Nil => (None, false),
+                _ => return Err(lua_err("nova.sky's sun is { x, y, z } (the way to the sun) or true (where nova.light comes from)")),
+            };
+            let painted = match string_option(&Some(opts.clone()), "style")?.as_deref() {
+                None | Some("plain") => false,
+                Some("painted") => true,
+                Some(other) => return Err(lua_err(format!("nova.sky's style is \"painted\" or \"plain\", not '{other}'"))),
+            };
+            // far_hills = { color = {r, g, b}, height = 3 }: a far range painted along the horizon, height in degrees
+            let far_hills = match opts.get::<Option<Table>>("far_hills")? {
+                Some(t) => {
+                    let color = picture_color(&t, "color")?.unwrap_or(horizon);
+                    let height = number_option(&Some(t), "height")?.unwrap_or(3.0);
+                    if !height.is_finite() || !(0.0..=30.0).contains(&height) {
+                        return Err(lua_err(format!("nova.sky's far_hills height is in degrees, 0 to 30, not {height}")));
+                    }
+                    Some((color, height as f32))
+                }
                 None => None,
             };
             let opts = Some(opts);
             let stars = number_option(&opts, "stars")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
             let clouds = number_option(&opts, "clouds")?.unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+            let sun_size = number_option(&opts, "sun_size")?.unwrap_or(0.0).clamp(0.0, 20.0) as f32;
             let ground = picture_color(opts.as_ref().unwrap(), "ground")?;
-            s.borrow_mut().lighting.sky = Some(Sky { top, horizon, sun, stars, clouds, time: 0.0, ground });
+            s.borrow_mut().lighting.sky = Some(Sky {
+                top,
+                horizon,
+                sun,
+                stars,
+                clouds,
+                time: 0.0,
+                ground,
+                sun_from_light,
+                painted,
+                sun_size,
+                far_hills,
+            });
             Ok(())
         })?,
     )?;
@@ -2010,10 +2049,30 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     "fog far ({far}) must be greater than near ({near}), and near cannot be negative"
                 )));
             }
+            // aerial perspective (any of height, floor, desaturate, sun): the haze builds quickly then slowly, thicker low down
+            let height = number_option(&opts, "height")?;
+            let floor = number_option(&opts, "floor")?;
+            let desaturate = number_option(&opts, "desaturate")?;
+            let sun = number_option(&opts, "sun")?;
+            let haze = if height.is_some() || floor.is_some() || desaturate.is_some() || sun.is_some() {
+                let height = height.unwrap_or(30.0);
+                if !height.is_finite() || height <= 0.0 {
+                    return Err(lua_err(format!("fog height is the metres over which the haze thins upwards (more than 0), not {height}")));
+                }
+                Some(crate::gfx::Haze {
+                    height: height as f32,
+                    floor: floor.unwrap_or(0.0) as f32,
+                    desaturate: desaturate.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                    sun: sun.unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+                })
+            } else {
+                None
+            };
             s.borrow_mut().lighting.fog = Some(Fog {
                 color,
                 near: near as f32,
                 far: far as f32,
+                haze,
             });
             Ok(())
         })?,
@@ -2931,6 +2990,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     walls_api::install(lua, shared, &nova)?;
     mesh_api::install(lua, shared, &nova)?;
     billboard_api::install(lua, shared, &nova)?;
+    ambient_api::install(lua, shared, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
@@ -4720,6 +4780,7 @@ impl Game {
             next_sound: 1,
             save: store,
             mesh_ids: HashMap::new(),
+            ambient: ambient_api::Ambient::default(),
             morph: morph_variants,
             known_models: model_ids,
             fx_sprites,
@@ -4904,6 +4965,10 @@ impl Game {
                 None => target.add_mesh(&mesh),
             };
             ids.insert(id, mesh_id);
+        }
+        // the pictures of `nova.ambient` (after the game's own meshes, so theirs keep their numbers)
+        for (key, mesh) in ambient_api::meshes() {
+            ids.insert(key, target.add_mesh(&mesh));
         }
         let mut sh = self.shared.borrow_mut();
         sh.mesh_ids = ids;
@@ -5171,6 +5236,12 @@ impl Game {
         std::mem::swap(&mut sh.joints, &mut self.joints);
         let made = std::mem::take(&mut sh.voxel.ops);
         self.mesh_ops.extend(made);
+        // the life floating round the camera (`nova.ambient`), moved on by the engine's clock (still while paused)
+        {
+            let mut ambient = std::mem::take(&mut sh.ambient);
+            ambient.step(if sh.frozen { 0.0 } else { dt }, &sh, &mut self.models);
+            sh.ambient = ambient;
+        }
         self.shading.models = std::mem::take(&mut sh.shading.models);
         self.shading.sprites = std::mem::take(&mut sh.shading.sprites);
         self.shading.post = sh.shading.post;
