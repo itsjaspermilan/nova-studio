@@ -2,7 +2,7 @@
 // map's bounds, a sample every half metre, white where grass grows in full, black where none does. Made from the same things the
 // game stands on: the road network's real surface (junction patches, fillets, aprons and rounded ends included, roads.mjs) with
 // the grass thinning over the last metre and a half before it; the creek and the gorge with their banks; the lake; the porches
-// and steps (the scene's `deck`s) and the ground footprint of every house, wall, fence, rock, stump and bench (footprint.mjs, from
+// and steps (the scene's `deck`s), the ponds (inside their shore) and the driveways (part of the road network) and the ground footprint of every house, wall, fence, rock, stump and bench (footprint.mjs, from
 // the models). Trees are left out: grass grows round a trunk. Run it again after the roads or the scene change:
 //
 //   scripts/env.sh node examples/mountain-post/tools/grass.mjs
@@ -55,6 +55,19 @@ for (const w of scene.objects.filter((o) => o.kind === "water")) {
   const j0 = Math.floor((Math.min(a[1], b[1]) - reach - Z0) / CELL), j1 = Math.ceil((Math.max(a[1], b[1]) + reach - Z0) / CELL);
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) cut(i, j, smooth(half, half + 1.2, segDist(at(i, j), a, b)));
 }
+// the ponds: none in the water (inside the shore), thinning over the metre and a half of bank above it
+for (const p of scene.objects.filter((o) => o.kind === "pond")) {
+  const shore = p.props.shore, xs = shore.map((q) => q[0]), zs = shore.map((q) => q[1]);
+  const inPoly = (x, z) => { let c = false; for (let a = 0, b = shore.length - 1; a < shore.length; b = a++) { const [xa, za] = shore[a], [xb, zb] = shore[b]; if ((za > z) !== (zb > z) && x < ((xb - xa) * (z - za)) / (zb - za) + xa) c = !c; } return c; };
+  for (let j = Math.floor((Math.min(...zs) - 3 - Z0) / CELL); j <= Math.ceil((Math.max(...zs) + 3 - Z0) / CELL); j++)
+    for (let i = Math.floor((Math.min(...xs) - 3 - X0) / CELL); i <= Math.ceil((Math.max(...xs) + 3 - X0) / CELL); i++) {
+      const [x, z] = at(i, j);
+      if (inPoly(x, z)) { cut(i, j, 0); continue; }
+      let d = Infinity;
+      for (let a = 0, b = shore.length - 1; a < shore.length; b = a++) d = Math.min(d, segDist([x, z], shore[b], shore[a]));
+      cut(i, j, smooth(0.3, 1.6, d));
+    }
+}
 const lake = scene.objects.find((o) => o.kind === "lake");
 if (lake) for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) cut(i, j, smooth(0, 2, lake.props.z0 - 2 - at(i, j)[1]));
 
@@ -73,7 +86,7 @@ for (const d of scene.objects.filter((o) => o.kind === "deck")) {
 // what stands on the ground: every footprint point clears the grass within 0.35 m, thinning out to 0.8 m
 const STANDS = new Set(["post_office", "cabin_hazel", "cabin_pip", "workshop", "mast", "stone_wall", "fence", "rock", "rock_big",
   "rock_small", "stump", "log", "bench", "picnic_table", "woodpile", "sawhorse", "planks", "mailbox", "signpost", "gate_post",
-  "barrier", "notice_board", "bridge", "old_bridge"]);
+  "barrier", "notice_board", "bridge", "old_bridge", "hedge", "outcrop", "field_gate", "fallen_tree", "jetty"]);
 // (a house's footprint is its walls and steps: the floor inside is cleared too, the outline's hull and half a metre round it)
 const HOUSES = new Set(["post_office", "cabin_hazel", "cabin_pip", "workshop"]);
 const hull = (pts) => {

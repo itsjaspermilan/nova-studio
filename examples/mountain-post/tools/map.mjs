@@ -41,6 +41,7 @@ console.log(tool("map_make", {
   roads: { kind: "roadline", classes: { road: { width: 13 * k }, gravel: { width: 9 * k, lane: true } } },
   water: { kind: "water", names: { creek: "Kettle Creek" } },
   water_below: 0.9,
+  ponds: { kind: "pond" }, // (Reed, Alder and Tarn Ponds: entities/pond.lua's shore lines)
   water_areas: [[-400, 292, 400, 700]], // (the lake beyond the gorge: entities/lake.lua's, past the terrain's edge)
   trees: { pine: ["pine", "pine2", "pine3", "larch", "larch_small"], round: ["birch"] },
   forest: { kinds: ["forest_round", "forest_tall", "forest_long"], radius: 11 },

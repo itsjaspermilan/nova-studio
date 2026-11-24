@@ -312,12 +312,12 @@ function wordsDist(g: Words, u: number, v: number) {
 export interface MapLabel { text: string; kind: "road" | "water" | "place" | "area" | "title" | "scale" | "compass"; circles: [number, number, number][]; of?: string; px?: number }
 
 // ---- the recipe -------------------------------------------------------------------------------------------------------------------
-const TOP_KEYS = ["name", "project", "scene", "terrain", "bounds", "size", "sizes", "title", "subtitle", "seed", "palette", "font", "roads", "water", "trees", "forest", "places", "marks", "areas", "water_below", "water_areas", "compass", "scale_bar", "repeat", "label_size", "text_min", "wobble"];
+const TOP_KEYS = ["name", "project", "scene", "terrain", "bounds", "size", "sizes", "title", "subtitle", "seed", "palette", "font", "roads", "water", "trees", "forest", "places", "marks", "areas", "water_below", "water_areas", "ponds", "compass", "scale_bar", "repeat", "label_size", "text_min", "wobble"];
 
 export const MAP_HELP =
   "Inputs: `scene` (scenes/<scene>.scene.json); `terrain` ({ heightmap, x, z, size, height } as nova.terrain takes them, found in the project's Lua when left out, false for none); `bounds` [x0, z0, x1, z1] in metres (the scene's roads and water and 40 m round them when left out); `size` [w, h] or a height (the width follows the bounds); `sizes` more copies, each the area-average of the first ([[w, h]] or scales [0.67]); " +
   "`roads`: { kind: \"roadline\" (objects whose props have points [[x, z], ...], width, label and surface), classes: { road: { width: 12 }, gravel: { width: 8.5, lane: true } } (px of fill; a class with lane: true is drawn in the lane colours) }; " +
-  "`water`: { kind: \"water\" (props points, width, key), names: { creek: \"Kettle Creek\" } (a key's name, lettered along it) }; `water_below`: metres (the terrain below it is water: a lake); `water_areas`: [[x0, z0, x1, z1], ...] (open water beyond the terrain: a lake, the sea); " +
+  "`water`: { kind: \"water\" (props points, width, key), names: { creek: \"Kettle Creek\" } (a key's name, lettered along it) }; `water_below`: metres (the terrain below it is water: a lake); `water_areas`: [[x0, z0, x1, z1], ...] (open water beyond the terrain: a lake, the sea); `ponds`: { kind: \"pond\" } (objects whose props have `shore`, [[x, z], ...] round still water: a pond or a lake, its shore wobbled a little); " +
   "`trees`: { pine: [kinds], round: [kinds] } (each object of those kinds is a little drawn tree, thinned to a grid); `forest`: { kinds: [...], radius: 12 } (a mass of trees round each); " +
   `\`places\`: { <kind>: { icon, label? } } (every object of that kind gets the icon, and the label if one is given; icons: ${MAP_ICONS.join(", ")}; a bridge uses the object's props a and b, a wall each object's place and turn); ` +
   "`marks`: [{ at: [x, z], icon, label? }] (landmarks not in the scene); `areas`: [{ at: [x, z], text }] (a region's name, lettered faintly); " +
@@ -429,6 +429,26 @@ export function makeTownMap(root: string, a: Args, bin: string | null): { files:
         const [wx, wz] = toWorld(x + 0.5, y + 0.5), k = (n2(x / 14, y / 14 + 50) - 0.5) * 6;
         if (wx > x0 + k && wx < x1 - k && wz > z0 + k && wz < z1 - k) lake[y * W + x] = 1;
       }
+    }
+    // (and the ponds: still water inside a shore line, objects of the scene of the kind `ponds.kind`, its shore wobbled by a metre or so)
+    const pondKind = a.ponds && typeof a.ponds === "object" ? String(a.ponds.kind ?? "pond") : null;
+    for (const o of pondKind ? objects.filter((q) => q.kind === pondKind && Array.isArray(q.props?.shore) && q.props.shore.length >= 3) : []) {
+      const shore = o.props.shore as P[];
+      const inside = (wx: number, wz: number) => {
+        let c = false;
+        for (let i = 0, j = shore.length - 1; i < shore.length; j = i++) {
+          const [xi, zi] = shore[i]!, [xj, zj] = shore[j]!;
+          if ((zi! > wz) !== (zj! > wz) && wx < ((xj! - xi!) * (wz - zi!)) / (zj! - zi!) + xi!) c = !c;
+        }
+        return c;
+      };
+      const pts = shore.map(([x, z]) => toMap(x!, z!)), xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+      for (let y = Math.max(0, Math.floor(Math.min(...ys)) - 3); y < Math.min(H, Math.ceil(Math.max(...ys)) + 3); y++)
+        for (let x = Math.max(0, Math.floor(Math.min(...xs)) - 3); x < Math.min(W, Math.ceil(Math.max(...xs)) + 3); x++) {
+          const k = (n2(x / 5, y / 5 + 90) - 0.5) * 2;
+          const [wx, wz] = toWorld(x + 0.5 + k, y + 0.5 - k);
+          if (inside(wx, wz)) lake[y * W + x] = 1;
+        }
     }
     const isWater = (x: number, y: number) => waterField.at(x, y) < 0 || lake[Math.floor(clamp(y, 0, H - 1)) * W + Math.floor(clamp(x, 0, W - 1))] === 1;
 

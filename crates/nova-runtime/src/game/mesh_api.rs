@@ -113,6 +113,17 @@ pub(super) fn build(spec: &Table) -> mlua::Result<(Vec<MeshVertex>, Vec<u32>)> {
                 * crate::model::PAINT_STEP
         }
     };
+    // `still = true` on water: a pond or a lake, not a stream (its ripples stay where they are and only shimmer). Carried as a
+    // glow of STILL_WATER on the water's points, which mesh.wgsl reads as that and never draws as a glow.
+    let still = spec.get::<Option<bool>>("still")?.unwrap_or(false);
+    if still && paint != crate::model::paint_kind("water").unwrap_or(0) as f32 * crate::model::PAINT_STEP {
+        return Err(lua_err("nova.mesh.make: still = true is for paint = \"water\""));
+    }
+    let paint = if still {
+        paint + crate::model::STILL_WATER
+    } else {
+        paint
+    };
     check("uvs", &uvs, 2)?;
     check("normals", &normals, 3)?;
     let mut vertices: Vec<MeshVertex> = (0..count)

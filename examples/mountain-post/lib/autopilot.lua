@@ -31,6 +31,8 @@ function autopilot.path(van, place)
   local legs = {}
   -- on a lane: back down it first
   local r = world.nearest("road", van.x, van.z)
+  -- (in a driveway or its yard: the road it joins)
+  if r and r.joins then r = road(r.joins) end
   local route = ROUTES[place]
   if r and r.id ~= "post_road" and r.id == route[#route][1] then
     legs[1] = route[#route] -- (already on the lane it ends on: just on along it)

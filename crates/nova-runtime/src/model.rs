@@ -403,6 +403,10 @@ fn read_influences(
 /// times the kind, so every pipeline keeps its vertex layout. Read back by `paint_of` and `glow_of` in mesh.wgsl.
 pub const PAINT_STEP: f32 = 1000.0;
 
+/// Still water (`nova.mesh.make { paint = "water", still = true }`: a pond, not a stream): the glow a water point carries to say so.
+/// mesh.wgsl reads a water point's glow of a quarter or more as still and draws no glow for it.
+pub const STILL_WATER: f32 = 0.5;
+
 /// The painted kinds by name, in the order of their numbers (1 is "foliage").
 pub const PAINT_KINDS: [&str; 7] = [
     "foliage", "canopy", "ground", "water", "wood", "roof", "stone",
