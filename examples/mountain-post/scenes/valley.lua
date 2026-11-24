@@ -511,7 +511,11 @@ function Valley:draw()
     local ry = po.ry or 0
     local fx, fz = math.sin(ry), math.cos(ry)
     BOARD.face = { fx, 0, fz }
-    nova.billboard("po_sign", po.x + fx * 3.42, 3.8, po.z + fz * 3.42, 2.1, BOARD)
+    -- (the board stands on the porch roof's front edge: tools/models.mjs "post_office"; the picture is cropped to the ink of its words and
+    -- its middle is the panel's middle, 3.65 m up, 0.02 m off the panel's front)
+    local iw, ih = nova.image_size("fx/po_sign")
+    BOARD.w, BOARD.h = iw / 300, ih / 300
+    nova.billboard("po_sign", po.x + fx * 5.37, 3.65, po.z + fz * 5.37, BOARD.w, BOARD)
   end
   local bar = nova.named("barrier")
   if bar then

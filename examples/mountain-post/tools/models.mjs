@@ -176,8 +176,12 @@ def("post_office", () => {
   const door = doorAt(0, base, D / 2, PAL.teal);
   c.push(door.frame, box([0, base + 2.55, D / 2 + 0.15], [HOUSE.trim, 0.2, HOUSE.trim], C.iron));
   // the sign board over the porch roof (its words are drawn by the game)
-  c.push(box([0, base + 3.35, D / 2 + 0.08], [4.2, 0.85, 0.12], shade(PAL.slate, -0.3)));
-  c.push(box([0, base + 3.35, D / 2 + 0.03], [4.4, 1.0, 0.08], C.cream));
+  // (it stands on the porch roof's front edge, on two short posts, clear above the roof: when it was on the wall the porch roof hid the
+  // lower line of words and the main roof's slope buried the rest; the game paints the words on its front, scenes/valley.lua)
+  const zs = D / 2 + 2.1; // the board's middle, in front of the wall
+  c.push(box([0, base + 3.2, zs], [4.0, 0.9, 0.1], shade(PAL.slate, -0.3)));
+  c.push(box([0, base + 3.2, zs - 0.04], [4.24, 1.14, 0.08], C.cream));
+  for (const x of [-1.6, 1.6]) c.push(box([x, base + 2.7, zs - 0.04], [0.14, 0.7, 0.14], C.cream));
   // the chimney, stone, at the back right, up through the roof (its smoke starts at 6.5 m: scenes/valley.lua)
   c.push(...chimney(2.6, -1.4, 0.75, 0.75, roof.at(1.4) - 0.4, 6.34));
   // a bench on the porch, a post box at the steps' foot

@@ -129,6 +129,31 @@ if (doing("signs")) {
   put("lib/sign_art.lua", `-- Made by tools/art.mjs (the signs section). Do not edit; run the recipe again.\n-- Each road name's lettering picture: the metres along the arm where the middle of the picture goes (the panel's optical middle), its size\n-- in metres (the picture is cropped to the ink), the board's height and its lines.\nreturn {\n${lua}\n}\n`);
 }
 
+// The post office's name board (4.0 x 0.9 m dark panel on the porch roof, tools/models.mjs "post_office"): the same rules as the signposts:
+// the picture cropped to the ink, the lines centred on one another by their ink, the block centred on the panel (the game draws the
+// picture's middle at the panel's middle: scenes/valley.lua), solid cream capitals in the rounded face (no faded alpha: it read broken).
+if (doing("signs") || doing("words")) {
+  const lines = [{ text: "FERNHOLLOW", cap: 0.15 }, { text: "POST OFFICE", cap: 0.3 }];
+  const inks = lines.map((l) => {
+    const size = Math.round((l.cap * SIGN_PPM) / 0.7), stroke = Math.max(2, Math.round(size * 0.06));
+    const W = wordsWidth(l.text, size) + 80, H = Math.round(size * 2), at = [W / 2, Math.round(size * 1.3)];
+    const shape = { text: l.text, at, size, font: "rounded", align: "center", fill: "#f3e6c8", stroke: { color: "#f3e6c8", width: stroke } };
+    img("fx/_sign_line", [W, H], [shape]);
+    const b = inkBox(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"));
+    return { ...l, size, stroke, at, b, w: b.x1 - b.x0, h: b.y1 - b.y0 };
+  });
+  rmSync(join(REPO, "examples/mountain-post/sprites/fx/_sign_line.png"), { force: true });
+  const pad = 3, gap = Math.round(inks[1].h * 0.4), w = Math.max(...inks.map((l) => l.w)) + 2 * pad, h = inks.reduce((s, l) => s + l.h, 0) + gap + 2 * pad;
+  if (w / SIGN_PPM > 3.6 || h / SIGN_PPM > 0.7) throw new Error(`the post office's words (${w / SIGN_PPM} x ${h / SIGN_PPM} m) do not fit its board with a margin`);
+  let y = pad;
+  const shapes = inks.map((l) => {
+    const at = [Math.round(w / 2 - ((l.b.x0 + l.b.x1) / 2 - l.at[0])), Math.round(y - (l.b.y0 - l.at[1]))];
+    y += l.h + gap;
+    return { text: l.text, at, size: l.size, font: "rounded", align: "center", fill: "#f3e6c8", stroke: { color: "#f3e6c8", width: l.stroke } };
+  });
+  img("fx/po_sign", [w, h], shapes);
+  console.log(`po_sign: ${(w / SIGN_PPM).toFixed(2)} x ${(h / SIGN_PPM).toFixed(2)} m on a 4.0 x 0.9 panel`);
+}
 if (doing("words")) {
   // (the road names' lettering is the "signs" section, below)
   // The mailboxes' numbers: big and dark on a cream plate filling the box's side
@@ -142,10 +167,6 @@ if (doing("words")) {
     { text: "BRIDGE", at: [256, 84], size: 86, font: "comic", align: "center", fill: RED, opacity: 0.95 },
     { text: "OUT", at: [256, 172], size: 92, font: "comic", align: "center", fill: RED, opacity: 0.95 },
     { line: [[40, 104], [470, 98]], width: 5, fill: RED, opacity: 0.6, cap: "round" },
-  ]);
-  img("fx/po_sign", [512, 104], [
-    { text: "FERNHOLLOW", at: [256, 34], size: 28, font: "rounded", align: "center", fill: "#e9dcbccc" },
-    { text: "POST OFFICE", at: [256, 88], size: 52, font: "rounded", align: "center", fill: "#efe2c2dd" },
   ]);
   // (the van's sides: chunky painted letters thick enough to read from the chase camera; since the van turned blue (the owner: "make
   // the van blue with a red stripe"), cream letters, POST edged in the stripe's red, for contrast on the mail blue)
