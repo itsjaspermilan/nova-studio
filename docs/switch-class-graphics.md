@@ -64,7 +64,10 @@ the shadow blends into the next map's, and fades out at the end of the last one;
 texel size of the cascade, so far shadows do not get acne. The edge is the engine's 3x3 taps of hardware-filtered comparisons (a soft
 edge about four texels wide, times `nova.shadows { softness }`) in every cascade.
 `shadow_cascades = 1` is the single map of `2 x radius` metres, with a second, fine map of the view's first `nova.shadows { near }`
-metres (12 by default) in front of it (added 2026-11-21: one more shadow pass, of the few models near the camera).
+metres (12 by default) in front of it (added 2026-11-21: one more shadow pass, of the few models near the camera). With
+`nova.shadows { far = 110 }` (added 2026-11-23) the single map is laid over what the view sees and a third, coarse map of only the
+big casters (bounding radius over 1.2 m) carries the trees' and houses' shadows on to `far` metres: a cheaper alternative to three
+cascades for a game whose far shadows are mostly trees (docs/project-format.md, "Shadows far off").
 
 Since 2026-11-21 every map's depth bias is half a texel, and the normal offset is half a texel plus the filter's reach times the sine
 of the angle between the surface and the sun (nothing for a surface facing the sun, the whole reach for one the light grazes).

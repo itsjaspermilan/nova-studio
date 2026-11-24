@@ -8,7 +8,7 @@
 // detail) are the same silhouettes with fewer sides, painted the same, so near and far match. Grass, flowers, the far mountains and
 // the clouds still come from prop3d_make, in the same palette.
 // Run: scripts/env.sh node examples/mountain-post/tools/nature.mjs [name ...]   (no names: all of them)
-import { cyl, mesh, model, one, part, rng, shade } from "./geo.mjs";
+import { cyl, mesh, model, one, part, rng, shade, tube } from "./geo.mjs";
 import { tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
@@ -28,14 +28,18 @@ function puff(c, r, color, squash = 1, segments = 10) {
 /// Its rim is uneven: every other side reaches a little less far, each by its own amount, and each tip droops by its own amount, so
 /// the edge reads as bunches of needles and not as a lathe's circle (never further out than `r`: the crowns the scene keeps off the
 /// signs' sight lines are measured from it). Painted as foliage.
+// (2026-11-23, the owner's seventh play: "Trees look a little blobby still") A tier is a drooping skirt of branches: its underside
+// is hollow (the middle sits up inside it, so the underside faces down and the renderer darkens it), every other side is a long branch
+// tip that reaches out and hangs down, the sides between are notched in deep, so the rim reads as separate bunches of needles.
 function tier(y0, h, r, color, R, segments = 12, rag = 1) {
-  const prof = [[0, y0 + h * 0.05], [r * 0.86, y0], [r, y0 + h * 0.1], [r * 0.93, y0 + h * 0.24], [r * 0.62, y0 + h * 0.58], [r * 0.2, y0 + h * 0.95], [0, y0 + h]];
-  const reach = [0, 1, 1, 0.8, 0.45, 0.2, 0]; // (how much of the ragged edge each ring of the profile takes)
+  const prof = [[0, y0 + h * 0.16], [r * 0.8, y0 - h * 0.02], [r, y0 + h * 0.05], [r * 0.9, y0 + h * 0.19], [r * 0.56, y0 + h * 0.55], [r * 0.18, y0 + h * 0.93], [0, y0 + h]];
+  const reach = [0, 1, 1, 0.85, 0.5, 0.2, 0]; // (how much of the ragged edge each ring of the profile takes)
   const turn = R() * 6.283, verts = [], faces = [];
   const out = [], droop = [];
   for (let j = 0; j < segments; j++) {
-    out.push(1 - rag * ((j % 2 ? 0.12 : 0.02) + R() * 0.07));
-    droop.push(-rag * R() * 0.11 * h);
+    const tip = j % 2 === 0;
+    out.push(1 - rag * (tip ? R() * 0.05 : 0.24 + R() * 0.08));
+    droop.push(-rag * (tip ? 0.1 + R() * 0.12 : 0.02 + R() * 0.03) * h);
   }
   verts.push([0, prof[0][1], 0]);
   for (let i = 1; i < prof.length - 1; i++) {
@@ -92,33 +96,35 @@ function trunk(h, r, color, segments = 6) {
 
 // ---- pines: three or four stacked soft cones in deep greens, their rims ragged -----------------------------------------------------
 // (each tier's own random numbers come from a source of its own, so the sizes the scene measures stay those of the plain tiers)
+// (2026-11-23: more tiers, each shorter, so they read as separate shelves of drooping branches with the trunk showing under the
+// lower ones; each a little lighter than the one below, the top one lightest, as the sun catches the tips)
 const pine = (seed, h, tiers, color) => () => {
-  const R = rng(seed), c = [trunk(h * 0.35, 0.2, PAL.trunk)];
+  const R = rng(seed), c = [trunk(h * 0.42, 0.2, PAL.trunk)];
   for (let i = 0; i < tiers; i++) {
-    const t = i / tiers, y0 = h * (0.16 + t * 0.6), th = h * (0.44 - t * 0.08), r = h * (0.3 - t * 0.17) * (0.92 + R() * 0.16);
-    c.push(tier(y0, th, r, shade(color, i * 0.05 + (R() - 0.5) * 0.04), rng(seed * 31 + i * 7 + 1)));
+    const t = i / tiers, y0 = h * (0.2 + t * 0.62), th = h * (0.34 - t * 0.07), r = h * (0.3 - t * 0.19) * (0.92 + R() * 0.16);
+    c.push(tier(y0, th, r, shade(color, i * 0.06 + (R() - 0.5) * 0.04), rng(seed * 31 + i * 7 + 1)));
   }
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.3 }] });
 };
-def("pine", pine(1, 5.2, 3, PAL.pine));
-def("pine2", pine(3, 5.6, 4, PAL.pineDeep));
-def("pine3", pine(7, 5.1, 3, shade(PAL.pine, 0.06)));
-// (far: the same height and colour as a near pine in two ragged tiers of seven sides; from 110 m the dissolve between them is soft)
-def("pine_far", () => one([trunk(1.6, 0.2, PAL.trunk, 5), tier(0.8, 2.9, 1.5, PAL.pine, rng(41), 7), tier(2.6, 2.8, 1.0, shade(PAL.pine, 0.06), rng(42), 7)]));
+def("pine", pine(1, 5.2, 4, PAL.pine));
+def("pine2", pine(3, 5.6, 5, PAL.pineDeep));
+def("pine3", pine(7, 5.1, 4, shade(PAL.pine, 0.06)));
+// (far: the same height and colour as a near pine in three ragged tiers of eight sides; from 110 m the dissolve between them is soft)
+def("pine_far", () => one([trunk(2.1, 0.2, PAL.trunk, 5), tier(1.04, 1.8, 1.56, PAL.pine, rng(41), 8), tier(2.2, 1.65, 1.15, shade(PAL.pine, 0.08), rng(42), 8), tier(3.4, 1.5, 0.72, shade(PAL.pine, 0.15), rng(45), 8)]));
 
-// ---- larches: tall, slender, light; four soft tiers, ragged -----------------------------------------------------------------------
+// ---- larches: tall, slender, light; five soft tiers, ragged -----------------------------------------------------------------------
 const larch = (seed, h) => () => {
-  const R = rng(seed), c = [trunk(h * 0.5, 0.15, PAL.trunk)];
-  const tiers = 4;
+  const R = rng(seed), c = [trunk(h * 0.55, 0.15, PAL.trunk)];
+  const tiers = 5;
   for (let i = 0; i < tiers; i++) {
-    const t = i / tiers, y0 = h * (0.22 + t * 0.58), th = h * 0.26, r = (1 - t) * h * 0.17 + 0.45;
-    c.push(tier(y0, th, r * (0.94 + R() * 0.12), shade(PAL.larch, (R() - 0.5) * 0.08 + i * 0.03), rng(seed * 37 + i * 5 + 3), 11));
+    const t = i / tiers, y0 = h * (0.24 + t * 0.6), th = h * 0.21, r = (1 - t) * h * 0.17 + 0.45;
+    c.push(tier(y0, th, r * (0.94 + R() * 0.12), shade(PAL.larch, (R() - 0.5) * 0.08 + i * 0.035), rng(seed * 37 + i * 5 + 3), 11));
   }
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.3 }] });
 };
 def("larch", larch(2, 13));
 def("larch_small", larch(6, 8));
-def("larch_far", () => one([trunk(3, 0.15, PAL.trunk, 5), tier(2.4, 5.6, 2.1, PAL.larch, rng(43), 7), tier(6.4, 6.0, 1.35, shade(PAL.larch, 0.05), rng(44), 7)]));
+def("larch_far", () => one([trunk(4, 0.15, PAL.trunk, 5), tier(3.1, 3.6, 2.6, PAL.larch, rng(43), 8), tier(6.2, 3.4, 1.85, shade(PAL.larch, 0.05), rng(44), 8), tier(9.2, 3.4, 1.05, shade(PAL.larch, 0.1), rng(46), 8)]));
 
 // ---- a birch: a pale trunk with painted dark marks, a crown of leaf clumps -----------------------------------------------------------
 // (the five clumps of the old crown, each now a ball with bulges of its own: a crown of sub-clumps with soft hollows between)
@@ -128,20 +134,41 @@ def("birch", () => {
     const y = 0.6 + i * 0.5, a = R() * 6.28, r = 0.17 * (1 - (y / h) * 0.25) + 0.005;
     c.push({ shape: "box", from: [u(Math.sin(a) * r - 0.06), u(y), u(Math.cos(a) * r - 0.06)], size: [u(0.12), u(0.05), u(0.12)], color: PAL.ink, rotation: [0, (a * 180) / Math.PI, 0] });
   }
-  const L = rng(12);
-  for (const [x, y, z, r] of [[0, 3.6, 0, 1.35], [0.9, 3.1, 0.4, 0.95], [-0.8, 3.2, -0.3, 1.0], [0.2, 4.4, -0.5, 0.9], [-0.3, 3.0, 0.9, 0.8]]) {
-    c.push(clump([x, y, z], r, shade(PAL.leaf, 0.08 + (R() - 0.5) * 0.1), L, { seg: r > 1.1 ? 11 : 9, rows: r > 1.1 ? 8 : 7, bulges: r > 1.1 ? 5 : 3 }));
-  }
+  // (2026-11-23, "Trees look a little blobby still": the crown is now a ring of five separate leaf clusters round a darker core, every
+  // other one higher, with notches between them where the sky shows at the crown's edge, and one on top; each cluster has a lighter
+  // cap where the sun falls on its top, and a pale branch runs out to it from the trunk, seen in the gaps and under the crown. No
+  // cluster reaches further out or higher than the old crown did: the signs' sight lines are measured from it.)
+  crown(c, [0, 3.55, 0], { core: 0.9, ring: 5, out: 1.06, lift: 0.5, r: [0.68, 0.8], top: 0.74, color: shade(PAL.leaf, 0.08), bark: shade(PAL.white, -0.12), from: 2.4, seed: 12 });
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.3 }] });
 });
 
-// ---- bushes: a few leaf clumps together ----------------------------------------------------------------------------------------------
-const bush = (seed, color) => () => {
-  const R = rng(seed), L = rng(seed * 13 + 5), c = [];
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * 6.28 + R(), d = i === 0 ? 0 : 0.42, r = i === 0 ? 0.55 : 0.36 + R() * 0.1;
-    c.push(clump([Math.sin(a) * d, r * 0.8, Math.cos(a) * d], r, shade(color, (R() - 0.5) * 0.12), L, { seg: 8, rows: 6, bulges: 3, amp: 0.12 }));
+/// A broadleaf crown into `c`: a darker core clump at `at`, `ring` clusters round it `out` metres from the axis (every other one
+/// `lift` higher), one on top (`top`: its radius, 0 for none), each with a lighter cap on its sunny top; branches (`bark`) from the
+/// trunk at height `from` out to each cluster (none when `bark` is not given).
+function crown(c, at, o) {
+  const R = rng(o.seed), L = rng(o.seed * 7 + 1), clusters = [];
+  for (let i = 0; i < o.ring; i++) {
+    const a = (i / o.ring) * 6.283 + (R() - 0.5) * 0.5, r = o.r[0] + R() * (o.r[1] - o.r[0]);
+    const y = at[1] + (i % 2 ? o.lift * 0.5 : -o.lift * 0.5) + (R() - 0.5) * 0.15;
+    clusters.push([at[0] + Math.sin(a) * o.out, y, at[2] + Math.cos(a) * o.out, r]);
   }
+  if (o.top) clusters.push([at[0] + (R() - 0.5) * 0.3, at[1] + o.out * 0.82, at[2] + (R() - 0.5) * 0.3, o.top]);
+
+  c.push(clump(at, o.core, shade(o.color, -0.14), L, { seg: o.seg ?? 8, rows: 5, bulges: 3, amp: 0.12 }));
+  for (const [x, y, z, r] of clusters) {
+    const col = shade(o.color, (R() - 0.5) * 0.1);
+    c.push(clump([x, y, z], r, col, L, { seg: o.seg ?? 8, rows: 6, bulges: 3, amp: 0.16 }));
+    // the cap: a smaller, lighter clump on the cluster's top, a little outwards
+    const ox = x - at[0], oz = z - at[2], d = Math.hypot(ox, oz) || 1;
+    c.push(clump([x + (ox / d) * r * 0.12, y + r * 0.42, z + (oz / d) * r * 0.12], r * 0.58, shade(col, 0.16), L, { seg: 6, rows: 4, bulges: 2, amp: 0.12 }));
+    if (o.bark) c.push(tube([[at[0], o.from, at[2]], [at[0] + ox * 0.45, (o.from + y) * 0.5 + 0.1, at[2] + oz * 0.45], [at[0] + ox * 0.8, y - r * 0.3, at[2] + oz * 0.8]], [0.075, 0.05, 0.03], o.bark, { segments: 5 }));
+  }
+}
+
+// ---- bushes: a few leaf clusters round a darker core, lighter caps ------------------------------------------------------------------
+const bush = (seed, color) => () => {
+  const c = [];
+  crown(c, [0, 0.46, 0], { core: 0.46, ring: 4, out: 0.44, lift: 0.14, r: [0.33, 0.42], top: 0, color, seed: seed * 13 + 5, seg: 7 });
   return one(c, { colliders: [{ x: 0, z: 0, r: 0.5 }] });
 };
 def("bush", bush(1, PAL.leaf));
@@ -199,6 +226,8 @@ const mass = (seed, L, D, H) => () => {
     // by as much, so the mass is as tall as before)
     const pt = larchy ? 0 : 0.35 + K() * 0.4;
     c.push(clump([x, top - r * sq * (1 + pt * 0.9), z], r, col, K, { seg: 8, rows: 6, squash: sq, bulges: 4, amp: 0.14, point: pt, paint: "canopy" }));
+    // (2026-11-23) a lighter cap on its top, where the sun falls on the tips: each treetop of the mass reads on its own
+    c.push(clump([x + (K() - 0.5) * r * 0.3, top - r * sq * (0.62 + pt * 0.5), z + (K() - 0.5) * r * 0.3], r * 0.52, shade(col, 0.15), K, { seg: 6, rows: 4, squash: sq, bulges: 2, amp: 0.12, point: pt * 0.8, paint: "canopy" }));
   }
   // the foot: a darker band of low, wide clumps, sunk a little into the ground so a slope never shows a gap
   const m = Math.max(2, Math.round(L / (D * 1.3)));

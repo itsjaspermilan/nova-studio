@@ -136,6 +136,9 @@ pub fn make(device: &wgpu::Device, queue: &wgpu::Queue) -> PaintNoise {
         mag_filter: wgpu::FilterMode::Linear,
         min_filter: wgpu::FilterMode::Linear,
         mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        // (anisotropic: a stroke on ground seen at a slant keeps its shape instead of smearing along the view; added 2026-11-23
+        // with the ground's ladder of stroke sizes, mesh.wgsl `paint_ground`)
+        anisotropy_clamp: 8,
         ..Default::default()
     });
     PaintNoise {

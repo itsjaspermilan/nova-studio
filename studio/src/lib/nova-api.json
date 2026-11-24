@@ -289,8 +289,8 @@
  {
   "name": "nova.shadows",
   "kind": "function",
-  "signature": "nova.shadows{ radius = 60, strength = 0.6 [, near = 12, softness = 1] }",
-  "doc": "Turns on the sun's shadows (set the sun with nova.light). They cover `radius` metres around what the camera looks at: a smaller radius is sharper. `strength` is how dark they are, 0 to 1. `near` (metres, 12 by default) gives the first metres in front of the camera a second, finer map, so a wheel, a foot or a post has a crisp shadow that starts where it touches the ground; 0 leaves it out (with graphics shadow_cascades 2 or 3 the cascades do this instead). `softness` (0.25 to 4, 1 by default) is how wide the soft edge is, in texels of the map. Models cast and receive them unless drawn with shadow = false (which only stops casting: such a model, the ground, still receives); see-through models never cast. Costs extra drawing, so offer a way to turn it off. `nova.shadows(nil)` turns them off.",
+  "signature": "nova.shadows{ radius = 60, strength = 0.6 [, near = 12, softness = 1, far = 0] }",
+  "doc": "Turns on the sun's shadows (set the sun with nova.light). They cover `radius` metres around what the camera looks at: a smaller radius is sharper. `strength` is how dark they are, 0 to 1. `near` (metres, 12 by default) gives the first metres in front of the camera a second, finer map, so a wheel, a foot or a post has a crisp shadow that starts where it touches the ground; 0 leaves it out (with graphics shadow_cascades 2 or 3 the cascades do this instead). `softness` (0.25 to 4, 1 by default) is how wide the soft edge is, in texels of the map. `far` (metres along the view, 10 to 400; 0 by default, off) keeps the big things' shadows (trees, houses: a bounding radius over 1.2 m) out to that distance: the map of `radius` is then laid over what the camera sees, and a third, coarser map takes the rest of the view, fading out over its last 15% (one more shadow pass, of the big casters only; with the single map only, as `near`). Models cast and receive them unless drawn with shadow = false (which only stops casting: such a model, the ground, still receives); see-through models never cast. Costs extra drawing, so offer a way to turn it off. `nova.shadows(nil)` turns them off.",
   "group": "Drawing"
  },
  {
@@ -361,6 +361,20 @@
   "kind": "function",
   "signature": "nova.wind{ direction = 0, strength = 1 } | nova.wind()",
   "doc": "The wind that bends foliage: `direction` is degrees on the ground (0 blows towards +x, 90 towards +z), `strength` 0 to 4 (1 is a breeze). It bends models drawn with a `sway` (nova.model, nova.scenery.add, nova.scenery.scatter), more the higher a part is above the model's origin, with a slow swell that travels across the field along the wind and a quicker flutter; shadows bend with it. It stays until changed; `nova.wind()` stills it.",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.grass",
+  "kind": "function",
+  "signature": "nova.grass{ map = \"terrain/grass.png\", x = 0, z = 0, size = 100 [, cell, color = {r, g, b}, colors = {...}, height = 0.42, width = 0.07, density = 10, distance = 32, sway = 1] } | nova.grass()",
+  "doc": "Blades of grass round the camera, grown on the GPU: clumps of six blades, dense near the camera and thinning out to `distance` metres (4 to 80) with no line where they end, swaying in nova.wind (`sway` 0 to 4), lit by the sun with the shadows, casting none. `map` is a picture laid over the ground like a heightmap (its first pixel at `x`, `z`, `size` metres from the first pixel to the last, or `cell` metres between pixels): its grey (or red) says where grass grows, 255 in full, 0 none, between fewer and shorter clumps; without a map it grows everywhere. Its colour is `color` (sRGB 0 to 255), or the ground's own colours from `colors = { x =, z =, cell =, columns =, rows =, data = { r, g, b, ... } }` (sRGB, row by row along +z), lighter towards the tips. `height` is a blade's height in metres (0.05 to 2), `width` its width at the root (0.01 to 0.5), `density` clumps a square metre near the camera (0.5 to 40). It stays until changed; `nova.grass()` turns it off. See docs/project-format.md, \"Grass\".",
+  "group": "Drawing"
+ },
+ {
+  "name": "nova.grass_bend",
+  "kind": "function",
+  "signature": "nova.grass_bend(x, z [, radius = 0.8])",
+  "doc": "This frame, the grass (nova.grass) within `radius` metres of that point on the ground leans away from it and lies down: call it from draw for each foot, wheel or body passing through. Up to 8 points a frame; it lasts one frame.",
   "group": "Drawing"
  },
  {

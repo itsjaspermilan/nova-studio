@@ -38,6 +38,7 @@ function Office:enter()
   read_layout()
   world.clear()
   nova.terrain() -- (no hills indoors)
+  nova.grass() -- (nor grass)
   nova.sky { top = { 60, 48, 40 }, horizon = { 60, 48, 40 } }
   nova.fog(nil)
   -- the light from the window (the sun is low through it, from the right) and a warm, dim room

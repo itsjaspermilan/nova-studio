@@ -269,30 +269,57 @@ fn paint_ground(rgb: vec3<f32>, world: vec3<f32>, n: vec3<f32>, gx: vec2<f32>, g
     let warm = vec3<f32>(1.08, 1.03, 0.80);
     let cool = vec3<f32>(0.88, 0.98, 1.08);
     var c = rgb * mix(cool, warm, smoothstep(0.22, 0.78, patches)) * (0.9 + 0.2 * mid);
-    let near = 1.0 - smoothstep(0.03, 0.08, footprint);
+    // A ladder of three sizes of strokes (added 2026-11-23, the owner's seventh play: "The grass texture fades away too soon"): the
+    // dabs (1.1 m), dabs three times their size (3.3 m by 0.75 m) and sweeps nine times their size (10 m by 2.2 m). Each fades out
+    // where it would be under a few pixels wide and the next size is already there, so the painted look carries on out to 80 m and
+    // more with no line where one size gives way. What decides is the pixel's size across the view (`fa`): the noise is read with
+    // anisotropic filtering (gfx/paint.rs), which keeps a stroke whole when the ground is seen at a slant, up to 8 times as long as
+    // it is wide; before, the pixel's length along the view decided, and the dabs were gone at about 20 m from the walking camera.
+    let la = length(gx);
+    let lb = length(gy);
+    let fa = max(max(la, lb) * 0.125, min(la, lb));
+    let a1 = vec2<f32>(0.8, 0.6);
+    let b1 = vec2<f32>(-0.6, 0.8);
+    let a2 = vec2<f32>(0.28, -0.96);
+    let b2 = vec2<f32>(0.96, 0.28);
+    let w = smoothstep(0.35, 0.65, big);
+    var stroke = 0.0;
+    let near = 1.0 - smoothstep(0.025, 0.07, fa);
     if (near > 0.0) {
-        let a1 = vec2<f32>(0.8, 0.6);
-        let b1 = vec2<f32>(-0.6, 0.8);
-        let a2 = vec2<f32>(0.28, -0.96);
-        let b2 = vec2<f32>(0.96, 0.28);
-        let w = smoothstep(0.35, 0.65, big);
-        let edge = max(0.05, footprint * 8.0);
+        let edge = max(0.05, fa * 8.0);
         // (lighter dabs in the blue channel, darker ones in the alpha: two noises from one read)
         let s1 = paint_read(p, gx, gy, paint_axes(a1, b1, 0.9, 4.0), vec2<f32>(0.0, 0.0));
         let s2 = paint_read(p, gx, gy, paint_axes(a2, b2, 0.9, 4.0), vec2<f32>(0.43, 0.0));
         let lit = mix(s1.b, s2.b, w);
         let dim = mix(s1.a, s2.a, w);
         let dabs = smoothstep(0.6 - edge, 0.6 + edge, lit) * 0.13 - smoothstep(0.62 - edge, 0.62 + edge, dim) * 0.12;
-        let fine = 1.0 - smoothstep(0.012, 0.03, footprint);
+        let fine = 1.0 - smoothstep(0.01, 0.025, fa);
         var blades = 0.0;
         if (fine > 0.0) {
             let f1 = paint_read(p, gx, gy, paint_axes(a1, b1, 2.2, 10.0), vec2<f32>(0.2, 0.7)).r;
             let f2 = paint_read(p, gx, gy, paint_axes(a2, b2, 2.2, 10.0), vec2<f32>(0.6, 0.1)).r;
             blades = (smoothstep(0.5 - edge * 2.0, 0.5 + edge * 2.0, mix(f1, f2, w)) - 0.5) * 0.09 * fine;
         }
-        let stroke = dabs * near + blades;
-        c = c * (1.0 + stroke) + vec3<f32>(0.010, 0.014, -0.004) * stroke * 4.0;
+        stroke = dabs * near + blades;
     }
+    let near1 = 1.0 - smoothstep(0.08, 0.21, fa);
+    if (near1 > 0.0) {
+        let edge = max(0.05, fa * 2.7);
+        let s1 = paint_read(p, gx, gy, paint_axes(a2, b2, 0.3, 1.33), vec2<f32>(0.71, 0.13));
+        let s2 = paint_read(p, gx, gy, paint_axes(a1, b1, 0.3, 1.33), vec2<f32>(0.37, 0.59));
+        let lit = mix(s1.b, s2.b, w);
+        let dim = mix(s1.a, s2.a, w);
+        let dabs = smoothstep(0.6 - edge, 0.6 + edge, lit) * 0.11 - smoothstep(0.62 - edge, 0.62 + edge, dim) * 0.10;
+        stroke = stroke + dabs * near1 * mix(1.0, 0.6, near);
+    }
+    let near2 = 1.0 - smoothstep(0.25, 0.65, fa);
+    if (near2 > 0.0) {
+        let edge = max(0.05, fa * 0.9);
+        let s = paint_read(p, gx, gy, paint_axes(a1, b1, 0.1, 0.45), vec2<f32>(0.53, 0.83));
+        let dabs = smoothstep(0.6 - edge, 0.6 + edge, mix(s.b, s.r, w)) * 0.08 - smoothstep(0.62 - edge, 0.62 + edge, s.a) * 0.08;
+        stroke = stroke + dabs * near2 * mix(1.0, 0.5, near1);
+    }
+    c = c * (1.0 + stroke) + vec3<f32>(0.010, 0.014, -0.004) * stroke * 4.0;
     // the sun's side of a slope: warmer and a little lighter; the far side: cooler
     let to_sun = safe_normalize(-globals.light_dir.xyz);
     let lean = dot(n, to_sun) - to_sun.y;

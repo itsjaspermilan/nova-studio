@@ -48,7 +48,7 @@ function Valley:enter()
   -- with a far blue range under them, and the land fades into a blue-grey haze from about 45 m, nearly gone by 300, a little
   -- thicker low in the valley, far colours fading first. The view ends at 380 m, where the haze is complete.
   nova.light { dir = { 0.55, -0.66, 0.5 }, color = { 255, 243, 222 }, ambient = { 120, 128, 142 } }
-  nova.shadows { radius = 40, strength = 0.72, near = 6, softness = 1.4 }
+  nova.shadows { radius = 40, strength = 0.72, near = 6, softness = 1.4, far = 110 } -- (far: the trees keep their shadows out to 110 m)
   nova.sky { top = { 86, 146, 214 }, horizon = { 214, 228, 232 }, sun = true, style = "painted", sun_size = 4.5, clouds = 0.6,
     far_hills = { color = { 150, 174, 200 }, height = 2.8 } }
   nova.fog { color = { 200, 216, 226 }, near = 50, far = 380, height = 22, floor = 4, desaturate = 0.25, sun = 0.5 }

@@ -12,6 +12,7 @@ local ValleyGround = nova.entity { tags = { "ground" } }
 local ROAD = {}
 local WATER_EDGE = world.WATER_EDGE
 local MESH = { shadow = false }
+local GRASS_CELL = 0.5 -- (terrain/grass.png: a sample every half metre, tools/grass.mjs)
 
 local function axis(lo, hi, step, far, far_step)
   local out = {}
@@ -29,7 +30,7 @@ function ValleyGround:build()
   local L = world.limits or { x0 = -250, z0 = -265, x1 = 250, z1 = 300 }
   local xs = axis(L.x0, L.x1, 4, 900, 60)
   local zs = axis(L.z0, L.z1, 4, 900, 60)
-  local pos, col, idx = {}, {}, {}
+  local pos, col, idx, grid = {}, {}, {}, {}
   local banked = {} -- (points on a water's bank: a square with any such corner is left out, the bank's finer ground lies there)
   local nx = #xs
   for j, z in ipairs(zs) do
@@ -48,8 +49,19 @@ function ValleyGround:build()
       pos[#pos + 1] = x; pos[#pos + 1] = y; pos[#pos + 1] = z
       local r, g, b = world.ground_color(x, z, i, j)
       col[#col + 1] = math.floor(r); col[#col + 1] = math.floor(g); col[#col + 1] = math.floor(b); col[#col + 1] = 255
+      if x >= L.x0 and x <= L.x1 and z >= L.z0 and z <= L.z1 then
+        grid[#grid + 1] = math.floor(r); grid[#grid + 1] = math.floor(g); grid[#grid + 1] = math.floor(b)
+      end
     end
   end
+  local columns, rows = 0, 0
+  for _, x in ipairs(xs) do if x >= L.x0 and x <= L.x1 then columns = columns + 1 end end
+  for _, z in ipairs(zs) do if z >= L.z0 and z <= L.z1 then rows = rows + 1 end end
+  -- the blades of grass (terrain/grass.png, made by tools/grass.mjs: none on the roads, the water, the porches or under a house),
+  -- coloured from these same ground colours on the same 4 m grid, so a blade's root is the ground's own green
+  nova.grass { map = "terrain/grass.png", x = L.x0, z = L.z0, cell = GRASS_CELL,
+    colors = { x = L.x0, z = L.z0, cell = 4, columns = columns, rows = rows, data = grid },
+    height = 0.3, width = 0.07, density = 10, distance = 32, sway = 1 }
   for j = 1, #zs - 1 do
     for i = 1, nx - 1 do
       local a = (j - 1) * nx + i
@@ -68,10 +80,21 @@ function ValleyGround:draw()
   if not self.built then self:build() end
   if self.mesh then nova.mesh.draw(self.mesh, MESH) end
   for _, r in ipairs(self.roads or {}) do nova.model(r, 0, 0.02, 0, ROAD) end
+  -- the grass bends away from the postmaster's feet and from the van's two axles as they pass
+  self.walker = self.walker or nova.named("postmaster")
+  self.van = self.van or nova.named("van")
+  local p, v = self.walker, self.van
+  if p and not p.seated and not p.indoors then nova.grass_bend(p.x, p.z, 0.75) end
+  if v then
+    local s, c = math.sin(v.heading or 0), math.cos(v.heading or 0)
+    nova.grass_bend(v.x + s * 1.0, v.z + c * 1.0, 1.4)
+    nova.grass_bend(v.x - s * 0.6, v.z - c * 0.6, 1.4)
+  end
 end
 
 function ValleyGround:on_destroy()
   if self.mesh then nova.mesh.free(self.mesh); self.mesh = nil end
+  nova.grass() -- (no grass in another scene)
 end
 
 return ValleyGround

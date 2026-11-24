@@ -72,6 +72,7 @@ mod billboard_api;
 mod debug_api;
 mod drawn_api;
 mod fx2d_api;
+mod grass_api;
 mod mesh_api;
 mod morph_api;
 mod physics_api;
@@ -1955,11 +1956,16 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
                     if !(0.25..=4.0).contains(&softness) {
                         return Err(lua_err("shadows softness must be from 0.25 (crisp) to 4 (very soft); 1 is the default"));
                     }
+                    let far = number_option(&o, "far")?.unwrap_or(0.0);
+                    if !far.is_finite() || !(far == 0.0 || (10.0..=400.0).contains(&far)) {
+                        return Err(lua_err("shadows far must be 0 (as far as the radius reaches) or 10 to 400 (metres along the view that keep the big things' shadows)"));
+                    }
                     Some(Shadows {
                         radius: radius as f32,
                         strength: strength as f32,
                         near: near as f32,
                         softness: softness as f32,
+                        far: far as f32,
                     })
                 }
                 Some(_) => return Err(lua_err("nova.shadows takes a table like { radius = 60, strength = 0.6 }, true, or false")),
@@ -2991,6 +2997,7 @@ fn register_api(lua: &Lua, shared: &Rc<RefCell<Shared>>, vfs: &Rc<dyn Vfs>) -> m
     mesh_api::install(lua, shared, &nova)?;
     billboard_api::install(lua, shared, &nova)?;
     ambient_api::install(lua, shared, &nova)?;
+    grass_api::install(lua, shared, vfs, &nova)?;
 
     // --- input: named actions, see docs/project-format.md ---
     let input = lua.create_table()?;
@@ -5285,6 +5292,9 @@ impl Game {
         }
         self.lighting.wind.time = (sh.time % 100_000.0) as f32;
         sh.lighting.outlines.clear(); // outlines last one frame too
+        if let Some(g) = sh.lighting.grass.as_mut() {
+            g.bends.clear(); // and the grass's bending points
+        }
         sh.lighting.point_count = 0; // point lights last one frame; the sun and ambient stay
         self.clear = sh.clear;
         let white = sh.layout.white_uv();
