@@ -1,0 +1,24 @@
+{
+ "start_scene": "valley",
+ "out": "build/gallery/dust",
+ "lua": "CAM = require('lib.camera'); W = require('lib.world'); IN_VAN = function(x, z, h) local v = nova.named('van'); v:teleport(x, z, h); local s = nova.scene_now(); s.mode = 'van'; v.driven = true; v.engine_on = true; v.gear = 'D'; nova.named('postmaster').seated = true; CAM.pinned = nil; CAM.reset(h) end; SIDE = function() local v = nova.named('van'); local s, c = math.sin(v.heading), math.cos(v.heading); local ex, ez = v.x + c * 7 - s * 3, v.z - s * 7 - c * 3; CAM.pinned = { ex, nova.terrain_height(ex, ez) + 2.2, ez, v.x - s * 2, nova.terrain_height(v.x, v.z) + 0.6, v.z - c * 2, 50 } end",
+ "route": [
+  { "wait": 30, "lua": "IN_VAN(0.6, -200, 0.05)" },
+  { "wait": 10 },
+  { "hold": ["go"], "frames": 40 },
+  { "hold": ["go"], "frames": 1, "capture": "slow: pulling away (no dust under 12 km/h)" },
+  { "hold": ["go"], "frames": 200 },
+  { "hold": ["go"], "frames": 1, "capture": "cruise: a light trail" },
+  { "hold": ["go"], "frames": 1, "lua": "SIDE()" },
+  { "hold": ["go"], "frames": 1, "capture": "cruise from beside" },
+  { "lua": "CAM.pinned = nil" },
+  { "hold": ["brake"], "frames": 24 },
+  { "hold": ["brake"], "frames": 1, "capture": "braking hard" },
+  { "hold": ["go"], "frames": 160 },
+  { "hold": ["go", "handbrake", "steer=1"], "frames": 26 },
+  { "hold": ["handbrake", "steer=1"], "frames": 1, "capture": "handbrake slide" },
+  { "wait": 90, "capture": "stopped: the dust drifting away" },
+  { "wait": 60, "capture": "stopped: gone" }
+ ],
+ "print": ["nova.named('van'):dust_count()", "nova.named('van').speed"]
+}

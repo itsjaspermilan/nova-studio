@@ -37,8 +37,7 @@ export const NETWORK_DEFAULTS = { transition: "feather", apron: 3, feather: 1.6,
 // ---- the cross-section of each kind (the same bands as trackgen's textured ribbon) ------------------------------------------------
 // offs: band boundaries from the middle to the edge, unscaled (6 is the edge of a 12 m road; a road `width` w scales them by w / 12);
 // inner: the carriageway's edge (where a junction cuts the through road back to); drop: where the verge starts falling to SKIRT.
-function section(kind) {
-  const c = ROAD_COLOURS[kind];
+function section(kind, c = ROAD_COLOURS[kind]) {
   if (kind === "road_asphalt") {
     return {
       offs: [0.075, 4.25, 4.45, 5, 6], inner: 4.25, drop: 5,
@@ -50,7 +49,9 @@ function section(kind) {
   return { offs: [0, 3.6, 4.6, 5.2, 6], inner: 3.6, drop: 5.2, centre: null, bands: [{ col: [c.road, c.road] }, { col: [c.road, c.line] }, { col: [c.line, c.verge] }, { col: [c.verge, c.verge] }], road: c.road };
 }
 const SECTIONS = Object.fromEntries(Object.keys(ROAD_COLOURS).map((k) => [k, section(k)]));
-const sec = (kind) => SECTIONS[kind] ?? SECTIONS.road_asphalt;
+// (the sections of the network being built: SECTIONS, or a copy with the colours its `colours` gives)
+let ACTIVE = SECTIONS;
+const sec = (kind) => ACTIVE[kind] ?? ACTIVE.road_asphalt;
 const yAt = (kind, o) => { const s = sec(kind), a = Math.abs(o); return a <= s.drop ? TOP : TOP + ((SKIRT - TOP) * (a - s.drop)) / (6 - s.drop); };
 
 // texture coordinates on the road sheet (trackgen's ROAD_SHEET): u across the kind's column (or a paint strip), v along (64 m a repeat)
@@ -58,7 +59,11 @@ const S = ROAD_SHEET;
 const column = (kind) => Math.max(0, S.kinds.indexOf(kind));
 const uRoad = (kind, o) => (column(kind) * S.column + (Math.max(-6, Math.min(6, o)) / ROAD_WIDTH + 0.5) * S.column) / S.size;
 const uPaint = (paint, side) => (S.paint + (paint === "broken" ? S.strip : 0) + S.strip / 2 + (side > 0 ? 6 : -6)) / S.size;
-const vAlong = (s) => s / S.metres;
+// (`even`, opt-in: a road narrower than 12 m runs its picture along it as much faster as it is squeezed across, so stones stay round)
+let EVEN = false;
+// (a value folded back and forth into -c to c, continuous: c + 1 is c - 1)
+const fold = (x, c) => { const p = (((x + c) % (4 * c)) + 4 * c) % (4 * c); return p <= 2 * c ? p - c : 3 * c - p; };
+const vAlong = (s, r = null) => (r && EVEN ? (s * ROAD_WIDTH) / r.width : s) / S.metres;
 
 /// The band a pair of neighbouring unscaled offsets (a < b) falls in, with what it looks like at each end ({ col, u }).
 function bandLook(kind, a, b, style = {}) {
@@ -168,8 +173,9 @@ function routeOf(r, k) {
   if (!(width >= 2 && width <= 40)) throw new Error(`roads[${k}].width is the road's whole width with its verges, 2 to 40 m`);
   const line = lineOf(r.control);
   const zones = (r.zones ?? []).map((z) => ({ ...z }));
+  if (r.kerb !== undefined && !(r.kerb >= MIN_NOSE && r.kerb <= 20)) throw new Error(`roads[${k}].kerb is the corners' radius where it joins another road, ${MIN_NOSE} to 20 m`);
   const route = {
-    id: r.id ?? r.name ?? `road${k + 1}`, index: k, line, kind, width, zones, vShift: 0,
+    id: r.id ?? r.name ?? `road${k + 1}`, index: k, line, kind, width, zones, vShift: 0, kerb: r.kerb,
     // (the half-width scale: a road `width` w scales the 12 m cross-section; a zone's width eases in and out over 15 m)
     sigma(s) {
       let w = width;
@@ -195,7 +201,33 @@ const armEdge = (arm, d, e) => { const f = armAt(arm, d), w = 6 * arm.route.sigm
 
 /// Builds the network. `spec`: { roads: [{ id, control, road, width, zones }], pads: [{ at, radius | size, ry, road, width }],
 /// gaps: [{ road, from, to }], transition, apron, feather, ends, kerb }. Returns { mesh, report, junctions }.
+/// `colours` (opt-in, added 2026-11-23 for Fernhollow Post's all-gravel valley): { <kind>: { road, line, verge } } replaces a kind's vertex
+/// colours (linear, as trackgen's ROAD_COLOURS: the carriageway, the band at its edge, the verge); left out, every road is as before.
+/// `even` (opt-in, the same day, for a loose road's even picture): a junction's patch carries the through road's picture on past its
+/// carriageway's edge mirrored (no blend into the joining road's, which draws its stones out into streaks; the two meet along the
+/// mouth), and a road narrower than 12 m runs its picture along it as much faster as it is squeezed across.
 export function buildNetwork(spec) {
+  if (!spec.colours) return evenly(spec);
+  for (const [k, c] of Object.entries(spec.colours)) {
+    if (!ROAD_COLOURS[k]) throw new Error(`colours: there is no road kind "${k}"`);
+    for (const part of ["road", "line", "verge"]) if (c[part] !== undefined && !(Array.isArray(c[part]) && c[part].length === 3 && c[part].every((x) => x >= 0 && x <= 1))) throw new Error(`colours.${k}.${part} is [r, g, b], each 0 to 1`);
+  }
+  ACTIVE = Object.fromEntries(Object.keys(ROAD_COLOURS).map((k) => [k, spec.colours[k] ? section(k, { ...ROAD_COLOURS[k], ...spec.colours[k] }) : SECTIONS[k]]));
+  try {
+    return evenly(spec);
+  } finally {
+    ACTIVE = SECTIONS;
+  }
+}
+function evenly(spec) {
+  EVEN = spec.even === true;
+  try {
+    return build(spec);
+  } finally {
+    EVEN = false;
+  }
+}
+function build(spec) {
   const given = Object.fromEntries(Object.entries(spec).filter(([, v]) => v !== undefined));
   const o = { ...NETWORK_DEFAULTS, ...given, kerb: { ...KERB, ...(spec.kerb ?? {}) } };
   if (!(o.apron >= 0 && o.apron <= 20) || !(o.feather >= 0 && o.feather <= 10)) throw new Error("apron is 0 to 20 m and feather 0 to 10 m");
@@ -337,7 +369,7 @@ export function buildNetwork(spec) {
     if (!full) {
       const f = route.line.at(s), sg = route.sigma(s), offs = sec(kind).offs;
       const signed = [...offs.slice().reverse().map((x) => -x), ...offs].filter((x, i, a) => i === 0 || Math.abs(x - a[i - 1]) > 1e-9);
-      full = { s, vs: vAlong(s + route.vShift), kind, sigma: sg, f, pts: signed.map((u) => ({ o: u, v: mesh.v(f.x + f.nx * u * sg, f.z + f.nz * u * sg, yAt(kind, u)) })) };
+      full = { s, vs: vAlong(s + route.vShift, route), kind, sigma: sg, f, pts: signed.map((u) => ({ o: u, v: mesh.v(f.x + f.nx * u * sg, f.z + f.nz * u * sg, yAt(kind, u)) })) };
       rowCache.set(key, full);
     }
     if (!cutSide) return full;
@@ -387,7 +419,9 @@ export function buildNetwork(spec) {
     });
     const cum = [0];
     for (let k = 1; k < samples.length; k++) cum.push(cum[k - 1] + Math.hypot(samples[k].x - samples[k - 1].x, samples[k].z - samples[k - 1].z));
-    const vAt = (k) => (v1 === undefined ? v0 + cum[k] / S.metres : v0 + ((v1 - v0) * cum[k]) / (cum.at(-1) || 1));
+    // (`even`: the picture runs along the strip as fast as it is squeezed across, from v0 on; else it is stretched to meet v1 at the end)
+    const sgMean = samples.reduce((a, q) => a + q.sigma, 0) / samples.length;
+    const vAt = (k) => (EVEN ? v0 + cum[k] / (S.metres * sgMean) : v1 === undefined ? v0 + cum[k] / S.metres : v0 + ((v1 - v0) * cum[k]) / (cum.at(-1) || 1));
     for (let k = 0; k + 1 < rows.length; k++) {
       const A = rows[k], B = rows[k + 1];
       for (let b = 0; b + 1 < offs.length; b++) {
@@ -440,7 +474,9 @@ export function buildNetwork(spec) {
         // (the through road's texture carried on: across by the offset from its middle, folded back inside its carriageway)
         const dx = v.x - frame.x, dz = v.z - frame.z;
         let off = Math.abs(dx * frame.nx + dz * frame.nz);
-        while (off > sx) off = Math.abs(2 * sx - off) * 0.999;
+        // (`even`: signed and folded only past the carriageway's edge, so no triangle straddles a fold at the middle and is drawn out)
+        if (EVEN) off = fold(dx * frame.nx + dz * frame.nz, sx);
+        else while (off > sx) off = Math.abs(2 * sx - off) * 0.999;
         return { col: sec(kind).road, uv: [uRoad(kind, off), vAlong(frame.s + dx * frame.tx + dz * frame.tz)] };
       };
       mesh.tri(a, b, c, look(a), look(b), look(c), kind, piece);
@@ -482,7 +518,8 @@ export function buildNetwork(spec) {
       const half = Math.max(0.05, Math.min(Math.PI / 2 - 0.01, phi / 2));
       // (the radius by the surface, smaller in a sharp corner so its tangents stay within 12 m, but never under MIN_NOSE: a shallow
       // Y's gore ends in a small rounded nose, not a point)
-      const R = Math.max(MIN_NOSE, Math.min(o.kerb[kind] ?? 4, 12 * Math.tan(half)));
+      // (a road's own `kerb`, where it is the one joining, before the junction surface's)
+      const R = Math.max(MIN_NOSE, Math.min(Sr.kerb ?? o.kerb[kind] ?? 4, 12 * Math.tan(half)));
       const L = R / Math.tan(half);
       return { e, away, sT: hit.s + away * L, dT: hit.d + L, R, phi };
     };
@@ -517,7 +554,7 @@ export function buildNetwork(spec) {
         samples.push({ x, z, nx: -f.nx * c.e, nz: -f.nz * c.e, sigma: Sr.sigma(f.s) });
       }
       if (m - c.dT < 1e-6) samples.pop();
-      return kerbStrip(samples, mOuterM(c.sT), mOuter(c.e), kind, vAlong(c.sT + M.vShift), mouth.vs, "kerb");
+      return kerbStrip(samples, mOuterM(c.sT), mOuter(c.e), kind, vAlong(c.sT + M.vShift, M), mouth.vs, "kerb");
     };
     later.push(() => {
     const innerF = strip(cf), innerB = strip(cb);
@@ -532,9 +569,13 @@ export function buildNetwork(spec) {
     const poly = [...edgeLine, ...atS1.slice(1), ...across.slice(1), ...atS0.slice().reverse().slice(1, -1)];
     // (its picture: the through road's strip carried on across its cut-back edge, blending into the joining road's own toward its
     // mouth, so it meets both with no seam; each clamped to its carriageway, never folded, so no repair patch or crack repeats)
-    const cM = sec(kind).inner, cS = sec(mouthKind).inner, clampU = (o, c) => Math.max(-c, Math.min(c, o));
+    // (`even`: folded back at the carriageway's edge, so a loose road's stones go on instead of being drawn out into streaks)
+    const cM = sec(kind).inner, cS = sec(mouthKind).inner, clampU = o.even ? fold : (x, c) => Math.max(-c, Math.min(c, x));
     const uvOf = (v) => {
       const nm = M.line.nearest(v.x, v.z), fm = M.line.at(nm.s), om = ((v.x - fm.x) * fm.nx + (v.z - fm.z) * fm.nz) / M.sigma(nm.s);
+      // (`even`: the through road's own picture all over the patch, folded back at its carriageway's edge: no blend, so nothing is
+      // drawn out; it meets the joining road's along the mouth, where a loose road's even stones hide the join)
+      if (o.even) return [uRoad(kind, clampU(om, cM)), vAlong(nm.s + M.vShift, M)];
       const ns = Sr.line.nearest(v.x, v.z), fs = Sr.line.at(ns.s), os = ((v.x - fs.x) * fs.nx + (v.z - fs.z) * fs.nz) / Sr.sigma(ns.s);
       const uM = uRoad(kind, clampU(om, cM)), vM = vAlong(nm.s + M.vShift), uS = uRoad(kind, clampU(os, cS)), vS = vAlong(ns.s + Sr.vShift);
       const dEdge = Math.max(0, (Math.abs(om) - cM) * M.sigma(nm.s)), dMouth = Math.max(0, m - Math.abs(ns.s - arm.s));
@@ -587,7 +628,7 @@ export function buildNetwork(spec) {
         const f = padAt(pad, h.u), awayP = [f.tx * dirU, f.tz * dirU], fa = armAt(arm, h.d), awayS = [fa.tx, fa.tz];
         const phi = Math.acos(Math.max(-1, Math.min(1, awayP[0] * awayS[0] + awayP[1] * awayS[1])));
         const half = Math.max(0.05, Math.min(Math.PI / 2 - 0.01, phi / 2));
-        const R = Math.max(MIN_NOSE, Math.min((o.kerb[kind] ?? 4) * 0.7, 8 * Math.tan(half))), L = R / Math.tan(half);
+        const R = Math.max(MIN_NOSE, Math.min((r.kerb ?? o.kerb[kind] ?? 4) * 0.7, 8 * Math.tan(half))), L = R / Math.tan(half);
         return { e, uT: h.u + dirU * L, dT: h.d + L, R, dirU };
       };
       const cLo = fin(lo, -1, loE), cHi = fin(hi, 1, -loE);
@@ -651,7 +692,9 @@ export function buildNetwork(spec) {
       const across = next.mouthArm.filter((p) => Math.abs(p.o) <= sec(next.mouthKind).inner + 1e-9).sort((x, y) => (y.o - x.o) * next.cLo.e).map((p) => p.v);
       poly.push(...inner.slice(0, -1), ...across.slice(0, -1));
     });
-    patch(poly, kind, { x: pad.at[0], z: pad.at[1], nx: 1, nz: 0, tx: 0, tz: 1, s: 0 }, "pad");
+    // (`even`: the picture laid along the first road into it, so a yard at a drive's end is mostly across its carriageway: no fold)
+    const t0 = EVEN && openings.length ? armAt(openings[0].arm, 0) : null;
+    patch(poly, kind, t0 ? { x: pad.at[0], z: pad.at[1], nx: t0.tz, nz: -t0.tx, tx: t0.tx, tz: t0.tz, s: 0 } : { x: pad.at[0], z: pad.at[1], nx: 1, nz: 0, tx: 0, tz: 1, s: 0 }, "pad");
   }
 
   // ---- gaps (a bridge): the road stops square at each end with a threshold strip ---------------------------------------------------------
@@ -791,7 +834,7 @@ export function buildNetwork(spec) {
     const lookAt = (p, kind, style, rs, tint) => {
       const s = sec(kind), inner = Math.abs(p.o) <= s.drop;
       const [l] = bandLook(kind, p.o, p.o + (p.o >= 0 ? 0.001 : -0.001), style);
-      return { col: tint && inner ? tint : Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), vAlong((rs ?? p.s) + r.vShift)] };
+      return { col: tint && inner ? tint : Math.abs(p.o) <= s.inner ? s.road : l.col, uv: [uRoad(kind, p.o), vAlong((rs ?? p.s) + r.vShift, r)] };
     };
     // first surface up to the ragged line (dusted toward it), then the second from it
     // (row, then a row of the band's own offsets just inside it, zipped; then quad by quad to the ragged line, which keeps every
@@ -819,7 +862,7 @@ export function buildNetwork(spec) {
       // the verge runs on across the end: one more row, every point dropped into the ground
       const d = (6 - sc.drop) * sg;
       const edge = R.pts.map((p) => ({ o: p.o, v: mesh.v(p.v.x + tx * d, p.v.z + tz * d, SKIRT) }));
-      const look = (p, rs) => ({ col: sc.bands.at(-1).col[1], uv: [uRoad(kind, p.o), vAlong(rs + r.vShift)] });
+      const look = (p, rs) => ({ col: sc.bands.at(-1).col[1], uv: [uRoad(kind, p.o), vAlong(rs + r.vShift, r)] });
       zip(R.pts, edge, (a, b, c) => [look(a, s), look(b, s), look(c, s + d * dirOut)], (a, b, c) => [look(a, s), look(b, s + d * dirOut), look(c, s + d * dirOut)], kind, "cap");
       return;
     }
@@ -837,7 +880,7 @@ export function buildNetwork(spec) {
     const rings = offs.map((b) => b === 0 ? Array(N + 1).fill(pos[0].v) : ring(b, pos.find((p) => Math.abs(p.o - b) < 1e-9).v, neg.find((p) => Math.abs(p.o + b) < 1e-9).v));
     // (the picture runs round the cap as if the road bent round on the spot: v by the distance round each ring, u by its radius)
     const lookAt = (k, b, j) => {
-      const v = vAlong(s + r.vShift + ((j * Math.PI) / N) * b * sg);
+      const v = vAlong(s + r.vShift + ((j * Math.PI) / N) * b * sg, r);
       if (k === 0) return { col: sc.road, uv: [uRoad(kind, b), v] };
       const [l0, l1] = bandLook(kind, offs[k - 1], offs[k]);
       return b === offs[k] ? { col: l1.col, uv: [l1.u, v] } : { col: l0.col, uv: [l0.u, v] };

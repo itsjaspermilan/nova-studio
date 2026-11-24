@@ -14,7 +14,8 @@ use glam::Vec3;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Ribbon {
     /// Points along it, on the flat ground the game draws on (y is the height above the ground: the whole ribbon is lifted by
-    /// the ground under its first point): x, y, z, half its width (metres) and its alpha (0 to 1).
+    /// the ground under its first point): x, y, z, half its width (metres) and its alpha (0 to 1). A single point is a **puff**
+    /// (`nova.puff`): a round soft blob of that radius facing the camera, its alpha falling smoothly to nothing at its rim.
     pub points: Vec<[f32; 5]>,
     /// Its colour (linear).
     pub color: [f32; 3],
@@ -129,23 +130,31 @@ impl RibbonGpu {
     ) {
         let mut vertices: Vec<Vertex> = Vec::new();
         for r in ribbons {
-            let n = r.points.len();
-            if n < 2 {
-                continue;
-            }
-            let lift = ground(r.points[0][0], r.points[0][2]);
+            // (one point is a puff: a short, round, soft stroke across the line of sight)
+            let lift = match r.points.first() {
+                Some(p) => ground(p[0], p[2]),
+                None => continue,
+            };
+            let puff;
+            let points: &[[f32; 5]] = if r.points.len() == 1 {
+                puff = puff_points(r.points[0], eye - Vec3::Y * lift);
+                &puff
+            } else {
+                &r.points
+            };
+            let n = points.len();
             let at = |i: usize| {
-                let p = r.points[i];
+                let p = points[i];
                 Vec3::new(p[0], p[1] + lift, p[2])
             };
             let mut edges = Vec::with_capacity(n);
-            for i in 0..n {
+            for (i, pt) in points.iter().enumerate() {
                 let p = at(i);
                 let along =
                     (at((i + 1).min(n - 1)) - at(i.saturating_sub(1))).normalize_or(Vec3::X);
                 let side = along.cross(eye - p).normalize_or(Vec3::Y);
                 let least = (eye - p).length() * pixel;
-                let (half, alpha) = (r.points[i][3], r.points[i][4]);
+                let (half, alpha) = (pt[3], pt[4]);
                 let (half, alpha) = if half < least {
                     (least, alpha * half / least)
                 } else {
@@ -201,8 +210,54 @@ impl RibbonGpu {
     }
 }
 
+/// The strip a puff is drawn as: `p` (x, y, z, radius, alpha) made a short stroke across the line of sight from `eye` (on the same
+/// unlifted ground as `p`), as wide as it is long, narrowing and fading to nothing at both ends, so with the stroke's own fall-off
+/// across it the blob is round and soft all round. (Added 2026-11-23 for Fernhollow Post's dust, the owner's ninth notes.)
+pub fn puff_points(p: [f32; 5], eye: Vec3) -> Vec<[f32; 5]> {
+    const N: usize = 9;
+    let c = Vec3::new(p[0], p[1], p[2]);
+    let right = (eye - c).cross(Vec3::Y).normalize_or(Vec3::X);
+    let (radius, alpha) = (p[3].max(0.0), p[4].clamp(0.0, 1.0));
+    (0..N)
+        .map(|k| {
+            let t = k as f32 / (N - 1) as f32 * 2.0 - 1.0;
+            let q = c + right * (radius * t);
+            let round = (1.0 - t * t).max(0.0);
+            [
+                q.x,
+                q.y,
+                q.z,
+                (radius * round.sqrt()).max(radius * 0.08),
+                alpha * round.powf(1.5),
+            ]
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn a_puff_is_a_round_stroke_across_the_view_fading_at_its_ends() {
+        let eye = Vec3::new(0.0, 1.0, -10.0);
+        let pts = puff_points([0.0, 1.0, 0.0, 0.5, 0.4], eye);
+        assert_eq!(pts.len(), 9);
+        // across the line of sight (here along x), a radius either side of the middle, the middle widest and strongest
+        assert!((pts[0][0] + 0.5).abs() < 1e-5 && (pts[8][0] - 0.5).abs() < 1e-5);
+        assert!(
+            pts.iter()
+                .all(|q| q[2].abs() < 1e-5 && (q[1] - 1.0).abs() < 1e-5)
+        );
+        assert!((pts[4][3] - 0.5).abs() < 1e-5 && (pts[4][4] - 0.4).abs() < 1e-5);
+        assert!(pts[0][4] < 1e-6 && pts[8][4] < 1e-6);
+        assert!(
+            pts.windows(2)
+                .take(4)
+                .all(|w| w[1][3] > w[0][3] && w[1][4] > w[0][4])
+        );
+    }
+
     #[test]
     fn the_ribbon_shader_parses_and_validates() {
         let source = concat!(

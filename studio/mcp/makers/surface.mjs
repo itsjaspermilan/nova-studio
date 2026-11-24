@@ -369,7 +369,65 @@ const LOOSE = {
   road_sand: { seed: 1000, level: 0.93, mottle: 0.09, grainy: 0.07, rut: 0.13, rutWidth: 0.48, rutTint: [0.98, 0.96, 0.92], washboard: 0.1, stones: 0.1, stoneDark: 0.8, stoneLight: 1.08, ripple: 0.035 },
 };
 
-/// The road sheet. `o`: { line (how dark the racing line is, 1 as first made), cracks, patches, skids }.
+/// Scattered points as `cells`, with the offset (in cells, x then y) from the nearest point to (u, v) as well.
+function cellsAt(u, v, fx, fy, s) {
+  const x = u * fx, y = v * fy, xi = Math.floor(x), yi = Math.floor(y);
+  let best = 9, id = 0, ox = 0, oy = 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const cx = xi + dx, cy = yi + dy, wx = mod(cx, fx), wy = mod(cy, fy);
+    const px = cx + hash(wx, wy, s), py = cy + hash(wx, wy, s + 1);
+    const d = Math.hypot(px - x, py - y);
+    if (d < best) { best = d; id = hash(wx, wy, s + 2); ox = x - px; oy = y - py; }
+  }
+  return [best, id, ox, oy];
+}
+/// A gravel road in a soft, hand-made style (`road: { gravel: "soft" }`, first made for Fernhollow Post, the owner's ninth notes: "The
+/// double lines that appear in the gravel shouldn't be there"): no wheel ruts. Over the carriageway (to 3.6 m of the 12) the look is
+/// the same everywhere but for a slightly lighter crown, so a junction's patch can carry it on in any direction: stones at two sizes
+/// (about 12 and 25 cm, each a little rounded, lit on one side with a soft shadow on the other; the grain picture carries the grit
+/// under them), the larger ones fewer; worn wheel paths that are only a little smoother and darker and come and go along the road
+/// (never two lines); warm and cool patches. Past the carriageway (the band the vertex colours darken) grass creeps in in tufts, and the
+/// edge is ragged into the verge. A mean of about 0.82: the road's colours are the vertex colours, and the light stones reach 1.
+function softGravel(x, s, u, v) {
+  const ax = Math.abs(x), seed = 820;
+  const big = fbm(u, v, 3, 16, 3, seed), mid = fbm(u, v, 10, 60, 2, seed + 1);
+  let m = 0.8 + (big - 0.5) * 0.1 + (mid - 0.5) * 0.06;
+  // the crown, a little lighter
+  m *= 1 + 0.04 * Math.exp(-((x / 1.7) ** 2));
+  // the worn wheel paths: wide, soft and patchy (each comes and goes over 10 to 30 m, each side on its own), a little smoother
+  const path = (side) => {
+    const c = side * (1.5 + wander(s, 0.18, 0.12, seed * 0.01 + side));
+    const on = smooth(0.45, 0.65, fbm(u + side * 0.37, v, 1, 5, 2, seed + 5 + side));
+    return Math.exp(-(((x - c) / 0.6) ** 2)) * on;
+  };
+  const worn = Math.max(path(1), path(-1));
+  m *= 1 - 0.03 * worn;
+  // stones: the middle size everywhere but thinner in the wheel paths, the larger ones here and there; each lit from one side (up the
+  // sheet and to its left), with a soft shadow just past it on the other
+  const stone = (fx, fy, sd, size, many, light, dark) => {
+    const [d, id, ox, oy] = cellsAt(u, v, fx, fy, sd);
+    const r = size * (0.7 + 0.5 * id);
+    if (id > many) return 1;
+    const away = (ox + oy) / (d || 1);
+    if (d > r) return d < r * 1.45 && away > 0 ? 1 - 0.12 * smooth(r * 1.45, r, d) * away : 1;
+    const t = smooth(r, r * 0.5, d), lit = clamp(0.5 - (ox + oy) / (r * 2.2));
+    const tone = (id * 13.7) % 1 < 0.6 ? light : dark;
+    return mix(1, tone * mix(0.84, 1.12, lit), t);
+  };
+  m *= stone(64, 340, seed + 10, 0.36, 0.8 * (1 - 0.45 * worn), 1.2, 0.8);
+  m *= stone(28, 150, seed + 20, 0.32, 0.18, 1.24, 0.76);
+  // the grit's colour: warmer and cooler patches
+  const warm = (fbm(u, v, 5, 24, 2, seed + 30) - 0.5) * 0.08;
+  let rgb = [m * (1 + warm), m, m * (1 - warm * 1.4)];
+  // grass creeping in past the carriageway's edge: tufts, thicker toward the verge, a soft green over the grit
+  const tuftNoise = fbm(u, v, 24, 128, 3, seed + 40) * 0.7 + fbm(u, v, 6, 32, 2, seed + 41) * 0.3;
+  const tuft = clamp((tuftNoise - 0.6 + smooth(3.7, 5, ax) * 0.5) * 3.2) * smooth(3.6, 4.1, ax);
+  rgb = rgb.map((q, i) => mix(q, q * [0.82, 1.08, 0.62][i], tuft * 0.9));
+  return [...rgb.map((q) => clamp(q)), edge(x, u, v, 4.7, seed + 50)];
+}
+
+/// The road sheet. `o`: { line (how dark the racing line is, 1 as first made), cracks, patches, skids, gravel ("ruts" as first made, or
+/// "soft") }.
 function roadSheet(o) {
   WEAR = o;
   marks(o);
@@ -388,6 +446,7 @@ function roadSheet(o) {
   const x = ((cx + 0.5) / ROAD.column - 0.5) * ROAD.across;
   // (the noise is asked for in the column's own coordinates, so that every column is its own pattern and tiles along the road)
   const cu = (cx + 0.5) / ROAD.column;
+  if (kind === "road_gravel" && o.gravel === "soft") return softGravel(x, s, cu, v);
   return kind === "road_asphalt" ? asphalt(x, s, cu, v, cx, py) : loose(x, s, cu, v, LOOSE[kind]);
 });
 }
@@ -406,7 +465,7 @@ export function makeSurfaces(names = SURFACES, { seed = 1, road = {} } = {}, put
     for (const name of names) {
       if (BASES[name]) means[name] = BASES[name]();
       else if (DETAILS[name]) DETAILS[name]();
-      else if (name === "road") roadSheet({ line: road.line ?? 1, cracks: road.cracks ?? 5, patches: road.patches ?? 2, skids: road.skids ?? 3 });
+      else if (name === "road") roadSheet({ line: road.line ?? 1, cracks: road.cracks ?? 5, patches: road.patches ?? 2, skids: road.skids ?? 3, gravel: road.gravel ?? "ruts" });
       else throw new Error(`there is no surface "${name}"; the surfaces are ${SURFACES.join(", ")}`);
     }
   } finally {

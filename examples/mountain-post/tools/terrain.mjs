@@ -15,7 +15,8 @@ const answer = tool("terrain_write", {
   // (the drives' yards, level with the road nearest them; the drives run over the house plots or between a yard and its road at one
   // level. And each pond's plot: level ground at its `plot` height, the recipe's own height of the ground there, round the bowl)
   pads: [...PADS.map((p) => ({ at: xz(p.at), radius: p.radius, blend: p.blend })),
-    ...DRIVES.map((d) => ({ at: xz(d.yard.at), radius: d.yard.radius + 2, blend: 16 })),
+    // (a yard on its house's plot needs no pad of its own: since the owner's ninth notes every yard is, right by its house)
+    ...DRIVES.filter((d) => !PADS.some((p) => Math.hypot(d.yard.at[0] - p.at[0], d.yard.at[1] - p.at[1]) + d.yard.radius <= p.radius)).map((d) => ({ at: xz(d.yard.at), radius: d.yard.radius + 2, blend: 16 })),
     ...PONDS.map((p) => ({ at: xz(p.at), radius: pondRadius(p), blend: p.blend, height: p.plot }))],
   carve: [
     { points: CREEK.points.map(xz), profile: CREEK.profile, width: CREEK.width, bank: CREEK.bank },
@@ -33,12 +34,15 @@ console.log(answer);
 const line = /nova\.terrain\{[^\n]*\}/.exec(answer)[0];
 put("lib/terrain_line.lua", `-- Made by tools/terrain.mjs (terrain_write): the valley's ground. Do not edit; run the recipe again.\nreturn function() ${line} end\n`);
 
+// The road sheet: every road is gravel (the owner's ninth notes), its column drawn "soft" (surface_make: no wheel ruts, which read as
+// two dark lines; a lighter crown, darker shoulders, stones and pebbles, patchy worn wheel paths, grass creeping in at the edges).
+tool("surface_make", { surfaces: ["road"], road: { gravel: "soft" } }, { quiet: true });
 // The roads: one network (road_make with `roads`), models/road_valley.glb: Fern Lane and Kettle Creek Road join Post Road at proper
-// junctions (filleted corners, a tarmac apron and a ragged edge into the gravel), the free ends rounded, and Kettle Creek Road stops
+// junctions (filleted corners, all gravel: no apron, no edge or centre lines), the free ends rounded, and Kettle Creek Road stops
 // square with a threshold strip at each end of the bridge's deck (the creek is cut through the ground under it).
 console.log(tool("road_make", { name: "valley", ...NETWORK, preview: false }, { quiet: true }));
 // The junctions' ground for the game (lib/world.lua: the surface under a wheel, where ferns may grow): each junction's area and how far
-// up the lane its tarmac runs, from the same builder road_make used (the same numbers give the same junctions).
+// up the lane its surface runs, from the same builder road_make used (the same numbers give the same junctions).
 {
   const r2 = (v) => Math.round(v * 100) / 100;
   const word = (k) => (k === "road_asphalt" ? "road" : "gravel");

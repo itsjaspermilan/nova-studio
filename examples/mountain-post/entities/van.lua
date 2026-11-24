@@ -42,7 +42,7 @@ Van.TUNE = {
   grass = 0.6,          -- m/s^2 more rolling on the grass (the soft ground holds it back; with the starting van's pull it still gets going)
   edge = 22,            -- m/s^2 more at the playable area's very edge, growing over the last twelve metres of grass before it (world.rough: tussocks, roots,
                         -- stones), so the van comes up to the edge slowly and stops there without a knock (the owner's eighth play, note 6)
-  gravel = 0.12,        -- and on a gravel lane
+  gravel = 0.05,        -- and on gravel: a little (every road is gravel since the owner's ninth notes; it was 0.12 on the lanes, and the van was tuned on the tarmac of Post Road)
   -- the front wheels at full lock, at a crawl: a 10 m kerb-to-kerb circle on the 1.51 m wheelbase (the rear axle moved back in the
   -- owner's fourth notes; on the old 1.31 m one it was 18.3 degrees: the same tan(lock) / wheelbase keeps the same circle)
   lock = math.rad(20.9),
@@ -159,8 +159,10 @@ local function ride_of(layout)
   return r
 end
 
--- Bumps of the surface under a tyre (metres): tarmac is smooth, gravel lanes rumble, the grass rolls.
-local BUMPS = { road = 0.004, gravel = 0.018, bridge = 0.008, grass = 0.03 }
+-- Bumps of the surface under a tyre (metres): tarmac is smooth, gravel lanes rumble, the grass rolls; a junction's gravel is packed
+-- (the ninth notes made every road gravel: its junctions are as smooth as their tarmac was, or braking into one drove the front springs
+-- into their stops).
+local BUMPS = { road = 0.004, gravel = 0.018, bridge = 0.008, grass = 0.03, packed = 0.005 }
 local function ground_bump(x, z, size)
   return size * (math.sin(x * 0.9 + 1.3) * math.sin(z * 0.7 + 0.4) + 0.5 * math.sin(x * 1.9 - z * 1.1) + 0.3 * math.sin(z * 2.7 + x * 0.5))
 end
@@ -193,6 +195,8 @@ local function ground_kind(x, z)
     local r, d = world.nearest(what, x, z)
     if r then edge = math.min(edge, d - r.width / 2 - 0.3) end
   end
+  -- (and from a junction's patch or a yard: their edges reach further out than a road's width)
+  edge = math.min(edge, world.off_patch(x, z))
   return math.max(0, math.min(1, edge / BLEND))
 end
 local function ground_at(kind, x, z)
@@ -515,7 +519,9 @@ function Van:suspension(dt, accel, lateral_accel)
   local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
   local h0 = nova.terrain_height(self.x, self.z)
   sp.h0 = h0
-  local size = (BUMPS[self.surface] or 0.01) * math.min(1, 0.3 + math.abs(self.speed) / 12)
+  -- (a junction's gravel is packed hard by the turning wheels: smoother, as its tarmac was before the owner's ninth notes)
+  local surface = (self.surface == "gravel" and world.junction_surface(self.x, self.z)) and "packed" or self.surface
+  local size = (BUMPS[surface] or 0.01) * math.min(1, 0.3 + math.abs(self.speed) / 12)
   local follow = math.min(1, dt * 14)
   for i = 1, n do
     local s = st[i]
@@ -671,6 +677,7 @@ function Van:update(dt)
     self:drive(dt)
   end
   self:exhaust(dt)
+  self:dust(dt)
 end
 
 -- The exhaust (the owner: "We should add a tailpipe with exhaust for the truck"): soft round puffs from the tailpipe's tip
@@ -710,6 +717,80 @@ function Van:exhaust(dt)
 end
 -- (for the tests: how many puffs are alive)
 function Van:puff_count() return #(self.puffs or {}) end
+
+-- ---- the dust (the owner's ninth notes: "We should add some dust that comes up but not too much") ------------------------------------
+-- Soft sandy puffs kicked up behind the rear wheels while they roll on gravel (every road, driveway and yard is gravel; none on the
+-- bridge's deck or the grass): none when slow (under `from` m/s), a light trail at a cruise, a little more braking hard and more again
+-- while the handbrake slides it. Each rises a little, swells, drifts with the wind (the valley's nova.wind: 60 degrees, a breeze) and
+-- fades over its `life`; at most `max` alive, the oldest giving way. Drawn with nova.puff: soft round blobs whose alpha falls smoothly
+-- to nothing at the rim (a billboard's faint pixels are cut). Self-contained: Van:dust(dt) from update, Van:draw_dust() from draw.
+Van.DUST = { from = 3.0, full = 9.5, rate = 7, max = 16, life = 1.6, size = 0.42, grow = 0.8, rise = 0.3, alpha = 0.6,
+  brake = 0.55, slide = 0.9, wind = { 0.3, 0.52 }, color = { 236, 226, 204 } }
+-- How much dust it raises now: 0 (none) to about 1.6 (sliding on the handbrake at speed).
+function Van:dust_amount()
+  local D, v = Van.DUST, math.abs(self.speed or 0)
+  if v < D.from then return 0 end
+  local k = math.min(1, (v - D.from) / (D.full - D.from))
+  local c = self.ctl or {}
+  if (c.brake or 0) > 0.3 and self.driven then k = k + D.brake * c.brake * math.min(1, v / 6) end
+  if self.handbrake and self.driven then k = k + D.slide * math.min(1, v / 6) end
+  return k
+end
+function Van:dust(dt)
+  local D = Van.DUST
+  self.dusts = self.dusts or {}
+  local dusts = self.dusts
+  for i = #dusts, 1, -1 do
+    local p = dusts[i]
+    p.age = p.age + dt
+    if p.age >= D.life then table.remove(dusts, i)
+    else
+      p.x, p.y, p.z = p.x + p.vx * dt, p.y + p.vy * dt, p.z + p.vz * dt
+      -- (the kick dies away; the wind carries on)
+      local keep = 1 - math.min(1, 2.2 * dt)
+      p.vx, p.vz = D.wind[1] + (p.vx - D.wind[1]) * keep, D.wind[2] + (p.vz - D.wind[2]) * keep
+      p.vy = p.vy * (1 - math.min(1, 0.8 * dt))
+    end
+  end
+  local k = self:dust_amount()
+  if k <= 0 then self.dust_t = 0; return end
+  self.dust_t = (self.dust_t or 0) + dt * D.rate * k
+  while self.dust_t >= 1 do
+    self.dust_t = self.dust_t - 1
+    self.dust_n = (self.dust_n or 0) + 1
+    -- (the rear wheels in turn: just behind each tyre, low)
+    local rear = {}
+    for _, s in ipairs(self.stations or {}) do if not s.front then rear[#rear + 1] = s end end
+    local s = rear[self.dust_n % math.max(1, #rear) + 1]
+    if s then
+      local back = self.speed >= 0 and -0.45 or 0.45
+      local x, y, z = self:to_world(s.left, 0.25, s.fwd + back)
+      if world.surface(x, z) == "gravel" then
+        if #dusts >= D.max then table.remove(dusts, 1) end
+        -- (a little scatter, without touching math.random)
+        local j1, j2 = math.sin(self.dust_n * 12.9898) * 0.5, math.sin(self.dust_n * 78.233) * 0.5
+        local sinh, cosh = math.sin(self.heading), math.cos(self.heading)
+        local kick = (self.speed >= 0 and -1 or 1) * (0.6 + 0.4 * math.min(1, k))
+        dusts[#dusts + 1] = { age = 0, x = x, y = y, z = z, k = math.min(1.6, k),
+          vx = self.velx * 0.15 + sinh * kick + cosh * j1 * 0.6 + D.wind[1], vy = D.rise * (1 + j2 * 0.4),
+          vz = self.velz * 0.15 + cosh * kick - sinh * j1 * 0.6 + D.wind[2], size = 1 + j2 * 0.3 }
+      end
+    end
+  end
+end
+-- (for the tests: how many puffs of dust are alive)
+function Van:dust_count() return #(self.dusts or {}) end
+local DUST_COLOR = { 0, 0, 0, 0 }
+function Van:draw_dust()
+  local D = Van.DUST
+  DUST_COLOR[1], DUST_COLOR[2], DUST_COLOR[3] = D.color[1], D.color[2], D.color[3]
+  for _, p in ipairs(self.dusts or {}) do
+    local t = p.age / D.life
+    -- (in quickly, out slowly; a thicker cloud when it was kicked up harder)
+    DUST_COLOR[4] = math.floor(255 * D.alpha * (0.7 + 0.3 * math.min(1, p.k)) * math.min(1, t * 6) * (1 - t) ^ 1.3)
+    if DUST_COLOR[4] > 0 then nova.puff(p.x, p.y, p.z, D.size * p.size * (1 + D.grow * 2.2 * t), DUST_COLOR) end
+  end
+end
 
 local PUFF = { color = { 236, 236, 240, 0 }, rot = 0 }
 local BEAM = { radius = 16, color = { 255, 236, 200 }, dir = { 0, -0.12, 1 }, angle = 46 }
@@ -758,6 +839,7 @@ function Van:draw()
     PUFF.rot = p.spin + t * 0.8
     nova.billboard("puff", p.x, p.y, p.z, E.size * (1 + E.grow * 3 * t), PUFF)
   end
+  self:draw_dust()
   -- (FERNHOLLOW POST on the cargo's sides is part of the van's model, tools/van.mjs: it moves with the body exactly)
   -- the parcels in the hold, on its floor (0.68 m: tools/van.mjs HOLD_FLOOR), the first loaded furthest in
   for i, which in ipairs(state.van_load) do

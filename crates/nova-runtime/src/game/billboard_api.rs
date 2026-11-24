@@ -173,6 +173,32 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
             },
         )?,
     )?;
+    // a soft round puff (dust, steam, a breath): drawn blended with the ribbons, its alpha falling smoothly to nothing at its rim
+    // (a billboard's pixels under 0.3 of alpha are dropped, which cuts a faint puff hard); added 2026-11-23 for Fernhollow's dust
+    let s = shared.clone();
+    nova.set(
+        "puff",
+        lua.create_function(
+            move |_, (x, y, z, radius, color): (f64, f64, f64, f64, Option<Table>)| {
+                let c = srgb_to_linear(rgba(color)?.map(|v| v as f64 / 255.0));
+                if radius <= 0.0
+                    || c[3] <= 0.0
+                    || !(x.is_finite() && y.is_finite() && z.is_finite() && radius.is_finite())
+                {
+                    return Ok(());
+                }
+                let mut sh = s.borrow_mut();
+                // (a few hundred a frame at most: each is a handful of blended triangles)
+                if sh.puffs.len() < 512 {
+                    sh.puffs.push(crate::gfx::Ribbon {
+                        points: vec![[x as f32, y as f32, z as f32, radius as f32, c[3] as f32]],
+                        color: [c[0] as f32, c[1] as f32, c[2] as f32],
+                    });
+                }
+                Ok(())
+            },
+        )?,
+    )?;
     // how many frames a picture has (1 for a plain PNG), so that a script can pick or play them
     let s = shared.clone();
     nova.set(

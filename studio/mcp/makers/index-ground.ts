@@ -77,10 +77,10 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
     "surface_make",
     `Make the pictures that texture a 3D game's ground and roads, from noise (nothing taken from anywhere): \`textures/<name>.png\`. Surfaces: ${SURFACES.map((s: string) => `${s} (${SAYS[s]})`).join("; ")}. ` +
       "A base picture multiplies the model's own colours (white changes nothing; its alpha is a road's ragged edge); a detail picture (…_detail, road_grain) is fine grain repeating every 4 m that averages to mid-grey far away. The ground pictures' mean colours go to textures/means.json (land_make divides its tint by them, so the ground keeps its colour). " +
-      "land_make and road_make (textured) name these files, and make the ones they need when they are missing. `seed` 1 is the set first made for Pine Ridge Rally; another seed is another pattern of the same. `road`: { line (how dark the worn racing line is: 1, 0 for none, up to 2), cracks (0 to 20; 5), patches (sealed patches, 0 to 2; 2), skids (skid marks, 0 to 3; 3) }. It returns every picture made, shrunk side by side.",
+      "land_make and road_make (textured) name these files, and make the ones they need when they are missing. `seed` 1 is the set first made for Pine Ridge Rally; another seed is another pattern of the same. `road`: { line (how dark the worn racing line is: 1, 0 for none, up to 2), cracks (0 to 20; 5), patches (sealed patches, 0 to 2; 2), skids (skid marks, 0 to 3; 3), gravel (\"ruts\": two wheel ruts, as first made; \"soft\": no ruts, a lighter crown and darker shoulders, stones and a few pebbles, patchy worn wheel paths, grass creeping in at the edges) }. It returns every picture made, shrunk side by side.",
     {
       surfaces: { type: "array", items: { type: "string" }, description: `Which (all when left out): ${SURFACES.join(", ")}.` },
-      road: { type: "object", description: "The road sheet's wear: { line, cracks, patches, skids }." },
+      road: { type: "object", description: "The road sheet's wear: { line, cracks, patches, skids, gravel }." },
       seed: SEED,
     },
     [],
@@ -88,9 +88,10 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
       const names: string[] = a.surfaces ?? SURFACES;
       for (const n of names) if (!SURFACES.includes(n)) throw new Error(`there is no surface "${n}"; the surfaces are ${SURFACES.join(", ")}`);
       const r = a.road ?? {};
-      const bad = Object.keys(r).filter((k) => !["line", "cracks", "patches", "skids"].includes(k));
-      if (bad.length) throw new Error(`road has ${bad.join(", ")}; it takes line, cracks, patches, skids`);
-      const road = { line: Math.max(0, Math.min(2, Number(r.line ?? 1))), cracks: Math.max(0, Math.min(20, Math.round(Number(r.cracks ?? 5)))), patches: Math.max(0, Math.min(2, Math.round(Number(r.patches ?? 2)))), skids: Math.max(0, Math.min(3, Math.round(Number(r.skids ?? 3)))) };
+      const bad = Object.keys(r).filter((k) => !["line", "cracks", "patches", "skids", "gravel"].includes(k));
+      if (bad.length) throw new Error(`road has ${bad.join(", ")}; it takes line, cracks, patches, skids, gravel`);
+      if (r.gravel !== undefined && !["ruts", "soft"].includes(r.gravel)) throw new Error(`road.gravel is "ruts" (wheel ruts, as first made) or "soft" (no ruts: a soft crown, stones, patchy wheel paths, grass at the edges)`);
+      const road = { line: Math.max(0, Math.min(2, Number(r.line ?? 1))), cracks: Math.max(0, Math.min(20, Math.round(Number(r.cracks ?? 5)))), patches: Math.max(0, Math.min(2, Math.round(Number(r.patches ?? 2)))), skids: Math.max(0, Math.min(3, Math.round(Number(r.skids ?? 3)))), gravel: r.gravel ?? "ruts" };
       const made = surfaces({ ...a, road }, names);
       return {
         text: [`made ${made.length} picture${made.length === 1 ? "" : "s"} in textures/ (seed ${a.seed ?? 1}):`, ...made.map((m) => `  ${m.name}.png ${m.w}x${m.h}: ${SAYS[m.name]}`), "the picture shows them in that order, left to right, shrunk"].join("\n"),
@@ -104,7 +105,7 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
     "Make a racing route's road as one ribbon mesh, `models/road_<name>.glb` (the same road the studio's track editor and track_write write: a crowned surface with painted edges, verges, a skirt down to the ground), WITHOUT touching its scene: from the saved track (`track`: its name, tracks/<name>.track.json; `tracks`: several, or \"all\") or from `control` points given here (a closed circuit, or `open`: true for a stage; [x, z] in metres) with `name`. " +
       `\`road\`: ${ROAD_KINDS.join(", ")} (the colours); \`zones\`: [{ from, to, road?, width? }] stretches with their own surface or width (metres along the route). \`textured\`: true lays texture coordinates and names textures/road.png and road_grain.png (made with surface_make when the project has none): the worn racing line, cracks, ruts and ragged edges of the road sheet; with a saved track it also sets "textured" in the track file, as the track editor does. ` +
       "Draw it with nova.model(\"road_<name>\", 0, 0, 0). Use track_write for the whole course (scene, gates, scenery); use this after changing a track by hand or to give a game's own route a road. It returns the road from above. " +
-      "**A network of roads** (a town's or a valley's: a main road and lanes off it): `roads` [{ id, control ([x, z], two or more), road (kind), width (metres edge to edge with the verges, 12), zones }] with a `name` makes ONE model, `models/road_<name>.glb` (always textured), joined at proper junctions: where a road ends on another (a T, or a Y at any angle) or two cross, the through road (the one a road ends on; at a crossing tarmac over gravel, then the wider, then the first given) carries on with its centre line unbroken, the other is trimmed to its mouth, each corner is a fillet carrying the edge line and verge round (`kerb`: radius in metres by the junction's surface, { road_asphalt: 6, road_gravel: 4.5, others 4 }), and one patch fills the junction, every vertex shared with the pieces round it: no gap, nothing laid over anything. Two roads whose ends meet in line become one road. " +
+      "**A network of roads** (a town's or a valley's: a main road and lanes off it): `roads` [{ id, control ([x, z], two or more), road (kind), width (metres edge to edge with the verges, 12), zones, kerb (its own corners' radius where it joins another road, before the surface's) }] with a `name` makes ONE model, `models/road_<name>.glb` (always textured), joined at proper junctions: where a road ends on another (a T, or a Y at any angle) or two cross, the through road (the one a road ends on; at a crossing tarmac over gravel, then the wider, then the first given) carries on with its centre line unbroken, the other is trimmed to its mouth, each corner is a fillet carrying the edge line and verge round (`kerb`: radius in metres by the junction's surface, { road_asphalt: 6, road_gravel: 4.5, others 4 }), and one patch fills the junction, every vertex shared with the pieces round it: no gap, nothing laid over anything. Two roads whose ends meet in line become one road. " +
       "Where surfaces differ (a gravel lane off tarmac, a zone of another kind, a road into a pad of another kind) `transition` says how: \"feather\" (default: the junction's surface runs an `apron` of 3 m into the lane, then meets the other along a ragged broken edge with dust over the last `feather` 1.6 m), \"apron\" (the same, a clean straight edge), \"hard\" (a straight cut at the mouth); markings end with the tarmac; a width change tapers over 15 m. `ends`: \"round\" (default), \"square\" or \"flat\" for a road's free ends. `pads`: [{ at: [x, z], radius (6) or size: [w, l] with ry, road (road_gravel), width (7.2: the verge's scale) }]: a yard, a parking bay, a turning circle a road can end in. `gaps`: [{ road, from: [x, z], to: [x, z] }]: the road stops square at each end with a dark threshold strip (where a bridge's deck carries it). The answer lists every junction (its kind, angle, surfaces, transition), every surface change, and the checks: no hole, no overlap, every inner edge shared. Make the ground under it with terrain_write's `roads` (the same control points).",
     {
       track: { type: "string", description: "A saved track's name (tracks/<name>.track.json)." },
@@ -116,7 +117,7 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
       zones: { type: "array", items: { type: "object" } },
       textured: { type: "boolean" },
       preview: { type: "boolean", description: "false: no picture." },
-      roads: { type: "array", items: { type: "object" }, description: "A network: [{ id, control, road, width, zones }], made into one model `road_<name>` with proper junctions." },
+      roads: { type: "array", items: { type: "object" }, description: "A network: [{ id, control, road, width, zones, kerb }], made into one model `road_<name>` with proper junctions." },
       pads: { type: "array", items: { type: "object" }, description: "With roads: [{ at, radius | size, ry, road, width }] surfaces a road can end in." },
       gaps: { type: "array", items: { type: "object" }, description: "With roads: [{ road, from, to }] where a road stops (a bridge)." },
       transition: { type: "string", description: 'With roads: where surfaces differ, "feather" (default), "apron" or "hard".' },
@@ -124,6 +125,8 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
       feather: { type: "number", description: "With roads: metres of the ragged band between two surfaces (1.6)." },
       ends: { type: "string", description: 'With roads: a free end "round" (default), "square" or "flat".' },
       kerb: { type: "object", description: "With roads: a junction's corner radius by its surface, { road_asphalt: 6, road_gravel: 4.5 }." },
+      colours: { type: "object", description: "With roads: a kind's own colours (linear 0 to 1), { road_gravel: { road: [r, g, b], line: [r, g, b], verge: [r, g, b] } }: the carriageway, the band at its edge and the verge; left out, the kind's usual colours." },
+      even: { type: "boolean", description: "With roads: an even picture for loose roads (gravel, dirt): a junction's patch carries the through road's picture on past its edge mirrored instead of blending it into the joining road's (which draws stones out into streaks), and a road narrower than 12 m runs its picture along it faster, as much as it is squeezed across, so stones stay round. Default false." },
     },
     [],
     (a) => {
@@ -132,7 +135,7 @@ export function registerGround(h: Host, SEED: unknown): Record<string, Args> {
         if (a.control !== undefined || a.track !== undefined || a.tracks !== undefined) throw new Error("give `roads` (a network) or `control`/`track`, not both");
         if (!a.name) throw new Error("a network needs a `name` (models/road_<name>.glb)");
         const name = h.safeName(a.name, "Road");
-        const net = buildNetwork({ roads: a.roads, pads: a.pads, gaps: a.gaps, transition: a.transition, apron: a.apron, feather: a.feather, ends: a.ends, kerb: a.kerb });
+        const net = buildNetwork({ roads: a.roads, pads: a.pads, gaps: a.gaps, transition: a.transition, apron: a.apron, feather: a.feather, ends: a.ends, kerb: a.kerb, colours: a.colours, even: a.even === true });
         const check = checkSurface(surfaceOf(net.mesh), { step: 0.25 });
         const madeSurfaces = need(a, ["road", "road_grain"]);
         const glb = networkGlb(net.mesh);
