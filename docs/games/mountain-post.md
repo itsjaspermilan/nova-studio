@@ -1191,7 +1191,14 @@ walking in the meadow 258,000 before and 410,000 after, low across the meadow 28
 301,000 and 454,000, the view of the tree shadows into the distance 311,000 and 476,000. Of the increase about 120,000 is the grass
 (about 6,500 clumps of 18 triangles) and the rest the trees' new shapes and the far shadow map's casters.
 
-**Cost on the Retroid**: DEVICE_NUMBERS
+**Cost on the Retroid: not measured yet.** The device was unreachable for most of the work and the one run was stopped (the owner
+was using it). To measure: the camera-turn route (`scripts/bench/fernhollow-camera-turn.json`, 2,000 frames) and
+`tools/routes/grass-bench.json` (`--play`: walking, low across the meadow, driving on Post Road, tree shadows, the forest edge,
+printing `nova.perf().gpu_ms`), each with the build before and after, `--no-audio`, alternating twice, and the after build with
+the grass turned off (`nova.grass()`) and then the far map off, to split the cost. Budget asked for: at most 1.0 to 1.5 ms of GPU
+in the walking and driving views, 60 fps held. On a desktop (Apple M4, 1280 x 720, busy machine) the walking view's GPU time
+rose by roughly 1.5 to 2 ms; that GPU is not the Adreno and the readings are noisy, so this says nothing certain about the
+device. If the device is over budget, the levers are `density` (10 to 6), `distance` (32 to 24) and `far` (110 to 80).
 
 **Pictures** (1280 x 720, `build/gallery/`, not committed): `seventh-<view>-before.png` and `-after.png` for the meadow from the
 walking camera, low across the meadow, the driving camera on Post Road, the trees' shadows into the distance, a birch close and at
