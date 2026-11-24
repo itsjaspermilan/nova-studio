@@ -5246,8 +5246,16 @@ impl Game {
         // the life floating round the camera (`nova.ambient`), moved on by the engine's clock (still while paused)
         {
             let mut ambient = std::mem::take(&mut sh.ambient);
-            ambient.step(if sh.frozen { 0.0 } else { dt }, &sh, &mut self.models);
+            let mut ribbons = std::mem::take(&mut sh.lighting.ribbons);
+            ribbons.clear();
+            ambient.step(
+                if sh.frozen { 0.0 } else { dt },
+                &sh,
+                &mut self.models,
+                &mut ribbons,
+            );
             sh.ambient = ambient;
+            sh.lighting.ribbons = ribbons;
         }
         self.shading.models = std::mem::take(&mut sh.shading.models);
         self.shading.sprites = std::mem::take(&mut sh.shading.sprites);

@@ -1,5 +1,5 @@
 -- The valley's floating life (the owner, seventh play: "nothing floating around the area, like leaves or wind strokes"): leaves
--- drifting down from the trees near you, a white wind curl now and then, pollen glinting in the sun, butterflies over the flowers
+-- drifting down from the trees near you, soft wind curls in the open (more on the hills), pollen glinting in the sun, butterflies over the flowers
 -- and bushes, and a few small birds that fly over or come down by a tree to peck about (they fly off when you come near). The engine
 -- keeps and draws all of it round the camera (nova.ambient, docs/project-format.md "Floating life"); this only says where the trees,
 -- flowers and good spots for birds are, from the scene file.
@@ -37,7 +37,7 @@ function atmosphere.start(bird_every) -- (a picture or a test can call birds soo
   nova.ambient {
     radius = 30,
     leaves = { count = 22, trees = trees, colors = { { 196, 204, 92 }, { 226, 190, 74 }, { 150, 186, 84 }, { 214, 150, 64 } } },
-    streaks = { count = 2, every = 4.5 },
+    streaks = { count = 5, every = 0.9, hills = 22 }, -- (soft, see-through curls, several at a time in the open; more on the hills)
     motes = { count = 36 },
     butterflies = { count = 5, flowers = flowers, colors = { { 255, 236, 170 }, { 255, 255, 236 }, { 170, 205, 255 }, { 255, 196, 150 } } },
     birds = { count = 5, every = bird_every or 28, perches = perches },

@@ -50,6 +50,17 @@ fn cell_of(v: f32) -> i32 {
 const AUTO_RANGE: f32 = 300.0;
 /// The last share of the draw range over which a piece fades out instead of vanishing.
 const RANGE_FADE: f32 = 0.12;
+/// The same for a piece's own `max_distance`: a longer dissolve, each piece ending at its own distance (see [`pick`]).
+const OWN_RANGE_FADE: f32 = 0.3;
+
+/// 0 to 1 from where a piece stands (the same each frame).
+fn place_hash(x: f32, z: f32) -> f32 {
+    let mut h = x.to_bits().wrapping_mul(0x9E37_79B1) ^ z.to_bits().wrapping_mul(0x85EB_CA77);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x2C1B_3C6D);
+    h ^= h >> 12;
+    (h & 0xffff) as f32 / 65535.0
+}
 
 /// Which model of a pair to draw at distance `d`: the near one, the far one, or both (the share `t`, in (0, 1), is how much of
 /// the far one: the near one is drawn dissolving by `-t` and the far one by `t`).
@@ -83,11 +94,20 @@ pub(super) fn lod_state(d: f32, distance: f32, fade: f32) -> Lod {
 /// fading by a screen-door (the near one by `-t`, the far one by `t`, which fill every pixel once together); and a piece
 /// that is alone fades out over the last [`RANGE_FADE`] of the range. A dissolve of 0 means solid.
 fn pick(p: &Piece, d: f32, radius: f32) -> [Option<(u32, f32)>; 2] {
-    let radius = radius.min(p.max_distance);
+    // a piece's own `max_distance` (grass, ferns, small things): each piece ends at its own distance, up to 12% nearer by a hash of
+    // where it stands, and dissolves over the last 30% of it, so a field of them thins out with no ring where it ends
+    let (radius, fade) = if p.max_distance < radius {
+        (
+            p.max_distance * (1.0 - 0.12 * place_hash(p.x, p.z)),
+            OWN_RANGE_FADE,
+        )
+    } else {
+        (radius, RANGE_FADE)
+    };
     if d >= radius {
         return [None, None];
     }
-    let edge = radius * (1.0 - RANGE_FADE);
+    let edge = radius * (1.0 - fade);
     let fade_out = ((d - edge) / (radius - edge)).clamp(0.0, 1.0);
     let alone = |slot: u32| {
         [

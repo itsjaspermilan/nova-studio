@@ -14,6 +14,16 @@ local WATER_EDGE = world.WATER_EDGE
 local MESH = { shadow = false }
 local GRASS_CELL = 0.5 -- (terrain/grass.png: a sample every half metre, tools/grass.mjs)
 
+-- The meadow's flowers and small plants (the owner's eighth play: "Just like blobs on sticks ... don't some games use 2D assets for the
+-- less important items?"): painted pictures among the blades (textures/flora.png, tools/flora.mjs: daisies, buttercups, lupines,
+-- clover, dandelions), in patches of about 7 m over a third of the meadow, only where the grass is full (so never on a road, a path,
+-- a porch or by the water), and thick round each `flowers` spot of the scene file (the gardens). The engine grows and fades them round
+-- the camera like the blades (nova.grass's `flowers`).
+local FLOWERS = { picture = "textures/flora.png", kinds = 5, density = 0.7, size = 0.5, distance = 28, patch = 7, cover = 0.34, spots = {} }
+for _, o in ipairs(nova.scene_data("valley").objects) do
+  if o.kind == "flowers" and #FLOWERS.spots < 16 then FLOWERS.spots[#FLOWERS.spots + 1] = { o.x, o.z, 1.8, 4 } end
+end
+
 local function axis(lo, hi, step, far, far_step)
   local out = {}
   for v = lo - far, lo - far_step, far_step do out[#out + 1] = v end
@@ -61,7 +71,7 @@ function ValleyGround:build()
   -- coloured from these same ground colours on the same 4 m grid, so a blade's root is the ground's own green
   nova.grass { map = "terrain/grass.png", x = L.x0, z = L.z0, cell = GRASS_CELL,
     colors = { x = L.x0, z = L.z0, cell = 4, columns = columns, rows = rows, data = grid },
-    height = 0.3, width = 0.07, density = 10, distance = 32, sway = 1 }
+    height = 0.3, width = 0.07, density = 10, distance = 32, sway = 1, flowers = FLOWERS }
   for j = 1, #zs - 1 do
     for i = 1, nx - 1 do
       local a = (j - 1) * nx + i

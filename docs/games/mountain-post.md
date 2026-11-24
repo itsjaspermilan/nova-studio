@@ -1361,3 +1361,42 @@ Device: 60 fps holds (GPU 10.4 ms, about 4 ms headroom). The owner's notes, in t
 9. "There should be a driveway at the homes and buildings. Right now we're just driving on grass."
 10. "The player kind of looks like he's shuffling when he's walking."
 11. "I liked the post master cap that we had earlier. The bucket hat makes the character look like some kind of explorer."
+
+### What the eighth play changed: the flowers, the grass's fade, the wind curls (notes 1 to 3)
+
+- **Flowers as painted pictures** (note 1). The 260 scattered 3D "flowers" (blobs on sticks) and the gardens' five are gone; the
+  engine grows painted pictures among the grass blades instead (`nova.grass`'s `flowers`, docs/project-format.md "Grass"): five kinds
+  drawn by image_make in the soft-toy palette (`tools/flora.mjs` makes `textures/flora.png`: daisies, buttercups, lupines, clover,
+  dandelions), each plant two triangles stood up facing the camera (tilted back a little when the camera looks down), in patches of
+  about 7 m over a third of the meadow (mostly one or two kinds a patch), 0.5 m tall, swaying and bending with the grass, lit like the
+  ground, gone by 28 m. They grow only where `terrain/grass.png` is full, so never on a road, a gravel path, a junction, the bridge, a
+  porch or by the water (the test checks every plant the engine would stand, over the whole valley); each `flowers` object of the scene
+  file (the gardens) is now a spot where they grow thick (`entities/flowers.lua` draws nothing itself; `entities/valley_ground.lua`
+  passes the spots). The ferns stay 3D (they read well); the flower beds, window boxes, pots and Pip's plot are still models.
+- **No pop** (note 2). Every blade fades by its own distance: its distance is jittered by up to 9% by its number (no ring where the
+  grass thins or ends), the clumps that the thinning drops come up out of the ground one after another over 40% of the count (a few
+  metres of a walk, never a frame), and over the last quarter of the 32 m the rest dissolves by coverage (4x MSAA: soft). The flowers
+  do the same over the last third of their distance. Scenery with its own `max_distance` (the 2,600 tufts at 38 m, the ferns at 50 m)
+  now ends piece by piece (up to 12% nearer by where each stands) and dissolves over the last 30% (it was all at once over the last
+  12%). The squares of 8 m are only what is drawn: nothing fades a square at a time. The pines' and larches' far models trade places
+  over 16 m by the screen-door crossfade at 110 m, as before.
+- **Wind curls** (note 3): thin ribbons (about 6 cm, pointed at both ends, palest at the tail) of a slightly blue-tinted white at about
+  half alpha, drawn blended in their own pass with soft edges (`gfx/ribbon.rs`; a see-through model's pixels under 0.3 of alpha are
+  cut, which made the old curls' hard edges and dithered fade); five may be about at once, one every second or so (sooner as the wind
+  gusts), up to twice as often and twice as many on the hills (from 22 m of ground up; the meadow is at about 19 m, the hilltops 34 m).
+
+**Pictures** (1280 x 720, `build/gallery/`, not committed): `eighth-flowers-close-*`, `eighth-flowers-10m-*`, `eighth-meadow-low-*`,
+`eighth-walk-strip-*` (eight frames a third of a second apart, running across the meadow), `eighth-curls-open-*`, `eighth-curls-hill-*`, each
+`-before` (the build at 25d06b6a) and `-after`. The route is `tools/routes/eighth.json` (`tools/routes/eighth.mjs` writes it).
+
+**Cost on a desktop** (Apple M4, 1280 x 720, 4x MSAA, `tools/routes/grass-bench.json`, the build before and after alternated six times,
+the machine busy with other agents' builds): the GPU readings flip between about 3 and 4 ms by the GPU's clock state in both builds, and
+the medians moved by -0.5 to +0.7 ms view by view (walking 3.1 to 3.2 ms, low across the meadow 3.9 to 3.4, driving 3.9 to 3.7, the tree
+shadows 3.3 to 4.0, the forest edge 3.4 to 3.0): no change this machine can resolve. Triangles a frame rose by 22,000 to 30,000 (5 to
+6%): the clumps that now come up gradually instead of all at once (counted though most are still short) and the flowers (two triangles
+each). Saved: the 265 flower models and the curls' 24 blended model draws (one draw for all the ribbons now). **Not measured on the
+Retroid.**
+
+**Weak points**: the flower beds, window boxes, pots and Pip's plot are still 3D blobs (they are the houses' models, `tools/models.mjs`);
+the lupines read as soft spikes rather than bells; the motes still fade by a screen-door (a dotted disc as one fades); the cost on the
+device is not measured.

@@ -18,8 +18,11 @@ pub const MAX_STREAKS: usize = 8;
 pub const MAX_MOTES: usize = 96;
 pub const MAX_BUTTERFLIES: usize = 12;
 pub const MAX_FLOCK: usize = 12;
-/// Quads in one wind curl.
-const STREAK_SEGMENTS: usize = 24;
+/// Segments of one wind curl's ribbon.
+const STREAK_SEGMENTS: usize = 32;
+/// A wind curl's alpha at its fullest, and its colour (linear: a white a little towards blue).
+const STREAK_ALPHA: f32 = 0.5;
+const STREAK_COLOR: [f32; 3] = [0.86, 0.92, 1.0];
 
 const KEYS: [&str; KINDS] = [
     "__ambient:leaf",
@@ -203,6 +206,8 @@ pub(super) struct Config {
     leaf_colors: Vec<[f32; 3]>,
     streaks: usize,
     streak_every: f32,
+    /// The ground's height (metres) from which wind curls come more often, up to twice as often and twice as many 10 m higher.
+    streak_hills: Option<f32>,
     motes: usize,
     butterflies: usize,
     flowers: Vec<[f32; 2]>,
@@ -362,7 +367,13 @@ impl Ambient {
     }
 
     /// Moves everything on by `dt` seconds round the camera and adds its quads to the frame (`models`).
-    pub(super) fn step(&mut self, dt: f32, sh: &Shared, models: &mut Vec<ModelDraw>) {
+    pub(super) fn step(
+        &mut self,
+        dt: f32,
+        sh: &Shared,
+        models: &mut Vec<ModelDraw>,
+        ribbons: &mut Vec<crate::gfx::Ribbon>,
+    ) {
         let Some(cfg) = self.cfg.clone() else {
             self.last_quads = 0;
             return;
@@ -543,9 +554,14 @@ impl Ambient {
         }
 
         // ---- wind curls: a white stroke that draws itself along the wind, rolls into a loop and fades ----
-        let want = cfg.streaks.min(MAX_STREAKS);
+        // (more on a hilltop, from `hills` metres of ground up, and while the wind gusts)
+        let hill = cfg.streak_hills.map_or(0.0, |h| {
+            ((terrain.height(cam.eye.x, cam.eye.z) - h) / 10.0).clamp(0.0, 1.0)
+        });
+        let want = ((cfg.streaks as f32 * (1.0 + hill)).round() as usize).min(MAX_STREAKS);
         if want > 0 && wind.strength > 0.05 {
-            self.streak_timer -= dt;
+            let gusting = (gust / wind.strength.max(1e-3)).powi(2) * 1.3;
+            self.streak_timer -= dt * gusting * (1.0 + hill);
             if self.streak_timer <= 0.0 && self.streaks.len() < want {
                 self.streak_timer =
                     cfg.streak_every * self.range(0.6, 1.4) / wind.strength.max(0.3).sqrt();
@@ -579,7 +595,7 @@ impl Ambient {
                     loop_r: self.range(0.35, 0.6),
                     age: 0.0,
                     life: self.range(2.2, 3.0),
-                    width: self.range(0.1, 0.14),
+                    width: self.range(0.05, 0.08),
                 };
                 self.streaks.push(streak);
             }
@@ -589,6 +605,8 @@ impl Ambient {
             s.start += wind_v * 0.5 * dt;
             s.age < s.life && ground_dist(s.start) < r * 1.2
         });
+        // each curl is a ribbon (gfx/ribbon.rs: blended in its own pass, its edges soft and its faint parts kept): a thin stroke,
+        // pointed at both ends, palest at its tail and fullest just behind its head, a slightly blue-tinted white at about half alpha
         for s in &self.streaks {
             let k = s.age / s.life;
             // the head runs ahead and the tail follows it: what is drawn is the part of the path between them
@@ -597,31 +615,26 @@ impl Ambient {
             if head - tail < 0.01 {
                 continue;
             }
-            let alpha = smooth(0.0, 0.12, k) * (1.0 - smooth(0.85, 1.0, k));
-            let mut prev = curl_point(s, tail);
-            for i in 1..=STREAK_SEGMENTS {
-                let u = tail + (head - tail) * i as f32 / STREAK_SEGMENTS as f32;
-                let p = curl_point(s, u);
-                let along = p - prev;
-                let len = along.length();
-                if len > 1e-4 {
-                    let mid = (p + prev) * 0.5;
-                    let axis = along / len;
-                    // a ribbon across the line of sight, thinning to points at both ends; turned so that its face (x cross y) looks at
-                    // the camera (the quad's two sides share one winding, so a quad facing away is culled)
-                    let across = (eye - mid).cross(axis).normalize_or(up);
-                    let w = (i as f32 - 0.5) / STREAK_SEGMENTS as f32;
-                    let thick = s.width * (std::f32::consts::PI * w).sin().max(0.3);
-                    let m = Mat4::from_cols(
-                        (axis * (len * 1.4 + thick * 0.3)).extend(0.0),
-                        (across * thick).extend(0.0),
-                        axis.cross(across).extend(0.0),
-                        mid.extend(1.0),
-                    );
-                    push(models, STREAK, m, [1.0, 1.0, 1.0, alpha]);
-                }
-                prev = p;
-            }
+            let alpha = STREAK_ALPHA * smooth(0.0, 0.15, k) * (1.0 - smooth(0.8, 1.0, k));
+            let points = (0..=STREAK_SEGMENTS)
+                .map(|i| {
+                    let w = i as f32 / STREAK_SEGMENTS as f32;
+                    let p = curl_point(s, tail + (head - tail) * w);
+                    let taper = (std::f32::consts::PI * w).sin().max(0.0).powf(0.6); // (sin(pi) is a hair under 0)
+                    let along = 0.35 + 0.65 * smooth(0.0, 0.75, w);
+                    [
+                        p.x,
+                        p.y,
+                        p.z,
+                        s.width * 0.5 * taper,
+                        alpha * along * taper.sqrt(),
+                    ]
+                })
+                .collect();
+            ribbons.push(crate::gfx::Ribbon {
+                points,
+                color: STREAK_COLOR,
+            });
         }
 
         // ---- motes: pollen and dust round the camera, glinting when it looks towards the sun ----
@@ -1026,6 +1039,7 @@ pub(super) fn install(lua: &Lua, shared: &Rc<RefCell<Shared>>, nova: &Table) -> 
                 let o = Some(t.clone());
                 cfg.streaks = count(&o, MAX_STREAKS)?;
                 cfg.streak_every = number_option(&o, "every")?.unwrap_or(3.0).clamp(0.3, 120.0) as f32;
+                cfg.streak_hills = number_option(&o, "hills")?.map(|h| h as f32);
             }
             if let Some(t) = part(&opts, "motes")? {
                 cfg.motes = count(&Some(t), MAX_MOTES)?;

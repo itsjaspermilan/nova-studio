@@ -14,12 +14,14 @@ mod custom;
 mod fx2d;
 pub mod grass;
 pub mod paint;
+pub mod ribbon;
 pub use custom::{MAX_SHADED_DRAWS, MaterialVertex};
 pub use fx2d::{
     Blend2d, Fx2d, Fx2dFrame, Light2d, MAX_LIGHTS_2D, MAX_MIRRORED, Rain2d, Reflect2d,
     SHADOW_STYLE, Shape2d, Style2d,
 };
-pub use grass::{Grass, GroundPicture};
+pub use grass::{Flora, FloraPicture, Grass, GroundPicture};
+pub use ribbon::Ribbon;
 
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -559,6 +561,8 @@ pub struct Lighting {
     pub fx2d: Option<Fx2d>,
     /// Blades of grass round the camera (`nova.grass`, gfx/grass.rs); None draws none.
     pub grass: Option<Grass>,
+    /// Soft strokes in the air this frame (`nova.ambient`'s wind curls; gfx/ribbon.rs), drawn blended after the see-through models.
+    pub ribbons: Vec<Ribbon>,
 }
 
 impl Default for Lighting {
@@ -587,6 +591,7 @@ impl Default for Lighting {
             quality: Quality::default(),
             fx2d: None,
             grass: None,
+            ribbons: Vec::new(),
         }
     }
 }
@@ -1369,6 +1374,8 @@ pub struct Gfx {
     fx2d: fx2d::Fx2dGpu,
     /// Blades of grass (`nova.grass`).
     grass: grass::GrassGpu,
+    /// Soft strokes in the air (`nova.ambient`'s wind curls), blended in their own pass.
+    ribbons: ribbon::RibbonGpu,
 }
 
 /// How many mip levels a smoothly filtered picture (a billboard's, a glTF texture with linear filtering) gets: the whole chain,
@@ -2827,6 +2834,13 @@ impl Gfx {
             &shadow_layout,
             DEPTH_FORMAT,
         );
+        let ribbons = ribbon::RibbonGpu::new(
+            &device,
+            world_format,
+            samples,
+            &globals_layout,
+            DEPTH_FORMAT,
+        );
         let extras = custom::Extras::new(
             &device,
             &queue,
@@ -2922,6 +2936,7 @@ impl Gfx {
             extras,
             fx2d,
             grass,
+            ribbons,
         }
     }
 
@@ -4211,6 +4226,16 @@ impl Gfx {
             &planes,
             &lit.terrain,
         );
+        let pixel = 2.0 * (input.camera.fov_y_degrees.to_radians() * 0.5).tan()
+            / world_size.1.max(1) as f32;
+        self.ribbons.prepare(
+            &self.device,
+            &self.queue,
+            &lit.ribbons,
+            input.camera.eye,
+            pixel,
+            |x, z| lit.terrain.height(x, z),
+        );
         let world_models: Vec<ModelDraw> = input
             .models
             .iter()
@@ -4692,6 +4717,10 @@ impl Gfx {
                     stats.draw_calls += 1;
                 }
             }
+            // the soft strokes in the air, blended over everything solid and see-through
+            let (calls, triangles) = self.ribbons.draw(&mut pass, &self.globals_group);
+            stats.draw_calls += calls;
+            stats.triangles += triangles;
             if fx2d.is_some() {
                 stats.draw_calls += self.fx2d.draw_rain(self, &mut pass);
             }

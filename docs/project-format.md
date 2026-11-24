@@ -256,6 +256,46 @@ nova.grass()                            -- no grass
 | `density` | 10 | clumps a square metre near the camera |
 | `distance` | 32 | metres from the camera where the last clumps sink away; the grass thins from a quarter of this |
 | `sway` | 1 | how much the wind moves it (0 still) |
+| `flowers` | none | painted flowers and small plants among the blades (below) |
+
+**Flowers and small plants as pictures** (`flowers`, added 2026-11-23 for Fernhollow Post, the owner's eighth play: "The flowers look
+kinda weird. Just like blobs on sticks ... don't some games use 2D assets for the less important items?"). Small things that are many
+and seen from a little way off read better, and cost far less, as painted pictures than as models: two triangles a plant, grown on the
+GPU round the camera exactly as the blades are.
+
+```lua
+nova.grass { ..., flowers = {
+  picture = "textures/flora.png", kinds = 5,          -- the kinds side by side, each a square cell, the ground at its bottom
+  density = 0.7, patch = 7, cover = 0.34,             -- plants a square metre in patches about 7 m across over a third of the ground
+  size = 0.5, distance = 28,                          -- metres tall (each 0.7 to 1.3 times it); gone by 28 m (at most the grass's)
+  spots = { { x, z, 1.8, 4 }, ... },                  -- gardens: thick within 1.8 m (4 a square metre), up to 16
+} }
+```
+
+| Option | Default | What it is |
+| --- | --- | --- |
+| `picture`, `kinds` | (needed) | a PNG of `kinds` (1 to 16) square cells side by side, see-through round the plants; it is not a sprite (keep it out of `sprites/`, as `textures/`). The engine makes its smaller copies itself, weighting each texel by its cover, so the edges stay clean far off |
+| `density` | 0.4 | plants a square metre where a patch is full (0 to 8) |
+| `patch`, `cover` | 6, 0.35 | the patches' size in metres and the share of the ground they cover; each patch is mostly of one or two kinds |
+| `size` | 0.4 | a plant's height and width in metres |
+| `distance` | 0.85 of the grass's | where the last plants are gone (they thin from a third of it and fade over its last third) |
+| `spots` | none | `{ x, z, radius, density }` each: gardens where plants grow thick, where the map has any grass |
+
+Each plant stands upright on the ground and turns to face the camera (turned a little back towards an eye that looks down on it, so
+the van's camera does not see it edge on), sways in the wind with the blades' own swell and flutter, bends away from the bending points,
+is lit like the ground under it (with one shadow lookup) and darker at its foot. Patches grow only where the map is full (255, give or
+take: so never on a road's or a path's thinning edge, by the water or on a porch); a spot's plants grow where the map has any grass.
+`Grass::flora_places(i, j)` is the CPU's copy of where the plants of a square stand (for tests and tools). With `"msaa": 4` the
+pictures' edges are drawn by coverage (smooth, about a pixel wide at every size); without it they are cut at half alpha.
+
+**Fading in and out** (since 2026-11-23, the owner's eighth play: "The pop in of grass and stuff is quite evident"). Nothing appears
+or vanishes in a frame. A clump's (or a plant's) own distance is jittered by its number (by up to 9%, 10% for a plant), so the grass
+neither thins nor ends along a ring; as the share of clumps kept falls with the distance, the clumps past it come up out of the ground
+one after another over 40% of the count (a few metres of a walk); and over the last quarter of `distance` (a third for the plants)
+what is left also dissolves, by coverage with multisampling (soft) or by a fixed screen-door without it. The squares are only what
+is drawn; every blade fades by its own distance from the camera, never a whole square at once. Scenery with its own `max_distance`
+(the scattered tufts, ferns and other small pieces) fades the same way: each piece ends at its own distance (up to 12% nearer, by
+where it stands) and dissolves over the last 30% of it (it was the last 12%, all at the same distance).
 
 **How it works** (`gfx/grass.rs`, `shaders/grass.wgsl`). Nothing is stored per blade. The ground round the camera is cut into
 squares of 8 m; each square that is in reach and in view (its bounds against the camera's view, on the CPU) is one instanced draw
@@ -265,8 +305,9 @@ number is past the count for its own distance sinks smoothly into the ground, so
 are kept grow a little wider to keep the cover. The vertex shader makes each blade (five points, three triangles) from the
 vertex number, reads the map and the colour grid, leans it outwards, with the wind (a swell that travels across the meadow along
 the wind, a quicker flutter, and a sheen where a gust bends it) and away from the bending points, and lights each point: the
-ground's light, softened towards the tip, with one filtered shadow lookup. The fragment shader only writes the colour. The
-squares are drawn nearest first, after the solid models.
+ground's light, softened towards the tip, with one filtered shadow lookup. The fragment shader only writes the colour (and the
+coverage of a fading blade). The squares are drawn nearest first, after the solid models, and the flowers after them (one
+instanced draw a square, six vertices a plant, no vertex buffer).
 
 **Cost** (Retroid Pocket 6, Fernhollow's meadow, 1280 by 720, MSAA 4x): see `docs/games/mountain-post.md`, "The seventh play:
 grass, trees and shadows".
@@ -439,7 +480,7 @@ so that a crown shimmers instead of leaning like a post (a few sines a vertex: i
 in Hill Run use `sway` 0.03 to 0.035). Grass is a plain vertex-coloured model of eight thin blades drawn from both sides (16 triangles a tuft; `scripts/hills/make-foliage.mjs`
 makes the three in Hill Run). `scatter` puts the copies where the ground is (by default the first `nova.solid` surface from above, or
 your own `ground(x, z) -> height, normal_y`), refusing steep spots (`min_normal_y`) and any a `filter` says no to; the same `seed` gives
-the same field. Pieces are kept in Rust and drawn near the camera (`max_distance` per piece: grass fades out at 55 m, trees at the fog),
+the same field. Pieces are kept in Rust and drawn near the camera (`max_distance` per piece: grass fades out at 55 m, each piece at its own distance and dissolving over the last 30% of it; trees at the fog),
 and a script that runs too long in one frame is stopped, so a big field is planted a few thousand at a time over several frames (Hill Run
 does it in about 0.3 s). On the Retroid, 30,000 tufts, 2,500 flowers, 260 bushes and 260 trees (180,000 triangles in view, 8,700 culled) held
 59.7 fps at 2.3 ms of GPU. Not done: grass that parts around the player, wind that varies by place (gusts you can see crossing), a LOD for trees (a cheap far tree), trunks as colliders.
@@ -676,7 +717,7 @@ by the engine:
 nova.ambient {
   radius = 30,                                                  -- metres round the camera (5 to 120)
   leaves = { count = 22, trees = { { x, z, crown_height }, ... }, colors = { { 196, 204, 92 }, { 226, 190, 74 } } },
-  streaks = { count = 2, every = 4.5 },                         -- white wind curls, one every so many seconds
+  streaks = { count = 5, every = 0.9, hills = 22 },             -- wind curls, one every so many seconds; more from 22 m of ground up
   motes = { count = 36 },                                       -- pollen and dust near the camera
   butterflies = { count = 5, flowers = { { x, z }, ... }, colors = { { 255, 236, 170 } } },
   birds = { count = 5, every = 28, perches = { { x, z }, ... } },
@@ -687,9 +728,16 @@ nova.ambient()                                                  -- all off
 * **Leaves** come from the crowns of the trees in `trees` that are near the camera (from half to almost all of `crown_height` up),
   tumble down swinging across the wind as the wind carries them, lie on the ground a moment and fade. Without `trees` they come from
   anywhere round the camera.
-* **Wind curls** (`streaks`): a soft white stroke ahead of the camera that draws itself along the wind, gently waving, rolls up into a
-  loop at its end, and is wiped away from its tail as it fades. One every `every` seconds or so (sooner in a strong wind), none when the
-  wind is still.
+* **Wind curls** (`streaks`): a thin stroke ahead of the camera that draws itself along the wind, gently waving, rolls up into a
+  loop at its end, and is wiped away from its tail as it fades. One every `every` seconds or so (sooner in a strong wind and while the
+  wind gusts), none when the wind is still; with `hills = h`, from `h` metres of ground height up they come more often and more at once,
+  twice as often and twice as many 10 m higher (to the cap). Since 2026-11-23 (the owner's eighth play: "The wind has jagged edges, it's
+  too solid white") a curl is a **ribbon** (`gfx/ribbon.rs`, `shaders/ribbon.wgsl`): a strip of points turned across the line of sight
+  and drawn blended in its own pass after the see-through models, a slightly blue-tinted white at about half alpha at its fullest,
+  palest at its tail, pointed at both ends, about 6 cm wide, its alpha falling smoothly from the middle line to nothing at the edges
+  and never drawn under a pixel wide (a thinner one is drawn a pixel wide and fainter). A see-through model cannot do this: the plain
+  look drops a model's pixels under 0.3 of alpha (for cut-out leaves and glass), which cut the old curls' edges hard and made their
+  fade a screen-door.
 * **Motes** float in a box ahead of the camera (a mote that drifts out comes back in on the other side, so there are always as many),
   rising and falling slowly and carried a little by the wind; they are faint, and glint when the camera looks towards the sun.
 * **Butterflies** flutter about the `flowers` near the camera, a wander that keeps coming back to its flower, wings beating.
