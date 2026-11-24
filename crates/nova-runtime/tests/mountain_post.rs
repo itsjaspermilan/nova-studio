@@ -1252,10 +1252,10 @@ fn the_rear_doors_open_by_themselves_and_x_loads_the_package() {
     assert_eq!(lua(&g, "DOORS0"), "0", "shut while the postmaster is away");
     assert!(logged(&r).iter().any(|l| l == "back doors open"));
     assert_eq!(lua(&g, "(nova.scene_now():actions())"), "load");
-    assert_eq!(r.drawn_count("ui_text", Some("Load package")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 1);
     let r = play(
         &mut g,
-        r#"{ "always": "nova.named('postmaster').control", "steps": [ { "press": "interact" }, { "wait": 5 } ] }"#,
+        r#"{ "always": "nova.named('postmaster').control", "steps": [ { "press": "confirm" }, { "wait": 5 } ] }"#,
     );
     assert!(
         r.warnings().iter().all(|w| !w.contains("always")),
@@ -1289,8 +1289,8 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
         &mut g,
         r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.carrying = 'hazel'",
         "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
-        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "interact" }, { "wait": 5, "lua": "S.carrying = 'pip'" },
-        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "interact" }, { "wait": 5 } ] }"#,
+        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "confirm" }, { "wait": 5, "lua": "S.carrying = 'pip'" },
+        { "until": "nova.scene_now():actions() == 'load'", "max": 60 }, { "press": "confirm" }, { "wait": 5 } ] }"#,
     );
     assert_eq!(lua(&g, "require('lib.state').VAN_HOLDS"), "4");
     assert_eq!(
@@ -1335,7 +1335,7 @@ fn the_van_holds_both_parcels_and_the_panel_at_the_back_picks_one() {
     assert_eq!(lua(&g, "(nova.scene_now():actions())"), "load");
     play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 3 }, { "press": "next" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 3 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 3 }, { "press": "next" }, { "wait": 3 }, { "press": "confirm" }, { "wait": 3 } ] }"#,
     );
     assert_eq!(lua(&g, "require('lib.state').carrying"), "pip");
     assert_eq!(
@@ -1849,7 +1849,7 @@ fn the_vans_panel_opens_with_the_doors_for_a_single_parcel() {
         "the panel and the faded card"
     );
     assert_eq!(r.drawn_count("ui_text", Some(" of ")), 0);
-    assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
 }
 
 /// "The music is a little repetitive. Can we use piano?" The one piece is for piano alone (Nova's `piano` instrument: struck
@@ -3103,19 +3103,19 @@ fn x_y_a_b_and_select_do_what_the_owner_listed_and_nothing_else() {
     );
     assert_eq!(lua(&g, "tostring(require('lib.cards').kind())"), "nil");
 
-    // the van's back: carrying, A and Y do not load and X does; empty-handed at the panel, X and Y do not take and A does
+    // the van's back: carrying, X and Y do not store and A does; empty-handed at the panel, X and Y do not take and A does
     let r = play(
         &mut g,
         r#"{ "lua": "T = require('lib.testkit'); S = require('lib.state'); S.carrying = 'hazel'; S.on_shelf.hazel = false", "steps": [
         { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
         { "until": "nova.scene_now():actions() == 'load'", "max": 60 },
-        { "press": "confirm" }, { "wait": 5 }, { "press": "van" }, { "wait": 5 } ] }"#,
+        { "press": "interact" }, { "wait": 5 }, { "press": "van" }, { "wait": 5 } ] }"#,
     );
     assert!(!logged(&r).iter().any(|l| l.starts_with("loaded")));
-    assert_eq!(r.drawn_count("ui_text", Some("Load package")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 1);
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 5 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 5 } ] }"#,
     );
     assert!(logged(&r).iter().any(|l| l == "loaded hazel"));
     assert_eq!(lua(&g, "nova.scene_now():picker()"), "hazel");
@@ -5158,7 +5158,7 @@ fn the_vans_panel_floats_above_the_open_doors_and_follows_the_camera() {
         );
         // smaller than the old one (430 x 176 at the old scale: 353 x 144), and never over the middle of the screen's lower half
         assert!(
-            bw < 300.0 && bh < 110.0,
+            bw < 300.0 && bh < 150.0,
             "{what}: a lean panel, {bw:.0} x {bh:.0}"
         );
     };
@@ -5250,7 +5250,7 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
         );
         assert_eq!(lua(&g, "nova.scene_now():panel_mode()"), "pick");
         assert_eq!(r.drawn_count("ui_text", Some(tag)), 1, "{tag}");
-        assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+        assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
         assert_eq!(r.drawn_count("ui_text", Some("L1")), 0);
         assert_eq!(
             r.drawn_count("ui_text", Some("Hazel Brock")),
@@ -5258,13 +5258,13 @@ fn the_vans_panel_shows_its_count_and_says_when_it_is_empty() {
             "the panel's line and the corner card"
         );
     }
-    // carrying a parcel at the back: "Load package" with the van's count
+    // carrying a parcel at the back: "Store" with the van's count
     let r = play(
         &mut g,
         r#"{ "steps": [ { "lua": "S.van_load = { 'pip', 'pip' }; S.carrying = 'hazel'" }, { "wait": 25 } ] }"#,
     );
     assert_eq!(lua(&g, "nova.scene_now():panel_mode()"), "load");
-    assert_eq!(r.drawn_count("ui_text", Some("Load package")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 1);
     assert_eq!(r.drawn_count("ui_text", Some("Van 2/4")), 1);
 }
 
@@ -5281,7 +5281,7 @@ fn the_van_holds_four_and_a_fifth_is_refused_softly() {
     );
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 4 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 4 } ] }"#,
     );
     assert!(logged(&r).iter().any(|l| l == "loaded hazel"));
     assert_eq!(num(&g, "#require('lib.state').van_load"), 4.0);
@@ -5302,7 +5302,7 @@ fn the_van_holds_four_and_a_fifth_is_refused_softly() {
     );
     let r = play(
         &mut g,
-        r#"{ "steps": [ { "press": "interact" }, { "wait": 4 } ] }"#,
+        r#"{ "steps": [ { "press": "confirm" }, { "wait": 4 } ] }"#,
     );
     assert!(logged(&r).iter().any(|l| l == "the van is full"));
     assert!(!logged(&r).iter().any(|l| l.starts_with("loaded")));
@@ -5318,10 +5318,11 @@ fn the_van_holds_four_and_a_fifth_is_refused_softly() {
         "the note in the panel"
     );
     assert_eq!(r.drawn_count("ui_text", Some("Van 4/4")), 1);
-    // and the note goes again
+    // and once the shake is over the plain note stays, with no button and no chip
     let r = play(&mut g, r#"{ "steps": [ { "wait": 150 } ] }"#);
-    assert_eq!(r.drawn_count("ui_text", Some("The van is full")), 0);
-    assert_eq!(r.drawn_count("ui_text", Some("Load package")), 1);
+    assert!(lua(&g, "tostring(require('lib.ui').chip_box)") == "nil", "no chip on a full van");
+    assert_eq!(r.drawn_count("ui_text", Some("The van is full")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 0);
 }
 
 /// "We don't need to have the circle cut through other characters or the truck if the player is hidden behind them." Every model of a
@@ -10250,7 +10251,9 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
 
 /// The owner's eighth play, note 7 ("I still see 'Y to exit' and 'Select' for map. I also don't see the control menu"): no button
 /// chip, button cap or button word is drawn in normal play, on foot, at the van's back, driving or in the office; the instrument
-/// stays while driving; the dialogue's "next" is a small arrow.
+/// stays while driving; the dialogue's "next" is a small arrow. (The owner's ninth notes brought back exactly three small chips: the
+/// talk tip's X, the dialogue box's X while a line is complete, and the van panel's A beside "Take" / "Store": a chip is allowed only
+/// where `chips` says; the tests below the Controls page check each.)
 #[test]
 fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
     let mut g = game();
@@ -10258,11 +10261,8 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
         "Get in",
         "Get out",
         "Map",
-        "Take",
         "Read",
-        "Talk",
         "Knock",
-        "Hand over",
         "Put back",
         "Close",
         "Choose",
@@ -10271,14 +10271,17 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
         "R1",
         "Load it at the back",
     ];
-    let check = |r: &Report, what: &str| {
-        for name in ["round", "round_down"] {
-            assert_eq!(
-                r.drawn_count("ui_sprite", Some(name)),
-                0,
-                "{what}: no button cap ({name})"
-            );
-        }
+    let check_n = |r: &Report, what: &str, chips: usize| {
+        assert_eq!(
+            r.drawn_count("ui_sprite", Some("round")),
+            chips,
+            "{what}: {chips} chip(s) only"
+        );
+        assert_eq!(
+            r.drawn_count("ui_sprite", Some("round_down")),
+            0,
+            "{what}: no held cap"
+        );
         for w in banned_words {
             assert_eq!(
                 r.drawn_count("ui_text", Some(w)),
@@ -10287,6 +10290,7 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
             );
         }
     };
+    let check = |r: &Report, what: &str| check_n(r, what, 0);
     // on foot by the van's door, and at its back with the panel (two parcels: the count with its two arrows, no L1 / R1)
     let r = play(
         &mut g,
@@ -10299,7 +10303,7 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
         r#"{ "steps": [ { "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
         { "until": "nova.scene_now():picker() ~= nil", "max": 120 }, { "wait": 40 } ] }"#,
     );
-    check(&r, "at the van's back");
+    check_n(&r, "at the van's back", 1);
     assert!(
         r.drawn_count("ui_text", Some("Hazel Brock")) > 0,
         "the panel still names the parcel"
@@ -10347,7 +10351,7 @@ fn no_button_prompts_are_drawn_in_play_and_the_instrument_stays() {
         { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
         { "press": "interact" }, { "wait": 200 } ] }"#,
     );
-    check(&r, "in a conversation");
+    check_n(&r, "in a conversation", 1);
     assert!(
         r.drawn_count("ui_sprite", Some("chev_r")) > 0,
         "the next arrow"
@@ -11923,4 +11927,186 @@ fn the_vans_wheels_stay_in_their_wells_and_on_the_ground_over_the_bridge() {
         "the van crossed the bridge"
     );
     assert!(num(&g, "MOST") > 5.0, "at speed: {}", num(&g, "MOST"));
+}
+
+// ---- the owner's ninth notes (2026-11-23), notes 2 and 3: a few small, deliberate chips -------------------------------------------
+
+/// Note 2: near a resident a small tip floats over their head saying "Talk" ("Hand over" with their parcel in the arms) with the X
+/// chip on its bottom-right corner; it shows exactly when X would talk (the game's own reach and facing rule), not otherwise.
+#[test]
+fn the_talk_tip_shows_only_in_talk_range_with_an_x_chip() {
+    let mut g = game();
+    // far from everyone: no tip, no chip
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.carrying = nil; S.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Talk")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    assert_eq!(lua(&g, "tostring(nova.scene_now():resident_near())"), "nil");
+    // in reach: "Talk" with the X chip on the tip's bottom-right corner
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Talk")), 1);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "X");
+    let near = |g: &Game, what: &str| {
+        let (cx, cy) = (
+            num(g, "require('lib.ui').chip_box.x + require('lib.ui').chip_box.w / 2"),
+            num(g, "require('lib.ui').chip_box.y + require('lib.ui').chip_box.h / 2"),
+        );
+        let (x, y, w, h) = (
+            num(g, "require('lib.ui').tip_box.x"),
+            num(g, "require('lib.ui').tip_box.y"),
+            num(g, "require('lib.ui').tip_box.w"),
+            num(g, "require('lib.ui').tip_box.h"),
+        );
+        assert!(
+            (cx - (x + w)).abs() < 14.0 && (cy - (y + h)).abs() < 14.0 && cx < x + w && cy < y + h,
+            "{what}: the chip sits on the tip's bottom-right corner ({cx:.0}, {cy:.0}) vs ({:.0}, {:.0})",
+            x + w,
+            y + h
+        );
+    };
+    near(&g, "talk");
+    // walked off: gone again
+    play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "local p = nova.named('postmaster'); p.walk_to = nil; p.walk_path = nil; p.x, p.z = p.x + 8, p.z + 8" }, { "wait": 40 } ] }"#,
+    );
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 20 } ] }"#);
+    assert_eq!(r.drawn_count("ui_text", Some("Talk")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    // with their parcel in the arms: "Hand over", the same chip
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.carrying = 'hazel'; S.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 }, { "wait": 40 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("Hand over")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Talk")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "X");
+    near(&g, "hand over");
+}
+
+/// Note 2: the dialogue box shows its X chip and (with more lines to come) the small bobbing arrow at the bottom centre only once the
+/// line has finished typing; the last line has the chip and no arrow.
+#[test]
+fn the_dialogue_arrow_and_chip_show_only_when_a_line_is_complete() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "S = require('lib.state'); S.carrying = 'hazel'; S.on_shelf.hazel = false",
+        "steps": [ { "wait": 5, "lua": "local p = nova.named('postmaster'); p.x, p.z = 150, 36" },
+        { "walk_to": "hazel", "max": 600 }, { "until": "nova.scene_now():resident_near() ~= nil", "max": 200 },
+        { "press": "interact" }, { "wait": 12 } ] }"#,
+    );
+    // mid-typing: neither
+    assert_eq!(lua(&g, "tostring(require('lib.dialogue').complete())"), "false");
+    assert_eq!(r.drawn_count("ui_sprite", Some("chev_r")), 0, "no arrow while typing");
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0, "no chip while typing");
+    // complete, more lines to come: the arrow at the box's bottom centre and the chip at its bottom-right corner
+    let r = play(&mut g, r#"{ "steps": [ { "until": "require('lib.dialogue').complete()", "max": 900 }, { "wait": 20 } ] }"#);
+    assert_eq!(lua(&g, "tostring(require('lib.dialogue').arrow_shown)"), "true");
+    assert_eq!(r.drawn_count("ui_sprite", Some("chev_r")), 1);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "X");
+    let w = num(&g, "(nova.view('exact'))");
+    let h = num(&g, "select(2, nova.view('exact'))");
+    let lay_w = num(&g, "require('lib.dialogue').layout((nova.view('exact'))).w");
+    let bx = (w - lay_w) / 2.0;
+    let cx = num(&g, "require('lib.ui').chip_box.x + require('lib.ui').chip_box.w / 2");
+    let cy = num(&g, "require('lib.ui').chip_box.y + require('lib.ui').chip_box.h / 2");
+    assert!(
+        (cx - (bx + lay_w)).abs() < 14.0 && cy > h - 60.0 && cy < h,
+        "the chip is on the box's bottom-right corner: ({cx:.0}, {cy:.0})"
+    );
+    // X goes on; mid-typing again: nothing
+    let r = play(&mut g, r#"{ "steps": [ { "press": "interact" }, { "wait": 8 } ] }"#);
+    assert_eq!(r.drawn_count("ui_sprite", Some("chev_r")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    // to the last line: the chip stays, the arrow goes
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "repeat": 10, "until": "require('lib.dialogue').complete() and not require('lib.dialogue').arrow_shown",
+        "steps": [ { "until": "require('lib.dialogue').complete()", "max": 900 }, { "wait": 10 }, { "press": "interact" }, { "wait": 8 } ], "may_time_out": true },
+        { "until": "require('lib.dialogue').complete()", "max": 900 }, { "wait": 20 } ] }"#,
+    );
+    assert_eq!(lua(&g, "tostring(require('lib.dialogue').arrow_shown)"), "false", "the last line has no arrow");
+    assert_eq!(r.drawn_count("ui_sprite", Some("chev_r")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1, "but the X chip");
+}
+
+/// Note 3: in the van's panel "Take" (empty hands, parcels inside) or "Store" (a parcel carried, room inside) is a button row with
+/// the A chip on the panel's bottom-right corner, and A does both; a full or empty van shows only its note, no button, no chip.
+#[test]
+fn the_van_panel_offers_take_or_store_with_an_a_chip_and_a_does_both() {
+    let mut g = game();
+    let corner = |g: &Game, what: &str| {
+        let cx = num(g, "require('lib.ui').chip_box.x + require('lib.ui').chip_box.w / 2");
+        let cy = num(g, "require('lib.ui').chip_box.y + require('lib.ui').chip_box.h / 2");
+        let (x, y, w, h) = (
+            num(g, "require('lib.ui').van_panel_box.x"),
+            num(g, "require('lib.ui').van_panel_box.y"),
+            num(g, "require('lib.ui').van_panel_box.w"),
+            num(g, "require('lib.ui').van_panel_box.h"),
+        );
+        assert!(
+            (cx - (x + w)).abs() < 14.0 && (cy - (y + h)).abs() < 14.0,
+            "{what}: the A chip is on the panel's bottom-right corner"
+        );
+    };
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "lua": "T = require('lib.testkit'); S = require('lib.state'); S.on_shelf.hazel, S.on_shelf.pip = false, false; S.van_load = { 'pip' }; S.carrying = nil",
+        "steps": [ { "wait": 5, "lua": "T.to_van('back')" }, { "until": "not T.walking()", "max": 900 },
+        { "until": "nova.scene_now():panel_mode() ~= nil", "max": 120 }, { "wait": 25 } ] }"#,
+    );
+    // empty hands, a parcel inside: "Take", the A chip
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 3 } ] }"#);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "A");
+    corner(&g, "take");
+    // A takes it
+    let r = play(&mut g, r#"{ "steps": [ { "press": "confirm" }, { "wait": 25 } ] }"#);
+    assert!(logged(&r).iter().any(|l| l == "unloaded pip") || lua(&g, "require('lib.state').carrying") == "pip");
+    assert_eq!(lua(&g, "require('lib.state').carrying"), "pip");
+    // a parcel in the arms, room inside: "Store", the same chip; A stores
+    let r = play(&mut g, r#"{ "steps": [ { "wait": 3 } ] }"#);
+    assert_eq!(lua(&g, "nova.scene_now():panel_mode()"), "load");
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 1);
+    assert_eq!(lua(&g, "require('lib.ui').chip_box.letter"), "A");
+    corner(&g, "store");
+    let r = play(&mut g, r#"{ "steps": [ { "press": "confirm" }, { "wait": 25 } ] }"#);
+    assert!(logged(&r).iter().any(|l| l == "loaded pip"));
+    assert_eq!(lua(&g, "tostring(require('lib.state').carrying)"), "nil");
+    // X no longer loads
+    play(&mut g, r#"{ "steps": [ { "lua": "S.carrying = 'hazel'" }, { "wait": 5 }, { "press": "interact" }, { "wait": 5 } ] }"#);
+    assert_eq!(lua(&g, "require('lib.state').carrying"), "hazel", "X does not store");
+    // full: the note only
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.van_load = { 'pip', 'hazel', 'pip', 'hazel' }" }, { "wait": 25 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("The van is full")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Store")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
+    // empty: the note only
+    let r = play(
+        &mut g,
+        r#"{ "steps": [ { "lua": "S.van_load = {}; S.carrying = nil" }, { "wait": 25 } ] }"#,
+    );
+    assert_eq!(r.drawn_count("ui_text", Some("The van is empty")), 1);
+    assert_eq!(r.drawn_count("ui_text", Some("Take")), 0);
+    assert_eq!(r.drawn_count("ui_sprite", Some("round")), 0);
 }

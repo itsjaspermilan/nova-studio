@@ -171,8 +171,8 @@ end
 function Valley:to_back() local x, z = self:van_point(BACK); return dist(self.p, x, z) end
 function Valley:to_door() local x, z = self:van_point(DOOR); return dist(self.p, x, z) end
 
--- What X and Y would do now, on foot (the first answer is X's, but "pick" is A's: the van's panel is a menu): X "load" (the parcel carried into the open back), "pick" (the one the panel shows out of
--- it), "give" (a resident's own parcel to them), "talk" (to a resident out of doors, close and in front) or "knock" (at a resident's
+-- What A, X and Y would do now, on foot (the first answer is X's, but "load" and "pick" are A's: the van's panel is a menu): A "load"
+-- (the parcel carried into the open back: "Store"), "pick" (the one the panel shows out of it: "Take"); X "give" (a resident's own parcel to them), "talk" (to a resident out of doors, close and in front) or "knock" (at a resident's
 -- front door while they are indoors), A "pick"; Y "get_in" at the left doorway. A third answer is the resident it is about. The van comes
 -- first: at its open back or its doorway nobody else's prompt shows (the owner, after the second play: "If I'm close to the van trying
 -- to get the package, I only get an option to 'knock'").
@@ -367,6 +367,7 @@ function Valley:update(dt)
   end
   self:back_doors()
   self:fade_picker(dt)
+  self:fade_talk_tip(dt)
   -- what is open over the game first: a card, then a conversation
   if cards.active() then
     cards.update(dt)
@@ -405,9 +406,10 @@ function Valley:update(dt)
       self.pick_i = 1
       parcels.update() -- (away from the van's panel, L1 and R1 go round the corner card's parcels)
     end
-    -- X does what is at hand; A takes the parcel the van's panel shows (a menu: A confirms); Y gets in
-    if a == "pick" and nova.input.pressed("confirm") then self:act(a, r)
-    elseif a and a ~= "pick" and nova.input.pressed("interact") then self:act(a, r)
+    -- A does the van's business at its open back: takes the parcel the panel shows, or stores the one carried (the panel's "Take" and
+    -- "Store", the owner's ninth notes); X does the rest (talk, hand over, knock); Y gets in
+    if (a == "pick" or a == "load") and nova.input.pressed("confirm") then self:act(a, r)
+    elseif a and a ~= "pick" and a ~= "load" and nova.input.pressed("interact") then self:act(a, r)
     elseif nova.input.pressed("van") and b == "get_in" then self:get_in()
     elseif nova.input.pressed("map") then cards.open("map")
     elseif nova.input.pressed("pause") then cards.open("pause") end
@@ -440,10 +442,29 @@ end
 local PICKER_FADE = 0.2
 function Valley:fade_picker(dt)
   local mode = (not cards.active() and not dialogue.active() and not self.leaving) and self:panel_mode() or nil
-  if mode then self.pk = { mode = mode, list = { table.unpack(state.van_load) }, i = self.pick_i, count = #state.van_load } end
+  if mode then self.pk = { mode = mode, list = { table.unpack(state.van_load) }, i = self.pick_i, count = #state.van_load, full = #state.van_load >= state.VAN_HOLDS } end
   local want = mode ~= nil
   local a = self.picker_a or 0
   self.picker_a = want and math.min(1, a + dt / PICKER_FADE) or math.max(0, a - dt / PICKER_FADE)
+end
+
+-- The small tip over the resident the postmaster can talk to now ("Talk", or "Hand over" with their parcel in the arms), an X chip on its
+-- corner: shown exactly when X would talk or hand over (Valley:actions: the same reach and facing as the talk itself), fading up in 0.18 s
+-- and away in 0.12 s. `tip_who` is the resident it is over (kept while it fades), `tip_word` its word.
+function Valley:fade_talk_tip(dt)
+  local a, _, r
+  if not cards.active() and not dialogue.active() and not self.leaving then a, _, r = self:actions() end
+  local want = (a == "talk" or a == "give") and r or nil
+  local ta = self.tip_a or 0
+  if want then self.tip_word = a == "give" and words.talk.give or words.talk.talk end
+  if want and self.tip_who ~= want and ta > 0.01 then
+    self.tip_a = math.max(0, ta - dt / 0.12) -- (a different resident: out, then in)
+  elseif want then
+    if self.tip_who ~= want then self.tip_who = want end
+    self.tip_a = math.min(1, ta + dt / 0.18)
+  else
+    self.tip_a = math.max(0, ta - dt / 0.12)
+  end
 end
 
 -- What the panel at the van's open back is for now: "pick" (parcels in the van, empty hands), "load" (a parcel in the arms) or "empty"
@@ -515,6 +536,7 @@ function Valley:draw()
   end
 end
 
+Valley.TIP_HEIGHT = 1.35 -- (metres over a resident's feet: just over their head)
 function Valley:draw_ui()
   local w, h = nova.view("exact")
   local p, v = self.p, self.van
@@ -529,10 +551,16 @@ function Valley:draw_ui()
       -- the van's panel, floating over the open doors
       local pk = self.pk
       local ax, ay = self:panel_anchor(w, h)
-      ui.van_panel({ mode = pk.mode, list = pk.list, i = math.max(1, math.min(#pk.list, pk.i or 1)), count = pk.count, cap = state.VAN_HOLDS,
+      ui.van_panel({ mode = pk.mode, list = pk.list, i = math.max(1, math.min(#pk.list, pk.i or 1)), count = pk.count, cap = state.VAN_HOLDS, full = pk.full,
         note = math.min(1, (self.full_t or 0) * 1.4), ax = ax, ay = ay, a = self.picker_a }, w, h, self.dt)
     else
       ui.van_panel_reset()
+    end
+    -- the small tip over the resident in talk reach, an X chip on its corner
+    local who = self.tip_who
+    if who and (self.tip_a or 0) > 0.01 and not dialogue.active() and not self.leaving then
+      local sx, sy = camera.project(who.x, world.height(who.x, who.z) + Valley.TIP_HEIGHT, who.z, w, h)
+      if sx then ui.tip({ id = who, ax = sx, ay = sy, name = self.tip_word, chip = "X", a = self.tip_a }, w, h, self.dt) end
     end
   end
   dialogue.draw(w, h)

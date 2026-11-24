@@ -154,6 +154,15 @@ function ui.glyph(x, y, letter, size, opts)
   end
 end
 
+-- The one small chip of play (the owner's ninth notes: a few small, deliberate ones back): a face button's cap at the bottom-right
+-- corner of a panel (the talk tip, the dialogue box, the van's panel), overlapping the corner a little. Every one is this size and
+-- this far in: `ui.CHIP` across, its middle SP.s in from the right edge and SP.xs up from the bottom.
+ui.CHIP = s(24)
+function ui.corner_chip(x, y, w, h, letter, a)
+  ui.glyph(x + w - SP.s, y + h - SP.xs, letter, ui.CHIP, { alpha = a })
+  ui.chip_box = { x = x + w - SP.s - ui.CHIP / 2, y = y + h - SP.xs - ui.CHIP / 2, w = ui.CHIP, h = ui.CHIP, letter = letter } -- (for the tests)
+end
+
 -- A slate key with a name on it (L1, R2, L3, Start, Left stick...), left edge at x, middle at y, as wide as its name needs; returns its
 -- width. (The Controls page is the one place buttons are drawn: no prompt in play names a button.)
 local KEYCAP = s(26)
@@ -274,9 +283,9 @@ end
 -- with the camera to remain above the doors."). The scene projects a point just over the doors to the screen every frame (lib/camera.lua,
 -- camera.project) and the panel stands on it, bottom-centre, a small tail pointing down to the doors; clamped to stay on the screen.
 -- It is a light overlay: it never takes the stick or stops anything (see Valley:fade_picker). One of
---   "pick"   parcels in the van, empty hands: one parcel line (its name and street), "A Take", and with more than one "1 of 2" and
---            L1 and R1 to go round them
---   "load"   a parcel in the arms at the back: "X Load package" (once refused: "The van is full")
+--   "pick"   parcels in the van, empty hands: one parcel line (its name and street), a "Take" button row with the A chip on the panel's
+--            corner, and with more than one "1 of 2" and L1 and R1 to go round them
+--   "load"   a parcel in the arms at the back: a "Store" button row with the A chip; the van full (`d.full`): just the note "The van is full"
 --   "empty"  nothing in the van and nothing carried: "The van is empty"
 -- under a small red tag "Van 2/4" (parcels in the van over what it holds). `d`: mode, list (the parcels), i (the one shown), count,
 -- cap, note (0 to 1: how strongly the refusal's note shows), ax, ay (where the doors are on the screen), a (0 to 1: faded up).
@@ -302,7 +311,14 @@ end
 
 local PICK_ICON = { w = s(42), h = s(35) }
 local CYC_ROW = s(18) -- (the count's row under the parcel's lines)
-local LINE_H = F.name -- (a one-line panel: the load words, or the empty van)
+local LINE_H = F.name -- (a one-line panel: the full van, or the empty van)
+local BTN_H = F.name + 2 * SP.s -- (the button row: a red key, its word xs-s inside it)
+-- A button-like row: a red key across x, x + w with its word on it (a button; the chip on the panel's corner names the pad's button).
+local function button_row(x, y, w, str, a)
+  ui.key(x, y, w, BTN_H, C.red, { scale = ui.FRAME.key * S, alpha = a })
+  text(x + w / 2, y + (BTN_H - F.name) / 3, str, { size = F.name, align = "center", color = alpha(C.cream, a), bold = true })
+  ui.button_box = { x = x, y = y, w = w, h = BTN_H, word = str } -- (for the tests)
+end
 local PICK_LINES_H = F.name + SP.xs + F.line
 function ui.van_panel(d, w, h, dt)
   local a = d.a or 1
@@ -311,14 +327,18 @@ function ui.van_panel(d, w, h, dt)
   local name, street, which
   if mode == "pick" then which = d.list[d.i] or d.list[1]; name, street = ui.label_lines(which) end
   -- the size, from the content
+  -- "pick": parcel lines, the count, then a "Take" button row; "load": a "Store" button row, or (the van full) the plain note
+  -- "The van is full" with no button; "empty": the plain note. A button row has a chip, the A cap, on the panel's bottom-right corner.
   local cw, chh
+  local btn = (mode == "pick" and words.van.take) or (mode == "load" and not d.full and words.van.store) or nil
+  local btn_w = btn and (text_width(btn, F.name, true) + 2 * SP.xl) or 0
   if mode == "pick" then
     local row1 = PICK_ICON.w + ui.GAP + math.max(text_width(name, F.name, true), text_width(street, F.line))
     local row2 = many and ui.cycler_width(d.i, #d.list) or 0
-    cw, chh = math.max(row1, row2), PICK_LINES_H + (many and SP.s + CYC_ROW or 0)
+    cw, chh = math.max(row1, row2, btn_w), PICK_LINES_H + (many and SP.s + CYC_ROW or 0) + SP.s + BTN_H
   elseif mode == "load" then
-    cw = math.max(text_width(words.hint.load, F.name, true), text_width(words.van.full, F.name, true))
-    chh = LINE_H
+    if btn then cw, chh = btn_w, BTN_H
+    else cw, chh = text_width(words.van.full, F.name, true), LINE_H end
   else
     cw, chh = text_width(words.van.empty, F.name, true), LINE_H
   end
@@ -350,13 +370,15 @@ function ui.van_panel(d, w, h, dt)
     text(tx0, y0, name, { size = F.name, color = alpha(C.ink, a), bold = true })
     text(tx0, y0 + F.name + SP.xs, street, { size = F.line, color = alpha(C.faint, a) })
     if many then ui.cycler(x0 + cw / 2, y0 + PICK_LINES_H + SP.s + CYC_ROW / 2, d.i, #d.list, { alpha = a }) end
+    button_row(x0, y0 + chh - BTN_H, cw, btn, a)
+  elseif mode == "load" and btn then
+    button_row(x0, y0, cw, btn, a)
   elseif mode == "load" then
-    local msg, col = words.hint.load, C.ink
-    if note > 0 then msg, col = words.van.full, C.red end
-    text(x0 + cw / 2, y0, msg, { size = F.name, align = "center", color = alpha(col, a), bold = true })
+    text(x0 + cw / 2, y0, words.van.full, { size = F.name, align = "center", color = alpha(note > 0 and C.red or C.faint, a), bold = true })
   else
     text(x0 + cw / 2, y0, words.van.empty, { size = F.name, align = "center", color = alpha(C.faint, a), bold = true })
   end
+  if btn then ui.corner_chip(x, y, pw, ph, "A", a) else ui.chip_box = nil end
   ui.van_panel_box = { x = x, y = y, w = pw, h = ph, left = left, top = top, tail_x = f.x, anchor_y = f.y } -- (for the tests: where the panel is)
 end
 
@@ -383,7 +405,8 @@ function ui.tip(d, w, h, dt)
   local sw = two and text_width(d.street, F.line) or 0
   local lines_h = two and (F.name + SP.xs + F.line) or F.name
   local row1 = two and (TIP_ICON.w + ui.GAP + math.max(nw, sw)) or nw
-  local cw, ch, left, top = ui.box(row1, lines_h, ui.PAD, ui.FRAME.small)
+  -- (with a chip on the corner: the content keeps the chip's half clear on the right, and the bottom pad grows to clear it)
+  local cw, ch, left, top = ui.box(row1 + (d.chip and ui.CHIP / 2 or 0), lines_h + (d.chip and SP.xs or 0), ui.PAD, ui.FRAME.small)
   local x = math.max(SP.s, math.min(w - SP.s - cw, f.x - cw / 2))
   local y = math.max(SP.xl + SP.xs, math.min(h - SP.s - ch - TAIL, f.y - TAIL - ch)) + (1 - a) * SP.s
   ui.panel(x, y, cw, ch, { alpha = a, scale = ui.FRAME.small })
@@ -398,7 +421,8 @@ function ui.tip(d, w, h, dt)
   else
     text(tx, y0, d.name, { size = F.name, color = alpha(C.ink, a), bold = true })
   end
-  ui.tip_box = { x = x, y = y, w = cw, h = ch, left = left, top = top, tail_x = f.x, anchor_y = f.y } -- (for the tests)
+  if d.chip then ui.corner_chip(x, y, cw, ch, d.chip, a) else ui.chip_box = nil end
+  ui.tip_box = { x = x, y = y, w = cw, h = ch, left = left, top = top, tail_x = f.x, anchor_y = f.y, word = d.name } -- (for the tests)
 end
 
 -- The minimap: a small disc in the bottom-left corner with the roads right round you (about 90 m each way) and you in the middle.

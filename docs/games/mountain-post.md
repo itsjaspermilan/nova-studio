@@ -1573,3 +1573,21 @@ way does not yet take its fallen tree or gates away.
 5. "The windscreen on the van should be a little shorter vertically."
 6. "We can remove the Neutral gear and the Lower Gear." (The lever is P R D.)
 7. "The driveways should be closer to the homes. Especially for the post office."
+
+### What the ninth notes changed: three small chips back (notes 2 and 3)
+
+The eighth play removed every button chip; the owner now asks for a few small, deliberate ones. Exactly three places draw one, each the
+same cap (`ui.corner_chip`: the kit's round button, `ui.CHIP` = 24 units, its middle `s` in from the box's right edge and `xs` up from
+its bottom, so it overlaps the corner a little), and nothing else in play draws a cap:
+
+- **The talk tip** (`Valley:fade_talk_tip`, `ui.tip` with `chip = "X"`): a small floating tip over the resident's head (anchored with
+  `camera.project`, eased, clamped, a tail), "Talk" or, with their parcel in the arms, "Hand over", with the X chip. It shows exactly when
+  X would talk or hand over (`Valley:actions`: the same reach and facing as the talk itself), fades up in 0.18 s and away in 0.12 s.
+- **The dialogue box:** once a line has finished typing, an X chip on the box's bottom-right corner; with more lines to come also a small
+  slate arrow at the bottom centre, bobbing. **On the last line: the chip only, no arrow** (nothing more follows; X closes). Neither shows
+  while the line is typing. (The old arrow in the box's right corner is gone.)
+- **The van's panel:** a red button row, "Take" (empty hands, parcels inside) or "Store" (a parcel in the arms, room inside), with the A
+  chip on the panel's bottom-right corner. **A does both** (`nova.json` is unchanged: A is `confirm`; at the back `Valley` now reads
+  `confirm` for "load" as well as "pick", and X no longer loads). A full van shows just the plain note "The van is full" and an empty
+  one "The van is empty": no button, no chip. The Controls page's on-foot A row reads "Take or store at the van"; the slice's route
+  file presses A to store.
