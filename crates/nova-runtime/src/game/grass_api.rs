@@ -2,7 +2,8 @@
 //! "Grass").
 
 use super::*;
-use crate::gfx::{Grass, GroundPicture};
+use crate::gfx::grass::MAX_FLORA_SPOTS;
+use crate::gfx::{Flora, FloraPicture, Grass, GroundPicture};
 
 const USAGE: &str = "grass takes map = \"terrain/grass.png\" with x, z and size (or cell), and if wanted color = { r, g, b }, \
 colors = { x =, z =, cell =, columns =, rows =, data = { r, g, b, ... } }, height (metres, 0.05 to 2), width (0.01 to 0.5), \
@@ -31,6 +32,42 @@ fn density_picture(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
     Ok((w, h, data.chunks_exact(channels).map(|px| px[0]).collect()))
 }
 
+const FLOWERS_USAGE: &str = "grass flowers take picture = \"textures/flora.png\" (the kinds side by side, square cells, the ground \
+at the bottom) and kinds (1 to 16), and if wanted density (plants a square metre, 0 to 8), size (metres, 0.05 to 2), distance (metres, \
+4 to 80), patch (metres, 1 to 60), cover (0 to 1) and spots = { { x, z, radius, density }, ... } (up to 16): \
+nova.grass { ..., flowers = { picture = \"textures/flora.png\", kinds = 5 } }";
+
+/// The flora's picture: RGBA rows, from any PNG.
+fn rgba_picture(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder
+        .read_info()
+        .map_err(|e| format!("not a readable PNG: {e}"))?;
+    let mut buffer = vec![0u8; reader.output_buffer_size().ok_or("PNG is too large")?];
+    let info = reader
+        .next_frame(&mut buffer)
+        .map_err(|e| format!("PNG data is damaged: {e}"))?;
+    let (w, h) = (info.width, info.height);
+    if !(4..=8192).contains(&w) || !(4..=4096).contains(&h) {
+        return Err(format!(
+            "a flora picture is 4 to 8192 pixels across and 4 to 4096 high, this one is {w} by {h}"
+        ));
+    }
+    let channels = info.color_type.samples();
+    let data = &buffer[..info.buffer_size()];
+    let rgba = data
+        .chunks_exact(channels)
+        .flat_map(|px| match px.len() {
+            1 => [px[0], px[0], px[0], 255],
+            2 => [px[0], px[0], px[0], px[1]],
+            3 => [px[0], px[1], px[2], 255],
+            _ => [px[0], px[1], px[2], px[3]],
+        })
+        .collect();
+    Ok((w, h, rgba))
+}
+
 fn finite(v: f64, what: &str) -> mlua::Result<f32> {
     if v.is_finite() {
         Ok(v as f32)
@@ -49,6 +86,8 @@ pub(super) fn install(
     let vfs = vfs.clone();
     type Loaded = Option<(String, Arc<GroundPicture>)>;
     let loaded: Rc<RefCell<Loaded>> = Rc::new(RefCell::new(None));
+    type FloraLoaded = Option<(String, Arc<FloraPicture>)>;
+    let flora_loaded: Rc<RefCell<FloraLoaded>> = Rc::new(RefCell::new(None));
     nova.set(
         "grass",
         lua.create_function(move |_, opts: Option<Table>| {
@@ -169,6 +208,79 @@ pub(super) fn install(
             grass.density = range("density", 0.5, 40.0, grass.density)?;
             grass.distance = range("distance", 4.0, 80.0, grass.distance)?;
             grass.sway = range("sway", 0.0, 4.0, grass.sway)?;
+            if let Some(f) = opts.get::<Option<Table>>("flowers")? {
+                let fo = Some(f.clone());
+                let path = string_option(&fo, "picture")?.ok_or_else(|| lua_err(FLOWERS_USAGE))?;
+                let kinds = number_option(&fo, "kinds")?.unwrap_or(1.0);
+                if !(1.0..=16.0).contains(&kinds) {
+                    return Err(lua_err(FLOWERS_USAGE));
+                }
+                let kinds = kinds as u32;
+                let key = format!("{path}|{kinds}");
+                let cached = flora_loaded
+                    .borrow()
+                    .as_ref()
+                    .filter(|(k, _)| *k == key)
+                    .map(|(_, p)| p.clone());
+                let picture = match cached {
+                    Some(p) => p,
+                    None => {
+                        if !vfs.exists(&path) {
+                            return Err(lua_err(format!(
+                                "grass flowers picture '{path}' is not in the project"
+                            )));
+                        }
+                        let bytes = vfs.read(&path).map_err(lua_err)?;
+                        let (w, h, rgba) = rgba_picture(&bytes)
+                            .map_err(|e| lua_err(format!("grass flowers picture '{path}': {e}")))?;
+                        let p = Arc::new(FloraPicture::new(w, h, rgba, kinds));
+                        *flora_loaded.borrow_mut() = Some((key, p.clone()));
+                        p
+                    }
+                };
+                let num = |key: &str, lo: f64, hi: f64, now: f32| -> mlua::Result<f32> {
+                    match number_option(&fo, key)? {
+                        Some(v) if v.is_finite() && (lo..=hi).contains(&v) => Ok(v as f32),
+                        Some(_) => Err(lua_err(FLOWERS_USAGE)),
+                        None => Ok(now),
+                    }
+                };
+                let mut spots = Vec::new();
+                if let Some(list) = f.get::<Option<Table>>("spots")? {
+                    for item in list.sequence_values::<Table>() {
+                        let item = item?;
+                        let n = |i: usize, default: Option<f64>| -> mlua::Result<f32> {
+                            match item.get::<Option<f64>>(i)?.or(default) {
+                                Some(v) if v.is_finite() => Ok(v as f32),
+                                _ => Err(lua_err(FLOWERS_USAGE)),
+                            }
+                        };
+                        let spot = [n(1, None)?, n(2, None)?, n(3, Some(1.5))?, n(4, Some(4.0))?];
+                        if !(spot[2] > 0.0 && (0.0..=8.0).contains(&spot[3])) {
+                            return Err(lua_err(FLOWERS_USAGE));
+                        }
+                        spots.push(spot);
+                    }
+                }
+                if spots.len() > MAX_FLORA_SPOTS {
+                    return Err(lua_err(format!(
+                        "grass flowers take up to {MAX_FLORA_SPOTS} spots, not {}",
+                        spots.len()
+                    )));
+                }
+                grass.flora = Some(Flora {
+                    picture,
+                    kinds,
+                    density: num("density", 0.0, 8.0, 0.4)?,
+                    size: num("size", 0.05, 2.0, 0.4)?,
+                    // (never further than the grass: the plants stand in it)
+                    distance: num("distance", 4.0, 80.0, grass.distance * 0.85)?
+                        .min(grass.distance),
+                    patch: num("patch", 1.0, 60.0, 6.0)?,
+                    cover: num("cover", 0.0, 1.0, 0.35)?,
+                    spots,
+                });
+            }
             s.borrow_mut().lighting.grass = Some(grass);
             Ok(())
         })?,

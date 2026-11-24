@@ -423,7 +423,6 @@ obj("groundcover", [0, 0], {
     { model: "fern_light", count: 900, near: "any", within: 30 },
     { model: "fern", count: 700, near: "creek", within: 14 },
     { model: "grass", count: 2600, near: "any", within: 16, tints: [[255, 255, 255], [240, 250, 215], [225, 240, 205]] },
-    { model: "flowers", count: 260, near: "any", within: 12 },
   ],
   seed: 5,
 }, "groundcover");
@@ -490,7 +489,8 @@ const statics = {
   pine: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine2: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP, pine3: ', lod = "pine_far", lod_distance = 110, sway = 0.012' + UP,
   larch: ', lod = "larch_far", lod_distance = 110, sway = 0.016' + UP, larch_small: ', lod = "larch_far", lod_distance = 110, sway = 0.018' + UP, birch: ", sway = 0.02" + UP,
   forest_long: ", max_distance = 1500", forest_tall: ", max_distance = 1500", forest_round: ", max_distance = 1500",
-  rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02" + UP, bush2: ", sway = 0.02" + UP, flowers: ", sway = 0.3", log: "", stump: UP,
+  rock: "", rock_big: "", rock_small: "", bush: ", sway = 0.02" + UP, bush2: ", sway = 0.02" + UP, log: "", stump: UP,
 };
 for (const [kind, extra] of Object.entries(statics)) put(`entities/${kind}.lua`, `-- Scenery (tools/scene.mjs writes this file): drawn near the camera, never moves.\nreturn nova.entity { model = "${kind}", static = true${extra} }\n`);
-put("entities/far_mountain.lua", `-- A far blue range (tools/scene.mjs): scenery drawn out to the horizon, never moves.\nreturn nova.entity { model = "mountain", static = true, max_distance = 2000 }\n`);
+put("entities/flowers.lua", `-- A garden's patch of flowers (tools/scene.mjs writes this file): nothing of its own is drawn. entities/valley_ground.lua gives each\n-- one to nova.grass as a spot where its painted flowers grow thick (the owner's eighth play: no more 3D "blobs on sticks").\nreturn nova.entity { tags = { "flowers" } }\n`);
+put("entities/far_mountain.lua",`-- A far blue range (tools/scene.mjs): scenery drawn out to the horizon, never moves.\nreturn nova.entity { model = "mountain", static = true, max_distance = 2000 }\n`);

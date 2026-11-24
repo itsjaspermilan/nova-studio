@@ -12,16 +12,29 @@ struct GrassParams {
     misc: vec4<f32>,           // x: blade width; y: sway; z: bends; w: blades a clump
     bends: array<vec4<f32>, 8>,
     tiles: array<vec4<f32>, 160>,
+    flora: vec4<f32>,          // x plants a square at the thickest; y the distance; z a plant's height; w the kinds
+    flora_b: vec4<f32>,        // x plants a square metre in the patches; y the patches' size; z their cover; w the spots
+    flora_c: vec4<f32>,        // x the most plants a square metre; y 1: fade by coverage (multisampling); z 1: flora on
+    spots: array<vec4<f32>, 16>,
 };
 @group(3) @binding(20) var<uniform> grass: GrassParams;
 @group(3) @binding(21) var grass_map: texture_2d<f32>;
 @group(3) @binding(22) var grass_colors: texture_2d<f32>;
 @group(3) @binding(23) var grass_sampler: sampler;
+@group(3) @binding(24) var flora_picture: texture_2d<f32>;
+@group(3) @binding(25) var flora_sampler: sampler;
 
 struct GrassOut {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
+    // how much of the blade is left as it fades out with the distance (1 whole)
+    @location(1) fade: f32,
 };
+
+// A fixed screen-door threshold for a pixel (interleaved gradient noise): a fade without multisampling keeps the pixels under it.
+fn grass_door(pixel: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+}
 
 fn grass_hash(a: u32, b: u32) -> f32 {
     var h = a * 0x8da6b343u + b * 0xd8163841u + 0x9e3779b9u;
@@ -115,21 +128,25 @@ fn vs_grass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     // the clump's place: the k-th point of the R2 sequence, offset by the square's seed
     let r2 = fract(vec2<f32>(tile.w, fract(tile.w * 7.31)) + f32(k) * vec2<f32>(0.7548776662, 0.5698402910));
     let centre = tile.xy + r2 * side;
-    let d = distance(centre, globals.eye.xz);
-    // past its number for this distance a clump sinks away (smoothly, over the last 15% of the clumps kept here)
+    let ck = grass_hash(k, u32(tile.w * 16777216.0));
+    // (each clump's distance is jittered by up to 9% either way, by its own number: the grass thins and ends with no ring)
+    let d = distance(centre, globals.eye.xz) * (1.0 + 0.18 * (grass_hash(k, u32(tile.w * 9341.0)) - 0.5));
+    // past its number for this distance a clump sinks away (slowly: the clumps from 20% under the count kept here to 20% over it
+    // come up one after another as the camera nears, over a few metres of a walk, never in a frame)
     let kept = f32(per) * grass_share(d);
-    var grow = clamp((kept - f32(k)) / max(0.15 * kept, 1.0), 0.0, 1.0);
+    var grow = clamp((kept * 1.2 - f32(k)) / max(0.4 * kept, 1.0), 0.0, 1.0);
     // where it grows
     var cover = 1.0;
     if (grass.map_area.w > 0.5) {
         cover = textureSampleLevel(grass_map, grass_sampler, grass_uv(centre, grass.map_area, grass.sizes.xy), 0.0).r;
     }
-    let ck = grass_hash(k, u32(tile.w * 16777216.0));
     // (a thin cover keeps fewer clumps, and those shorter)
     grow = grow * smoothstep(ck * 0.85, ck * 0.85 + 0.15, cover);
+    // over the last quarter of the distance what is left also dithers away
+    out.fade = min(grow * 2.0, 1.0) * (1.0 - smoothstep(grass.shape.z * 0.75, grass.shape.z, d));
     let blade = vi / 5u;
     let point = vi - blade * 5u;
-    if (grow <= 0.001) {
+    if (grow <= 0.001 || out.fade <= 0.001) {
         out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
         out.color = vec3<f32>(0.0);
         return out;
@@ -223,7 +240,190 @@ fn vs_grass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     return out;
 }
 
+
 @fragment
 fn fs_grass(in: GrassOut) -> @location(0) vec4<f32> {
+    // a fading blade: by coverage with multisampling (soft), else by a fixed screen-door
+    if (grass.flora_c.y > 0.5) {
+        return vec4<f32>(in.color, in.fade);
+    }
+    if (in.fade < 0.999 && in.fade < grass_door(in.position.xy)) {
+        discard;
+    }
     return vec4<f32>(in.color, 1.0);
+}
+
+// ---- flora: flowers and small plants among the grass (`nova.grass { flowers = { ... } }`, Flora in gfx/grass.rs) ----
+// Painted pictures stood upright on the ground and turned to the camera (a quad of two triangles a plant, made from the vertex and
+// instance numbers), placed like the clumps (the k-th point of an R2 sequence over each square), kept where a patch or a garden spot
+// says, swaying and bending with the grass, lit like the ground, fading in and out with the distance. `Grass::flora_places` is the
+// CPU's copy of where they stand: keep the two the same.
+
+struct FloraOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) light: vec3<f32>,
+    @location(2) world: vec3<f32>,
+    @location(3) fade: f32,
+};
+
+// Value noise over the ground, 0 to 1, one cell a unit (value_noise in grass.rs).
+fn flora_noise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = p - i;
+    let u = f * f * (vec2<f32>(3.0) - 2.0 * f);
+    let a = bitcast<u32>(i32(i.x));
+    let b = bitcast<u32>(i32(i.y)) + 7919u;
+    let c00 = grass_hash(a, b);
+    let c10 = grass_hash(a + 1u, b);
+    let c01 = grass_hash(a, b + 1u);
+    let c11 = grass_hash(a + 1u, b + 1u);
+    let top = c00 + (c10 - c00) * u.x;
+    let bottom = c01 + (c11 - c01) * u.x;
+    return top + (bottom - top) * u.y;
+}
+
+// Plants a square metre at `p` (x) and the kind there (y), `h` the plant's own random number (flora_here in grass.rs).
+fn flora_here(p: vec2<f32>, h: f32) -> vec2<f32> {
+    var dens = 0.0;
+    var in_spot = false;
+    let spots = i32(grass.flora_b.w);
+    for (var s = 0; s < spots; s = s + 1) {
+        let q = grass.spots[s];
+        let d = distance(p, q.xy);
+        if (d < q.z) {
+            in_spot = true;
+            let t = clamp((d - q.z * 0.6) / (q.z * 0.4), 0.0, 1.0);
+            dens = max(dens, q.w * (1.0 - t * t * (3.0 - 2.0 * t)));
+        }
+    }
+    // (in the patches only where the grass is full; in a spot where there is grass at all: never on a road, a path or a porch)
+    var cover = 1.0;
+    if (grass.map_area.w > 0.5) {
+        cover = textureSampleLevel(grass_map, grass_sampler, grass_uv(p, grass.map_area, grass.sizes.xy), 0.0).r;
+    }
+    if (in_spot && cover < 0.5) {
+        dens = 0.0;
+    }
+    if (!in_spot) {
+        if (cover >= 0.95) {
+            let inv = 1.0 / max(grass.flora_b.y, 0.5);
+            let n = flora_noise(p * inv);
+            let edge = 1.0 - grass.flora_b.z;
+            let t = clamp((n - (edge - 0.1)) / 0.2, 0.0, 1.0);
+            dens = grass.flora_b.x * t * t * (3.0 - 2.0 * t);
+        }
+    }
+    let inv2 = 1.0 / (max(grass.flora_b.y, 0.5) * 1.7);
+    let n2 = flora_noise(p * inv2 + vec2<f32>(31.7, 17.3));
+    let pick = clamp(n2 * 1.3 - 0.15 + (h - 0.5) * 0.35, 0.0, 0.999);
+    return vec2<f32>(dens, floor(pick * grass.flora.w));
+}
+
+@vertex
+fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> FloraOut {
+    var out: FloraOut;
+    let per = u32(grass.flora.x);
+    let slot = ii / per;
+    let k = ii - slot * per;
+    let tile = grass.tiles[slot];
+    let su = u32(tile.w * 16777216.0);
+    let off = vec2<f32>(fract(tile.w * 3.7 + 0.31), fract(tile.w * 5.3 + 0.67));
+    let r2 = fract(off + f32(k) * vec2<f32>(0.7548776662, 0.5698402910));
+    let p = tile.xy + r2 * grass.shape.w;
+    // (this square's own count: the most plants a square metre in it, tile.z, as Flora::per_tile_in)
+    let most = tile.z;
+    let local = clamp(ceil(most * grass.shape.w * grass.shape.w), 1.0, 1024.0);
+    // thinning further off (the first plants of a square are kept longest) and gone by the distance, each plant at its own; the
+    // cheap test first, so a plant that is not drawn costs a few instructions
+    let dist = distance(p, globals.eye.xz) * (1.0 + 0.2 * (grass_hash(k, su + 53u) - 0.5));
+    let fd = grass.flora.y;
+    let near = fd * 0.35;
+    let share = select(pow(near / max(dist, 1e-3), 0.7), 1.0, dist <= near);
+    let kept = local * share;
+    let grow = clamp((kept * 1.4 - f32(k)) / max(0.4 * kept, 1.0), 0.0, 1.0);
+    let fade = grow * (1.0 - smoothstep(fd * 0.66, fd, dist));
+    if (fade <= 0.001) {
+        out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
+    let here = flora_here(p, grass_hash(k, su + 31u));
+    if (grass_hash(k, su + 77u) * most >= here.x) {
+        out.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+        return out;
+    }
+    let h2 = grass_hash(k, su + 91u);
+    let h3 = grass_hash(k, su + 113u);
+    let h4 = grass_hash(k, su + 157u);
+    // a fading plant is smaller too: it comes up out of the grass rather than appearing
+    let size = grass.flora.z * (0.7 + 0.6 * h2) * mix(0.55, 1.0, fade);
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(0.0, 1.0));
+    let q = corners[vi];
+    let to_eye = globals.eye.xz - p;
+    let el = length(to_eye);
+    let dir = select(vec2<f32>(0.0, 1.0), to_eye / el, el > 1e-3);
+    let right = vec2<f32>(dir.y, -dir.x);
+    // the wind (the grass's swell, flutter and gusts) and anything passing through
+    var lean = vec2<f32>(0.0);
+    if (globals.wind.z > 0.0 && grass.misc.y > 0.0) {
+        let t = globals.wind.w;
+        let wave = sin(t * 1.6 - dot(p, globals.wind.xy) * 0.18 + sin(dot(p, vec2<f32>(0.07, -0.05))) * 1.5);
+        let gust = 0.5 + 0.5 * wave;
+        let flutter = sin(t * 5.1 + h3 * 27.0 + p.x * 1.1 + p.y * 0.9) * 0.25;
+        lean = globals.wind.xy * (globals.wind.z * grass.misc.y * size * (0.12 + 0.3 * gust * gust + flutter * 0.3));
+    }
+    let bends = i32(grass.misc.z);
+    for (var b = 0; b < bends; b = b + 1) {
+        let bq = grass.bends[b];
+        let away = p - bq.xz;
+        let bd = length(away);
+        let f = 1.0 - smoothstep(bq.w * 0.45, bq.w * 1.1, bd);
+        if (f > 0.0) {
+            lean = lean + select(away / bd, dir, bd < 1e-3) * (size * 0.9 * f);
+        }
+    }
+    let lean_k = min(length(lean) / max(size, 1e-3), 0.9);
+    let t = q.y;
+    let ground = grass_ground(p);
+    // upright, turned a little back towards an eye that looks down on it (from the van, or from above, a picture stood straight up
+    // would be seen edge on): the picture's up is 55% of the way from the world's up to the view's
+    let root = vec3<f32>(p.x, ground.x - 0.03, p.y);
+    let right3 = vec3<f32>(right.x, 0.0, right.y);
+    let view = safe_normalize(globals.eye.xyz - (root + vec3<f32>(0.0, size * 0.5, 0.0)));
+    let up3 = safe_normalize(mix(vec3<f32>(0.0, 1.0, 0.0), cross(view, right3), 0.55));
+    let rise = t * size * sqrt(1.0 - lean_k * lean_k * t);
+    out.world = root + right3 * ((q.x - 0.5) * size) + up3 * rise + vec3<f32>(lean.x, 0.0, lean.y) * (t * t);
+    // lit as the ground under it, the sun wrapping round a little, darker at its foot among the blades
+    let n = safe_normalize(vec3<f32>(-ground.y, 1.0, -ground.z));
+    let to_sun = safe_normalize(-globals.light_dir.xyz);
+    let visible = mix(1.0 - globals.shadow.w, 1.0, grass_sun(vec3<f32>(p.x, ground.x + size * 0.5, p.y)));
+    let diffuse = max((dot(n, to_sun) + 0.3) / 1.3, 0.0) * visible;
+    out.light = (globals.ambient.rgb + globals.light_color.rgb * diffuse * (1.0 - globals.ambient.rgb)) * mix(0.72, 1.0, t);
+    let u = select(q.x, 1.0 - q.x, h4 < 0.5);
+    out.uv = vec2<f32>((here.y + 0.03 + u * 0.94) / grass.flora.w, 0.995 - t * 0.99);
+    out.fade = fade;
+    out.position = globals.view_proj * vec4<f32>(out.world, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_flora(in: FloraOut) -> @location(0) vec4<f32> {
+    let c = textureSample(flora_picture, flora_sampler, in.uv);
+    let edge = max(fwidth(c.a), 1e-3);
+    let rgb = fog_over(in.world, c.rgb * in.light);
+    if (grass.flora_c.y > 0.5) {
+        // the picture's edge sharpened to about a pixel at every size, then given as coverage: smooth edges, and a fade that
+        // dissolves softly
+        let a = clamp((c.a - 0.45) / edge + 0.5, 0.0, 1.0) * in.fade;
+        if (a < 0.01) {
+            discard;
+        }
+        return vec4<f32>(rgb, a);
+    }
+    if (c.a < 0.45 || in.fade < grass_door(in.position.xy)) {
+        discard;
+    }
+    return vec4<f32>(rgb, 1.0);
 }

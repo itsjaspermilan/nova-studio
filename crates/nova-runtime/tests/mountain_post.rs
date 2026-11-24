@@ -10212,9 +10212,9 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
         {
             most[k] = most[k].max(c);
         }
-        // the game's counts (lib/atmosphere.lua), under the engine's caps
+        // the game's counts (lib/atmosphere.lua; the wind curls up to twice theirs on the hills), under the engine's caps
         assert!(
-            leaves <= 22 && streaks <= 2 && motes <= 36 && butterflies <= 5 && birds <= 5,
+            leaves <= 22 && streaks <= 8 && motes <= 36 && butterflies <= 5 && birds <= 5,
             "too many: {v}"
         );
         // camera-local: within the radius (30 m), a flock passing over within about twice it
@@ -11029,4 +11029,164 @@ fn the_caps_ear_holes_leave_the_ears_room_in_every_clip() {
         "both ears on springs"
     );
     let _ = ears;
+}
+
+// ---- the owner's eighth play (2026-11-23): flowers as painted pictures, the grass's fade, the wind curls -------------------------------
+
+/// "The flowers look kinda weird. Just like blobs on sticks ... don't some games use 2D assets for the less important items?" The
+/// valley's flowers are painted pictures grown with the grass (nova.grass's `flowers`: textures/flora.png, five kinds), not 3D models:
+/// no flower model is planted any more, the gardens' `flowers` spots of the scene file are where they grow thick, and wherever the
+/// engine stands a plant (the CPU's copy of the GPU's choice, `Grass::flora_places`) it is off every road, gravel path, junction and
+/// the bridge (half a metre clear of its edge at least), out of the water and away from the houses.
+#[test]
+fn flowers_are_painted_pictures_in_the_grass_and_never_on_a_road_path_or_in_the_water() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 120 } ] }"#,
+    );
+    let grass = g
+        .frame_input(720)
+        .lighting
+        .grass
+        .clone()
+        .expect("the valley grows grass");
+    let flora = grass.flora.clone().expect("the grass carries the flowers");
+    assert_eq!(
+        flora.kinds, 5,
+        "daisies, buttercups, lupines, clover, dandelions"
+    );
+    assert!(
+        flora.spots.len() >= 4,
+        "the gardens' flower spots: {:?}",
+        flora.spots
+    );
+    // no 3D flowers: the groundcover plants none, and a `flowers` object draws nothing of its own
+    assert_eq!(
+        lua(
+            &g,
+            "(function() local n = 0 for _, e in ipairs(nova.all('flowers')) do if e.model then n = n + 1 end end return n end)()"
+        ),
+        "0",
+        "a flowers spot has no model"
+    );
+    let scene = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/mountain-post/scenes/valley.scene.json"),
+    )
+    .expect("the scene file");
+    assert!(
+        !scene.contains(r#""model": "flowers""#),
+        "the groundcover plants no flower models"
+    );
+    // every plant over the whole valley, and those in the gardens
+    let (x0, z0, x1, z1) = (-250.0f32, -265.0f32, 250.0f32, 300.0f32);
+    let tile = nova_runtime::gfx::grass::TILE;
+    let mut places = Vec::new();
+    for j in (z0 / tile).floor() as i32..=(z1 / tile).ceil() as i32 {
+        for i in (x0 / tile).floor() as i32..=(x1 / tile).ceil() as i32 {
+            places.extend(grass.flora_places(i, j));
+        }
+    }
+    assert!(
+        places.len() > 5_000,
+        "a meadow of flowers: {}",
+        places.len()
+    );
+    let mut kinds = [0usize; 5];
+    for p in &places {
+        kinds[p.2 as usize] += 1;
+    }
+    assert!(
+        kinds.iter().all(|&k| k > places.len() / 30),
+        "every kind is out there: {kinds:?}"
+    );
+    for s in &flora.spots {
+        let near = places
+            .iter()
+            .filter(|p| (p.0 - s[0]).hypot(p.1 - s[1]) < s[2])
+            .count();
+        assert!(
+            near >= 6,
+            "the garden at {:.1}, {:.1} has flowers: {near}",
+            s[0],
+            s[1]
+        );
+    }
+    let list: Vec<String> = places
+        .iter()
+        .map(|p| format!("{:.2},{:.2}", p.0, p.1))
+        .collect();
+    let bad = lua(
+        &g,
+        &format!(
+            "(function() local W = require('lib.world'); local houses = {{}} \
+               for _, n in ipairs({{ 'post_office', 'cabin_hazel', 'cabin_pip', 'workshop' }}) do local e = nova.named(n); \
+                 if e then houses[#houses + 1] = e end end \
+               local bad, n = {{}}, 0 \
+               for x, z in string.gmatch('{}', '([%-%d%.]+),([%-%d%.]+)') do x, z = tonumber(x), tonumber(z); n = n + 1 \
+                 local why \
+                 local s = W.surface(x, z) \
+                 if s ~= 'grass' then why = s end \
+                 local r, d = W.nearest('road', x, z) \
+                 if not why and r and d < r.width / 2 + 0.5 then why = 'by the ' .. (r.id or 'road') end \
+                 local w, dw = W.nearest('water', x, z) \
+                 if not why and w and dw < w.width / 2 + 0.5 then why = 'in the ' .. (w.id or 'water') end \
+                 for _, h in ipairs(houses) do if not why and (h.x - x) ^ 2 + (h.z - z) ^ 2 < 9 then why = 'in a house' end end \
+                 if why and #bad < 8 then bad[#bad + 1] = string.format('%.1f,%.1f %s', x, z, why) end \
+               end return n .. ' ' .. table.concat(bad, '; ') end)()",
+            list.join(";")
+        ),
+    );
+    let (checked, rest) = bad.split_once(' ').unwrap_or((&bad, ""));
+    assert_eq!(checked, places.len().to_string(), "every place was checked");
+    assert!(
+        rest.trim().is_empty(),
+        "flowers where none should grow: {rest}"
+    );
+}
+
+/// "The pop in of grass and stuff is quite evident" and "The wind has jagged edges, it's too solid white, and doesn't happen often
+/// enough". The scattered grass tufts and ferns end at their own distances (the engine's long dissolve, jittered by place), the wind
+/// curls are soft ribbons (blended, not dithered quads) of a slightly blue white at about half alpha, and several are about at once in
+/// the open.
+#[test]
+fn wind_curls_are_soft_see_through_ribbons_and_come_often() {
+    let mut g = game();
+    let r = play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 5, "lua": "require('lib.atmosphere').start(30); local p = nova.named('postmaster'); p.x, p.z = 36, -150; require('lib.camera').reset(0.9)" },
+            { "wait": 900, "record": "nova.ambient_info().streaks" } ] }"#,
+    );
+    let counts: Vec<usize> = r
+        .record("nova.ambient_info().streaks")
+        .iter()
+        .map(|(_, _, v)| v.parse().unwrap())
+        .collect();
+    let mean = counts.iter().sum::<usize>() as f64 / counts.len().max(1) as f64;
+    let most = counts.iter().copied().max().unwrap_or(0);
+    assert!(
+        mean >= 1.5 && most >= 3,
+        "several curls at once in the open meadow (mean {mean:.2}, most {most})"
+    );
+    let ribbons = g.frame_input(720).lighting.ribbons.clone();
+    assert!(!ribbons.is_empty(), "the curls are drawn as ribbons");
+    for rb in &ribbons {
+        let peak = rb.points.iter().map(|p| p[4]).fold(0.0f32, f32::max);
+        let widest = rb.points.iter().map(|p| p[3]).fold(0.0f32, f32::max);
+        assert!(
+            peak <= 0.56,
+            "see-through, not solid white: alpha {peak:.2}"
+        );
+        assert!(widest <= 0.05, "thin: half-width {widest:.3} m");
+        assert!(
+            rb.points[0][3] < widest * 0.2 && rb.points[rb.points.len() - 1][3] < widest * 0.2,
+            "tapered ends"
+        );
+        assert!(
+            rb.color[2] > rb.color[0] && rb.color[0] > 0.8,
+            "a white a little towards blue: {:?}",
+            rb.color
+        );
+    }
 }
