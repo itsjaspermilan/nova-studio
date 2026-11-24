@@ -967,7 +967,12 @@ the air), fixed to the ground in the world where it landed, and each frame the l
 the body rolls up onto its toe (`toe_roll`, 0.75 rad at most) and one far in front lands on its heel (`heel_roll`, 0.35) like a
 rocker that does not slip, and only then may the leg lengthen or shorten a little (`stretch` 1.12, `squash` 0.84: the foot is scaled
 back). A foot in the air swings to where it will land: under its hip where the body will be, half a stance ahead, never further than
-the leg can reach rolled onto its heel, lifted `lift` at the middle. So nothing slides at any speed, while speeding up or slowing,
+the leg can reach rolled onto its heel, lifted `lift` at the middle (or at `lift_peak` of the swing: 0.42 picks the foot up first and
+then reaches it out to land). A walk that should not shuffle asks for more: `toe_off` (radians by speed, 0 by default) peels a foot
+behind the body up onto its toe in the last half of its stance, the push-off, and `heel_strike` (0.12) is how far the toes are up
+as a foot comes down on its heel, rolling flat over `heel_settle` (14 a second); either roll goes only so far as the leg still
+reaches the ankle so moved within `squash` and `stretch`, so the foot does not move (and only the roll a foot needs to be reached
+hurries the cycle, not this one). So nothing slides at any speed, while speeding up or slowing,
 or turning. The hips are set as high as the feet allow (lowered for a foot that would be out of reach, never so low that a standing
 leg would push its foot into the ground, and never more than `max_drop`, 8 cm), dip as a foot lands (`bounce`), turn with the legs
 (`sway`, the shoulders `counter` to them), roll and shift over the standing foot (`roll`, `shift`) and lean into the way it goes,
@@ -976,7 +981,8 @@ down. A foot left behind near the end of its roll hurries the cycle along, so a 
 Stopping (below `settle_speed`), the foot in the air finishes its step and a foot left behind or turned (`reach`, `turn`) steps up
 beside the other, and the cycle then holds with both feet down; turning on the spot shuffles the feet round. Standing a while it
 looks round now and then or shifts its weight onto one foot (`idle = false` leaves that out; `entity.look`, radians from where it
-faces, turns the head first into a turn). Numbers may be one value or points by speed. `ground(x, z)` is the height of the ground
+faces, turns the head first into a turn). Numbers may be one value, points by speed, or a function of the speed (a walker that
+changes its manner on a stair gives one; the options are read every step from `gait.o`). `ground(x, z)` is the height of the ground
 under a point: the hills of `nova.terrain` are the renderer's (it lifts each vertex by the ground under it), so give only what
 stands on them, a porch or a bridge. On a steep hillside that lift shears a tall body with the slope; to keep it upright draw it with
 `lift = "origin"` and give the whole ground from the body's own place: `ground = function(x, z, e) return nova.terrain_height(x, z) +

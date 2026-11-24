@@ -1361,3 +1361,55 @@ Device: 60 fps holds (GPU 10.4 ms, about 4 ms headroom). The owner's notes, in t
 9. "There should be a driveway at the homes and buildings. Right now we're just driving on grass."
 10. "The player kind of looks like he's shuffling when he's walking."
 11. "I liked the post master cap that we had earlier. The bucket hat makes the character look like some kind of explorer."
+
+### What the eighth play changed: the walk and the cap (notes 10 and 11)
+
+**"Shuffling" (note 10).** Measured first, from what the gait draws on the flat road (the sole's lowest point over the ground at the
+top of each swing, the ankle's rise, one foot's landing to the other's, the hips' highest less lowest): at the full walk the foot
+cleared the ground by 5.7 cm and the hips bobbed 2 cm; at a gentle push 3.9 cm and 1.1 cm; at a creep 3.4 cm. The swing was a low
+symmetric arc, the soles stayed flat until they had to roll, the arms swung 26 degrees, and from the game's camera the feet hide
+under the body and the tail, so what reads there is the bob and the arms. Now (tests at the end of
+`crates/nova-runtime/tests/mountain_post.rs`, `the_walk_lifts_its_feet_reaches_and_bobs_rather_than_shuffling`):
+
+| stick | speed | peak sole clearance | peak ankle rise | step | hips' bob |
+| --- | --- | --- | --- | --- | --- |
+| full | 1.6 m/s | 5.7 -> 8.3 cm | 7.1 -> 9.5 cm | 0.371 -> 0.383 m | 2.0 -> 3.0 cm |
+| 0.5 | 0.89 m/s | 3.9 -> 6.2 cm | 4.5 -> 6.8 cm | 0.305 -> 0.317 m | 1.1 -> 2.1 cm |
+| 0.3 | 0.53 m/s | 3.4 -> 5.4 cm | 3.5 -> 5.9 cm | 0.258 -> 0.266 m | 0.7 -> 1.3 cm |
+
+- Each foot peels up onto its toe in the last half of its stance (the push-off, up to 0.55 rad at a walk), is picked up early in its
+  swing (the arc's top at 0.42 of it, 7 cm at a walk, 6 cm at half, 4 cm at a creep) and then reaches out to land on its heel with
+  the toes up (0.3 rad at a walk), rolling flat in about a tenth of a second (`nova.gait`'s new `toe_off`, `lift_peak`,
+  `heel_strike`, `heel_settle`; docs/project-format.md). Either roll goes only as far as the leg still reaches the moved ankle, so
+  the feet do not slide (the slide, sink and float tests pass unchanged: under 1.5 cm a step everywhere, most under 0.2).
+- The step is a little longer and the beat a little calmer: the walk clip swings 51 degrees each way (48 before), 0.476 s a cycle at
+  1.6 m/s (0.455), 4.2 steps a second (4.4); the stride is 0.76 m, though a step measures 0.383 m where the short leg cannot reach the
+  full half-stride (a longer clip, 53 degrees, left the standing foot at the end of its toe roll every step and hurried the beat).
+- The hips bob half again as much (3 cm at a walk), roll more over the standing foot (0.05 rad) and shift further over it (1.4 cm);
+  the arms swing 40 degrees each way against the legs (26). At a gentle push the walk clip is still mixed with standing, so the arms
+  swing less there (a second walk point at half speed made the hips hop on the porch steps and was dropped).
+- On and near the porch steps the walk eases back to the quieter step the stair glide was tuned for (blended over about a tenth of a
+  second), so the steps still climb smoothly (1.1 cm a frame at most) and no toe or heel goes into a tread.
+- Pictures (1280x720, made by the agent, not committed): `build/gallery/walk-before-*.png` and `walk-after-*.png`, from the side,
+  the front and the game's camera, at a full push and at half.
+
+**The cap (note 11).** `hat: "peaked"` on a chibi animal is now a big soft postal cap built like the bucket hat (character3d_make):
+the crown follows the head a couple of centimetres off it from just over the brows, puffing out a little over a deep band and up to
+a soft round top; a short curved peak comes out over the brows (deepest in the middle, running out to nothing at the sides, a shade
+darker than the band); the ears come up through holes with rolled rims in the band's colour, cut for the ear swung 0.32 rad any way
+(the maker's test checks every edge of each ear against the cap's triangles at those swings; no clip turns an ear, and the springs
+swing them at most 0.25); the envelope pin on the front of the crown. Its crown is finer than the bucket hat's (34 rings of 64): the
+faces cut whole round the ear holes had left a slit from each hole to the top. `hat: "bucket"` is unchanged. Three caps were pictured
+close, at the game's distance on the road and beside the blue van (`build/gallery/cap-options-*.png`, left to right): A an oatmeal
+crown with a deep teal band and peak; B a soft teal crown with a darker teal band; C an oatmeal crown with an olive-brown band.
+**Chosen: A** (`CAST.oatmeal`, `CAST.tealDeep`): the pale crown stands out against the grass, the road and the van at the game's
+distance, the deep teal ties it to the neckerchief without the two running together; B's teal crown ran into the neckerchief and
+the van's blue, and C's olive peak read as khaki, the explorer again. Nothing navy, no badge, no red. Seated, the cap clears the
+cab's lining. Pictures: `build/gallery/cap-front.png`, `cap-three-quarter.png`, `cap-side.png`, `cap-back.png`, `cap-above.png`,
+`cap-game-distance-road.png`, `cap-game-distance-van.png`, `cap-seated-in-van.png`, `cap-conversation.png`, and the bucket hat it
+replaces, `hat-before-bucket-three-quarter.png`.
+
+- **Weak points:** nothing is tried on the Retroid. From the game's high camera behind him the feet are mostly hidden under the body
+  and the tail, so the new lift reads mainly from the side and the front; behind, it is the bob and the arms. The cap has about 1,400
+  more triangles than the bucket hat (the postmaster is 21,800). The ear holes' rolled rims stand up a little round the ears like
+  hoops when seen from the side, as they did on the bucket hat.

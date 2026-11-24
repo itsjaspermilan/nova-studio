@@ -926,7 +926,7 @@ fn hazel_is_a_bear_and_nothing_says_badger() {
     );
     assert!(
         line("postmaster").contains("species: \"fox\"")
-            && line("postmaster").contains("hat: \"bucket\"")
+            && line("postmaster").contains("hat: \"peaked\"")
     );
     assert!(
         line("pip").contains("species: \"rabbit\"")
@@ -4366,10 +4366,11 @@ fn the_cycle_carries_on_through_walk_run_trot_and_b_pressed_or_let_go() {
         "never more than a fifth of a cycle in a frame: {jump}"
     );
     assert_eq!(lua(&g, "nova.named('postmaster').anim:state()"), "move");
-    // at the full walk the steps fall evenly, two a cycle (the cycle's length is the stride over the speed)
+    // at the full walk the steps fall evenly, two a cycle (the cycle's length is the stride over the speed; 150 frames: since the
+    // eighth play's longer steps, about 14.7 frames apart)
     let r2 = play(
         &mut g,
-        r#"{ "steps": [ { "hold": ["move_y=-1"], "frames": 120 } ] }"#,
+        r#"{ "steps": [ { "hold": ["move_y=-1"], "frames": 150 } ] }"#,
     );
     let steps: Vec<u64> = r2.json["sounds"]
         .as_array()
@@ -6498,7 +6499,7 @@ fn the_cast_wears_trousers_and_the_postmaster_no_bag_and_no_uniform() {
         .lines()
         .find(|l| l.contains("name: \"postmaster\""))
         .unwrap();
-    for gone in ["satchel", "peaked", "#2f5fa6"] {
+    for gone in ["satchel", "bucket", "#2f5fa6"] {
         assert!(
             !line.contains(gone),
             "the postmaster's recipe has no {gone}"
@@ -6506,7 +6507,7 @@ fn the_cast_wears_trousers_and_the_postmaster_no_bag_and_no_uniform() {
     }
     for wanted in [
         "cardigan",
-        "bucket",
+        "peaked",
         "hat_pin: \"envelope\"",
         "emblem: \"envelope\"",
     ] {
@@ -7579,8 +7580,9 @@ fn scenery_within_2_m_of_the_eye_fades_out_whole_and_the_boom_comes_in_from_a_cr
 // ---- the owner after the sixth play's cast (2026-11-23): "I like the yellow outfit. Make the hat much bigger though. Fix the
 // weakpoints" -------------------------------------------------------------------------------------------------------------------
 
-/// The postmaster's bucket hat is a big soft one (its brim well past the head, its crown down over the head to just above the brows
-/// and up over the top), the fox's ears come up through holes in it (taller than the crown), and the game's springs swing them no
+/// The postmaster's hat is a big soft one (since the eighth play a postal cap: its crown round the head, down over it to just above
+/// the brows and up over the top, a peak out over the face; it was a bucket hat with a brim well past the head), the fox's ears come
+/// up through holes in it (taller than the crown), and the game's springs swing them no
 /// further than the holes are cut for (character3d_make cuts each a little wider than the ear and the swing of its spring;
 /// studio/mcp/makers/makers3d.test.ts checks every ear triangle against the hat's at those swings).
 #[test]
@@ -7632,9 +7634,20 @@ fn the_postmasters_bucket_hat_is_big_and_the_ears_come_through_it() {
         .map(|p| p[1])
         .fold(f64::MAX, f64::min);
     let hat_top = pts.iter().map(|p| p[1]).fold(f64::MIN, f64::max);
+    // (since the eighth play a soft postal cap, not the bucket hat: its crown round the head, a short peak out over the face)
+    let head_front = shell
+        .iter()
+        .filter(|p| p[1] > hat_low)
+        .map(|p| p[2])
+        .fold(f64::MIN, f64::max);
+    let hat_front = pts.iter().map(|p| p[2]).fold(f64::MIN, f64::max);
     assert!(
-        hat_w > head_w * 1.25,
-        "the brim reaches well past the head: {hat_w:.3} against {head_w:.3}"
+        hat_w > head_w && hat_w < head_w * 1.3,
+        "the crown goes round the head, a cap and not a brim all round: {hat_w:.3} against {head_w:.3}"
+    );
+    assert!(
+        hat_front > head_front + 0.03,
+        "a peak out over the face: {hat_front:.3} against the face's {head_front:.3}"
     );
     let middle = (head_top + head_low) / 2.0;
     assert!(
@@ -10245,4 +10258,237 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
         ["0", "0", "0", "0", "0"],
         "nothing floats indoors"
     );
+}
+
+// ---- the owner's eighth play: "he's shuffling when he's walking" -------------------------------------------------------------------
+
+/// Each frame, for each foot of `who`'s gait: in the air, the highest its sole's lowest point rises over the ground under it (the
+/// clearance) and its ankle over the ankle's height standing; each landing's place. Read with WALKP_STATS(): the median peak
+/// clearance and ankle rise of the swings, the median length of a step (one foot's landing to the other's), the hips' bob (highest
+/// less lowest) and the steps a second.
+const WALK_PROBE: &str = r#"
+WALKP = { swings = {}, ankles = {}, lands = {}, cur = {}, hy = {}, frames = 0 }
+function WALKP_STEP(name)
+  local p = nova.named(name)
+  local W = require('lib.world')
+  WALKP.frames = WALKP.frames + 1
+  for i, f in ipairs(p.walker:feet()) do
+    local S = f.sole
+    local lo = math.huge
+    for j = 0, 16 do
+      local t = math.pi + math.pi * j / 16
+      local z, y = S.forward + S.half * math.cos(t), -(S.ankle - S.round) + S.round * math.sin(t)
+      local ca, sa = math.cos(f.pitch), math.sin(f.pitch)
+      local zz, yy = z * ca + y * sa, -z * sa + y * ca
+      local gx, gz = f.x + zz * math.sin(f.yaw), f.z + zz * math.cos(f.yaw)
+      lo = math.min(lo, f.y + yy - W.lift(gx, gz))
+    end
+    local up = f.y - W.lift(f.x, f.z) - S.ankle
+    local c = WALKP.cur[i]
+    if not f.planted then
+      if not c then c = { peak = 0, ankle = 0 }; WALKP.cur[i] = c end
+      c.peak, c.ankle = math.max(c.peak, lo), math.max(c.ankle, up)
+    elseif c then
+      WALKP.swings[#WALKP.swings + 1] = c.peak
+      WALKP.ankles[#WALKP.ankles + 1] = c.ankle
+      WALKP.lands[#WALKP.lands + 1] = { f.x, f.z, i }
+      WALKP.cur[i] = nil
+    end
+  end
+  WALKP.hy[#WALKP.hy + 1] = p.walker.hy or 0
+end
+local function median(t) local s = {}; for i, v in ipairs(t) do s[i] = v end; table.sort(s); return s[math.max(1, math.floor(#s / 2 + 0.5))] or 0 end
+function WALKP_STATS()
+  local steps = {}
+  for i = 2, #WALKP.lands do
+    local a, b = WALKP.lands[i - 1], WALKP.lands[i]
+    if a[3] ~= b[3] then steps[#steps + 1] = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2) end
+  end
+  local hi, lo = -1, 1
+  for i = math.max(1, math.floor(#WALKP.hy / 3)), #WALKP.hy do hi, lo = math.max(hi, WALKP.hy[i]), math.min(lo, WALKP.hy[i]) end
+  return string.format('%.4f %.4f %.4f %.4f %.3f %d', median(WALKP.swings), median(WALKP.ankles), median(steps), hi - lo, #WALKP.lands / (WALKP.frames / 60), #WALKP.swings)
+end
+"#;
+
+/// (peak sole clearance, peak ankle rise, step length, hip bob, steps a second) walking with the stick at `push` on the flat road.
+fn walk_measure(push: f64) -> [f64; 5] {
+    let mut g = game();
+    play(&mut g, ON_THE_ROAD);
+    let probe: Vec<&str> = WALK_PROBE
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("--"))
+        .collect();
+    assert_eq!(
+        lua(
+            &g,
+            &format!("(function() {} return 'ok' end)()", probe.join(" "))
+        ),
+        "ok"
+    );
+    play(
+        &mut g,
+        &format!(r#"{{ "steps": [ {{ "hold": ["move_y=-{push}"], "frames": 40 }} ] }}"#),
+    );
+    lua(
+        &g,
+        "(function() WALKP = { swings = {}, ankles = {}, lands = {}, cur = {}, hy = {}, frames = 0 } return 'ok' end)()",
+    );
+    play(
+        &mut g,
+        &format!(
+            r#"{{ "each_frame": "WALKP_STEP('postmaster')", "steps": [ {{ "hold": ["move_y=-{push}"], "frames": 180 }} ] }}"#
+        ),
+    );
+    let s = lua(&g, "WALKP_STATS()");
+    let v: Vec<f64> = s.split(' ').map(|x| x.parse().unwrap()).collect();
+    println!(
+        "push {push}: clearance {:.4} ankle {:.4} step {:.4} bob {:.4} steps/s {:.3} swings {} speed {:.3}",
+        v[0],
+        v[1],
+        v[2],
+        v[3],
+        v[4],
+        v[5],
+        num(&g, "nova.named('postmaster').speed")
+    );
+    [v[0], v[1], v[2], v[3], v[4]]
+}
+
+/// "The player kind of looks like he's shuffling when he's walking" (the owner's eighth play). Measured on the flat road from what
+/// the gait draws, before and after (tools/strides.mjs, entities/postmaster.lua's GAIT, nova.gait's toe_off, heel_strike,
+/// lift_peak):
+///
+/// | stick | speed | peak sole clearance | peak ankle rise | step | hips' bob |
+/// | --- | --- | --- | --- | --- | --- |
+/// | full | 1.6 m/s | 5.7 -> 8.3 cm | 7.1 -> 9.5 cm | 0.371 -> 0.383 m | 2.0 -> 3.0 cm |
+/// | 0.5 | 0.89 m/s | 3.9 -> 6.2 cm | 4.5 -> 6.8 cm | 0.305 -> 0.317 m | 1.1 -> 2.1 cm |
+/// | 0.3 | 0.53 m/s | 3.4 -> 5.4 cm | 3.5 -> 5.9 cm | 0.258 -> 0.266 m | 0.7 -> 1.3 cm |
+///
+/// (a cycle of 0.455 s at the full walk before, 0.476 s now: 4.20 steps a second where it was 4.40; a step is a little shorter
+/// than half the stride, 0.381 m, where the leg cannot reach further). On and near the porch steps the walk eases back to the
+/// quieter step the stair glide was tuned for. The feet still keep to the ground (`no_foot_slides_at_any_speed_starting_stopping_or_turning`
+/// and the others above, unchanged).
+#[test]
+fn the_walk_lifts_its_feet_reaches_and_bobs_rather_than_shuffling() {
+    let full = walk_measure(1.0);
+    assert!(
+        full[0] > 0.07,
+        "at the full walk the swinging foot clears the ground by {:.3} m at the top of its step (it was 0.057)",
+        full[0]
+    );
+    assert!(
+        (0.375..0.43).contains(&full[2]),
+        "a step at the full walk is {:.3} m (it was 0.371)",
+        full[2]
+    );
+    assert!(
+        full[3] > 0.025,
+        "the hips bob {:.3} m (it was 0.020)",
+        full[3]
+    );
+    let half = walk_measure(0.5);
+    assert!(
+        half[0] > 0.05,
+        "at a gentle push the foot still lifts clear: {:.3} m (it was 0.039)",
+        half[0]
+    );
+    assert!(half[3] > 0.015, "and the hips still bob: {:.3} m", half[3]);
+    let creep = walk_measure(0.3);
+    assert!(
+        creep[0] > 0.045,
+        "at a creep the foot lifts {:.3} m (it was 0.034)",
+        creep[0]
+    );
+    // a calmer beat at the full walk: the walk's cycle is longer than it was (0.455 s), each step longer
+    let g = game();
+    let cycle = num(
+        &g,
+        "(function() for _, c in ipairs(nova.model_clips('postmaster')) do if c.name == 'walk' then return c.stride / 1.6 end end end)()",
+    );
+    assert!(
+        cycle > 0.47,
+        "a walk cycle of {cycle:.3} s at 1.6 m/s (it was 0.455)"
+    );
+    // the arms swing against the legs, 40 degrees each way in the walk clip (26 before)
+    let doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(game_dir().join("models/postmaster.model.json")).unwrap(),
+    )
+    .unwrap();
+    let walk = doc["clips"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "walk")
+        .unwrap();
+    for arm in ["arm_l", "arm_r"] {
+        let track = walk["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| {
+                t["part"].as_array().unwrap().last().unwrap() == arm && t["prop"] == "rotation"
+            })
+            .unwrap();
+        let xs: Vec<f64> = track["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["value"][0].as_f64().unwrap())
+            .collect();
+        let swing = xs.iter().cloned().fold(f64::MIN, f64::max)
+            - xs.iter().cloned().fold(f64::MAX, f64::min);
+        assert!(swing > 76.0, "{arm} swings {swing} degrees in all");
+    }
+}
+
+/// The cap's ear holes stay clear of the ears in every clip: the maker cuts each hole for the ear swung 0.32 rad any way
+/// (studio/mcp/makers/makers3d.test.ts checks every edge of each ear against the cap's triangles at those swings), no clip of the
+/// postmaster turns an ear further than that from its rest, and the game's springs swing them at most 0.25.
+#[test]
+fn the_caps_ear_holes_leave_the_ears_room_in_every_clip() {
+    let doc: Value = serde_json::from_str(
+        &std::fs::read_to_string(game_dir().join("models/postmaster.model.json")).unwrap(),
+    )
+    .unwrap();
+    let cast = std::fs::read_to_string(game_dir().join("tools/cast.mjs")).unwrap();
+    let line = cast
+        .lines()
+        .find(|l| l.contains("name: \"postmaster\""))
+        .unwrap();
+    assert!(
+        line.contains("hat: \"peaked\"")
+            && line.contains("hat_band_color")
+            && line.contains("hat_pin: \"envelope\""),
+        "the postmaster wears the peaked cap with its band and the envelope pin: {line}"
+    );
+    let mut ears = 0;
+    for clip in doc["clips"].as_array().unwrap() {
+        for t in clip["tracks"].as_array().unwrap() {
+            let part = t["part"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()
+                .as_str()
+                .unwrap();
+            if !part.starts_with("ear_") || t["prop"] != "rotation" {
+                continue;
+            }
+            ears += 1;
+            for k in t["keys"].as_array().unwrap() {
+                for d in 0..3 {
+                    let a = k["value"][d].as_f64().unwrap().to_radians().abs();
+                    assert!(a <= 0.32, "{} turns {part} {a:.3} rad", clip["name"]);
+                }
+            }
+        }
+    }
+    // (the springs: at most 0.25, `the_postmasters_bucket_hat_is_big_and_the_ears_come_through_it` above)
+    let pm = std::fs::read_to_string(game_dir().join("entities/postmaster.lua")).unwrap();
+    assert_eq!(
+        pm.matches("part = \"ear_").count(),
+        2,
+        "both ears on springs"
+    );
+    let _ = ears;
 }
