@@ -182,20 +182,25 @@ fn vs_grass(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     let ground_y = ground.x;
     let bends = i32(grass.misc.z);
     var pressed = 0.0;
+    var under = 0.0;
     for (var b = 0; b < bends; b = b + 1) {
         let q = grass.bends[b];
         let away = root - q.xz;
         let dist = length(away);
         let f = 1.0 - smoothstep(q.w * 0.45, q.w, dist);
         if (f > 0.0) {
-            let dir = select(away / dist, out_dir, dist < 1e-3);
-            lean = lean + dir * (height * 1.1 * f);
+            // (pushed away from the point, fully from 0.45 of its radius out; nearer in the push shrinks to nothing at the point
+            // itself and the blade is pressed down instead: a blade the walker passes over turns through the foot over a few
+            // centimetres of the walk, not from one side to the other in a frame; bend_push in flora below)
+            let inner = q.w * 0.45;
+            lean = lean + away * (height * 1.1 * f / max(dist, inner));
             pressed = max(pressed, f);
+            under = max(under, f * (1.0 - min(dist / inner, 1.0)));
         }
     }
-    // a blade keeps about its length: the more it leans, the lower its tip
+    // a blade keeps about its length: the more it leans, the lower its tip (and one under a foot is pressed down)
     let lean_len = length(lean);
-    let tip_y = height * sqrt(max(1.0 - min(lean_len / max(height, 1e-3), 0.95) * min(lean_len / max(height, 1e-3), 0.95), 0.1));
+    let tip_y = height * (1.0 - 0.6 * under) * sqrt(max(1.0 - min(lean_len / max(height, 1e-3), 0.95) * min(lean_len / max(height, 1e-3), 0.95), 0.1));
     var t = 0.0;
     var s = 0.0;
     if (point == 0u) { s = -1.0; }
@@ -260,7 +265,9 @@ fn fs_grass(in: GrassOut) -> @location(0) vec4<f32> {
 // CPU's copy of where they stand: keep the two the same.
 
 struct FloraOut {
-    @builtin(position) position: vec4<f32>,
+    // (invariant: the solid pass and the blended pass split each pixel of a plant between them by its cover, so both must place it
+    // exactly alike; two pipelines compiled apart need not, and a pixel that both put on the other side of the split would be a hole)
+    @builtin(position) @invariant position: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) light: vec3<f32>,
     @location(2) world: vec3<f32>,
@@ -372,14 +379,22 @@ fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
         let flutter = sin(t * 5.1 + h3 * 27.0 + p.x * 1.1 + p.y * 0.9) * 0.25;
         lean = globals.wind.xy * (globals.wind.z * grass.misc.y * size * (0.12 + 0.3 * gust * gust + flutter * 0.3));
     }
+    // (the owner on the device: "The flowers still flicker ... When the player walks through them". A plant leaned away at its full
+    // lean as soon as it was within half the radius, so the frame the walker passed over it, it flipped from leaning one way to
+    // leaning the other: its top jumped the length of the plant. Now the push shrinks to nothing at the walker's own point and the
+    // plant is pressed lower there instead, so it turns through upright over a few centimetres of the walk. Its lean is at most 0.6
+    // of its height: leaned 0.9 the picture was squashed into a streak. tests/flora_gpu.rs, a_flower_walked_over_...)
     let bends = i32(grass.misc.z);
+    var under = 0.0;
     for (var b = 0; b < bends; b = b + 1) {
         let bq = grass.bends[b];
         let away = p - bq.xz;
         let bd = length(away);
         let f = 1.0 - smoothstep(bq.w * 0.45, bq.w * 1.1, bd);
         if (f > 0.0) {
-            lean = lean + select(away / bd, dir, bd < 1e-3) * (size * 0.9 * f);
+            let inner = bq.w * 0.45;
+            lean = lean + away * (size * 0.6 * f / max(bd, inner));
+            under = max(under, f * (1.0 - min(bd / inner, 1.0)));
         }
     }
     let lean_k = min(length(lean) / max(size, 1e-3), 0.9);
@@ -391,7 +406,7 @@ fn vs_flora(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) ->
     let right3 = vec3<f32>(right.x, 0.0, right.y);
     let view = safe_normalize(globals.eye.xyz - (root + vec3<f32>(0.0, size * 0.5, 0.0)));
     let up3 = safe_normalize(mix(vec3<f32>(0.0, 1.0, 0.0), cross(view, right3), 0.55));
-    let rise = t * size * sqrt(1.0 - lean_k * lean_k * t);
+    let rise = t * size * sqrt(1.0 - lean_k * lean_k * t) * (1.0 - 0.45 * under);
     out.world = root + right3 * ((q.x - 0.5) * size) + up3 * rise + vec3<f32>(lean.x, 0.0, lean.y) * (t * t);
     // lit as the ground under it, the sun wrapping round a little, darker at its foot among the blades
     let n = safe_normalize(vec3<f32>(-ground.y, 1.0, -ground.z));
@@ -419,7 +434,11 @@ fn flora_cover(alpha: f32, uv: vec2<f32>) -> f32 {
     // is drawn smaller, its filtered alpha already is the share of the pixel the plant covers (a thin stem is a faint line), so it
     // is given nearly as it is (at most twice as steep round the cut). Sharpening that too made every texel-thin stem and petal
     // edge a hard cut that came and went as the pixels slid over it.
-    let edge = max(fwidth(alpha), mix(1e-3, 0.5, clamp(texels - 1.0, 0.0, 1.0)));
+    // (never sharper than about a pixel, whatever the GPU gives for fwidth: a coarse derivative, one for each 2x2 block of pixels as
+    // many mobile GPUs give, reads no change along a block whose edge runs between its rows, and a cut sharpened to nothing there
+    // crawls as the blocks slide over the picture. Magnified, the picture's alpha changes by at most about 1 a texel: half a texel's
+    // change is a cut about half a pixel wide)
+    let edge = max(max(fwidth(alpha), 0.5 * min(texels, 1.0)), mix(1e-3, 0.5, clamp(texels - 1.0, 0.0, 1.0)));
     return clamp((alpha - 0.45) / edge + 0.5, 0.0, 1.0);
 }
 
