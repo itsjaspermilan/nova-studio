@@ -1662,3 +1662,12 @@ repeats every 64 m along a road; the grain picture carries the finest grit. A ju
 the mouth: even gravel hides the join, but a careful look can find it. The post office's yard is small (6 m across): the van backs out
 of it rather than turning in it. The dust is not seen on the device yet (16 blended puffs at most; their overdraw is not measured), and
 the van's ride on Post Road now rumbles like a lane (1.8 cm of bumps; the junctions are packed smooth).
+
+## The owner's tenth notes (2026-11-23, on the Retroid build f83c3ae9)
+
+- "The flowers still flicker. It's at random times. When the camera is way up. When the player walks through them etc."
+- "We should add the floating tooltip to the van 'Enter' then the Y chip in the bottom right of the tooltip"
+- "Van door: The side that's closer to the windscreen can be trimmed to allow for a larger A pillar."
+- "The camera can rotate a little faster when the player turns so that way the player doesn't have to use the Right Stick as often."
+- "Camera: I like the 'top down' camera of the indoor areas. Let's keep that for the player every time they're walking even outside. when the player gets in the van we can move the camera closer to the ground, similar to what it's at now while driving."
+- "We can be more lenient with the van gearing. If the player is max speed in Drive, and goes to R or P, the car should just brake hard to get the user there."
