@@ -3,11 +3,11 @@
 // tools/map.mjs.) Run from the repository's root: scripts/env.sh node examples/mountain-post/tools/art.mjs [section ...]
 // (sections: words, minimap, title, icons; none: all of them)
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
-import { put, REPO, tool } from "./lib.mjs";
+import { GAME, put, REPO, tool } from "./lib.mjs";
 import { PAL } from "./palette.mjs";
 
 const RED = "#b9372b";
@@ -174,6 +174,10 @@ if (doing("words")) {
     { text: "FERNHOLLOW", at: [440, 132], size: 128, font: "rounded", align: "center", fill: PAL.paper, stroke: { color: PAL.paper, width: 12 } },
     { text: "POST", at: [440, 282], size: 124, font: "rounded", align: "center", fill: PAL.paper, stroke: { color: PAL.paper, width: 12 } },
   ]);
+  // (the picture is the van model's texture, not a sprite: models/van.texture.png, 880 x 300 texels for the 0.95 x 0.324 m decals on
+  // the cargo sides that tools/van.mjs paints with it (model_write's `picture`), so the lettering is part of the body and moves with it)
+  copyFileSync(join(GAME, "sprites/fx/van_side.png"), join(GAME, "models/van.texture.png"));
+  rmSync(join(GAME, "sprites/fx/van_side.png"));
   img("fx/puff", [64, 64], [{ circle: [32, 32, 22], fill: { radial: [32, 32, 30], stops: [[0, "#ffffffee"], [0.6, "#ffffff88"], [1, "#ffffff00"]] }, blur: 3 }]);
   img("fx/mote", [16, 16], [{ circle: [8, 8, 5], fill: { radial: [8, 8, 7], stops: [[0, "#fff8e0ff"], [1, "#fff8e000"]] } }]);
   img("fx/sunbeam", [64, 256], [{ rect: [0, 0, 64, 256], fill: { linear: [0, 0, 0, 256], stops: [[0, "#fff4d066"], [1, "#fff4d000"]] }, blur: 6 }]);

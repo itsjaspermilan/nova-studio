@@ -10246,3 +10246,100 @@ fn floating_life_stays_near_the_camera_within_its_caps_and_is_off_indoors() {
         "nothing floats indoors"
     );
 }
+
+/// The owner's seventh play: on a steep grassy bank the FERNHOLLOW POST lettering, a `nova.billboard` sticker laid beside the van,
+/// floated off at another angle from the body. It is part of the van's model now: two thin decals on the cargo sides (children of the
+/// body, so they follow its pitch, roll and suspension exactly), painted with models/van.texture.png.
+#[test]
+fn the_vans_lettering_is_in_its_model_and_no_sticker_is_drawn() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [
+        { "lua": "BB = {}; local orig = nova.billboard; nova.billboard = function(id, ...) BB[id] = (BB[id] or 0) + 1; return orig(id, ...) end; nova.named('van').engine_on = true" },
+        { "wait": 90 } ] }"#,
+    );
+    assert_eq!(num(&g, "BB.van_side or 0"), 0.0, "no van_side billboard is drawn");
+    assert!(num(&g, "BB.puff or 0") > 0.0, "the exhaust's puffs still are billboards");
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mountain-post");
+    assert!(
+        !root.join("sprites/fx/van_side.png").exists(),
+        "the lettering is no sprite any more"
+    );
+    let model = van_model();
+    let size = &model["texture"]["size"];
+    assert_eq!(size, &serde_json::json!([880, 300]), "the model's texture is the lettering's picture");
+    let png = std::fs::read(root.join("models/van.texture.png")).unwrap();
+    let wh = |o: usize| u32::from_be_bytes(png[o..o + 4].try_into().unwrap());
+    assert_eq!((wh(16), wh(20)), (880, 300), "models/van.texture.png is 880 x 300");
+    // two decals, one a side, in the body part, painted with the whole picture on their outer face
+    let mut shapes = Vec::new();
+    van_shapes(&model["parts"][0], &mut shapes);
+    let decals: Vec<&Value> = shapes
+        .iter()
+        .filter(|(n, c)| n == "body" && c["shape"].as_str().is_none_or(|s| s == "box") && c["texture"]["faces"].is_object())
+        .map(|(_, c)| *c)
+        .collect();
+    assert_eq!(decals.len(), 2, "one lettering decal on each cargo side");
+    let mut sides = Vec::new();
+    for c in &decals {
+        let x = (c["from"][0].as_f64().unwrap() + c["size"][0].as_f64().unwrap() / 2.0) / 16.0;
+        let z = (c["from"][2].as_f64().unwrap() + c["size"][2].as_f64().unwrap() / 2.0) / 16.0;
+        let w = c["size"][2].as_f64().unwrap() / 16.0;
+        assert!((0.64..0.68).contains(&x.abs()), "on the side panel: x {x}");
+        assert!(
+            z - w / 2.0 > -1.2 && z + w / 2.0 < 0.0,
+            "on the cargo box behind the doorway: z {z}"
+        );
+        let face = if x > 0.0 { "east" } else { "west" };
+        assert_eq!(
+            c["texture"]["faces"][face],
+            serde_json::json!([0, 0, 880, 299]),
+            "the picture is on the outer face"
+        );
+        sides.push(x > 0.0);
+    }
+    assert!(sides.contains(&true) && sides.contains(&false), "both sides");
+}
+
+/// The body is turned as `nova.model` turns it, Ry(heading) * Rx(pitch) * Rz(roll) with the lift added; `Van:to_world` (the postmaster
+/// at his seat, the parcels, the lamps' beams, the exhaust's tip) is that, not a small-angle shortcut: within a centimetre at 25
+/// degrees of pitch and roll.
+#[test]
+fn to_world_turns_a_point_as_the_models_body_is_turned_at_25_degrees() {
+    let mut g = game();
+    play(
+        &mut g,
+        r#"{ "start_scene": "valley", "steps": [ { "wait": 30 } ] }"#,
+    );
+    let rad = 25.0_f64.to_radians();
+    let (h, p, r) = (0.7_f64, rad, -rad);
+    let points = [
+        [0.64, 1.2, -0.58],
+        [-0.68, 1.2, -0.58],
+        [0.4, 0.31, -1.5],
+        [0.45, 0.9, 0.1],
+        [0.2, 0.68, -0.95],
+        [-0.64, 0.5, 1.2],
+    ];
+    for [lx, ly, lz] in points {
+        // Ry(h) * Rx(p) * Rz(r) applied to the point
+        let (x1, y1) = (lx * r.cos() - ly * r.sin(), lx * r.sin() + ly * r.cos());
+        let (y2, z2) = (y1 * p.cos() - lz * p.sin(), y1 * p.sin() + lz * p.cos());
+        let (wx, wz) = (x1 * h.cos() + z2 * h.sin(), -x1 * h.sin() + z2 * h.cos());
+        let out = lua(
+            &g,
+            &format!(
+                "(function() local v = nova.named('van'); v.heading, v.pitch, v.roll, v.lift = {h}, {p}, {r}, 0.1; v.x, v.z = 10, 20; local x, y, z = v:to_world({lx}, {ly}, {lz}); return string.format('%.5f %.5f %.5f', x, y, z) end)()"
+            ),
+        );
+        let got: Vec<f64> = out.split(' ').map(|s| s.parse().unwrap()).collect();
+        let want = [10.0 + wx, 0.1 + y2, 20.0 + wz];
+        for k in 0..3 {
+            assert!(
+                (got[k] - want[k]).abs() < 0.01,
+                "point {lx},{ly},{lz}: to_world {got:?} vs the model's turn {want:?}"
+            );
+        }
+    }
+}
