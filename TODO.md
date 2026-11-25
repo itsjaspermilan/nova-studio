@@ -1,6 +1,6 @@
 # Nova Studio: plan and TODO
 
-Last updated: 2026-11-10. Nothing below is implemented unless it is ticked. The long history (milestones M0 to M8, the probe games, the
+Last updated: 2026-11-24. Nothing below is implemented unless it is ticked. The long history (milestones M0 to M8, the probe games, the
 per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git show db3e9c5:TODO.md`. Detail on finished runtime work lives in
 `docs/` (`project-format.md`, `performance.md`, `spike-results.md`, `materials.md`, `switch-class-graphics.md`, `local-coop.md`, `debugger.md`, `play-on-device.md`).
 
@@ -17,12 +17,22 @@ per-game notes and the device logs) was pruned on 2026-11-09; it is in git: `git
 - **Plan (2026-11-09): one studio with four workspaces** (Model, Sprites, Sound, Engine). The master checklist is the next section;
   its detail is in `docs/studio-workspaces.md` (features) and `docs/studio-ux.md` (menus, toolbars, input, windows).
 - **Art direction (2026-11-09):** Switch 1-class graphics at 60 fps on the Retroid (decisions table below).
-- **The mountain post office slice (2026-11-22):** `examples/mountain-post` (Fernhollow Post) is the agreed slice of `docs/games/mountain-post.md`,
-  built from its spec and nothing beyond it, with `crates/nova-runtime/tests/mountain_post.rs` (26 tests: both orders played start to finish, the
-  spec's words and each line's face, the two gaits, the rules, and the owner's second notes: no forced walks, the self-opening rear doors and
-  Load package, the parcel panel and a van that holds both, the open cab's left doorway and the driver in the seat, the cameras, clumps of trees and
-  forest masses instead of 2,400 trees; docs/games/mountain-post.md, "The owner's second notes"). **Next:** the owner plays it on the Retroid and says what is not right; only the slice is worked on until all of its
-  "right means" are yes. Not played by a person, not listened to, not run on the device.
+- **Focus (2026-11-23): Fernhollow Post only.** The owner paused Pine Ridge Rally ("Just focus on Fernhollow please. We can circle back
+  after"). Pine Ridge must keep working: new engine features stay opt-in, and `scripts/rally/verify.sh` runs when shared road, terrain or
+  model code changes.
+- **The mountain post office slice (updated 2026-11-24):** `examples/mountain-post` (Fernhollow Post), the vertical slice of
+  `docs/games/mountain-post.md`, played by the owner on the Retroid's Linux side (Steam game mode, 1280x720, `docs/play-on-linux-handheld.md`).
+  Ten rounds of the owner's notes are in, each quoted in the design doc; `crates/nova-runtime/tests/mountain_post.rs` has 171 tests. On the
+  device now (72469f1f): gravel roads with dust, driveways by the doors, the P R D lever (lenient: R or P at speed brakes hard, then takes),
+  creep, wheels hung from the body, the merged speedo and gear dial, the Talk / Enter / van-panel tips with their chips, the Controls page,
+  pause on Start, Select and focus loss, painted sky, haze, grass and flowers, ponds and a playable edge, four music pieces, rich dialogue text.
+  The walking camera outdoors is the low one (the high office-style view was tried and reverted on 2026-11-24); the swing behind is quicker.
+  Measured on the device: 60 fps, GPU 10.4 ms, after the seventh play's graphics (before the flowers, edges and ponds: re-measure, silently,
+  with the owner's say-so). **Open:** the flowers still flickered on the device after the first fix; a second fix (no flip under the feet,
+  matched passes, an edge floor for mobile GPUs) is installed but not yet judged by the owner. Still on the "for later" list: feedback when
+  shifting, little faces next to residents' names, the parcel moving with the arms. Weak points: the 3D flower boxes and pots, gaps beside
+  the BRIDGE OUT barrier, the postmaster and props up to 20 cm off on steep banks, first-time hints. **Next:** the owner's next play notes;
+  only the slice is worked on until it is right.
 - **Examples:** `examples/pine-ridge-rally` is the one game kept. The others were removed on 2026-11-09 and live in git tag
   `archive/examples-2026-11`. Small feature fixtures stay (`stress`, `material-demo`, `physics-toybox`, `skin-demo`, `ik-demo`, `menus`,
   `coop-test`, `font-gallery`, `sound-check`, `input-test`) because tests and scripts use them.
