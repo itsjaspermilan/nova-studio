@@ -2,6 +2,7 @@
 
 Read `TODO.md` first: it holds the decisions, milestones and the next assignment.
 Making a game as an agent (which tool shows you what, how to check each step, the traps): `docs/agent-guide.md`.
+Working on Fernhollow Post, the game in focus (world recipes, tests, pictures, the Retroid and its rules): `examples/mountain-post/WORKING.md`.
 Roadmap entries are not implemented features; inspect the source before changing
 a contract. Nova was reset on 2026-11-02; the earlier C11/raylib/Qt code is gone
 from `main` (it lives in git tag `archive/copilot-studio-2026-11`).
